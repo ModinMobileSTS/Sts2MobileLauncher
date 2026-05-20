@@ -499,7 +499,7 @@ public final class ModsPage {
 		String query = searchInput == null || searchInput.getText() == null ? "" : searchInput.getText().toString().trim().toLowerCase(Locale.ROOT);
 		List<ExtraSettingsRepository.ModEntry> result = new ArrayList<>();
 		for (ExtraSettingsRepository.ModEntry entry : mods) {
-			boolean enabled = !repository.isModDisabled(settings, entry.modId);
+			boolean enabled = !repository.isModDisabled(settings, entry);
 			boolean missingFiles = isMissingPayload(entry);
 			if ("enabled".equals(filter) && !enabled) {
 				continue;
@@ -513,7 +513,7 @@ public final class ModsPage {
 			if ("missing".equals(filter) && !missingFiles) {
 				continue;
 			}
-			String haystack = (entry.displayName + " " + entry.modId + " " + entry.version + " " + entry.authors + " " + entry.description + " " + entry.category + " " + entry.relativePath).toLowerCase(Locale.ROOT);
+			String haystack = (entry.displayName + " " + entry.modId + " " + entry.pckName + " " + entry.version + " " + entry.authors + " " + entry.description + " " + entry.category + " " + entry.relativePath).toLowerCase(Locale.ROOT);
 			if (!query.isEmpty() && !haystack.contains(query)) {
 				continue;
 			}
@@ -531,7 +531,7 @@ public final class ModsPage {
 	}
 
 	private View modCard(JSONObject settings, ExtraSettingsRepository.ModEntry entry) throws Exception {
-		boolean enabled = !repository.isModDisabled(settings, entry.modId);
+		boolean enabled = !repository.isModDisabled(settings, entry);
 		final boolean[] enabledState = new boolean[] { enabled };
 		boolean selected = selectedModIds.contains(entry.modId);
 		boolean selectionMode = !selectedModIds.isEmpty();

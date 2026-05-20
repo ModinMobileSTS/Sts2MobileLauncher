@@ -342,10 +342,15 @@ public final class ExtraSettingsRepository {
 		if (parent != null) {
 			deleteIfExists(new File(parent, modEntry.modId + ".pck"));
 			deleteIfExists(new File(parent, modEntry.modId + ".dll"));
+			if (!modEntry.modId.equals(modEntry.pckName)) {
+				deleteIfExists(new File(parent, modEntry.pckName + ".pck"));
+				deleteIfExists(new File(parent, modEntry.pckName + ".dll"));
+			}
 			pruneEmptyDirectories(parent, getModsRootDir());
 		}
 		JSONObject settings = loadSettingsJson();
 		removeModEntry(settings, modEntry.modId);
+		removeModEntry(settings, modEntry.pckName);
 		saveSettingsJson(settings);
 	}
 
@@ -359,6 +364,7 @@ public final class ExtraSettingsRepository {
 		JSONObject settings = loadSettingsJson();
 		for (ModEntry modEntry : modEntries) {
 			setModDisabled(settings, modEntry.modId, !enabled);
+			setModDisabled(settings, modEntry.pckName, !enabled);
 		}
 		saveSettingsJson(settings);
 	}
@@ -400,7 +406,7 @@ public final class ExtraSettingsRepository {
 	public int getEnabledModCount(JSONObject settings, List<ModEntry> entries) throws JSONException {
 		int count = 0;
 		for (ModEntry entry : entries) {
-			if (!isModDisabled(settings, entry.modId)) {
+			if (!isModDisabled(settings, entry)) {
 				count++;
 			}
 		}
@@ -416,7 +422,7 @@ public final class ExtraSettingsRepository {
 		Set<String> enabledIds = new LinkedHashSet<>();
 		for (ModEntry entry : installedMods) {
 			installedIds.add(entry.modId);
-			if (!isModDisabled(settings, entry.modId)) {
+			if (!isModDisabled(settings, entry)) {
 				enabledIds.add(entry.modId);
 			}
 		}
@@ -455,7 +461,7 @@ public final class ExtraSettingsRepository {
 		ModProfileState state = loadModProfileState(settings, installedMods);
 		Set<String> enabledIds = new LinkedHashSet<>();
 		for (ModEntry entry : installedMods) {
-			if (!isModDisabled(settings, entry.modId)) {
+			if (!isModDisabled(settings, entry)) {
 				enabledIds.add(entry.modId);
 			}
 		}
@@ -475,7 +481,9 @@ public final class ExtraSettingsRepository {
 			throw new IllegalArgumentException(context.getString(R.string.mod_profile_missing));
 		}
 		for (ModEntry entry : installedMods) {
-			setModDisabled(settings, entry.modId, !profile.enabledModIds.contains(entry.modId));
+			boolean profileEnabled = profile.enabledModIds.contains(entry.modId) || profile.enabledModIds.contains(entry.pckName);
+			setModDisabled(settings, entry.modId, !profileEnabled);
+			setModDisabled(settings, entry.pckName, !profileEnabled);
 		}
 		ensureModSettings(settings).put("mods_enabled", true);
 		saveSettingsJson(settings);
@@ -682,8 +690,19 @@ public final class ExtraSettingsRepository {
 	}
 
 	public boolean isModDisabled(JSONObject settings, String modId) throws JSONException {
+		return isModDisabled(settings, modId, modId);
+	}
+
+	public boolean isModDisabled(JSONObject settings, ModEntry entry) throws JSONException {
+		return isModDisabled(settings, entry.modId, entry.pckName);
+	}
+
+	private boolean isModDisabled(JSONObject settings, String modId, String pckName) throws JSONException {
 		JSONObject modSettings = ensureModSettings(settings);
 		JSONObject modEntry = findExistingModListEntry(modSettings.optJSONArray("mod_list"), modId);
+		if (modEntry == null && !modId.equals(pckName)) {
+			modEntry = findExistingModListEntry(modSettings.optJSONArray("mod_list"), pckName);
+		}
 		if (modEntry != null) {
 			return !modEntry.optBoolean("is_enabled", true);
 		}
@@ -698,7 +717,7 @@ public final class ExtraSettingsRepository {
 			}
 			String name = item.optString("name", "");
 			String source = item.optString("source", "");
-			if (modId.equals(name) && MOD_SOURCE_MODS_DIRECTORY.equals(source)) {
+			if ((modId.equals(name) || pckName.equals(name)) && (source.isEmpty() || MOD_SOURCE_MODS_DIRECTORY.equals(source))) {
 				return true;
 			}
 		}
@@ -785,7 +804,7 @@ public final class ExtraSettingsRepository {
 			}
 			String name = item.optString("name", "");
 			String source = item.optString("source", "");
-			if (modId.equals(name) && MOD_SOURCE_MODS_DIRECTORY.equals(source)) {
+			if (modId.equals(name) && (source.isEmpty() || MOD_SOURCE_MODS_DIRECTORY.equals(source))) {
 				continue;
 			}
 			newDisabledMods.put(item);
@@ -820,14 +839,25 @@ public final class ExtraSettingsRepository {
 				return null;
 			}
 			JSONObject manifest = new JSONObject(content);
+			String pckName = firstNonEmpty(
+				manifest.optString("pck_name", ""),
+				manifest.optString("pckName", ""),
+				manifest.optString("PckName", ""),
+				findPayloadBaseName(manifestFile.getParentFile()),
+				stripExtension(manifestFile.getName())
+			).trim();
 			String modId = firstNonEmpty(
 				manifest.optString("id", ""),
 				manifest.optString("mod_id", ""),
 				manifest.optString("modId", ""),
-				manifest.optString("ID", "")
+				manifest.optString("ID", ""),
+				pckName
 			).trim();
 			if (modId.isEmpty()) {
 				return null;
+			}
+			if (pckName.isEmpty()) {
+				pckName = modId;
 			}
 			String displayName = firstNonEmpty(manifest.optString("name", ""), manifest.optString("display_name", ""), modId).trim();
 			String version = firstNonEmpty(manifest.optString("version", ""), manifest.optString("mod_version", ""), manifest.optString("Version", ""));
@@ -836,12 +866,35 @@ public final class ExtraSettingsRepository {
 			String category = readCategory(manifest);
 			List<String> dependencies = readDependencies(manifest);
 			File parent = manifestFile.getParentFile();
-			boolean hasPck = hasSibling(parent, modId, ".pck");
-			boolean hasDll = hasSibling(parent, modId, ".dll");
-			return new ModEntry(manifestFile, modId, displayName, getRelativeModsPath(manifestFile), version, authors, description, category, dependencies, hasPck, hasDll);
+			boolean hasPck = hasSibling(parent, modId, ".pck") || hasSibling(parent, pckName, ".pck");
+			boolean hasDll = hasSibling(parent, modId, ".dll") || hasSibling(parent, pckName, ".dll");
+			return new ModEntry(manifestFile, modId, pckName, displayName, getRelativeModsPath(manifestFile), version, authors, description, category, dependencies, hasPck, hasDll);
 		} catch (Exception ignored) {
 			return null;
 		}
+	}
+
+	private String findPayloadBaseName(File parent) {
+		if (parent == null || !parent.isDirectory()) {
+			return "";
+		}
+		File[] files = parent.listFiles((dir, name) -> {
+			String lower = name.toLowerCase(Locale.ROOT);
+			return lower.endsWith(".pck") || lower.endsWith(".dll");
+		});
+		if (files == null || files.length == 0) {
+			return "";
+		}
+		Arrays.sort(files, Comparator.comparing(File::getName, String::compareToIgnoreCase));
+		return stripExtension(files[0].getName());
+	}
+
+	private String stripExtension(String fileName) {
+		if (fileName == null) {
+			return "";
+		}
+		int dot = fileName.lastIndexOf('.');
+		return dot > 0 ? fileName.substring(0, dot) : fileName;
 	}
 
 	private boolean hasSibling(File parent, String modId, String extension) {
@@ -1453,6 +1506,7 @@ public final class ExtraSettingsRepository {
 	public static final class ModEntry {
 		public final File manifestFile;
 		public final String modId;
+		public final String pckName;
 		public final String displayName;
 		public final String relativePath;
 		public final String version;
@@ -1463,9 +1517,10 @@ public final class ExtraSettingsRepository {
 		public final boolean hasPck;
 		public final boolean hasDll;
 
-		ModEntry(File manifestFile, String modId, String displayName, String relativePath, String version, String authors, String description, String category, List<String> dependencies, boolean hasPck, boolean hasDll) {
+		ModEntry(File manifestFile, String modId, String pckName, String displayName, String relativePath, String version, String authors, String description, String category, List<String> dependencies, boolean hasPck, boolean hasDll) {
 			this.manifestFile = manifestFile;
 			this.modId = modId;
+			this.pckName = TextUtils.isEmpty(pckName) ? modId : pckName;
 			this.displayName = displayName;
 			this.relativePath = relativePath;
 			this.version = version;
