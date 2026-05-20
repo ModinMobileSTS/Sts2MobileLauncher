@@ -21,7 +21,6 @@ using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Messages.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
-using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Platform;
 using MegaCrit.Sts2.Core.Platform.Null;
@@ -111,6 +110,9 @@ public static class LanMultiplayerPatches
         PatchHelper.Patch(harmony, typeof(JoinFlow), "Begin", prefix: PatchHelper.Method(typeof(LanMultiplayerPatches), nameof(JoinFlowBeginPrefix)));
         PatchHelper.Patch(harmony, typeof(NullPlatformUtilStrategy), "GetPlayerName", prefix: PatchHelper.Method(typeof(LanMultiplayerPatches), nameof(NullGetPlayerNamePrefix)));
         PatchHelper.Patch(harmony, typeof(NullPlatformUtilStrategy), "GetLocalPlayerId", prefix: PatchHelper.Method(typeof(LanMultiplayerPatches), nameof(NullGetLocalPlayerIdPrefix)));
+        var settingsScreenType = typeof(NJoinFriendScreen).Assembly.GetType("MegaCrit.Sts2.Core.Nodes.Screens.Settings.NSettingsScreen");
+        if (settingsScreenType != null)
+            PatchHelper.Patch(harmony, settingsScreenType, "_Ready", postfix: PatchHelper.Method(typeof(LanMultiplayerPatches), nameof(SettingsScreenReadyPostfix)));
         PatchHelper.Patch(harmony, typeof(NetMessageBus), "SerializeMessage", prefix: PatchHelper.Method(typeof(LanMultiplayerPatches), nameof(SerializeMessagePrefix)));
         PatchHelper.Patch(harmony, typeof(NetMessageBus), "TryDeserializeMessage", prefix: PatchHelper.Method(typeof(LanMultiplayerPatches), nameof(TryDeserializeMessagePrefix)));
         PatchHelper.Patch(harmony, typeof(NJoinFriendScreen), "OnSubmenuOpened", prefix: PatchHelper.Method(typeof(LanMultiplayerPatches), nameof(JoinFriendOpenedPrefix)));
@@ -163,6 +165,27 @@ public static class LanMultiplayerPatches
             return false;
         }
         return true;
+    }
+
+    public static void SettingsScreenReadyPostfix(Node __instance)
+    {
+        try
+        {
+            var enabled = AndroidSettingsBridge.GetBool("max_multiplayer_enabled", true);
+            var generalSettings = __instance.GetNodeOrNull<Node>("%GeneralSettings");
+            var content = generalSettings?.GetType().GetProperty("Content", BindingFlags.Public | BindingFlags.Instance)?.GetValue(generalSettings) as Node
+                ?? generalSettings?.GetNodeOrNull<Node>("Content");
+            var maxPlayersNode = content?.GetNodeOrNull<Control>("MaxMultiplayerPlayers");
+            var maxPlayersDivider = content?.GetNodeOrNull<Control>("MaxMultiplayerPlayersDivider");
+            if (maxPlayersNode != null)
+                maxPlayersNode.Visible = enabled;
+            if (maxPlayersDivider != null)
+                maxPlayersDivider.Visible = enabled;
+        }
+        catch (Exception exception)
+        {
+            PatchHelper.Log($"LAN max-player settings visibility patch failed: {exception.Message}");
+        }
     }
 
     public static bool SerializeMessagePrefix(NetMessageBus __instance, ulong senderId, INetMessage message, ref byte[] __result, ref int length)
