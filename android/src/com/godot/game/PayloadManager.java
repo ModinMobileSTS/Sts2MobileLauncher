@@ -62,6 +62,12 @@ public final class PayloadManager {
 		File gameDir = getGameDir();
 		JSONObject manifest = readManifestQuietly(gameDir);
 		try {
+			if (!gameDir.isDirectory()) {
+				throw new IOException("Payload directory is missing.");
+			}
+			if (manifest == null) {
+				throw new IOException("Payload manifest is missing; import the game zip again.");
+			}
 			Validation validation = validateGameDir(gameDir);
 			JSONObject releaseInfo = validation.releaseInfo;
 			JSONObject source = manifest == null ? null : manifest.optJSONObject("source");
