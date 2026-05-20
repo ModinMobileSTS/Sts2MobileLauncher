@@ -1,0 +1,56 @@
+using System;
+using System.Runtime.InteropServices;
+using Godot;
+using Godot.Bridge;
+using Godot.NativeInterop;
+using HarmonyLib;
+using STS2AndroidPortCompat.Patches;
+
+namespace STS2AndroidPortCompat;
+
+public static class ModEntry
+{
+    private static bool _applied;
+    private static Harmony _harmony;
+
+    [UnmanagedCallersOnly]
+    public static int InitializeGodotSharp(IntPtr godotDllHandle, IntPtr outManagedCallbacks, IntPtr unmanagedCallbacks, int unmanagedCallbacksSize)
+    {
+        try
+        {
+            DllImportResolver resolver = new GodotDllImportResolver(godotDllHandle).OnResolveDllImport;
+            NativeLibrary.SetDllImportResolver(typeof(GodotObject).Assembly, resolver);
+            NativeFuncs.Initialize(unmanagedCallbacks, unmanagedCallbacksSize);
+            ManagedCallbacks.Create(outManagedCallbacks);
+            Console.Error.WriteLine("[STS2AndroidPortCompat] GodotSharp initialized");
+            return 1;
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"[STS2AndroidPortCompat] GodotSharp init failed: {exception}");
+            return 0;
+        }
+    }
+
+    [UnmanagedCallersOnly]
+    public static void Apply()
+    {
+        if (_applied)
+            return;
+        _applied = true;
+        _harmony = new Harmony("com.wsdx233.sts2.android_port_compat");
+        PatchHelper.Log("Applying Android port compatibility skeleton.");
+        try
+        {
+            PlatformPatches.Apply(_harmony);
+            ReleaseInfoPatches.Apply(_harmony);
+            AndroidSettingsPatches.Apply(_harmony);
+            ModLoaderPatches.Apply(_harmony);
+            PatchHelper.Log("Android port compatibility skeleton applied.");
+        }
+        catch (Exception exception)
+        {
+            PatchHelper.Log($"Patch application failed: {exception}");
+        }
+    }
+}

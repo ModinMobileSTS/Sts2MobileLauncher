@@ -1,19 +1,32 @@
-# Android port compatibility MOD (planned)
+# Android port compatibility MOD
 
-This directory is reserved for the extracted Android compatibility MOD / Harmony
-patcher. It is intentionally **not** a copy of the old full game source.
+This directory contains the first editable skeleton for the extracted Android
+compatibility MOD / Harmony patcher. It is intentionally not a copy of the old
+full game source.
 
-Current state:
+Current implementation (`STS2AndroidPortCompat`):
 
-- M1/M2 focus is the Android shell and private payload importer.
-- The editable MOD implementation is still pending M5/M6 diff extraction.
-- Reference material lives in `.agent/reports/port-diff-inventory.md` and
-  `../s2/.cache/StS2-Launcher_Mod_Manager/src/STS2Mobile/`.
+- `ModEntry` exposes the same unmanaged entrypoints used by the reference
+  launcher (`InitializeGodotSharp`, `Apply`).
+- `PlatformPatches` disables desktop Steam/Sentry/platform paths.
+- `ReleaseInfoPatches` reads `release_info.json` from the imported private
+  payload at `OS.GetDataDir()/game/release_info.json`.
+- `AndroidSettingsBridge` reads extra-settings JSON from
+  `OS.GetDataDir()/default/1/settings.save` without requiring PC `SettingsSave`
+  to contain Android-only fields.
+- `AndroidSettingsPatches` currently applies a minimal vsync/msaa bridge; the
+  full field set from `.agent/reports/extra-settings-inventory.md` is TODO for
+  M6.
+- `ModLoaderPatches` redirects local mods to `OS.GetDataDir()/mods` and skips
+  Steam mod enumeration.
 
-Constraints for the first real implementation:
+Build locally with the reference .NET SDK:
 
-- No SteamCMD or Steam body download path.
-- Read Android-only settings directly from `files/default/<account>/settings.save`.
-- Load before user mods and patch the imported PC `sts2.dll` at runtime.
-- Keep launcher/runtime responsibilities in `android/`; keep game behavior patches
-  here.
+```bash
+../s2/.local/dotnet/dotnet build port-mod/STS2AndroidPortCompat/STS2AndroidPortCompat.csproj
+```
+
+The Android shell still packages the prebuilt reference `STS2Mobile.dll` copied
+by `tools/android/sync-runtime-from-references.sh`. Replacing that with this new
+compat DLL requires confirming the custom Mono runtime's expected assembly and
+entrypoint names.

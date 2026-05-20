@@ -45,3 +45,7 @@ Thumbs.db
 android/assets/dotnet_bcl/
 android/libs/
 android/assets/payload/
+
+# .NET build outputs
+**/bin/
+**/obj/
