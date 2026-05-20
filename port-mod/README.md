@@ -14,9 +14,17 @@ Current implementation (`STS2AndroidPortCompat`):
 - `AndroidSettingsBridge` reads extra-settings JSON from
   `OS.GetDataDir()/default/1/settings.save` without requiring PC `SettingsSave`
   to contain Android-only fields.
-- `AndroidSettingsPatches` currently applies a minimal vsync/msaa bridge; the
-  full field set from `.agent/reports/extra-settings-inventory.md` is TODO for
-  M6.
+- `AndroidSettingsPatches` maps companion JSON fields that also exist in the PC
+  `SettingsSave` (`aspect_ratio`, `vsync`, `msaa`, `fps_limit`, `fullscreen`),
+  enables local mod settings when companion mod state exists, and merges
+  Android-only JSON keys back after PC `SettingsSave` serialization would drop
+  them.
+- `DisplaySettingsPatches` applies Android-only companion fields for FPS, custom
+  fullscreen render size, global content scale, UI font scale, and 180° landscape
+  orientation.
+- `ExternalSettingsPatches` adds a fallback in-game settings row that opens the
+  Java companion settings shell, redirects game Quit back to the settings shell,
+  and applies the companion `pending_unlock_all.flag` command.
 - `ModLoaderPatches` redirects local mods to `OS.GetDataDir()/mods` and skips
   Steam mod enumeration.
 

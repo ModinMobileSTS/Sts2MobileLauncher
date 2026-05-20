@@ -45,6 +45,8 @@ public static class ModEntry
             PlatformPatches.Apply(_harmony);
             ReleaseInfoPatches.Apply(_harmony);
             AndroidSettingsPatches.Apply(_harmony);
+            DisplaySettingsPatches.Apply(_harmony);
+            ExternalSettingsPatches.Apply(_harmony);
             ModLoaderPatches.Apply(_harmony);
             PatchHelper.Log("Android port compatibility skeleton applied.");
         }
