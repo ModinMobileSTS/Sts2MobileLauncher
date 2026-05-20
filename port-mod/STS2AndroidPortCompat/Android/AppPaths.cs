@@ -13,6 +13,7 @@ public static class AppPaths
     public static string SettingsPath => Path.Combine(AccountRoot, "settings.save");
     public static string PendingUnlockAllPath => Path.Combine(AccountRoot, "pending_unlock_all.flag");
     public static string ModsDir => Path.Combine(DataDir, "mods");
+    public static string ModsUserPath => "user://mods";
 
     public static GodotObject GetGodotApp()
     {
