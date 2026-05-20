@@ -32,6 +32,11 @@ Current implementation (`STS2AndroidPortCompat`):
   `shader_compatibility_mode` is enabled.
 - `TouchInputPatches` adds the first touch-friendly card-play cancellation path
   for releases outside the play zone / untargeted releases.
+- `LanMultiplayerPatches` bridges companion LAN settings by using stable ENet
+  message IDs, adding configured compatibility mod names to multiplayer mod
+  checks, honoring persistent/custom LAN player IDs, replacing the no-Steam join
+  screen with host/port input, and hosting ENet games with the configured player
+  capacity.
 
 Build locally with the reference .NET SDK:
 

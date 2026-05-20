@@ -35,3 +35,11 @@ tools/android/make-port-overlay-pck.py
 `tools/android/build-port-mod.sh` runs this automatically and stages
 `android/assets/port_compat.pck`, which `GodotApp` extracts to
 `OS.GetDataDir()/port_compat.pck` before the compat DLL loads it.
+
+LAN multiplayer compatibility is implemented as Harmony patches in
+`Patches/LanMultiplayerPatches.cs`. It reads `lan_multiplayer_enabled`,
+`lan_compatibility_mod_names`, `lan_use_custom_player_id`,
+`lan_use_custom_platform_player_id`, `lan_custom_player_id`, `lan_join_host`,
+`lan_join_port`, `max_multiplayer_enabled`, and `max_multiplayer_players` from
+companion settings instead of adding Android-only fields to the imported PC game
+assembly.
