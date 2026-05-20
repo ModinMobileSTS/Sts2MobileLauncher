@@ -18,8 +18,13 @@ using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Connection;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Multiplayer.Messages.Game;
+using MegaCrit.Sts2.Core.Multiplayer.Messages.Game.Checksums;
+using MegaCrit.Sts2.Core.Multiplayer.Messages.Game.Flavor;
+using MegaCrit.Sts2.Core.Multiplayer.Messages.Game.Sync;
 using MegaCrit.Sts2.Core.Multiplayer.Messages.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
+using MegaCrit.Sts2.Core.Multiplayer.Messages;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Platform;
@@ -41,57 +46,57 @@ public static class LanMultiplayerPatches
     private static readonly Dictionary<PlatformType, Dictionary<ulong, string>> PlayerNameOverrides = new();
     private static readonly Dictionary<Type, int> StableMessageTypeIds = new();
     private static readonly Dictionary<int, Type> StableMessageIdTypes = new();
-    private static readonly string[] StableMessageTypeOrder =
+    private static readonly Type[] StableMessageTypeOrder =
     {
-        "ActionEnqueuedMessage",
-        "CardRemovedMessage",
-        "ChecksumDataMessage",
-        "StateDivergenceMessage",
-        "ClearMapDrawingsMessage",
-        "EndTurnPingMessage",
-        "MapDrawingMessage",
-        "MapDrawingModeChangedMessage",
-        "MapPingMessage",
-        "ReactionMessage",
-        "RestSiteOptionHoveredMessage",
-        "HookActionEnqueuedMessage",
-        "MerchantCardRemovalMessage",
-        "PaelsWingSacrificeMessage",
-        "PlayerChoiceMessage",
-        "RequestEnqueueActionMessage",
-        "RequestEnqueueHookActionMessage",
-        "RequestResumeActionAfterPlayerChoiceMessage",
-        "ResumeActionAfterPlayerChoiceMessage",
-        "RunAbandonedMessage",
-        "GoldLostMessage",
-        "OptionIndexChosenMessage",
-        "PeerInputMessage",
-        "RewardObtainedMessage",
-        "SharedEventOptionChosenMessage",
-        "VotedForSharedEventOptionMessage",
-        "SyncPlayerDataMessage",
-        "SyncRngMessage",
-        "TreasureChestOpenedMessage",
-        "HeartbeatRequestMessage",
-        "HeartbeatResponseMessage",
-        "ClientLoadJoinRequestMessage",
-        "ClientLoadJoinResponseMessage",
-        "ClientLobbyJoinRequestMessage",
-        "ClientLobbyJoinResponseMessage",
-        "ClientRejoinRequestMessage",
-        "ClientRejoinResponseMessage",
-        "InitialGameInfoMessage",
-        "LobbyAscensionChangedMessage",
-        "LobbyBeginLoadedRunMessage",
-        "LobbyBeginRunMessage",
-        "LobbyModifiersChangedMessage",
-        "LobbyPlayerChangedCharacterMessage",
-        "LobbyPlayerSetReadyMessage",
-        "LobbySeedChangedMessage",
-        "PlayerJoinedMessage",
-        "PlayerLeftMessage",
-        "PlayerReconnectedMessage",
-        "PlayerRejoinedMessage",
+        typeof(ActionEnqueuedMessage),
+        typeof(CardRemovedMessage),
+        typeof(ChecksumDataMessage),
+        typeof(StateDivergenceMessage),
+        typeof(ClearMapDrawingsMessage),
+        typeof(EndTurnPingMessage),
+        typeof(MapDrawingMessage),
+        typeof(MapDrawingModeChangedMessage),
+        typeof(MapPingMessage),
+        typeof(ReactionMessage),
+        typeof(RestSiteOptionHoveredMessage),
+        typeof(HookActionEnqueuedMessage),
+        typeof(MerchantCardRemovalMessage),
+        typeof(PaelsWingSacrificeMessage),
+        typeof(PlayerChoiceMessage),
+        typeof(RequestEnqueueActionMessage),
+        typeof(RequestEnqueueHookActionMessage),
+        typeof(RequestResumeActionAfterPlayerChoiceMessage),
+        typeof(ResumeActionAfterPlayerChoiceMessage),
+        typeof(RunAbandonedMessage),
+        typeof(GoldLostMessage),
+        typeof(OptionIndexChosenMessage),
+        typeof(PeerInputMessage),
+        typeof(RewardObtainedMessage),
+        typeof(SharedEventOptionChosenMessage),
+        typeof(VotedForSharedEventOptionMessage),
+        typeof(SyncPlayerDataMessage),
+        typeof(SyncRngMessage),
+        typeof(TreasureChestOpenedMessage),
+        typeof(HeartbeatRequestMessage),
+        typeof(HeartbeatResponseMessage),
+        typeof(ClientLoadJoinRequestMessage),
+        typeof(ClientLoadJoinResponseMessage),
+        typeof(ClientLobbyJoinRequestMessage),
+        typeof(ClientLobbyJoinResponseMessage),
+        typeof(ClientRejoinRequestMessage),
+        typeof(ClientRejoinResponseMessage),
+        typeof(InitialGameInfoMessage),
+        typeof(LobbyAscensionChangedMessage),
+        typeof(LobbyBeginLoadedRunMessage),
+        typeof(LobbyBeginRunMessage),
+        typeof(LobbyModifiersChangedMessage),
+        typeof(LobbyPlayerChangedCharacterMessage),
+        typeof(LobbyPlayerSetReadyMessage),
+        typeof(LobbySeedChangedMessage),
+        typeof(PlayerJoinedMessage),
+        typeof(PlayerLeftMessage),
+        typeof(PlayerReconnectedMessage),
+        typeof(PlayerRejoinedMessage),
     };
 
     public static void Apply(Harmony harmony)
@@ -301,16 +306,9 @@ public static class LanMultiplayerPatches
         if (StableMessageTypeIds.Count > 0)
             return;
 
-        var allTypes = typeof(InitialGameInfoMessage).Assembly.GetTypes();
         for (var index = 0; index < StableMessageTypeOrder.Length; index++)
         {
-            var name = StableMessageTypeOrder[index];
-            var type = allTypes.FirstOrDefault(t => t.Name == name && typeof(INetMessage).IsAssignableFrom(t));
-            if (type == null)
-            {
-                PatchHelper.Log($"Stable LAN message type not found: {name}");
-                continue;
-            }
+            var type = StableMessageTypeOrder[index];
             StableMessageTypeIds[type] = index;
             StableMessageIdTypes[index] = type;
         }
