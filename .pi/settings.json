@@ -1,0 +1,6 @@
+{
+  "packages": [
+    "npm:pi-subagents",
+    "npm:pi-goal"
+  ]
+}

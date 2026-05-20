@@ -1,0 +1,42 @@
+# Build outputs
+build/
+dist/
+out/
+*.apk
+*.aab
+*.apks
+*.idsig
+
+# Local/private inputs and large payloads
+local-inputs/
+*.zip
+*.7z
+*.rar
+*.keystore
+*.jks
+*.p12
+
+# Android/Gradle caches
+.gradle/
+**/.gradle/
+android/.gradle/
+android/**/build/
+android/local.properties
+android/**/local.properties
+.cxx/
+.externalNativeBuild/
+
+# Generated/runtime game payloads
+runtime/generated/
+runtime/payload/
+**/payload_import/
+**/.payload_manifest.json
+
+# IDE/OS noise
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Pi local package install cache
+.pi/npm/node_modules/
