@@ -16,9 +16,9 @@ Current implementation (`STS2AndroidPortCompat`):
   to contain Android-only fields.
 - `AndroidSettingsPatches` maps companion JSON fields that also exist in the PC
   `SettingsSave` (`aspect_ratio`, `vsync`, `msaa`, `fps_limit`, `fullscreen`),
-  enables local mod settings when companion mod state exists, and merges
-  Android-only JSON keys back after PC `SettingsSave` serialization would drop
-  them.
+  maps companion `mod_settings.mods_enabled` / `mod_list` / legacy
+  `disabled_mods` into the runtime `ModSettings`, and merges Android-only JSON
+  keys back after PC `SettingsSave` serialization would drop them.
 - `DisplaySettingsPatches` applies Android-only companion fields for FPS, custom
   fullscreen render size, global content scale, UI font scale, and 180° landscape
   orientation.

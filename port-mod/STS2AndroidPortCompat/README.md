@@ -43,3 +43,8 @@ LAN multiplayer compatibility is implemented as Harmony patches in
 `lan_join_port`, `max_multiplayer_enabled`, and `max_multiplayer_players` from
 companion settings instead of adding Android-only fields to the imported PC game
 assembly.
+
+Local mod enable/disable compatibility is handled in
+`Patches/AndroidSettingsPatches.cs`: companion `mod_settings.mods_enabled`,
+`mod_list[]`, and legacy `disabled_mods[]` are projected into the runtime
+`ModSettings` shape used by the current reference DLL and the original PC DLL.

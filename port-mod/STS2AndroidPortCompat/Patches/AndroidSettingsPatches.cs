@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Text.Json;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Nodes;
@@ -88,11 +91,193 @@ public static class AndroidSettingsPatches
 
     private static void EnsureModSettings(SettingsSave settings)
     {
-        if (settings.ModSettings != null)
+        if (!AndroidSettingsBridge.TryGet("mod_settings", out var element) || element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             return;
-        if (!AndroidSettingsBridge.TryGet("mod_settings", out var element) || element.ValueKind is System.Text.Json.JsonValueKind.Null or System.Text.Json.JsonValueKind.Undefined)
+
+        var modSettings = new ModSettings
+        {
+            PlayerAgreedToModLoading = element.ValueKind == JsonValueKind.Object && element.TryGetProperty("mods_enabled", out var enabledElement) && ReadBool(enabledElement, false),
+        };
+
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            ApplyModernModList(modSettings, element);
+            ApplyLegacyDisabledMods(modSettings, element);
+        }
+
+        settings.ModSettings = modSettings;
+        PatchHelper.Log($"Applied Android mod settings: enabled={modSettings.PlayerAgreedToModLoading}, entries={CountConfiguredModEntries(modSettings)}");
+        if (modSettings.PlayerAgreedToModLoading && CountConfiguredModEntries(modSettings) == 0)
+            PatchHelper.Log("Android mod loading master switch is enabled with no explicit mod entries; all discovered local mods are enabled by default.");
+    }
+
+    private static void ApplyModernModList(ModSettings modSettings, JsonElement root)
+    {
+        if (!root.TryGetProperty("mod_list", out var modListElement) || modListElement.ValueKind != JsonValueKind.Array)
             return;
-        settings.ModSettings = new ModSettings { PlayerAgreedToModLoading = true };
+        foreach (var item in modListElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
+            var id = ReadStringProperty(item, "id");
+            if (string.IsNullOrWhiteSpace(id))
+                id = ReadStringProperty(item, "name");
+            if (string.IsNullOrWhiteSpace(id))
+                continue;
+            if (!TryParseModSource(ReadStringProperty(item, "source"), out var source))
+                continue;
+            var isEnabled = !item.TryGetProperty("is_enabled", out var enabledElement) || ReadBool(enabledElement, true);
+            UpsertModSetting(modSettings, id, source, isEnabled);
+        }
+    }
+
+    private static void ApplyLegacyDisabledMods(ModSettings modSettings, JsonElement root)
+    {
+        if (!root.TryGetProperty("disabled_mods", out var disabledElement) || disabledElement.ValueKind != JsonValueKind.Array)
+            return;
+        foreach (var item in disabledElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
+            var id = ReadStringProperty(item, "name");
+            if (string.IsNullOrWhiteSpace(id))
+                id = ReadStringProperty(item, "id");
+            if (string.IsNullOrWhiteSpace(id))
+                continue;
+            if (!TryParseModSource(ReadStringProperty(item, "source"), out var source))
+                continue;
+            UpsertModSetting(modSettings, id, source, false);
+        }
+    }
+
+    private static bool TryParseModSource(string value, out ModSource source)
+    {
+        switch ((value ?? string.Empty).Trim().ToLowerInvariant().Replace("-", "_"))
+        {
+            case "":
+            case "mods_directory":
+            case "modsdirectory":
+            case "local":
+                source = ModSource.ModsDirectory;
+                return true;
+            case "steam_workshop":
+            case "steamworkshop":
+                source = ModSource.SteamWorkshop;
+                PatchHelper.Log("Ignoring Steam Workshop mod setting in no-Steam Android build.");
+                return false;
+            default:
+                source = ModSource.None;
+                PatchHelper.Log($"Ignoring Android mod setting with unknown source '{value}'.");
+                return false;
+        }
+    }
+
+    private static void UpsertModSetting(ModSettings modSettings, string id, ModSource source, bool isEnabled)
+    {
+        id = id.Trim();
+        if (TryUpsertModListEntry(modSettings, id, source, isEnabled))
+            return;
+        UpsertRuntimeDisabledModEntry(modSettings, id, source, isEnabled);
+    }
+
+    private static bool TryUpsertModListEntry(ModSettings modSettings, string id, ModSource source, bool isEnabled)
+    {
+        var property = typeof(ModSettings).GetProperty("ModList", BindingFlags.Public | BindingFlags.Instance);
+        if (property == null)
+            return false;
+        var list = property.GetValue(modSettings) as System.Collections.IList;
+        if (list == null)
+            return false;
+        foreach (var entry in list)
+        {
+            if (entry == null)
+                continue;
+            var idProperty = entry.GetType().GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
+            var sourceProperty = entry.GetType().GetProperty("Source", BindingFlags.Public | BindingFlags.Instance);
+            if ((string)idProperty?.GetValue(entry) == id && sourceProperty?.GetValue(entry) is ModSource existingSource && existingSource == source)
+            {
+                entry.GetType().GetProperty("IsEnabled", BindingFlags.Public | BindingFlags.Instance)?.SetValue(entry, isEnabled);
+                return true;
+            }
+        }
+        var entryType = list.GetType().IsGenericType ? list.GetType().GetGenericArguments()[0] : null;
+        if (entryType == null)
+            return false;
+        var newEntry = Activator.CreateInstance(entryType);
+        entryType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance)?.SetValue(newEntry, id);
+        entryType.GetProperty("Source", BindingFlags.Public | BindingFlags.Instance)?.SetValue(newEntry, source);
+        entryType.GetProperty("IsEnabled", BindingFlags.Public | BindingFlags.Instance)?.SetValue(newEntry, isEnabled);
+        list.Add(newEntry);
+        return true;
+    }
+
+    private static void UpsertRuntimeDisabledModEntry(ModSettings modSettings, string id, ModSource source, bool isEnabled)
+    {
+        var property = typeof(ModSettings).GetProperty("DisabledMods", BindingFlags.Public | BindingFlags.Instance);
+        var list = property?.GetValue(modSettings) as System.Collections.IList;
+        if (list == null)
+        {
+            if (isEnabled)
+                return;
+            PatchHelper.Log("Runtime ModSettings has no ModList/DisabledMods; cannot apply per-mod disabled state.");
+            return;
+        }
+        foreach (var entry in new List<object>(EnumerateList(list)))
+        {
+            if (entry == null)
+                continue;
+            var nameProperty = entry.GetType().GetProperty("Name", BindingFlags.Public | BindingFlags.Instance);
+            var sourceProperty = entry.GetType().GetProperty("Source", BindingFlags.Public | BindingFlags.Instance);
+            if ((string)nameProperty?.GetValue(entry) == id && sourceProperty?.GetValue(entry) is ModSource existingSource && existingSource == source)
+            {
+                if (isEnabled)
+                    list.Remove(entry);
+                return;
+            }
+        }
+        if (isEnabled)
+            return;
+        var entryType = list.GetType().IsGenericType ? list.GetType().GetGenericArguments()[0] : null;
+        if (entryType == null)
+            return;
+        var newEntry = Activator.CreateInstance(entryType);
+        entryType.GetProperty("Name", BindingFlags.Public | BindingFlags.Instance)?.SetValue(newEntry, id);
+        entryType.GetProperty("Source", BindingFlags.Public | BindingFlags.Instance)?.SetValue(newEntry, source);
+        list.Add(newEntry);
+    }
+
+    private static IEnumerable<object> EnumerateList(System.Collections.IEnumerable enumerable)
+    {
+        foreach (var item in enumerable)
+            yield return item;
+    }
+
+    private static int CountConfiguredModEntries(ModSettings modSettings)
+    {
+        var modList = typeof(ModSettings).GetProperty("ModList", BindingFlags.Public | BindingFlags.Instance)?.GetValue(modSettings) as System.Collections.ICollection;
+        if (modList != null)
+            return modList.Count;
+        var disabledMods = typeof(ModSettings).GetProperty("DisabledMods", BindingFlags.Public | BindingFlags.Instance)?.GetValue(modSettings) as System.Collections.ICollection;
+        return disabledMods?.Count ?? 0;
+    }
+
+    private static string ReadStringProperty(JsonElement element, string property)
+    {
+        if (!element.TryGetProperty(property, out var value))
+            return string.Empty;
+        return value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.ToString();
+    }
+
+    private static bool ReadBool(JsonElement element, bool fallback)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Number => element.TryGetInt32(out var number) ? number != 0 : fallback,
+            JsonValueKind.String => bool.TryParse(element.GetString(), out var parsed) ? parsed : fallback,
+            _ => fallback,
+        };
     }
 
     private static VSyncType ParseVSync(string value, VSyncType fallback)
