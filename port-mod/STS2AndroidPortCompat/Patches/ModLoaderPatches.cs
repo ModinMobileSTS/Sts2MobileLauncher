@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Reflection.Emit;
 using HarmonyLib;
-using Godot;
 using MegaCrit.Sts2.Core.Modding;
 using STS2Mobile.Android;
 
@@ -22,9 +21,9 @@ public static class ModLoaderPatches
         {
             matcher.Advance(-1);
             matcher.RemoveInstructions(3);
-            matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Ldstr, AppPaths.ModsUserPath));
-            DirAccess.MakeDirRecursiveAbsolute(AppPaths.ModsUserPath);
-            PatchHelper.Log($"Redirected local mods directory to {AppPaths.ModsUserPath} ({AppPaths.ModsDir})");
+            matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Ldstr, AppPaths.ModsDir));
+            System.IO.Directory.CreateDirectory(AppPaths.ModsDir);
+            PatchHelper.Log($"Redirected local mods directory to {AppPaths.ModsDir}");
         }
         else
         {
