@@ -17,7 +17,12 @@ public static class PatchHelper
             var target = targetType.GetMethod(methodName, flags);
             if (target == null)
             {
-                Log($"FAILED {targetType.FullName}.{methodName}: method not found");
+                Log($"SKIPPED {targetType.FullName}.{methodName}: method not found");
+                return;
+            }
+            if (!IsImplementedOnTargetType(targetType, target))
+            {
+                Log($"SKIPPED {targetType.FullName}.{methodName}: inherited extern/base method is not safe to patch");
                 return;
             }
             harmony.Patch(
@@ -31,6 +36,17 @@ public static class PatchHelper
         {
             Log($"FAILED {targetType.FullName}.{methodName}: {exception}");
         }
+    }
+
+    private static bool IsImplementedOnTargetType(Type targetType, MethodInfo method)
+    {
+        if (method.DeclaringType != targetType)
+            return false;
+        if ((method.Attributes & MethodAttributes.PinvokeImpl) != 0)
+            return false;
+        if ((method.GetMethodImplementationFlags() & MethodImplAttributes.InternalCall) != 0)
+            return false;
+        return true;
     }
 
     public static void PatchGetter(Harmony harmony, Type targetType, string propertyName, MethodInfo prefix)
