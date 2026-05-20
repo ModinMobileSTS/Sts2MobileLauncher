@@ -4,9 +4,9 @@ using Godot;
 using Godot.Bridge;
 using Godot.NativeInterop;
 using HarmonyLib;
-using STS2AndroidPortCompat.Patches;
+using STS2Mobile.Patches;
 
-namespace STS2AndroidPortCompat;
+namespace STS2Mobile;
 
 public static class ModEntry
 {
@@ -22,12 +22,12 @@ public static class ModEntry
             NativeLibrary.SetDllImportResolver(typeof(GodotObject).Assembly, resolver);
             NativeFuncs.Initialize(unmanagedCallbacks, unmanagedCallbacksSize);
             ManagedCallbacks.Create(outManagedCallbacks);
-            Console.Error.WriteLine("[STS2AndroidPortCompat] GodotSharp initialized");
+            Console.Error.WriteLine("[STS2Mobile] GodotSharp initialized");
             return 1;
         }
         catch (Exception exception)
         {
-            Console.Error.WriteLine($"[STS2AndroidPortCompat] GodotSharp init failed: {exception}");
+            Console.Error.WriteLine($"[STS2Mobile] GodotSharp init failed: {exception}");
             return 0;
         }
     }

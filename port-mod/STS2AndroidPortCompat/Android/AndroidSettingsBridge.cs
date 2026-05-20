@@ -1,9 +1,9 @@
 using System;
 using System.IO;
 using System.Text.Json;
-using STS2AndroidPortCompat.Android;
+using STS2Mobile.Android;
 
-namespace STS2AndroidPortCompat.Android;
+namespace STS2Mobile.Android;
 
 public static class AndroidSettingsBridge
 {

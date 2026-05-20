@@ -3,9 +3,9 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Settings;
-using STS2AndroidPortCompat.Android;
+using STS2Mobile.Android;
 
-namespace STS2AndroidPortCompat.Patches;
+namespace STS2Mobile.Patches;
 
 public static class AndroidSettingsPatches
 {

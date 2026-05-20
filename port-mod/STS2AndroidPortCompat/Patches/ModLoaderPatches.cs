@@ -2,9 +2,9 @@ using System.Collections.Generic;
 using System.Reflection.Emit;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Modding;
-using STS2AndroidPortCompat.Android;
+using STS2Mobile.Android;
 
-namespace STS2AndroidPortCompat.Patches;
+namespace STS2Mobile.Patches;
 
 public static class ModLoaderPatches
 {

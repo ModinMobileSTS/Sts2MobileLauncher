@@ -23,10 +23,7 @@ Current implementation (`STS2AndroidPortCompat`):
 Build locally with the reference .NET SDK:
 
 ```bash
-../s2/.local/dotnet/dotnet build port-mod/STS2AndroidPortCompat/STS2AndroidPortCompat.csproj
+tools/android/build-port-mod.sh
 ```
 
-The Android shell still packages the prebuilt reference `STS2Mobile.dll` copied
-by `tools/android/sync-runtime-from-references.sh`. Replacing that with this new
-compat DLL requires confirming the custom Mono runtime's expected assembly and
-entrypoint names.
+The patched Godot runtime expects `STS2Mobile.dll` / `STS2Mobile.ModEntry`; `tools/android/build-port-mod.sh` builds this skeleton under that assembly name and copies it over the reference prebuilt in `android/assets/dotnet_bcl/`.

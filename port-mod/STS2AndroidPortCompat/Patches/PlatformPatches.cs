@@ -4,7 +4,7 @@ using MegaCrit.Sts2.Core.Debug;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Saves;
 
-namespace STS2AndroidPortCompat.Patches;
+namespace STS2Mobile.Patches;
 
 public static class PlatformPatches
 {

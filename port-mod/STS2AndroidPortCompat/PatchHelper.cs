@@ -2,7 +2,7 @@ using System;
 using System.Reflection;
 using HarmonyLib;
 
-namespace STS2AndroidPortCompat;
+namespace STS2Mobile;
 
 public static class PatchHelper
 {
@@ -53,5 +53,5 @@ public static class PatchHelper
         }
     }
 
-    public static void Log(string message) => Console.Error.WriteLine($"[STS2AndroidPortCompat] {message}");
+    public static void Log(string message) => Console.Error.WriteLine($"[STS2Mobile] {message}");
 }

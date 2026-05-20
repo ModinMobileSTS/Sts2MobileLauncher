@@ -3,9 +3,9 @@ using System.IO;
 using System.Text.Json.Nodes;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Debug;
-using STS2AndroidPortCompat.Android;
+using STS2Mobile.Android;
 
-namespace STS2AndroidPortCompat.Patches;
+namespace STS2Mobile.Patches;
 
 public static class ReleaseInfoPatches
 {
