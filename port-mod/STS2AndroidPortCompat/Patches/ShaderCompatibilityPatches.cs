@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Godot;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Nodes;
 using STS2Mobile.Android;
 
 namespace STS2Mobile.Patches;
@@ -31,7 +32,9 @@ public static class ShaderCompatibilityPatches
         Callable.From(LoadOverlayPackWhenReady).CallDeferred();
         var nodeType = typeof(Node);
         PatchHelper.Patch(harmony, nodeType, "AddChild", postfix: PatchHelper.Method(typeof(ShaderCompatibilityPatches), nameof(NodeAddChildPostfix)));
-        PatchHelper.Patch(harmony, nodeType, "AddChildSafely", postfix: PatchHelper.Method(typeof(ShaderCompatibilityPatches), nameof(NodeAddChildPostfix)));
+        var addChildSafely = typeof(NGame).Assembly.GetType("MegaCrit.Sts2.Core.Helpers.GodotTreeExtensions")?.GetMethod("AddChildSafely", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+        if (addChildSafely != null)
+            harmony.Patch(addChildSafely, postfix: new HarmonyMethod(PatchHelper.Method(typeof(ShaderCompatibilityPatches), nameof(AddChildSafelyPostfix))));
     }
 
     public static void NodeAddChildPostfix(Node node)
@@ -46,6 +49,11 @@ public static class ShaderCompatibilityPatches
         {
             PatchHelper.Log($"Shader compatibility traversal failed: {exception.Message}");
         }
+    }
+
+    public static void AddChildSafelyPostfix(Node child)
+    {
+        NodeAddChildPostfix(child);
     }
 
     private static void LoadOverlayPackWhenReady()
