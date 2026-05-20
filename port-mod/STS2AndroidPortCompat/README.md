@@ -58,3 +58,8 @@ Quick-save/load compatibility now has a built-in retry patch in
 `Patches/QuickRestartPatches.cs`: when companion `quick_sl_enabled` is true, the
 pause menu gets an Android retry button unless an external Quick Restart UI mod
 is already loaded.
+
+Touch preview compatibility now has a first-pass patch in
+`Patches/MobileTapPreviewPatches.cs`: when companion `touch_lift_preview` is
+true, tapping a playable hand card pins its hover preview; a second tap follows
+`touch_lift_retap_action` (`put_down`, `play`, or `none`).

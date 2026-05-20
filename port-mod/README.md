@@ -37,6 +37,8 @@ Current implementation (`STS2AndroidPortCompat`):
   `shader_compatibility_mode` is enabled.
 - `TouchInputPatches` adds the first touch-friendly card-play cancellation path
   for releases outside the play zone / untargeted releases.
+- `MobileTapPreviewPatches` adds a first-pass tap-to-lift card preview flow using
+  companion `touch_lift_preview` / `touch_lift_retap_action` settings.
 - `LanMultiplayerPatches` bridges companion LAN settings by using stable ENet
   message IDs, adding configured compatibility mod names to multiplayer mod
   checks, honoring persistent/custom LAN player IDs, replacing the no-Steam join
