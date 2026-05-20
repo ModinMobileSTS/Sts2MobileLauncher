@@ -27,6 +27,11 @@ Current implementation (`STS2AndroidPortCompat`):
   and applies the companion `pending_unlock_all.flag` command.
 - `ModLoaderPatches` redirects local mods to `OS.GetDataDir()/mods` and skips
   Steam mod enumeration.
+- `ShaderCompatibilityPatches` loads `port_compat.pck` and applies the mobile
+  shader replacements copied from the old port when
+  `shader_compatibility_mode` is enabled.
+- `TouchInputPatches` adds the first touch-friendly card-play cancellation path
+  for releases outside the play zone / untargeted releases.
 
 Build locally with the reference .NET SDK:
 

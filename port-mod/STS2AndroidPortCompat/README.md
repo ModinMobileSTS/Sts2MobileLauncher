@@ -24,3 +24,14 @@ old-port-only game-source additions:
 ```bash
 ../s2/.local/dotnet/dotnet build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj -p:ReferenceFlavor=original -v:q
 ```
+
+
+Overlay resource pack:
+
+```bash
+tools/android/make-port-overlay-pck.py
+```
+
+`tools/android/build-port-mod.sh` runs this automatically and stages
+`android/assets/port_compat.pck`, which `GodotApp` extracts to
+`OS.GetDataDir()/port_compat.pck` before the compat DLL loads it.
