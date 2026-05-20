@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path
+        name="filesRoot"
+        path="/" />
+
+    <external-path
+        name="public"
+        path="." />
+
+    <external-files-path
+        name="app"
+        path="." />
+
+    <cache-path
+        name="shared_logs"
+        path="shared/" />
+</paths>

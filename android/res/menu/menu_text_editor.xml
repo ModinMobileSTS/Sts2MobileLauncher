@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_save_text"
+        android:title="@string/text_editor_save"
+        app:showAsAction="ifRoom|withText" />
+
+    <item
+        android:id="@+id/action_open_external_editor"
+        android:title="@string/file_browser_open_external_edit"
+        app:showAsAction="ifRoom|withText" />
+</menu>

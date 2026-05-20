@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Overrides Godot AAR's bundled godot_provider_paths.xml so we can append a
+    <cache-path> entry needed by the launcher self-update flow (issue #12).
+    Keep the original three Godot entries intact — other Godot subsystems may
+    expose files via this provider.
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <files-path
+        name="filesRoot"
+        path="/" />
+
+    <external-path
+        name="public"
+        path="." />
+
+    <external-files-path
+        name="app"
+        path="." />
+
+    <!-- Maps to getCacheDir() — where AppUpdateInstaller writes launcher_update.apk. -->
+    <cache-path
+        name="cache"
+        path="." />
+</paths>

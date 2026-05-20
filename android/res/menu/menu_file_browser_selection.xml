@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_open_entry"
+        android:title="@string/file_browser_open"
+        app:showAsAction="ifRoom|withText" />
+
+    <item
+        android:id="@+id/action_open_external"
+        android:title="@string/file_browser_open_external"
+        app:showAsAction="ifRoom|withText" />
+
+    <item
+        android:id="@+id/action_copy_entries"
+        android:title="@string/file_browser_copy"
+        app:showAsAction="ifRoom|withText" />
+
+    <item
+        android:id="@+id/action_rename_entry"
+        android:title="@string/file_browser_rename"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_export_entries"
+        android:title="@string/file_browser_export"
+        app:showAsAction="ifRoom|withText" />
+
+    <item
+        android:id="@+id/action_delete_entries"
+        android:title="@string/file_browser_delete"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_select_all_entries"
+        android:title="@string/file_browser_select_all"
+        app:showAsAction="never" />
+</menu>

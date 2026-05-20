@@ -40,3 +40,8 @@ Thumbs.db
 
 # Pi local package install cache
 .pi/npm/node_modules/
+
+# Heavy runtime artifacts harvested from Godot/reference launchers; generated/copied locally.
+android/assets/dotnet_bcl/
+android/libs/
+android/assets/payload/

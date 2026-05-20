@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sts2_crash_activity_name">崩溃恢复</string>
+    <string name="sts2_crash_toolbar_title">崩溃恢复</string>
+    <string name="sts2_crash_toolbar_subtitle">游戏发生了意外中断</string>
+    <string name="sts2_crash_title_line">已捕获崩溃</string>
+    <string name="sts2_crash_summary_fallback">Android 版本运行时发生了未预期错误。</string>
+    <string name="sts2_crash_hint">如果游戏启动就反复闪退，建议先打开恢复设置。下方报错文本支持复制，并且字号稍微缩小，方便长截图。</string>
+    <string name="sts2_crash_badge_renderer">渲染器 · %1$s</string>
+    <string name="sts2_crash_badge_android">Android · %1$s（SDK %2$d）</string>
+    <string name="sts2_crash_badge_build">构建 · %1$s（%2$s/%3$s）</string>
+    <string name="sts2_crash_section_actions">快速操作</string>
+    <string name="sts2_crash_section_actions_body">你可以立即重试，也可以先进入恢复设置切换渲染器 / 禁用 MOD 再重新启动。</string>
+    <string name="sts2_crash_action_open_settings">打开恢复设置</string>
+    <string name="sts2_crash_action_retry_game">重试启动游戏</string>
+    <string name="sts2_crash_action_copy">复制报错</string>
+    <string name="sts2_crash_action_close">关闭应用</string>
+    <string name="sts2_crash_section_details">崩溃报告</string>
+    <string name="sts2_crash_section_details_body">完整报错会显示在下方，并使用稍小一点的等宽字体，方便做长截图。</string>
+    <string name="sts2_crash_detail_fallback">当前拿不到完整崩溃详情。请先复制屏幕上能看到的内容，并说明崩溃前最后一步操作。</string>
+    <string name="sts2_crash_copied">崩溃报告已复制到剪贴板。</string>
+</resources>

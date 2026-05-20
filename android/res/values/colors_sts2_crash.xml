@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="sts2_crash_background">#0F1117</color>
+    <color name="sts2_crash_surface">#171A22</color>
+    <color name="sts2_crash_surface_variant">#242833</color>
+    <color name="sts2_crash_surface_container">#1D212C</color>
+    <color name="sts2_crash_on_surface">#F0F0F8</color>
+    <color name="sts2_crash_on_surface_variant">#C5C7D3</color>
+    <color name="sts2_crash_primary">#B7C4FF</color>
+    <color name="sts2_crash_on_primary">#0E1B4D</color>
+    <color name="sts2_crash_primary_container">#2B3762</color>
+    <color name="sts2_crash_on_primary_container">#DCE2FF</color>
+    <color name="sts2_crash_secondary">#C5C6DD</color>
+    <color name="sts2_crash_on_secondary">#2E3242</color>
+    <color name="sts2_crash_secondary_container">#43475A</color>
+    <color name="sts2_crash_on_secondary_container">#E1E2F9</color>
+    <color name="sts2_crash_tertiary">#E4B8FA</color>
+    <color name="sts2_crash_on_tertiary">#442356</color>
+    <color name="sts2_crash_tertiary_container">#5C3A6F</color>
+    <color name="sts2_crash_on_tertiary_container">#FFD7FF</color>
+    <color name="sts2_crash_outline">#8A8F9C</color>
+    <color name="sts2_crash_error">#FFB4AB</color>
+    <color name="sts2_crash_on_error">#690005</color>
+    <color name="sts2_crash_error_container">#93000A</color>
+    <color name="sts2_crash_on_error_container">#FFDAD6</color>
+</resources>

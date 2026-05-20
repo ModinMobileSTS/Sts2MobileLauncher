@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sts2_crash_activity_name">Crash Recovery</string>
+    <string name="sts2_crash_toolbar_title">Crash Recovery</string>
+    <string name="sts2_crash_toolbar_subtitle">The game stopped unexpectedly</string>
+    <string name="sts2_crash_title_line">Crash intercepted</string>
+    <string name="sts2_crash_summary_fallback">An unexpected error interrupted the Android build.</string>
+    <string name="sts2_crash_hint">Open Recovery Settings first if the game keeps crashing on launch. The report below stays copyable and uses a compact font for screenshots.</string>
+    <string name="sts2_crash_badge_renderer">Renderer · %1$s</string>
+    <string name="sts2_crash_badge_android">Android · %1$s (SDK %2$d)</string>
+    <string name="sts2_crash_badge_build">Build · %1$s (%2$s/%3$s)</string>
+    <string name="sts2_crash_section_actions">Quick actions</string>
+    <string name="sts2_crash_section_actions_body">Retry immediately, or open Recovery Settings to switch renderer / disable mods before relaunching.</string>
+    <string name="sts2_crash_action_open_settings">Open Recovery Settings</string>
+    <string name="sts2_crash_action_retry_game">Retry Launch Game</string>
+    <string name="sts2_crash_action_copy">Copy Report</string>
+    <string name="sts2_crash_action_close">Close App</string>
+    <string name="sts2_crash_section_details">Crash report</string>
+    <string name="sts2_crash_section_details_body">The full error text is shown below in a slightly smaller monospace font to make long screenshots easier.</string>
+    <string name="sts2_crash_detail_fallback">Crash details are unavailable. Please copy whatever is visible on this screen and describe what happened just before the crash.</string>
+    <string name="sts2_crash_copied">Crash report copied to clipboard.</string>
+</resources>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_import_files"
+        android:title="@string/file_browser_import"
+        app:showAsAction="ifRoom|withText" />
+
+    <item
+        android:id="@+id/action_new_folder"
+        android:title="@string/file_browser_new_folder"
+        app:showAsAction="ifRoom|withText" />
+
+    <item
+        android:id="@+id/action_paste_entries"
+        android:title="@string/file_browser_paste"
+        app:showAsAction="ifRoom|withText" />
+
+    <item
+        android:id="@+id/action_refresh_entries"
+        android:title="@string/file_browser_refresh"
+        app:showAsAction="never" />
+</menu>
