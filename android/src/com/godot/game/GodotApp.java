@@ -186,6 +186,7 @@ public class GodotApp extends GodotActivity {
 		if (!BuildConfig.FLAVOR.equals("mono")) {
 			return;
 		}
+		extractAssetIfChanged("port_compat.pck", new File(getFilesDir(), "port_compat.pck"));
 		File destDir = new File(getFilesDir(), ".godot/mono/publish/arm64");
 		File srcDir = findAssembliesDir();
 		Set<String> protectedBclNames = new HashSet<>();
@@ -275,11 +276,40 @@ public class GodotApp extends GodotActivity {
 		if (dest.isFile()) {
 			return dest.getAbsolutePath();
 		}
-		try (InputStream inputStream = getAssets().open("bootstrap.pck")) {
-			copyStreamToFile(inputStream, dest);
+		if (extractAssetIfChanged("bootstrap.pck", dest)) {
 			return dest.getAbsolutePath();
+		}
+		return null;
+	}
+
+	private boolean extractAssetIfChanged(String assetName, File dest) {
+		try (InputStream inputStream = getAssets().open(assetName)) {
+			byte[] assetBytes = readAllBytes(inputStream);
+			if (dest.isFile() && dest.length() == assetBytes.length) {
+				return true;
+			}
+			File parent = dest.getParentFile();
+			if (parent != null) {
+				ensureDirectory(parent);
+			}
+			try (OutputStream outputStream = new FileOutputStream(dest)) {
+				outputStream.write(assetBytes);
+			}
+			Log.i(TAG, "Extracted asset " + assetName + " to " + dest.getAbsolutePath());
+			return true;
 		} catch (IOException exception) {
-			return null;
+			return false;
+		}
+	}
+
+	private byte[] readAllBytes(InputStream inputStream) throws IOException {
+		try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+			byte[] buffer = new byte[8192];
+			int read;
+			while ((read = inputStream.read(buffer)) != -1) {
+				outputStream.write(buffer, 0, read);
+			}
+			return outputStream.toByteArray();
 		}
 	}
 
