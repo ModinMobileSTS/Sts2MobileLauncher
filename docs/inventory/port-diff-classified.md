@@ -1,0 +1,597 @@
+# Classified Android port diff inventory
+
+Mobile port: `/mnt/datas/agent_workspace/s2`
+PC original: `/mnt/datas/agent_workspace/s2_original/s21032`
+
+## Summary
+
+| Owner | ADD | MOD | DEL | Total |
+|---|---:|---:|---:|---:|
+| noise-or-overlay | 172 | 1393 | 0 | 1565 |
+| port-mod | 43 | 170 | 1 | 214 |
+| project-config | 1 | 2 | 0 | 3 |
+| resource-overlay | 20 | 58 | 0 | 78 |
+| runtime | 73 | 36 | 0 | 109 |
+| tooling | 8 | 0 | 0 | 8 |
+| unclassified | 89 | 29 | 0 | 118 |
+
+## Notable paths by owner
+
+### noise-or-overlay
+
+- `ADD` `--y__InlineArray2.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `--y__InlineArray3.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `--y__InlineArray4.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `--y__InlineArray5.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `--z__ReadOnlyArray.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `--z__ReadOnlyList.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `--z__ReadOnlySingleElementList.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `-PrivateImplementationDetails-.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `MegaCrit/Sts2/Core/Nodes/Pooling/NodePool.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `MegaCrit/Sts2/Core/Saves/Migrations/IMigration.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `System/Text/RegularExpressions/Generated/-RegexGenerator_g-FACC081AAF3D765EFF87A82C4FBB77F6FD3EA759AA2D03D993988F88E97CC0B5B__CamelCaseRegex_0.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `System/Text/RegularExpressions/Generated/-RegexGenerator_g-FACC081AAF3D765EFF87A82C4FBB77F6FD3EA759AA2D03D993988F88E97CC0B5B__ConsecutiveSpaces_6.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `System/Text/RegularExpressions/Generated/-RegexGenerator_g-FACC081AAF3D765EFF87A82C4FBB77F6FD3EA759AA2D03D993988F88E97CC0B5B__HtmlTags_7.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `System/Text/RegularExpressions/Generated/-RegexGenerator_g-FACC081AAF3D765EFF87A82C4FBB77F6FD3EA759AA2D03D993988F88E97CC0B5B__NonSpaceWhitespaceCharacters_5.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `System/Text/RegularExpressions/Generated/-RegexGenerator_g-FACC081AAF3D765EFF87A82C4FBB77F6FD3EA759AA2D03D993988F88E97CC0B5B__SnakeCaseRegex_1.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `System/Text/RegularExpressions/Generated/-RegexGenerator_g-FACC081AAF3D765EFF87A82C4FBB77F6FD3EA759AA2D03D993988F88E97CC0B5B__SpecialCharRegex_3.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `System/Text/RegularExpressions/Generated/-RegexGenerator_g-FACC081AAF3D765EFF87A82C4FBB77F6FD3EA759AA2D03D993988F88E97CC0B5B__SteamIdRegex_4.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `System/Text/RegularExpressions/Generated/-RegexGenerator_g-FACC081AAF3D765EFF87A82C4FBB77F6FD3EA759AA2D03D993988F88E97CC0B5B__Utilities.cs.uid` — Godot import/asset churn; verify before overlaying
+- `ADD` `System/Text/RegularExpressions/Generated/-RegexGenerator_g-FACC081AAF3D765EFF87A82C4FBB77F6FD3EA759AA2D03D993988F88E97CC0B5B__WhitespaceRegex_2.cs.uid` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/backgrounds/mainmenu/bottom/main_menu_bottom.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/backgrounds/mainmenu/logo/main_menu_logo.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/backgrounds/mainmenu/top/main_menu_top.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/backgrounds/merchant_room/bottom/shop_merchant_bottom.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/backgrounds/merchant_room/hand/merchanthand.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/backgrounds/merchant_room/hand/merchanthand_2.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/backgrounds/merchant_room/top/shop_merchant_top.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/backgrounds/neow_room/l_waterfall.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/backgrounds/neow_room/neow.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/backgrounds/neow_room/neow_bg.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/backgrounds/neow_room/neow_vignette.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/backgrounds/neow_room/r_waterfalls.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/backgrounds/treasure_room/chest_room_act_1.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/backgrounds/treasure_room/chest_room_act_2.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/backgrounds/treasure_room/chest_room_act_3.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/character_select/defect/characterselect_defect.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/character_select/ironclad/characterselect_ironclad.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/character_select/necrobinder/character_select_necrobinder_bg.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/character_select/necrobinder/characterselect_necrobinder.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/character_select/regent/characterselect_regent.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/character_select/silent/character_select_silent_bg.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/character_select/silent/characterselect_silent.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/characters/regent/regent.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/map/ceremonial_beast_boss/boss_node_ceremonial_beast.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/map/queen_boss/boss_node_false_queen.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/map/the_insatiable_boss/boss_node_the_insatiable.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/merchant/regent/regent_shop.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/assassin_ruby_raider/assassin_ruby_raider.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/axe_ruby_raider/axe_ruby_raider.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/bowlbug/bowlbug.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/brute_ruby_raider/brute_ruby_raider.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/bygone_effigy/bygone_effigy.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/byrdonis/byrdonis.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/ceremonial_beast/ceremonial_beast.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/chomper/chomper.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/corpse_slug/corpse_slug.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/crossbow_ruby_raider/crossbow_ruby_raider.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/cubex_construct/cubex_construct.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/cultists/cultists.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/decimillipede/decimillipede.png.import` — Godot import/asset churn; verify before overlaying
+- `ADD` `animations/monsters/decimillipede/decimillipede_2.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/decimillipede/rockstone.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/devoted_sculptor/devoted_sculptor.png.import` — Godot import/asset churn; verify before overlaying
+- `ADD` `animations/monsters/egg_layer/egglayer.atlas.import` — Godot import/asset churn; verify before overlaying
+- `ADD` `animations/monsters/egg_layer/egglayer.png.import` — Godot import/asset churn; verify before overlaying
+- `ADD` `animations/monsters/egg_layer/egglayer.skel.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/entomancer/entomancer.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/exoskeleton/exoskeleton.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/eye_with_teeth/eye_with_teeth.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/fabricator/fabricator.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/fat_gremlin/fat_gremlin.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/flail_knight/flailknight.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/flying_mushrooms/flying_mushrooms.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/fogmog/fogmog.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/fossil_stalker/fossil_stalker.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/frog_knight/frog_knight.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/fuzzy_wurm_crawler/fuzzy_wurm_crawler.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/gas_bomb/gas_bomb.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/gas_bomb/gas_bomb_2.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/globe_head/globe_head.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/gremlin_merc/gremlin_merc.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/guardbot/guardbot.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/haunted_ship/haunted_ship.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/inklet/inklet.png.import` — Godot import/asset churn; verify before overlaying
+- `ADD` `animations/monsters/kaiser_crab/infested_boss.atlas.import` — Godot import/asset churn; verify before overlaying
+- `ADD` `animations/monsters/kaiser_crab/infested_boss.png.import` — Godot import/asset churn; verify before overlaying
+- `ADD` `animations/monsters/kaiser_crab/infested_boss.skel.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/kaiser_crab/kaiser_crab.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/kaiser_crab/kaiser_crab_2.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/kaiser_crab/kaiser_crab_3.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/kaiser_crab/kaiser_crab_4.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/knowledge_demon/knowledge_demon.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/lagavulin_matriarch/lagavulin_matriarch.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/leaf_slime_m/leaf_slime_m.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/leaf_slime_s/leaf_slime_s.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/living_smog/living_smog.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/living_smog/living_smog_2.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/louse_progenitor/louse_progenitor.png.import` — Godot import/asset churn; verify before overlaying
+- `ADD` `animations/monsters/louse_progenitor/louse_progenitor_2.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/magi_knight/magi_knight.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/mecha_knight/mecha_knight.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/myte/myte.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/noisebot/noisebot.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/ovicopter/ovicopter.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/owl_magistrate/owl_magistrate.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/parafright/parafright.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/phantasmal_gardener/phantasmal_gardener.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/phrog_parasite/phrog_parasite.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/punch_construct/punch_construct.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/queen/queen.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/scroll_of_biting/scroll_of_biting.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/seapunk/seapunk.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/sewer_clam/sewer_clam.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/shrinker_beetle/shrinker_beetle.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/slimed_berserker/slimed_berserker.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/slithering_strangler/slithering_strangler.png.import` — Godot import/asset churn; verify before overlaying
+- `ADD` `animations/monsters/sludge_spinner/oil_spill.atlas.import` — Godot import/asset churn; verify before overlaying
+- `ADD` `animations/monsters/sludge_spinner/oil_spill.png.import` — Godot import/asset churn; verify before overlaying
+- `ADD` `animations/monsters/sludge_spinner/oil_spill.skel.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/sludge_spinner/sludge_spinner.png.import` — Godot import/asset churn; verify before overlaying
+- `MOD` `animations/monsters/slumbering_beetle/slumberingbeetle.png.import` — Godot import/asset churn; verify before overlaying
+- … 1445 more entries (see CSV)
+
+### port-mod
+
+- `MOD` `addons/atlas_generator/atlas_generator.gd` — modding/library helper candidate
+- `MOD` `addons/dev_tools/dev_tools.gd` — modding/library helper candidate
+- `MOD` `addons/mega_text/MegaLabel.cs` — modding/library helper candidate
+- `MOD` `addons/mega_text/MegaRichTextLabel.cs` — modding/library helper candidate
+- `MOD` `addons/mega_text/ThemeConstants.cs` — modding/library helper candidate
+- `MOD` `addons/mega_text/mega_label.png.import` — modding/library helper candidate
+- `MOD` `addons/mega_text/mega_richtextlabel_64.png.import` — modding/library helper candidate
+- `MOD` `addons/mega_text/plugin.gd` — modding/library helper candidate
+- `MOD` `addons/megacontentcreator/mega_content_creator.gd` — modding/library helper candidate
+- `ADD` `addons/sentry/SentryAndroidExportPlugin.gd` — modding/library helper candidate
+- `ADD` `addons/sentry/SentryAndroidExportPlugin.gd.uid` — modding/library helper candidate
+- `MOD` `addons/sentry/SentryInit.gd` — modding/library helper candidate
+- `ADD` `addons/sentry/SentryPlugin.gd` — modding/library helper candidate
+- `ADD` `addons/sentry/SentryPlugin.gd.uid` — modding/library helper candidate
+- `ADD` `addons/sentry/plugin.cfg` — modding/library helper candidate
+- `DEL` `addons/sentry/sentry.gdextension` — modding/library helper candidate
+- `ADD` `addons/sentry/sentry.gdextension.disabled` — modding/library helper candidate
+- `MOD` `src/Core/Assets/AssetCache.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Assets/AssetLoadingSession.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Assets/PreloadManager.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Audio/Debug/NDebugAudioManager.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/AutoSlay/Handlers/Rooms/CombatRoomHandler.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Combat/CombatManager.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Combat/History/Entries/EnergySpentEntry.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Combat/History/Entries/StarsModifiedEntry.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Combat/History/Entries/SummonedEntry.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Commands/Builders/AttackCommand.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Commands/CreatureCmd.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Commands/VfxCmd.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/ControllerInput/AndroidControllerInputCompat.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/ControllerInput/ControllerConfig.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Debug/OsDebugInfo.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Debug/ReleaseInfoManager.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/DevConsole/ConsoleCommands/GetLogsConsoleCmd.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Entities/Ancients/AncientDialogueSet.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Entities/Cards/CardPile.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Entities/Creatures/Creature.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Entities/Enchantments/EnchantmentOption.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Entities/Players/Player.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Helpers/AndroidExternalSettingsApplier.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Helpers/AndroidExternalSettingsLauncher.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Helpers/AndroidGameWindowFocus.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Helpers/AndroidProcessRestart.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Helpers/MobileSelectionConfirmation.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Helpers/MobileShaderCompatibility.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Helpers/OneTimeInitialization.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Helpers/StringHelper.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Hooks/Hook.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/HoverTips/HoverTip.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Localization/Fonts/FontControlUtils.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Localization/LocManager.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Localization/LocManagerSerializerContext.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Logging/LogSanitizer.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Map/MapCoord.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Modding/AndroidLauncherModCompat.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Modding/HarmonyAndroidCompat.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Modding/HarmonyAndroidCompatRouter.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Modding/HarmonyAndroidDetourPlatform.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Modding/IModManagerFileIo.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Modding/Mod.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Modding/ModBootTrace.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Modding/ModCompatibility.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Modding/ModManager.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Modding/ModManagerFileIo.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Modding/ModManifest.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Modding/PublicizeOriginalVisibilityAttribute.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Modding/PublicizeReflectionCompat.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Models/AbstractModel.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Models/CardModel.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Models/Cards/DeadlyPoison.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Models/Cards/DodgeAndRoll.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Models/Cards/Neutralize.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Models/Encounters/BattlewornDummyEventEncounter.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Models/Events/EndlessConveyor.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Models/ModelDb.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Models/ModelId.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Models/ModifierModel.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Models/Monsters/KinPriest.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Models/PowerModel.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Models/Powers/DoomPower.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/MonsterMoves/MonsterMoveStateMachine/ConditionalBranchState.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Multiplayer/Game/JoinFlow.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Multiplayer/Game/Lobby/LoadRunLobby.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Multiplayer/Game/Lobby/RunLobby.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Multiplayer/Game/Lobby/StartRunLobby.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Multiplayer/Game/RewardSynchronizer.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Multiplayer/LanMultiplayerUtil.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Multiplayer/Messages/Lobby/InitialGameInfoMessage.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Multiplayer/Messages/Lobby/LobbyPlayerDisplayNameMessage.cs` — candidate Harmony/settings/input/platform patch
+- `ADD` `src/Core/Multiplayer/MultiplayerSettingsUtil.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Multiplayer/Serialization/INetMessageSubtypes.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Multiplayer/Serialization/MessageTypes.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Multiplayer/Serialization/PacketWriter.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Multiplayer/Serialization/QuantizeParams.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Multiplayer/Transport/ENet/ENetClient.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Multiplayer/Transport/ENet/ENetHandshakeResponse.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Multiplayer/Transport/ENet/ENetHost.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Multiplayer/Transport/ENet/ENetPacket.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/Audio/NAudioManager.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/Cards/Holders/NCardHolder.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/Cards/Holders/NHandCardHolder.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/Cards/NCard.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/Combat/NCombatCardPile.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/Combat/NCreature.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/Combat/NExhaustPileButton.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/Combat/NIntent.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/Combat/NMouseCardPlay.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/Combat/NPlayerHand.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/Combat/NTargetManager.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/CommonUi/NControllerManager.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/CommonUi/NCursorManager.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/CommonUi/NGlobalUi.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/CommonUi/NInputManager.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/CommonUi/NMessyCardPreviewContainer.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/CommonUi/NMultiplayerVoteContainer.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/CommonUi/NSearchBar.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/Debug/NDevConsole.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/Events/NEventLayout.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/GodotExtensions/NButton.cs` — candidate Harmony/settings/input/platform patch
+- `MOD` `src/Core/Nodes/HoverTips/NHoverTipSet.cs` — candidate Harmony/settings/input/platform patch
+- … 94 more entries (see CSV)
+
+### project-config
+
+- `MOD` `project.godot` — project/export/config difference
+- `MOD` `sts2.csproj` — project/export/config difference
+- `ADD` `tools/Sts2AssemblyPublicizer/Sts2AssemblyPublicizer.csproj` — project/export/config difference
+
+### resource-overlay
+
+- `ADD` `scenes/backgrounds/main_menu_bg_fallback.tscn` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `scenes/creature_visuals/gas_bomb.tscn` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `scenes/events/custom/fake_merchant_inventory.tscn` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `scenes/events/default_event_layout.tscn` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `scenes/game.tscn` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `scenes/merchant/merchant_inventory.tscn` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `scenes/run.tscn` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `scenes/screens/card_selection/card_reward_selection_screen.tscn` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `scenes/screens/card_selection/choose_a_card_selection_screen.tscn` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `scenes/screens/join_friend_submenu.tscn` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `scenes/screens/main_menu.tscn` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `scenes/screens/settings_screen.tscn` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `scenes/screens/startup_loading_screen.tscn` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/dark_blur.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/canvas_group_mask_blur_compat.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/canvas_group_mask_blur_compat.gdshader.uid` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/dark_blur_compat.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/dark_blur_compat.gdshader.uid` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/doom_overlay_compat.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/doom_overlay_compat.gdshader.uid` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/overlay_blend_compat.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/overlay_blend_compat.gdshader.uid` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/radial_blur_compat.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/radial_blur_compat.gdshader.uid` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/sand_fall_post_compat.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/sand_fall_post_compat.gdshader.uid` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/scream_distortion_compat.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/scream_distortion_compat.gdshader.uid` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/screen_distortion_compat.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/screen_distortion_compat.gdshader.uid` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/water_reflection_post_compat.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `ADD` `shaders/mobile_compat/water_reflection_post_compat.gdshader.uid` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/common/vfx_common_particle_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/common/vfx_flipbook_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/common/vfx_panning_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/common/vfx_poof_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/common/vfx_ring_polar_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/common/vfx_round_smoke_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/goopy_impact/vfx_goopy_impact_bits_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/heavy_blunt/vfx_heavy_blunt_erosion_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/minion_divebomb/vfx_minion_divebomb_rings_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/missile/vfx_missile_core_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/poison/vfx_poison_skull_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/potion/vfx_potion_splash_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/scream/vfx_scream_distortion_polar_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/scream/vfx_scream_ring_polar_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/scream/vfx_scream_squiggly_ring_polar_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/shiv/vfx_shiv_trail_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/sleeping/vfx_sleeping_z_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/sweeping_beam/vfx_sweeping_beam_flipbook_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/ui/card/afflictions/bound/vfx_ui_card_affliction_bound_border_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/ui/card/afflictions/bound/vfx_ui_card_affliction_bound_main_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/ui/card/afflictions/entangled/vfx_ui_card_affliction_entangled_leaf_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/ui/card/afflictions/galvanized/vfx_ui_card_affliction_galvanized_main_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/ui/card/afflictions/hexed/vfx_ui_card_affliction_hexed_main_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/ui/card/afflictions/ringing/vfx_ui_card_affliction_ringing_main_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/ui/card/afflictions/smog/vfx_ui_card_affliction_smog_main_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/ui/vfx_ui_epoch_unlock_chains_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/ui/vfx_ui_gaseous_screen_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `shaders/vfx/ui/vfx_ui_low_hp_border_shader.gdshader` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/bitter_medium_italic_glyph_space_one.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/fonts/jpn/noto_sans_cjkjp_bold_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/fonts/jpn/noto_sans_cjkjp_medium_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/fonts/jpn/noto_sans_cjkjp_regular_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/fonts/kor/gyeonggi_cheonnyeon_batang_bold_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/fonts/rus/fira_sans_extra_condensed_bold_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/fonts/rus/fira_sans_extra_condensed_italic_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/fonts/rus/fira_sans_extra_condensed_regular_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/fonts/tha/cs_chat_thai_ui_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/fonts/zhs/noto_sans_mono_cjksc_regular_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/fonts/zhs/source_han_serif_sc_bold_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/fonts/zhs/source_han_serif_sc_medium_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/kreon_bold_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/kreon_regular_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/main_menu_text_button.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/source_code_pro_medium_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/source_code_pro_semibold_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+- `MOD` `themes/spectral_bold_shared.tres` — candidate overlay PCK or runtime node/material adjustment
+
+### runtime
+
+- `MOD` `addons/fmod/FmodAndroidExportPlugin.gd` — native/plugin dependency
+- `MOD` `addons/fmod/FmodManager.gd` — native/plugin dependency
+- `MOD` `addons/fmod/FmodPlugin.gd` — native/plugin dependency
+- `MOD` `addons/fmod/fmod.gdextension` — native/plugin dependency
+- `ADD` `addons/fmod/fmod.gdextension.disabled` — native/plugin dependency
+- `MOD` `addons/fmod/icons/bank_icon.svg` — native/plugin dependency
+- `MOD` `addons/fmod/icons/bank_icon.svg.import` — native/plugin dependency
+- `MOD` `addons/fmod/icons/bus_icon.svg` — native/plugin dependency
+- `MOD` `addons/fmod/icons/bus_icon.svg.import` — native/plugin dependency
+- `MOD` `addons/fmod/icons/c_parameter_icon.svg` — native/plugin dependency
+- `MOD` `addons/fmod/icons/c_parameter_icon.svg.import` — native/plugin dependency
+- `MOD` `addons/fmod/icons/d_parameter_icon.svg` — native/plugin dependency
+- `MOD` `addons/fmod/icons/d_parameter_icon.svg.import` — native/plugin dependency
+- `MOD` `addons/fmod/icons/event_icon.svg` — native/plugin dependency
+- `MOD` `addons/fmod/icons/event_icon.svg.import` — native/plugin dependency
+- `MOD` `addons/fmod/icons/fmod_emitter.png` — native/plugin dependency
+- `MOD` `addons/fmod/icons/fmod_emitter.png.import` — native/plugin dependency
+- `MOD` `addons/fmod/icons/fmod_icon.svg` — native/plugin dependency
+- `MOD` `addons/fmod/icons/fmod_icon.svg.import` — native/plugin dependency
+- `MOD` `addons/fmod/icons/snapshot_icon.svg` — native/plugin dependency
+- `MOD` `addons/fmod/icons/snapshot_icon.svg.import` — native/plugin dependency
+- `MOD` `addons/fmod/icons/vca_icon.svg` — native/plugin dependency
+- `MOD` `addons/fmod/icons/vca_icon.svg.import` — native/plugin dependency
+- `ADD` `addons/fmod/libs/android/arm64/CopyPast_Fmod_Libs_Here.txt` — native/plugin dependency
+- `ADD` `addons/fmod/libs/android/arm64/libGodotFmod.android.editor.arm64.so` — native/plugin dependency
+- `ADD` `addons/fmod/libs/android/arm64/libGodotFmod.android.template_debug.arm64.so` — native/plugin dependency
+- `ADD` `addons/fmod/libs/android/arm64/libGodotFmod.android.template_release.arm64.so` — native/plugin dependency
+- `ADD` `addons/fmod/libs/android/arm64/libfmod.so` — native/plugin dependency
+- `ADD` `addons/fmod/libs/android/arm64/libfmodL.so` — native/plugin dependency
+- `ADD` `addons/fmod/libs/android/arm64/libfmodstudio.so` — native/plugin dependency
+- `ADD` `addons/fmod/libs/android/arm64/libfmodstudioL.so` — native/plugin dependency
+- `ADD` `addons/fmod/libs/android/fmod-debug.aar` — native/plugin dependency
+- `ADD` `addons/fmod/libs/android/fmod-release.aar` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/CopyPast_Fmod_Libs_Here.txt` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libGodotFmod.ios.template_debug.xcframework/Info.plist` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libGodotFmod.ios.template_debug.xcframework/ios-arm64/libGodotFmod.ios.template_debug.universal.dylib` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libGodotFmod.ios.template_release.xcframework/Info.plist` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libGodotFmod.ios.template_release.xcframework/ios-arm64/libGodotFmod.ios.template_release.universal.dylib` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodL_appletvos.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodL_appletvsimulator.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodL_iphoneos.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodL_iphonesimulator.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodL_xros.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodL_xrsimulator.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmod_appletvos.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmod_appletvsimulator.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmod_iphoneos.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmod_iphonesimulator.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmod_xros.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmod_xrsimulator.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodstudioL_appletvos.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodstudioL_appletvsimulator.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodstudioL_iphoneos.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodstudioL_iphonesimulator.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodstudioL_xros.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodstudioL_xrsimulator.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodstudio_appletvos.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodstudio_appletvsimulator.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodstudio_iphoneos.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodstudio_iphonesimulator.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodstudio_xros.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/iOS/libfmodstudio_xrsimulator.a` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/CopyPast_Fmod_Libs_Here.txt` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/libGodotFmod.linux.editor.x86_64.so` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/libGodotFmod.linux.template_debug.x86_64.so` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/libGodotFmod.linux.template_release.x86_64.so` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/libfmod.so` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/libfmod.so.14` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/libfmod.so.14.6` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/libfmodL.so` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/libfmodL.so.14` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/libfmodL.so.14.6` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/libfmodstudio.so` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/libfmodstudio.so.14` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/libfmodstudio.so.14.6` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/libfmodstudioL.so` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/libfmodstudioL.so.14` — native/plugin dependency
+- `ADD` `addons/fmod/libs/linux/libfmodstudioL.so.14.6` — native/plugin dependency
+- `ADD` `addons/fmod/libs/macos/CopyPast_Fmod_Libs_Here.txt` — native/plugin dependency
+- `ADD` `addons/fmod/libs/macos/libGodotFmod.macos.editor.framework/Info.plist` — native/plugin dependency
+- `ADD` `addons/fmod/libs/macos/libGodotFmod.macos.editor.framework/libGodotFmod.macos.editor` — native/plugin dependency
+- `ADD` `addons/fmod/libs/macos/libGodotFmod.macos.template_debug.framework/Info.plist` — native/plugin dependency
+- `ADD` `addons/fmod/libs/macos/libGodotFmod.macos.template_debug.framework/libGodotFmod.macos.template_debug` — native/plugin dependency
+- `ADD` `addons/fmod/libs/macos/libGodotFmod.macos.template_release.framework/Info.plist` — native/plugin dependency
+- `ADD` `addons/fmod/libs/macos/libGodotFmod.macos.template_release.framework/libGodotFmod.macos.template_release` — native/plugin dependency
+- `ADD` `addons/fmod/libs/macos/libfmod.dylib` — native/plugin dependency
+- `ADD` `addons/fmod/libs/macos/libfmodL.dylib` — native/plugin dependency
+- `ADD` `addons/fmod/libs/macos/libfmodstudio.dylib` — native/plugin dependency
+- `ADD` `addons/fmod/libs/macos/libfmodstudioL.dylib` — native/plugin dependency
+- `ADD` `addons/fmod/libs/windows/~libGodotFmod.windows.editor.x86_64.dll` — native/plugin dependency
+- `MOD` `addons/fmod/plugin.cfg` — native/plugin dependency
+- `MOD` `addons/fmod/tool/FmodBankDatabase.gd` — native/plugin dependency
+- `MOD` `addons/fmod/tool/inspectors/FmodBankLoaderPropertyInspectorPlugin.gd` — native/plugin dependency
+- `MOD` `addons/fmod/tool/inspectors/FmodEmitterPropertyInspectorPlugin.gd` — native/plugin dependency
+- `MOD` `addons/fmod/tool/performances/PerformancesDisplay.gd` — native/plugin dependency
+- `MOD` `addons/fmod/tool/property_editors/FmodBankPathEditorProperty.gd` — native/plugin dependency
+- `MOD` `addons/fmod/tool/property_editors/FmodEventEditorProperty.gd` — native/plugin dependency
+- `MOD` `addons/fmod/tool/property_editors/FmodGuidAndPathPropertyEditorUi.gd` — native/plugin dependency
+- `MOD` `addons/fmod/tool/property_editors/FmodPathEditorProperty.gd` — native/plugin dependency
+- `MOD` `addons/fmod/tool/ui/EventParametersDisplay.gd` — native/plugin dependency
+- `MOD` `addons/fmod/tool/ui/EventPlayControls.gd` — native/plugin dependency
+- `MOD` `addons/fmod/tool/ui/FmodBankExplorer.gd` — native/plugin dependency
+- `MOD` `addons/fmod/tool/ui/ParameterDisplay.gd` — native/plugin dependency
+- `MOD` `addons/spine/spine_godot_extension.gdextension` — native/plugin dependency
+- `ADD` `android/.build_version` — APK/Godot/Mono/native runtime layer; not a normal MOD
+- `ADD` `export_presets.cfg` — APK/Godot/Mono/native runtime layer; not a normal MOD
+- `ADD` `tools/android_launcher_runtime/arm64-v8a/libmonosgen-2.0.so` — APK/Godot/Mono/native runtime layer; not a normal MOD
+- `ADD` `tools/local_build_android_workflow.sh` — APK/Godot/Mono/native runtime layer; not a normal MOD
+- `ADD` `tools/local_build_android_workflow_publicize.sh` — APK/Godot/Mono/native runtime layer; not a normal MOD
+
+### tooling
+
+- `ADD` `scripts/check_and_fix_resource_refs.py` — build/diff/helper tooling
+- `ADD` `scripts/export_android_debug.cmd` — build/diff/helper tooling
+- `ADD` `scripts/export_android_debug.ps1` — build/diff/helper tooling
+- `ADD` `scripts/export_android_debug.sh` — build/diff/helper tooling
+- `ADD` `scripts/godot_pack_tool.gd` — build/diff/helper tooling
+- `ADD` `scripts/post_export_windows_assets.sh` — build/diff/helper tooling
+- `ADD` `scripts/sync_game_assets.ps1` — build/diff/helper tooling
+- `ADD` `tools/Sts2AssemblyPublicizer/Program.cs` — build/diff/helper tooling
+
+### unclassified
+
+- `MOD` `--y__InlineArray2.cs` — needs manual triage
+- `MOD` `--y__InlineArray3.cs` — needs manual triage
+- `MOD` `--y__InlineArray4.cs` — needs manual triage
+- `MOD` `--y__InlineArray5.cs` — needs manual triage
+- `MOD` `--z__ReadOnlyArray.cs` — needs manual triage
+- `MOD` `--z__ReadOnlyList.cs` — needs manual triage
+- `MOD` `--z__ReadOnlySingleElementList.cs` — needs manual triage
+- `ADD` `-PrivateImplementationDetails-.cs` — needs manual triage
+- `MOD` `.autoconverted/addons/sentry/SentryInit.gdc` — needs manual triage
+- `MOD` `.autoconverted/src/gdscript/testing/animation_tester.gdc` — needs manual triage
+- `ADD` `.gitignore` — needs manual triage
+- `ADD` `.session.vim` — needs manual triage
+- `ADD` `.tools/dotnet-install.sh` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Debug/GodotPlugins.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Debug/GodotPlugins.pdb` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Debug/GodotPlugins.runtimeconfig.json` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Debug/GodotSharp.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Debug/GodotSharp.pdb` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Debug/GodotSharp.xml` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Debug/GodotSharpEditor.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Debug/GodotSharpEditor.pdb` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Debug/GodotSharpEditor.xml` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Release/GodotPlugins.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Release/GodotPlugins.pdb` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Release/GodotPlugins.runtimeconfig.json` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Release/GodotSharp.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Release/GodotSharp.pdb` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Release/GodotSharp.xml` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Release/GodotSharpEditor.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Release/GodotSharpEditor.pdb` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Api/Release/GodotSharpEditor.xml` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/GodotTools.BuildLogger.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/GodotTools.BuildLogger.pdb` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/GodotTools.Core.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/GodotTools.Core.pdb` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/GodotTools.IdeMessaging.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/GodotTools.IdeMessaging.pdb` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/GodotTools.ProjectEditor.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/GodotTools.ProjectEditor.pdb` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/GodotTools.Shared.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/GodotTools.Shared.pdb` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/GodotTools.deps.json` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/GodotTools.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/GodotTools.pdb` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/GodotTools.runtimeconfig.json` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/JetBrains.Lifetimes.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/JetBrains.RdFramework.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/JetBrains.Rider.PathLocator.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/Microsoft.Build.Locator.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/Newtonsoft.Json.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/NuGet.Frameworks.dll` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/nupkgs/Godot.NET.Sdk.4.5.1.nupkg` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/nupkgs/Godot.SourceGenerators.4.5.1.nupkg` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/nupkgs/GodotSharp.4.5.1.nupkg` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/nupkgs/GodotSharp.4.5.1.snupkg` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/nupkgs/GodotSharpEditor.4.5.1.nupkg` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/GodotSharp/Tools/nupkgs/GodotSharpEditor.4.5.1.snupkg` — needs manual triage
+- `ADD` `.tools/godot/Godot_v4.5.1-stable_mono_linux_x86_64/Godot_v4.5.1-stable_mono_linux.x86_64` — needs manual triage
+- `ADD` `.tools/godot/downloads/Godot_v4.5.1-stable_mono_export_templates.tpz` — needs manual triage
+- `ADD` `1、` — needs manual triage
+- `ADD` `CLAUDE.md` — needs manual triage
+- `ADD` `README.md` — needs manual triage
+- `MOD` `System/Text/RegularExpressions/Generated/-RegexGenerator_g-FACC081AAF3D765EFF87A82C4FBB77F6FD3EA759AA2D03D993988F88E97CC0B5B__Utilities.cs` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/0Harmony.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/0Harmony.dll.bak-android-prev` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/Mono.Cecil.Mdb.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/Mono.Cecil.Pdb.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/Mono.Cecil.Rocks.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/Mono.Cecil.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/MonoMod.Core.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/MonoMod.Iced.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/MonoMod.Utils.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/Steamworks.NET.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/System.ComponentModel.TypeConverter.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/System.Data.Common.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/System.Diagnostics.TraceSource.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/System.Drawing.Primitives.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/System.Private.Uri.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/System.Private.Xml.Linq.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/System.Private.Xml.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/System.Resources.Writer.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/System.Transactions.Local.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/System.Xml.ReaderWriter.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/System.Xml.XDocument.dll` — needs manual triage
+- `ADD` `_mono_referenced_assemblies/System.Xml.XmlSerializer.dll` — needs manual triage
+- `ADD` `animations/monsters/egg_layer/egg_layer_skel_data.tres` — needs manual triage
+- `ADD` `animations/monsters/kaiser_crab/infested_boss_skeleton_data.tres` — needs manual triage
+- `MOD` `animations/monsters/knowledge_demon/knowledge_demon_skel_data.tres` — needs manual triage
+- `ADD` `animations/monsters/sludge_spinner/oil_spill_skel_data.tres` — needs manual triage
+- `ADD` `doc/ANDROID_BUILD_REPORT.md` — needs manual triage
+- `ADD` `doc/ANDROID_BUILD_WORKFLOW.md` — needs manual triage
+- `ADD` `doc/ASSET_SETUP.md` — needs manual triage
+- `ADD` `doc/LOCAL_BUILD.md` — needs manual triage
+- `ADD` `doc/MOD_PATCH_STABILITY_ANALYSIS.md` — needs manual triage
+- `ADD` `doc/MOD_PATCH_STABILITY_FIX_PLAN.md` — needs manual triage
+- `ADD` `doc/README.md` — needs manual triage
+- `ADD` `doc/UPSTREAM_MERGE_WORKFLOW.md` — needs manual triage
+- `ADD` `doc/new_diff.diff` — needs manual triage
+- `ADD` `doc/tree.txt` — needs manual triage
+- `MOD` `localization/deu/settings_ui.json` — needs manual triage
+- `MOD` `localization/eng/settings_ui.json` — needs manual triage
+- `MOD` `localization/esp/settings_ui.json` — needs manual triage
+- `MOD` `localization/fra/settings_ui.json` — needs manual triage
+- `MOD` `localization/ita/settings_ui.json` — needs manual triage
+- `MOD` `localization/jpn/settings_ui.json` — needs manual triage
+- `MOD` `localization/kor/settings_ui.json` — needs manual triage
+- `MOD` `localization/pol/settings_ui.json` — needs manual triage
+- `MOD` `localization/ptb/settings_ui.json` — needs manual triage
+- `MOD` `localization/rus/settings_ui.json` — needs manual triage
+- `MOD` `localization/spa/settings_ui.json` — needs manual triage
+- `MOD` `localization/tha/settings_ui.json` — needs manual triage
+- `MOD` `localization/tur/settings_ui.json` — needs manual triage
+- `MOD` `localization/zhs/settings_ui.json` — needs manual triage
+- `MOD` `models/vfx/vfx_power_up/powerup_mesh.tres` — needs manual triage
+- `MOD` `packages.lock.json` — needs manual triage
+- `ADD` `release_info.json` — needs manual triage
+- `MOD` `src/gdscript/audio_manager_proxy.gd` — needs manual triage
+- `MOD` `src/gdscript/music_controller_proxy.gd` — needs manual triage

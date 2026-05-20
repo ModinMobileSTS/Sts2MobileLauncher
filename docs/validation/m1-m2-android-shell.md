@@ -45,6 +45,12 @@ tools/package/build_importer_apk.sh
   => BUILD SUCCESSFUL
   => APK: android/build/outputs/apk/mono/debug/sts2-re_monoDebug.apk
   => SHA-256: 91fa0f3e537f1c650b9f95c600689110a0f5f3042245c14b3b316cbe68bd65b2
+
+tools/package/build_direct_apk.sh /tmp/s2_re_payload_test/valid_payload.zip
+  => BUILD SUCCESSFUL with a tiny synthetic bundled payload
+  => APK: android/build/outputs/apk/mono/debug/sts2-re_monoDebug.apk
+  => SHA-256: 644d1002c4f0db87c9854bc1baf927a1fd8db1c136ad7b790fcaebd8ff7f1481
+  => temporary android/assets/payload/SlayTheSpire2.zip removed by trap
 ```
 
 Not yet validated on device:
