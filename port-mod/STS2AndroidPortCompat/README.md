@@ -63,3 +63,9 @@ Touch preview compatibility now has a first-pass patch in
 `Patches/MobileTapPreviewPatches.cs`: when companion `touch_lift_preview` is
 true, tapping a playable hand card pins its hover preview; a second tap follows
 `touch_lift_retap_action` (`put_down`, `play`, or `none`).
+
+Android input compatibility now has a first-pass patch in
+`Patches/AndroidInputCompatPatches.cs`: it maps the Android back action to game
+cancel/pause, emits synthetic right-clicks for two-finger inspect when
+`mobile_two_finger_inspect` is enabled, and normalizes trigger-axis controller
+input on Android.
