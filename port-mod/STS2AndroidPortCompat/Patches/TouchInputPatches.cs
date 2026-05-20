@@ -11,6 +11,7 @@ namespace STS2Mobile.Patches;
 public static class TouchInputPatches
 {
     private static readonly ConditionalWeakTable<object, TouchState> States = new ConditionalWeakTable<object, TouchState>();
+    private static readonly ConditionalWeakTable<object, TargetState> TargetStates = new ConditionalWeakTable<object, TargetState>();
 
     public static void Apply(Harmony harmony)
     {
@@ -20,8 +21,12 @@ public static class TouchInputPatches
         PatchHelper.Patch(harmony, mouseCardPlayType, "OnCancelPlayCard", postfix: PatchHelper.Method(typeof(TouchInputPatches), nameof(MouseCardPlayCancelPostfix)));
 
         var targetManagerType = typeof(NTargetManager);
-        PatchHelper.Patch(harmony, targetManagerType, "StartTargeting", postfix: PatchHelper.Method(typeof(TouchInputPatches), nameof(TargetManagerStartPostfix)));
-        PatchHelper.Patch(harmony, targetManagerType, "FinishTargeting", prefix: PatchHelper.Method(typeof(TouchInputPatches), nameof(TargetManagerFinishPrefix)));
+        foreach (var method in targetManagerType.GetMethods(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (method.Name == "StartTargeting")
+                harmony.Patch(method, postfix: new HarmonyMethod(PatchHelper.Method(typeof(TouchInputPatches), nameof(TargetManagerStartPostfix))));
+        }
+        PatchHelper.Patch(harmony, targetManagerType, "_Input", prefix: PatchHelper.Method(typeof(TouchInputPatches), nameof(TargetManagerInputPrefix)));
     }
 
     public static void MouseCardPlayStartPostfix(object __instance)
@@ -73,32 +78,39 @@ public static class TouchInputPatches
 
     public static void TargetManagerStartPostfix(object __instance)
     {
-        SetField(__instance, "_androidPortCancelledByUntargetedRelease", false);
+        TargetStates.GetOrCreateValue(__instance).CancelledByUntargetedRelease = false;
     }
 
-    public static void TargetManagerFinishPrefix(object __instance, bool cancel)
+    public static bool TargetManagerInputPrefix(object __instance, InputEvent inputEvent)
     {
         try
         {
-            if (!IsTouchOptimized() || !cancel)
-                return;
-            var hoveredNode = GetProperty(__instance, "HoveredNode");
+            if (!IsTouchOptimized() || inputEvent is not InputEventMouseButton mouseButton || mouseButton.ButtonIndex != MouseButton.Left || !mouseButton.IsReleased())
+                return true;
             var targetMode = GetField(__instance, "_targetMode");
-            if (hoveredNode == null && targetMode != null && targetMode.ToString() == "ReleaseMouseToTarget")
-            {
-                SetField(__instance, "_androidPortCancelledByUntargetedRelease", true);
-            }
+            if (targetMode == null || targetMode.ToString() != "ReleaseMouseToTarget")
+                return true;
+            var hoveredNode = GetProperty(__instance, "HoveredNode");
+            if (hoveredNode != null)
+                return true;
+            TargetStates.GetOrCreateValue(__instance).CancelledByUntargetedRelease = true;
+            var finish = __instance.GetType().GetMethod("FinishTargeting", BindingFlags.NonPublic | BindingFlags.Instance);
+            finish?.Invoke(__instance, new object[] { true });
+            return false;
         }
         catch (Exception exception)
         {
-            PatchHelper.Log($"TargetManagerFinishPrefix failed: {exception.Message}");
+            PatchHelper.Log($"TargetManagerInputPrefix failed: {exception.Message}");
+            return true;
         }
     }
 
     public static bool ConsumeCancelledByUntargetedRelease(object targetManager)
     {
-        var value = GetField(targetManager, "_androidPortCancelledByUntargetedRelease") is true;
-        SetField(targetManager, "_androidPortCancelledByUntargetedRelease", false);
+        if (!TargetStates.TryGetValue(targetManager, out var state))
+            return false;
+        var value = state.CancelledByUntargetedRelease;
+        state.CancelledByUntargetedRelease = false;
         return value;
     }
 
@@ -128,6 +140,11 @@ public static class TouchInputPatches
     {
         var field = target.GetType().GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
         field?.SetValue(target, value);
+    }
+
+    private sealed class TargetState
+    {
+        public bool CancelledByUntargetedRelease;
     }
 
     private sealed class TouchState
