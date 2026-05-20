@@ -19,10 +19,14 @@ require_file() {
 require_dir "$ANDROID_SRC/libs"
 require_dir "$ANDROID_SRC/assets/dotnet_bcl"
 require_file "$ANDROID_SRC/gradle/wrapper/gradle-wrapper.jar"
+CRYPTO_JAR="$LAUNCHER_REFERENCE_ROOT/vendor/godot/modules/mono/thirdparty/libSystem.Security.Cryptography.Native.Android.jar"
+require_file "$CRYPTO_JAR"
 
 mkdir -p "$ANDROID_DST/libs" "$ANDROID_DST/assets" "$ANDROID_DST/gradle/wrapper"
 rsync -a --delete "$ANDROID_SRC/libs/" "$ANDROID_DST/libs/"
 rsync -a --delete "$ANDROID_SRC/assets/dotnet_bcl/" "$ANDROID_DST/assets/dotnet_bcl/"
 cp -f "$ANDROID_SRC/gradle/wrapper/gradle-wrapper.jar" "$ANDROID_DST/gradle/wrapper/gradle-wrapper.jar"
+cp -f "$CRYPTO_JAR" "$ANDROID_DST/libs/debug/libSystem.Security.Cryptography.Native.Android.jar"
+cp -f "$CRYPTO_JAR" "$ANDROID_DST/libs/release/libSystem.Security.Cryptography.Native.Android.jar"
 
 printf 'Synced runtime artifacts from %s to %s\n' "$ANDROID_SRC" "$ANDROID_DST"
