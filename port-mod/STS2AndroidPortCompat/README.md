@@ -53,3 +53,8 @@ Mobile hand text visibility compatibility now has a small first patch in
 `Patches/MobileHandLayoutPatches.cs`: after the original hand layout runs, it
 lifts visible hand cards by the companion `show_more_hand_card_text` percentage
 instead of relying on Android-only `SettingsSave` fields in the game body.
+
+Quick-save/load compatibility now has a built-in retry patch in
+`Patches/QuickRestartPatches.cs`: when companion `quick_sl_enabled` is true, the
+pause menu gets an Android retry button unless an external Quick Restart UI mod
+is already loaded.

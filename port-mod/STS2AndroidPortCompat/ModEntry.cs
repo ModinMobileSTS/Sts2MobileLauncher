@@ -50,6 +50,7 @@ public static class ModEntry
             ShaderCompatibilityPatches.Apply(_harmony);
             TouchInputPatches.Apply(_harmony);
             MobileHandLayoutPatches.Apply(_harmony);
+            QuickRestartPatches.Apply(_harmony);
             LifecycleAndPerformancePatches.Apply(_harmony);
             LanMultiplayerPatches.Apply(_harmony);
             ModLoaderPatches.Apply(_harmony);

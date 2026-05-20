@@ -25,6 +25,8 @@ Current implementation (`STS2AndroidPortCompat`):
 - `MobileHandLayoutPatches` applies the companion `show_more_hand_card_text` /
   `show_more_hand_card_text_lift_height_percent` hand lift as a Harmony
   post-layout offset without rebuilding the game body.
+- `QuickRestartPatches` adds the built-in Android retry button on the pause menu
+  when `quick_sl_enabled` is true and no external Quick Restart UI mod is loaded.
 - `ExternalSettingsPatches` adds a fallback in-game settings row that opens the
   Java companion settings shell, redirects game Quit back to the settings shell,
   and applies the companion `pending_unlock_all.flag` command.
