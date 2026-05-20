@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.util.Enumeration;
+import java.util.zip.ZipInputStream;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
@@ -156,7 +157,7 @@ public final class PayloadManager {
 	private Status installFromZip(File sourceZip, SourceInfo source) throws Exception {
 		File importRoot = getImportRootDir();
 		ensureDirectory(importRoot);
-		cleanupOldImportScratch(importRoot);
+		cleanupOldImportScratch(importRoot, sourceZip);
 
 		File staging = new File(importRoot, "staging-" + UUID.randomUUID());
 		File backup = new File(importRoot, "backup-" + UUID.randomUUID());
@@ -204,35 +205,64 @@ public final class PayloadManager {
 
 	private void extractZipSafely(File zipFile, File targetRoot) throws Exception {
 		String canonicalRoot = targetRoot.getCanonicalPath();
+		try {
+			extractWithZipFile(zipFile, targetRoot, canonicalRoot);
+		} catch (Exception zipFileException) {
+			deleteRecursively(targetRoot);
+			ensureDirectory(targetRoot);
+			try {
+				extractWithZipInputStream(zipFile, targetRoot, canonicalRoot);
+			} catch (Exception streamException) {
+				streamException.addSuppressed(zipFileException);
+				throw streamException;
+			}
+		}
+	}
+
+	private void extractWithZipFile(File zipFile, File targetRoot, String canonicalRoot) throws Exception {
 		try (ZipFile archive = new ZipFile(zipFile)) {
 			Enumeration<? extends ZipEntry> entries = archive.entries();
 			while (entries.hasMoreElements()) {
 				ZipEntry entry = entries.nextElement();
-				String entryName = normalizeEntryName(entry.getName());
-				if (entryName.isEmpty() || shouldSkipEntry(entryName)) {
-					continue;
-				}
-				if (isDangerousEntry(entryName)) {
-					throw new IOException("Blocked invalid zip entry: " + entry.getName());
-				}
-				File outputFile = new File(targetRoot, entryName);
-				String outputPath = outputFile.getCanonicalPath();
-				if (!outputPath.equals(canonicalRoot) && !outputPath.startsWith(canonicalRoot + File.separator)) {
-					throw new IOException("Blocked invalid zip entry: " + entry.getName());
-				}
-				if (entry.isDirectory()) {
-					ensureDirectory(outputFile);
-					continue;
-				}
-				File parent = outputFile.getParentFile();
-				if (parent != null) {
-					ensureDirectory(parent);
-				}
-				try (InputStream inputStream = new BufferedInputStream(archive.getInputStream(entry));
-					 OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(outputFile))) {
-					copy(inputStream, outputStream);
-				}
+				extractEntry(targetRoot, canonicalRoot, entry, archive.getInputStream(entry));
 			}
+		}
+	}
+
+	private void extractWithZipInputStream(File zipFile, File targetRoot, String canonicalRoot) throws Exception {
+		try (InputStream fileInput = new BufferedInputStream(new FileInputStream(zipFile));
+			 ZipInputStream zipInput = new ZipInputStream(fileInput)) {
+			ZipEntry entry;
+			while ((entry = zipInput.getNextEntry()) != null) {
+				extractEntry(targetRoot, canonicalRoot, entry, zipInput);
+				zipInput.closeEntry();
+			}
+		}
+	}
+
+	private void extractEntry(File targetRoot, String canonicalRoot, ZipEntry entry, InputStream entryInputStream) throws Exception {
+		String entryName = normalizeEntryName(entry.getName());
+		if (entryName.isEmpty() || shouldSkipEntry(entryName)) {
+			return;
+		}
+		if (isDangerousEntry(entryName)) {
+			throw new IOException("Blocked invalid zip entry: " + entry.getName());
+		}
+		File outputFile = new File(targetRoot, entryName);
+		String outputPath = outputFile.getCanonicalPath();
+		if (!outputPath.equals(canonicalRoot) && !outputPath.startsWith(canonicalRoot + File.separator)) {
+			throw new IOException("Blocked invalid zip entry: " + entry.getName());
+		}
+		if (entry.isDirectory()) {
+			ensureDirectory(outputFile);
+			return;
+		}
+		File parent = outputFile.getParentFile();
+		if (parent != null) {
+			ensureDirectory(parent);
+		}
+		try (OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(outputFile))) {
+			copy(entryInputStream, outputStream);
 		}
 	}
 
@@ -289,14 +319,25 @@ public final class PayloadManager {
 		return new File(context.getFilesDir(), IMPORT_DIR_NAME);
 	}
 
-	private void cleanupOldImportScratch(File importRoot) {
+	private void cleanupOldImportScratch(File importRoot, File keepFile) {
 		File[] children = importRoot.listFiles();
 		if (children == null) {
 			return;
 		}
+		String keepPath = null;
+		try {
+			keepPath = keepFile == null ? null : keepFile.getCanonicalPath();
+		} catch (IOException ignored) {
+		}
 		for (File child : children) {
 			String name = child.getName();
 			if (name.startsWith("staging-") || name.startsWith("backup-") || name.startsWith("source-") || name.startsWith("bundled-source-")) {
+				try {
+					if (keepPath != null && keepPath.equals(child.getCanonicalPath())) {
+						continue;
+					}
+				} catch (IOException ignored) {
+				}
 				deleteRecursively(child);
 			}
 		}
