@@ -49,6 +49,7 @@ public static class ModEntry
             ExternalSettingsPatches.Apply(_harmony);
             ShaderCompatibilityPatches.Apply(_harmony);
             TouchInputPatches.Apply(_harmony);
+            MobileHandLayoutPatches.Apply(_harmony);
             LifecycleAndPerformancePatches.Apply(_harmony);
             LanMultiplayerPatches.Apply(_harmony);
             ModLoaderPatches.Apply(_harmony);

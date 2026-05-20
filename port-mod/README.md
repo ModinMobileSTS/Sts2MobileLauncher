@@ -22,6 +22,9 @@ Current implementation (`STS2AndroidPortCompat`):
 - `DisplaySettingsPatches` applies Android-only companion fields for FPS, custom
   fullscreen render size, global content scale, UI font scale, and 180° landscape
   orientation.
+- `MobileHandLayoutPatches` applies the companion `show_more_hand_card_text` /
+  `show_more_hand_card_text_lift_height_percent` hand lift as a Harmony
+  post-layout offset without rebuilding the game body.
 - `ExternalSettingsPatches` adds a fallback in-game settings row that opens the
   Java companion settings shell, redirects game Quit back to the settings shell,
   and applies the companion `pending_unlock_all.flag` command.

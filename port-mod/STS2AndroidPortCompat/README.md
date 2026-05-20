@@ -48,3 +48,8 @@ Local mod enable/disable compatibility is handled in
 `Patches/AndroidSettingsPatches.cs`: companion `mod_settings.mods_enabled`,
 `mod_list[]`, and legacy `disabled_mods[]` are projected into the runtime
 `ModSettings` shape used by the current reference DLL and the original PC DLL.
+
+Mobile hand text visibility compatibility now has a small first patch in
+`Patches/MobileHandLayoutPatches.cs`: after the original hand layout runs, it
+lifts visible hand cards by the companion `show_more_hand_card_text` percentage
+instead of relying on Android-only `SettingsSave` fields in the game body.
