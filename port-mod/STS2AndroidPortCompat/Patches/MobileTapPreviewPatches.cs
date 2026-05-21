@@ -443,9 +443,15 @@ public static class MobileTapPreviewPatches
             return;
         ClearPinned(hand);
         RunManager.Instance.HoveredModelTracker.OnLocalCardSelected(model);
-        if (!model.TryManualPlay(null) && IsSameValidHolder(holder, holder))
-            SetPinned(hand, holder, armDirectDrag: false, log: false);
-        RunManager.Instance.HoveredModelTracker.OnLocalCardDeselected();
+        try
+        {
+            if (!model.TryManualPlay(null) && IsSameValidHolder(holder, holder))
+                SetPinned(hand, holder, armDirectDrag: false, log: false);
+        }
+        finally
+        {
+            RunManager.Instance.HoveredModelTracker.OnLocalCardDeselected();
+        }
     }
 
     private static bool CanTargetPinnedCard(CardModel card, Creature target)

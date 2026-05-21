@@ -86,6 +86,7 @@ public final class PckPatcher {
 				if (entryFlags != 0 && (isProjectEntry(path) || isExtensionList(path))) {
 					throw new IOException("Cannot patch compressed/encrypted PCK metadata entry: " + path + " flags=" + entryFlags);
 				}
+				long nextEntryOffset = raf.getFilePointer();
 				if (isProjectBinary(path)) {
 					result.seenProjectBinary = true;
 					if (patchEntryBytes(raf, fileBase + relativeOffset, size, PROJECT_BINARY_SEARCH, PROJECT_BINARY_REPLACE, null)) {
@@ -105,6 +106,7 @@ public final class PckPatcher {
 						writeEntryMd5(raf, fileBase + relativeOffset, size, md5Offset);
 					}
 				}
+				raf.seek(nextEntryOffset);
 				if (raf.getFilePointer() < entryStart) {
 					throw new IOException("PCK parser moved backwards at entry " + i);
 				}

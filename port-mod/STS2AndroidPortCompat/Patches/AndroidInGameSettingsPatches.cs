@@ -75,7 +75,7 @@ public static class AndroidInGameSettingsPatches
             ?? tabManager.GetNodeOrNull<NSettingsTab>("General");
         if (template == null)
             return null;
-        var tab = template.Duplicate() as NSettingsTab;
+        var tab = template.Duplicate((int)(Node.DuplicateFlags.Groups | Node.DuplicateFlags.Scripts)) as NSettingsTab;
         if (tab == null)
             return null;
         tab.Name = MobileTabName;
