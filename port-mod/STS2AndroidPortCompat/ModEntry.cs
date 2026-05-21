@@ -42,6 +42,7 @@ public static class ModEntry
         PatchHelper.Log("Applying Android port compatibility skeleton.");
         try
         {
+            ModelDbInitPatch.Apply(_harmony);
             PlatformPatches.Apply(_harmony);
             ReleaseInfoPatches.Apply(_harmony);
             AndroidSettingsPatches.Apply(_harmony);

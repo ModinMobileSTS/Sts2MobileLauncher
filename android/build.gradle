@@ -247,8 +247,7 @@ android {
 
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
-            String filenameSuffix = variant.flavorName == "mono" ? variant.name : variant.buildType.name
-            output.outputFileName = "sts2-re_${filenameSuffix}.apk"
+            output.outputFileName = "sts2-re.apk"
         }
     }
 }
