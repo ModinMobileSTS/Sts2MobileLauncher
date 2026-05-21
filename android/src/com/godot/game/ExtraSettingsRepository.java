@@ -68,7 +68,9 @@ public final class ExtraSettingsRepository {
 
 	public void ensureAppDirectories() {
 		ensureDirectory(getAccountRootDir());
-		ensureDirectory(getModsRootDir());
+		File modsRoot = getModsRootDir();
+		ensureDirectory(modsRoot);
+		normalizeRuntimeModAliases(modsRoot);
 	}
 
 	public void saveSetting(JsonMutator mutator) throws Exception {
@@ -329,10 +331,39 @@ public final class ExtraSettingsRepository {
 		} else {
 			copyUriToFile(inputUri, new File(modsRoot, normalizedName));
 		}
+		normalizeRuntimeModAliases(modsRoot);
 		JSONObject settings = loadSettingsJson();
 		ensureModSettings(settings).put("mods_enabled", true);
 		saveSettingsJson(settings);
 		return normalizedName;
+	}
+
+	private void normalizeRuntimeModAliases(File modsRoot) {
+		List<ModEntry> entries = new ArrayList<>();
+		collectManifestFiles(modsRoot, entries);
+		for (ModEntry entry : entries) {
+			try {
+				ensureRuntimeModAlias(entry, ".pck");
+				ensureRuntimeModAlias(entry, ".dll");
+			} catch (Exception ignored) {
+			}
+		}
+	}
+
+	private void ensureRuntimeModAlias(ModEntry entry, String extension) throws IOException {
+		if (entry.modId.equals(entry.pckName)) {
+			return;
+		}
+		File parent = entry.manifestFile.getParentFile();
+		if (parent == null) {
+			return;
+		}
+		File source = new File(parent, entry.pckName + extension);
+		File target = new File(parent, entry.modId + extension);
+		if (!source.isFile() || target.exists()) {
+			return;
+		}
+		copyRecursively(source, target);
 	}
 
 	public void deleteMod(ModEntry modEntry) throws Exception {

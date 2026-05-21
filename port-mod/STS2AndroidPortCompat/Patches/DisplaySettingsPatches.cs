@@ -35,6 +35,8 @@ public static class DisplaySettingsPatches
             Engine.MaxFps = AndroidSettingsBridge.GetInt("fps_limit", Engine.MaxFps);
             ApplyFontSizeSetting();
             ApplyAndroidScreenOrientationSetting();
+            ApplyDisplaySettingsPostfix();
+            Callable.From(ApplyDisplaySettingsPostfix).CallDeferred();
             PatchHelper.Log($"Applied Android graphics bridge: fps={Engine.MaxFps}, scale={GetGlobalScale():0.##}, font={GetUiFontScalePercent()}%, render={GetFullscreenRenderSize()}");
         }
         catch (Exception exception)
@@ -52,10 +54,14 @@ public static class DisplaySettingsPatches
                 return;
             var renderSize = GetFullscreenRenderSize();
             var useCustomRenderSize = renderSize.X > 0 && renderSize.Y > 0;
+            window.ContentScaleAspect = Window.ContentScaleAspectEnum.Keep;
             window.ContentScaleMode = useCustomRenderSize ? Window.ContentScaleModeEnum.Viewport : Window.ContentScaleModeEnum.CanvasItems;
             if (useCustomRenderSize)
             {
                 window.ContentScaleSize = renderSize;
+                ProjectSettings.SetSetting("display/window/stretch/mode", "viewport");
+                ProjectSettings.SetSetting("display/window/size/viewport_width", renderSize.X);
+                ProjectSettings.SetSetting("display/window/size/viewport_height", renderSize.Y);
                 PatchHelper.Log($"[Display] Using Android fullscreen render size: {renderSize}");
             }
             window.ContentScaleFactor = GetGlobalScale();
@@ -73,6 +79,8 @@ public static class DisplaySettingsPatches
             var window = GetRootWindow();
             if (window != null)
                 ApplyFontSizeOverridesRecursive(window);
+            ApplyDisplaySettingsPostfix();
+            Callable.From(ApplyDisplaySettingsPostfix).CallDeferred();
         }
         catch (Exception exception)
         {

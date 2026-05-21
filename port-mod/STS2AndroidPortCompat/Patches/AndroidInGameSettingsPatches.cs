@@ -5,6 +5,7 @@ using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Combat;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Screens.Settings;
 using MegaCrit.Sts2.Core.Saves;
@@ -23,6 +24,9 @@ public static class AndroidInGameSettingsPatches
     private const string MobileTabName = "AndroidMobile";
     private const string MobilePanelName = "AndroidMobileSettings";
     private static readonly Color DividerColor = new Color(0.909804f, 0.862745f, 0.745098f, 0.25098f);
+    private static Theme _lineTheme;
+    private static Font _regularFont;
+    private static Font _boldFont;
 
     public static void Apply(Harmony harmony)
     {
@@ -100,6 +104,7 @@ public static class AndroidInGameSettingsPatches
         if (parent.GetNodeOrNull<Control>(MobilePanelName) is { } existing)
             return existing;
 
+        CaptureOfficialLineStyle(general);
         var panel = new VBoxContainer
         {
             Name = MobilePanelName,
@@ -176,6 +181,80 @@ public static class AndroidInGameSettingsPatches
         AddTextRow(content, "lan_custom_player_id", T("LAN 自定义玩家 ID", "LAN custom player ID"), "", null);
     }
 
+    private static void CaptureOfficialLineStyle(Control panel)
+    {
+        try
+        {
+            var label = FindFirstChildOfType<RichTextLabel>(panel);
+            _lineTheme = label?.Theme;
+            _regularFont = label?.GetThemeFont("normal_font");
+            _boldFont = label?.GetThemeFont("bold_font");
+        }
+        catch
+        {
+        }
+    }
+
+    private static T FindFirstChildOfType<T>(Node node) where T : Node
+    {
+        foreach (Node child in node.GetChildren())
+        {
+            if (child is T typed)
+                return typed;
+            var nested = FindFirstChildOfType<T>(child);
+            if (nested != null)
+                return nested;
+        }
+        return null;
+    }
+
+    private static NSettingsTickbox CreateOfficialTickbox(bool initialValue, Action<bool> onChanged)
+    {
+        var tickbox = new AndroidSettingsTickbox
+        {
+            InitialValue = initialValue,
+            Changed = onChanged,
+            Name = "SettingsTickbox",
+            CustomMinimumSize = new Vector2(320, 64),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd,
+            FocusMode = Control.FocusModeEnum.All,
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+        try
+        {
+            var packed = ResourceLoader.Load<PackedScene>("res://scenes/screens/settings_tickbox.tscn");
+            var template = packed?.Instantiate<Control>();
+            if (template != null)
+            {
+                tickbox.CustomMinimumSize = template.CustomMinimumSize;
+                tickbox.SizeFlagsHorizontal = template.SizeFlagsHorizontal;
+                tickbox.MouseFilter = template.MouseFilter;
+                while (template.GetChildCount() > 0)
+                {
+                    var child = template.GetChild(0);
+                    template.RemoveChild(child);
+                    tickbox.AddChild(child);
+                    SetOwnerRecursive(child, tickbox);
+                }
+                template.QueueFree();
+            }
+        }
+        catch (Exception exception)
+        {
+            PatchHelper.Log($"Falling back to programmatic settings tickbox visuals: {exception.Message}");
+            tickbox.AddChild(new Control { Name = "TickboxVisuals", UniqueNameInOwner = true, CustomMinimumSize = new Vector2(64, 64) });
+            tickbox.AddChild(new Control { Name = "SelectionReticle" });
+        }
+        return tickbox;
+    }
+
+    private static void SetOwnerRecursive(Node node, Node owner)
+    {
+        node.Owner = owner;
+        foreach (Node child in node.GetChildren())
+            SetOwnerRecursive(child, owner);
+    }
+
     private static void AddHeader(VBoxContainer content, string text)
     {
         var divider = new ColorRect
@@ -199,23 +278,43 @@ public static class AndroidInGameSettingsPatches
 
     private static HBoxContainer AddBaseRow(VBoxContainer content, string labelText)
     {
-        var row = new HBoxContainer
+        var margin = new MarginContainer
         {
             CustomMinimumSize = new Vector2(0, 64),
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+        margin.AddThemeConstantOverride("margin_left", 12);
+        margin.AddThemeConstantOverride("margin_right", 12);
+        var row = new HBoxContainer
+        {
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
         row.AddThemeConstantOverride("separation", 16);
-        var label = new Label
+        var label = new RichTextLabel
         {
             Text = labelText,
+            BbcodeEnabled = true,
+            ScrollActive = false,
+            FitContent = true,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(0, 64),
             VerticalAlignment = VerticalAlignment.Center,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            Theme = _lineTheme,
         };
-        label.AddThemeFontSizeOverride("font_size", 26);
+        if (_regularFont != null)
+            label.AddThemeFontOverride("normal_font", _regularFont);
+        if (_boldFont != null)
+            label.AddThemeFontOverride("bold_font", _boldFont);
+        label.AddThemeFontSizeOverride("normal_font_size", 28);
+        label.AddThemeFontSizeOverride("bold_font_size", 28);
+        label.AddThemeFontSizeOverride("bold_italics_font_size", 28);
+        label.AddThemeFontSizeOverride("italics_font_size", 28);
+        label.AddThemeFontSizeOverride("mono_font_size", 28);
         row.AddChild(label);
-        content.AddChild(row);
+        margin.AddChild(row);
+        content.AddChild(margin);
         return row;
     }
 
@@ -235,17 +334,11 @@ public static class AndroidInGameSettingsPatches
     private static void AddSwitchRow(VBoxContainer content, string key, string label, bool fallback, Action<bool> afterChanged)
     {
         var row = AddBaseRow(content, label);
-        var check = new CheckButton
-        {
-            ButtonPressed = AndroidSettingsBridge.GetBool(key, fallback),
-            CustomMinimumSize = new Vector2(160, 54),
-            FocusMode = Control.FocusModeEnum.All,
-        };
-        check.Toggled += pressed =>
+        var check = CreateOfficialTickbox(AndroidSettingsBridge.GetBool(key, fallback), pressed =>
         {
             AndroidSettingsBridge.SetBool(key, pressed);
             afterChanged?.Invoke(pressed);
-        };
+        });
         row.AddChild(check);
     }
 
@@ -359,6 +452,7 @@ public static class AndroidInGameSettingsPatches
                 if (child is NSettingsTab settingsTab)
                     settingsTab.Deselect();
             }
+            typeof(NSettingsTabManager).GetField("_currentTab", BindingFlags.NonPublic | BindingFlags.Instance)?.SetValue(tabManager, null);
             tab.Select();
             HideVanillaPanels(tabManager);
             panel.Visible = true;
@@ -440,5 +534,27 @@ public static class AndroidInGameSettingsPatches
         {
             return false;
         }
+    }
+}
+
+public partial class AndroidSettingsTickbox : NSettingsTickbox
+{
+    public bool InitialValue { get; set; }
+    public Action<bool> Changed { get; set; }
+
+    public override void _Ready()
+    {
+        ConnectSignals();
+        IsTicked = InitialValue;
+    }
+
+    protected override void OnTick()
+    {
+        Changed?.Invoke(true);
+    }
+
+    protected override void OnUntick()
+    {
+        Changed?.Invoke(false);
     }
 }

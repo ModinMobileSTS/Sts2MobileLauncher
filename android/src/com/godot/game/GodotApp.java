@@ -140,6 +140,11 @@ public class GodotApp extends GodotActivity {
 			return;
 		}
 		StartupHealthTracker.markGameLaunchStarted(this);
+		try {
+			new ExtraSettingsRepository(this).ensureAppDirectories();
+		} catch (Throwable throwable) {
+			Log.w(TAG, "Unable to normalize extra-settings directories before launch.", throwable);
+		}
 		EdgeToEdge.enable(this);
 		try {
 			FMOD.init(this);

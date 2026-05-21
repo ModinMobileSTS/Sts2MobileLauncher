@@ -52,6 +52,7 @@ public static class ModEntry
             ShaderCompatibilityPatches.Apply(_harmony);
             TouchInputPatches.Apply(_harmony);
             AndroidInputCompatPatches.Apply(_harmony);
+            MobileSelectionConfirmationPatches.Apply(_harmony);
             MobileTapPreviewPatches.Apply(_harmony);
             MobileHandLayoutPatches.Apply(_harmony);
             QuickRestartPatches.Apply(_harmony);

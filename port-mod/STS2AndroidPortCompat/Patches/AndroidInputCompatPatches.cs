@@ -1,11 +1,17 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.ControllerInput;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
+using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using STS2Mobile.Android;
 
 namespace STS2Mobile.Patches;
@@ -172,7 +178,11 @@ public static class AndroidInputCompatPatches
                     ActiveTouchPoints[touch.Index] = new TouchPointState { StartPosition = touch.Position };
                     SuppressedSecondaryTouchIndices.Add(touch.Index);
                     var position = firstTouch.StartPosition;
-                    Callable.From(() => DispatchSyntheticRightClick(position)).CallDeferred();
+                    Callable.From(() =>
+                    {
+                        if (!TryDispatchDirectMobileRightClick(position))
+                            DispatchSyntheticRightClick(position);
+                    }).CallDeferred();
                     inputManager.GetViewport()?.SetInputAsHandled();
                     return;
                 }
@@ -213,6 +223,125 @@ public static class AndroidInputCompatPatches
         }
         touchPointState = found.Value;
         return true;
+    }
+
+    private static bool TryDispatchDirectMobileRightClick(Vector2 position)
+    {
+        try
+        {
+            if (NTargetManager.Instance?.IsInSelection == true)
+            {
+                GD.Print("[MobileRightClick] direct target cancel");
+                NTargetManager.Instance.CancelTargeting();
+                return true;
+            }
+            if (NPlayerHand.Instance?.InCardPlay == true)
+            {
+                GD.Print("[MobileRightClick] direct card play cancel");
+                NPlayerHand.Instance.CancelAllCardPlay();
+                return true;
+            }
+            var merchantSlot = FindTopmostMerchantSlotAtPosition(NGame.Instance, position);
+            if (merchantSlot != null)
+            {
+                GD.Print($"[MobileRightClick] direct merchant preview slot={merchantSlot.GetType().Name} pos={position}");
+                PreviewMerchantSlot(merchantSlot);
+                return true;
+            }
+            var cardHolder = FindTopmostCardHolderAtPosition(NGame.Instance, position);
+            if (cardHolder == null)
+            {
+                GD.Print($"[MobileRightClick] no direct hit at pos={position}");
+                return false;
+            }
+            if (cardHolder is NHandCardHolder handCardHolder && TryPreviewHandCard(handCardHolder))
+            {
+                GD.Print($"[MobileRightClick] direct hand inspect holder={handCardHolder.GetType().Name} pos={position}");
+                return true;
+            }
+            GD.Print($"[MobileRightClick] direct card alt press holder={cardHolder.GetType().Name} pos={position}");
+            cardHolder.EmitSignal(NCardHolder.SignalName.AltPressed, cardHolder);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            PatchHelper.Log($"Direct mobile right-click dispatch failed: {exception.Message}");
+            return false;
+        }
+    }
+
+    private static bool TryPreviewHandCard(NHandCardHolder holder)
+    {
+        if (holder.CardModel == null || NPlayerHand.Instance == null)
+            return false;
+        var cards = NPlayerHand.Instance.ActiveHolders
+            .Select(h => h.CardModel)
+            .Where(card => card != null)
+            .Cast<CardModel>()
+            .ToList();
+        var index = cards.IndexOf(holder.CardModel);
+        if (index < 0)
+        {
+            cards = new List<CardModel> { holder.CardModel };
+            index = 0;
+        }
+        NGame.Instance.GetInspectCardScreen().Open(cards, index);
+        return true;
+    }
+
+    private static NCardHolder FindTopmostCardHolderAtPosition(Node node, Vector2 position)
+    {
+        if (node == null || !GodotObject.IsInstanceValid(node))
+            return null;
+        for (var i = node.GetChildCount() - 1; i >= 0; i--)
+        {
+            var found = FindTopmostCardHolderAtPosition(node.GetChild(i), position);
+            if (found != null)
+                return found;
+        }
+        return node is NCardHolder holder && IsCardHolderHit(holder, position) ? holder : null;
+    }
+
+    private static NMerchantSlot FindTopmostMerchantSlotAtPosition(Node node, Vector2 position)
+    {
+        if (node == null || !GodotObject.IsInstanceValid(node))
+            return null;
+        for (var i = node.GetChildCount() - 1; i >= 0; i--)
+        {
+            var found = FindTopmostMerchantSlotAtPosition(node.GetChild(i), position);
+            if (found != null)
+                return found;
+        }
+        return node is NMerchantSlot slot && IsMerchantSlotHit(slot, position) ? slot : null;
+    }
+
+    private static bool IsCardHolderHit(NCardHolder holder, Vector2 position)
+    {
+        var hitbox = holder.Hitbox;
+        return hitbox != null
+            && GodotObject.IsInstanceValid(hitbox)
+            && holder.IsVisibleInTree()
+            && hitbox.IsVisibleInTree()
+            && hitbox.IsInsideTree()
+            && hitbox.GetGlobalRect().HasPoint(position);
+    }
+
+    private static bool IsMerchantSlotHit(NMerchantSlot slot, Vector2 position)
+    {
+        var hitbox = slot.Hitbox;
+        return hitbox != null
+            && GodotObject.IsInstanceValid(hitbox)
+            && slot.IsVisibleInTree()
+            && hitbox.IsVisibleInTree()
+            && hitbox.IsInsideTree()
+            && hitbox.GetGlobalRect().HasPoint(position);
+    }
+
+    private static void PreviewMerchantSlot(NMerchantSlot slot)
+    {
+        if (slot.Entry == null || !slot.Entry.IsStocked)
+            return;
+        slot.GetType().GetMethod("OnPreview", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(slot, null);
     }
 
     private static void DispatchSyntheticRightClick(Vector2 position)
