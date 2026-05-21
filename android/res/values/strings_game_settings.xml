@@ -444,6 +444,8 @@
     <string name="extract_bundled_payload">Extract bundled game</string>
     <string name="clear_game_payload">Clear game</string>
     <string name="status_busy_import_game_payload">Importing game zip…</string>
+    <string name="import_game_payload_dialog_title">Importing</string>
+    <string name="status_import_game_payload_cancelled">Game import cancelled.</string>
     <string name="status_busy_extract_bundled_payload">Extracting bundled game…</string>
     <string name="status_busy_clear_game_payload">Clearing game payload…</string>
     <string name="status_import_game_payload_done">Game payload ready: %1$s</string>

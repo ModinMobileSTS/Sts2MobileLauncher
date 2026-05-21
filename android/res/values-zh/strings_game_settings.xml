@@ -444,6 +444,8 @@
     <string name="extract_bundled_payload">解压内置游戏</string>
     <string name="clear_game_payload">清除游戏本体</string>
     <string name="status_busy_import_game_payload">正在导入游戏压缩包…</string>
+    <string name="import_game_payload_dialog_title">导入中</string>
+    <string name="status_import_game_payload_cancelled">已取消导入游戏本体。</string>
     <string name="status_busy_extract_bundled_payload">正在解压内置游戏…</string>
     <string name="status_busy_clear_game_payload">正在清除游戏本体…</string>
     <string name="status_import_game_payload_done">游戏本体已就绪：%1$s</string>

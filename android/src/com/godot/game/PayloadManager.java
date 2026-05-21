@@ -36,6 +36,28 @@ import java.util.zip.ZipFile;
  * without rewriting the original game archive.</p>
  */
 public final class PayloadManager {
+	public interface ProgressListener {
+		void onProgress(int percent, String message);
+	}
+
+	public static final class ImportControl {
+		private volatile boolean cancelled;
+
+		public void cancel() {
+			cancelled = true;
+		}
+
+		public boolean isCancelled() {
+			return cancelled;
+		}
+
+		void throwIfCancelled() throws IOException {
+			if (cancelled || Thread.currentThread().isInterrupted()) {
+				throw new IOException("Import cancelled.");
+			}
+		}
+	}
+
 	public static final String GAME_DIR_NAME = "game";
 	public static final String IMPORT_DIR_NAME = "payload_import";
 	public static final String MANIFEST_FILE_NAME = ".payload_manifest.json";
@@ -106,6 +128,10 @@ public final class PayloadManager {
 	}
 
 	public Status importPayloadZip(Uri uri) throws Exception {
+		return importPayloadZip(uri, null, null);
+	}
+
+	public Status importPayloadZip(Uri uri, ProgressListener progressListener, ImportControl control) throws Exception {
 		ensureDirectory(getImportRootDir());
 		String displayName = queryDisplayName(uri);
 		if (displayName == null || displayName.trim().isEmpty()) {
@@ -114,31 +140,37 @@ public final class PayloadManager {
 		long sourceSize = querySize(uri);
 		File sourceZip = new File(getImportRootDir(), "source-" + UUID.randomUUID() + ".zip");
 		String sha256;
+		reportProgress(progressListener, 1, "copy");
 		try (InputStream inputStream = context.getContentResolver().openInputStream(uri)) {
 			if (inputStream == null) {
 				throw new IOException("Unable to open selected payload zip.");
 			}
-			sha256 = copyToFileWithSha256(inputStream, sourceZip);
+			sha256 = copyToFileWithSha256(inputStream, sourceZip, sourceSize, progressListener, control, 1, 35);
 		}
 		if (sourceSize < 0) {
 			sourceSize = sourceZip.length();
 		}
 		SourceInfo source = new SourceInfo("saf_zip", displayName, sourceSize, sha256);
-		return installFromZip(sourceZip, source);
+		return installFromZip(sourceZip, source, progressListener, control);
 	}
 
 	public Status extractBundledPayload() throws Exception {
+		return extractBundledPayload(null, null);
+	}
+
+	public Status extractBundledPayload(ProgressListener progressListener, ImportControl control) throws Exception {
 		if (!hasBundledPayload()) {
 			throw new IOException("Bundled payload asset is not present: " + BUNDLED_PAYLOAD_ASSET);
 		}
 		ensureDirectory(getImportRootDir());
 		File sourceZip = new File(getImportRootDir(), "bundled-source-" + UUID.randomUUID() + ".zip");
 		String sha256;
+		reportProgress(progressListener, 1, "copy");
 		try (InputStream inputStream = context.getAssets().open(BUNDLED_PAYLOAD_ASSET)) {
-			sha256 = copyToFileWithSha256(inputStream, sourceZip);
+			sha256 = copyToFileWithSha256(inputStream, sourceZip, -1, progressListener, control, 1, 35);
 		}
 		SourceInfo source = new SourceInfo("bundled_zip", "SlayTheSpire2.zip", sourceZip.length(), sha256);
-		return installFromZip(sourceZip, source);
+		return installFromZip(sourceZip, source, progressListener, control);
 	}
 
 	public void clearPayload() {
@@ -154,7 +186,8 @@ public final class PayloadManager {
 		return new File(getGameDir(), MANIFEST_FILE_NAME);
 	}
 
-	private Status installFromZip(File sourceZip, SourceInfo source) throws Exception {
+	private Status installFromZip(File sourceZip, SourceInfo source, ProgressListener progressListener, ImportControl control) throws Exception {
+		checkCancelled(control);
 		File importRoot = getImportRootDir();
 		ensureDirectory(importRoot);
 		cleanupOldImportScratch(importRoot, sourceZip);
@@ -166,12 +199,18 @@ public final class PayloadManager {
 		boolean installed = false;
 		try {
 			ensureDirectory(staging);
-			extractZipSafely(sourceZip, staging);
+			reportProgress(progressListener, 36, "extract");
+			extractZipSafely(sourceZip, staging, progressListener, control);
+			checkCancelled(control);
+			reportProgress(progressListener, 86, "validate");
 			Validation validation = validateGameDir(staging);
+			reportProgress(progressListener, 91, "patch");
 			PckPatcher.PatchResult patchResult = patchPayloadPck(staging);
+			checkCancelled(control);
 			validation = validateGameDir(staging);
 			writeManifest(staging, source, validation, patchResult);
 
+			reportProgress(progressListener, 96, "install");
 			File gameParent = gameDir.getParentFile();
 			if (gameParent != null) {
 				ensureDirectory(gameParent);
@@ -190,6 +229,7 @@ public final class PayloadManager {
 			}
 			installed = true;
 			deleteRecursively(backup);
+			reportProgress(progressListener, 100, "done");
 			return getStatus();
 		} finally {
 			if (!installed) {
@@ -205,15 +245,15 @@ public final class PayloadManager {
 		}
 	}
 
-	private void extractZipSafely(File zipFile, File targetRoot) throws Exception {
+	private void extractZipSafely(File zipFile, File targetRoot, ProgressListener progressListener, ImportControl control) throws Exception {
 		String canonicalRoot = targetRoot.getCanonicalPath();
 		try {
-			extractWithZipFile(zipFile, targetRoot, canonicalRoot);
+			extractWithZipFile(zipFile, targetRoot, canonicalRoot, progressListener, control);
 		} catch (Exception zipFileException) {
 			deleteRecursively(targetRoot);
 			ensureDirectory(targetRoot);
 			try {
-				extractWithZipInputStream(zipFile, targetRoot, canonicalRoot);
+				extractWithZipInputStream(zipFile, targetRoot, canonicalRoot, progressListener, control);
 			} catch (Exception streamException) {
 				streamException.addSuppressed(zipFileException);
 				throw streamException;
@@ -221,28 +261,55 @@ public final class PayloadManager {
 		}
 	}
 
-	private void extractWithZipFile(File zipFile, File targetRoot, String canonicalRoot) throws Exception {
+	private void extractWithZipFile(File zipFile, File targetRoot, String canonicalRoot, ProgressListener progressListener, ImportControl control) throws Exception {
 		try (ZipFile archive = new ZipFile(zipFile)) {
+			Enumeration<? extends ZipEntry> sizeEntries = archive.entries();
+			long totalBytes = 0L;
+			while (sizeEntries.hasMoreElements()) {
+				ZipEntry entry = sizeEntries.nextElement();
+				if (!entry.isDirectory() && entry.getSize() > 0) {
+					totalBytes += entry.getSize();
+				}
+			}
+			final long totalExtractBytes = totalBytes;
 			Enumeration<? extends ZipEntry> entries = archive.entries();
+			long processedBytes = 0L;
 			while (entries.hasMoreElements()) {
+				checkCancelled(control);
 				ZipEntry entry = entries.nextElement();
-				extractEntry(targetRoot, canonicalRoot, entry, archive.getInputStream(entry));
+				long before = processedBytes;
+				extractEntry(targetRoot, canonicalRoot, entry, archive.getInputStream(entry), bytes -> {
+					if (totalExtractBytes > 0) {
+						reportProgress(progressListener, 36 + (int)Math.min(49, ((before + bytes) * 49L) / totalExtractBytes), "extract");
+					}
+				}, control);
+				if (!entry.isDirectory() && entry.getSize() > 0) {
+					processedBytes += entry.getSize();
+				}
 			}
 		}
 	}
 
-	private void extractWithZipInputStream(File zipFile, File targetRoot, String canonicalRoot) throws Exception {
+	private void extractWithZipInputStream(File zipFile, File targetRoot, String canonicalRoot, ProgressListener progressListener, ImportControl control) throws Exception {
 		try (InputStream fileInput = new BufferedInputStream(new FileInputStream(zipFile));
 			 ZipInputStream zipInput = new ZipInputStream(fileInput)) {
 			ZipEntry entry;
+			int entryCount = 0;
 			while ((entry = zipInput.getNextEntry()) != null) {
-				extractEntry(targetRoot, canonicalRoot, entry, zipInput);
+				checkCancelled(control);
+				final int currentEntry = entryCount;
+				extractEntry(targetRoot, canonicalRoot, entry, zipInput, bytes -> reportProgress(progressListener, Math.min(84, 36 + currentEntry), "extract"), control);
 				zipInput.closeEntry();
+				entryCount++;
 			}
 		}
 	}
 
-	private void extractEntry(File targetRoot, String canonicalRoot, ZipEntry entry, InputStream entryInputStream) throws Exception {
+	private interface ByteProgress {
+		void onBytes(long bytes);
+	}
+
+	private void extractEntry(File targetRoot, String canonicalRoot, ZipEntry entry, InputStream entryInputStream, ByteProgress progress, ImportControl control) throws Exception {
 		String entryName = normalizeEntryName(entry.getName());
 		if (entryName.isEmpty() || shouldSkipEntry(entryName)) {
 			return;
@@ -264,7 +331,7 @@ public final class PayloadManager {
 			ensureDirectory(parent);
 		}
 		try (OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(outputFile))) {
-			copy(entryInputStream, outputStream);
+			copy(entryInputStream, outputStream, entry.getSize(), progress, control);
 		}
 	}
 
@@ -394,6 +461,10 @@ public final class PayloadManager {
 	}
 
 	private String copyToFileWithSha256(InputStream inputStream, File destination) throws Exception {
+		return copyToFileWithSha256(inputStream, destination, -1, null, null, 0, 100);
+	}
+
+	private String copyToFileWithSha256(InputStream inputStream, File destination, long totalBytes, ProgressListener progressListener, ImportControl control, int startPercent, int endPercent) throws Exception {
 		MessageDigest digest = MessageDigest.getInstance("SHA-256");
 		File parent = destination.getParentFile();
 		if (parent != null) {
@@ -401,18 +472,45 @@ public final class PayloadManager {
 		}
 		try (DigestInputStream digestInputStream = new DigestInputStream(new BufferedInputStream(inputStream), digest);
 			 OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(destination))) {
-			copy(digestInputStream, outputStream);
+			copy(digestInputStream, outputStream, totalBytes, bytes -> {
+				if (totalBytes > 0) {
+					int span = Math.max(1, endPercent - startPercent);
+					reportProgress(progressListener, startPercent + (int)Math.min(span, (bytes * span) / totalBytes), "copy");
+				}
+			}, control);
 		}
 		return toHex(digest.digest());
 	}
 
 	private void copy(InputStream inputStream, OutputStream outputStream) throws IOException {
+		copy(inputStream, outputStream, -1, null, null);
+	}
+
+	private void copy(InputStream inputStream, OutputStream outputStream, long totalBytes, ByteProgress progress, ImportControl control) throws IOException {
 		byte[] buffer = new byte[BUFFER_SIZE];
 		int read;
+		long written = 0L;
 		while ((read = inputStream.read(buffer)) != -1) {
+			checkCancelled(control);
 			outputStream.write(buffer, 0, read);
+			written += read;
+			if (progress != null) {
+				progress.onBytes(written);
+			}
 		}
 		outputStream.flush();
+	}
+
+	private void reportProgress(ProgressListener listener, int percent, String message) {
+		if (listener != null) {
+			listener.onProgress(Math.max(0, Math.min(100, percent)), message == null ? "" : message);
+		}
+	}
+
+	private void checkCancelled(ImportControl control) throws IOException {
+		if (control != null) {
+			control.throwIfCancelled();
+		}
 	}
 
 	private void validatePckMagic(File pck) throws Exception {

@@ -1,19 +1,27 @@
 package com.godot.game;
 
+import android.animation.ObjectAnimator;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
+import android.widget.TextView;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
 
@@ -202,10 +210,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		if (busy) {
 			return;
 		}
-		runAsyncOperation(getString(R.string.status_busy_extract_bundled_payload), () -> {
-			PayloadManager.Status status = payloadManager.extractBundledPayload();
-			return getString(R.string.status_import_game_payload_done, status.shortVersionLabel());
-		});
+		runPayloadImportOperation(null, true);
 	}
 
 	@Override
@@ -286,11 +291,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				return getString(R.string.status_import_save_done);
 			});
 		} else if (requestCode == REQUEST_IMPORT_GAME_PAYLOAD && data.getData() != null) {
-			Uri uri = data.getData();
-			runAsyncOperation(getString(R.string.status_busy_import_game_payload), () -> {
-				PayloadManager.Status status = payloadManager.importPayloadZip(uri);
-				return getString(R.string.status_import_game_payload_done, status.shortVersionLabel());
-			});
+			runPayloadImportOperation(data.getData(), false);
 		} else if (requestCode == REQUEST_EXPORT_FULL_DATA_BACKUP && data.getData() != null) {
 			Uri uri = data.getData();
 			runAsyncOperation(getString(R.string.status_busy_export_full_data_backup), () -> {
@@ -320,6 +321,124 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				}
 				return getString(R.string.status_import_mod_done_count, imported);
 			});
+		}
+	}
+
+	private void runPayloadImportOperation(Uri uri, boolean bundled) {
+		if (busy) {
+			return;
+		}
+		busy = true;
+		PayloadManager.ImportControl control = new PayloadManager.ImportControl();
+		final Thread[] workerRef = new Thread[1];
+		PayloadImportProgressDialog progressDialog = new PayloadImportProgressDialog(control, () -> {
+			Thread worker = workerRef[0];
+			if (worker != null) {
+				worker.interrupt();
+			}
+		});
+		progressDialog.show();
+
+		Thread worker = new Thread(() -> {
+			try {
+				PayloadManager.Status status = bundled
+					? payloadManager.extractBundledPayload((percent, stage) -> runOnUiThread(() -> progressDialog.setProgress(percent)), control)
+					: payloadManager.importPayloadZip(uri, (percent, stage) -> runOnUiThread(() -> progressDialog.setProgress(percent)), control);
+				runOnUiThread(() -> {
+					busy = false;
+					progressDialog.dismiss();
+					refreshCurrentScreen();
+					showMessage(getString(R.string.status_import_game_payload_done, status.shortVersionLabel()));
+				});
+			} catch (Exception exception) {
+				runOnUiThread(() -> {
+					busy = false;
+					progressDialog.dismiss();
+					if (control.isCancelled() || Thread.currentThread().isInterrupted() || isImportCancelledException(exception)) {
+						showMessage(getString(R.string.status_import_game_payload_cancelled));
+					} else {
+						showError(exception);
+					}
+				});
+			}
+		}, "sts2-payload-import");
+		workerRef[0] = worker;
+		worker.start();
+	}
+
+	private boolean isImportCancelledException(Exception exception) {
+		return exception != null && exception.getMessage() != null && exception.getMessage().toLowerCase(java.util.Locale.ROOT).contains("cancelled");
+	}
+
+	private final class PayloadImportProgressDialog {
+		private final AlertDialog dialog;
+		private final ObjectAnimator rotationAnimator;
+		private final ProgressBar progressBar;
+		private final MaterialButton cancelButton;
+
+		PayloadImportProgressDialog(PayloadManager.ImportControl control, Runnable onCancel) {
+			LinearLayout content = ExtraSettingsUi.vertical(GameSettingsActivity.this);
+			content.setGravity(Gravity.CENTER_HORIZONTAL);
+			int padding = ExtraSettingsUi.dp(GameSettingsActivity.this, 24);
+			content.setPadding(padding, padding, padding, padding);
+
+			ImageView gear = new ImageView(GameSettingsActivity.this);
+			gear.setImageResource(R.drawable.ic_settings_24);
+			gear.setColorFilter(ExtraSettingsUi.COLOR_PRIMARY);
+			LinearLayout.LayoutParams gearParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(GameSettingsActivity.this, 56), ExtraSettingsUi.dp(GameSettingsActivity.this, 56));
+			gearParams.gravity = Gravity.CENTER_HORIZONTAL;
+			content.addView(gear, gearParams);
+
+			TextView title = ExtraSettingsUi.text(GameSettingsActivity.this, R.string.import_game_payload_dialog_title, 20, ExtraSettingsUi.COLOR_ON_SURFACE, android.graphics.Typeface.BOLD);
+			title.setGravity(Gravity.CENTER);
+			LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			titleParams.topMargin = ExtraSettingsUi.dp(GameSettingsActivity.this, 14);
+			content.addView(title, titleParams);
+
+			progressBar = new ProgressBar(GameSettingsActivity.this, null, android.R.attr.progressBarStyleHorizontal);
+			progressBar.setMax(100);
+			progressBar.setProgress(0);
+			progressBar.setIndeterminate(false);
+			LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ExtraSettingsUi.dp(GameSettingsActivity.this, 10));
+			progressParams.topMargin = ExtraSettingsUi.dp(GameSettingsActivity.this, 22);
+			content.addView(progressBar, progressParams);
+
+			cancelButton = ExtraSettingsUi.outlineButton(GameSettingsActivity.this, android.R.string.cancel, 0);
+			LinearLayout.LayoutParams cancelParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			cancelParams.topMargin = ExtraSettingsUi.dp(GameSettingsActivity.this, 20);
+			content.addView(cancelButton, cancelParams);
+
+			dialog = new MaterialAlertDialogBuilder(GameSettingsActivity.this)
+				.setView(content)
+				.create();
+			dialog.setCancelable(false);
+			dialog.setCanceledOnTouchOutside(false);
+			cancelButton.setOnClickListener(v -> {
+				control.cancel();
+				cancelButton.setEnabled(false);
+				onCancel.run();
+			});
+
+			rotationAnimator = ObjectAnimator.ofFloat(gear, View.ROTATION, 0f, 360f);
+			rotationAnimator.setDuration(1100L);
+			rotationAnimator.setRepeatCount(ObjectAnimator.INFINITE);
+			rotationAnimator.setInterpolator(new LinearInterpolator());
+		}
+
+		void show() {
+			dialog.show();
+			rotationAnimator.start();
+		}
+
+		void setProgress(int percent) {
+			progressBar.setProgress(Math.max(0, Math.min(100, percent)));
+		}
+
+		void dismiss() {
+			rotationAnimator.cancel();
+			if (dialog.isShowing()) {
+				dialog.dismiss();
+			}
 		}
 	}
 
