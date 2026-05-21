@@ -10,8 +10,10 @@ public static class ModLoaderPatches
 {
     public static void Apply(Harmony harmony)
     {
-        PatchHelper.Patch(harmony, typeof(ModManager), "Initialize", transpiler: PatchHelper.Method(typeof(ModLoaderPatches), nameof(InitializeTranspiler)));
-        PatchHelper.Patch(harmony, typeof(ModManager), "ReadSteamMods", prefix: PatchHelper.Method(typeof(ModLoaderPatches), nameof(ReadSteamModsPrefix)));
+        // Startup first: avoid AppPaths/DataDir and Harmony transpiler execution during
+        // the native GodotSharp bootstrap, which is currently sensitive to early Godot
+        // API / StringName initialization on Android.
+        PatchHelper.Log("Mod loader compatibility patches disabled during Android startup stabilization.");
     }
 
     public static IEnumerable<CodeInstruction> InitializeTranspiler(IEnumerable<CodeInstruction> instructions)

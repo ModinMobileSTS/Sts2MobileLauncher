@@ -12,12 +12,6 @@ public static class LanMultiplayerBootstrapPatches
     public static void Apply(Harmony harmony)
     {
         _harmony = harmony;
-        if (!AndroidSettingsBridge.GetBool("lan_multiplayer_enabled", true))
-        {
-            PatchHelper.Log("LAN multiplayer compatibility is disabled by Android companion settings.");
-            return;
-        }
-
         PatchHelper.Log("LAN multiplayer compatibility patches disabled during Android startup stabilization.");
     }
 
