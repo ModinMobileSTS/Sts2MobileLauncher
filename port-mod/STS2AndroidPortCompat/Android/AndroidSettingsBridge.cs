@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Text.Json;
-using Godot;
 
 namespace STS2Mobile.Android;
 
@@ -73,40 +72,40 @@ public static class AndroidSettingsBridge
         return element.ValueKind == JsonValueKind.String ? element.GetString() ?? fallback : element.ToString();
     }
 
-    public static Vector2I GetVector2I(string key, Vector2I fallback)
+    public static (int X, int Y) GetSize(string key, int fallbackX = 0, int fallbackY = 0)
     {
         if (!TryGet(key, out var element))
-            return fallback;
+            return (fallbackX, fallbackY);
         try
         {
             if (element.ValueKind == JsonValueKind.Object)
             {
-                var x = fallback.X;
-                var y = fallback.Y;
+                var x = fallbackX;
+                var y = fallbackY;
                 if (element.TryGetProperty("x", out var lowerX) || element.TryGetProperty("X", out lowerX))
-                    x = JsonElementToInt(lowerX, fallback.X);
+                    x = JsonElementToInt(lowerX, fallbackX);
                 if (element.TryGetProperty("y", out var lowerY) || element.TryGetProperty("Y", out lowerY))
-                    y = JsonElementToInt(lowerY, fallback.Y);
-                return new Vector2I(x, y);
+                    y = JsonElementToInt(lowerY, fallbackY);
+                return (x, y);
             }
             if (element.ValueKind == JsonValueKind.Array && element.GetArrayLength() >= 2)
             {
-                return new Vector2I(
-                    JsonElementToInt(element[0], fallback.X),
-                    JsonElementToInt(element[1], fallback.Y));
+                return (
+                    JsonElementToInt(element[0], fallbackX),
+                    JsonElementToInt(element[1], fallbackY));
             }
             if (element.ValueKind == JsonValueKind.String)
             {
                 var parts = element.GetString()?.Split(',', 'x', 'X');
                 if (parts != null && parts.Length >= 2 && int.TryParse(parts[0].Trim(), out var x) && int.TryParse(parts[1].Trim(), out var y))
-                    return new Vector2I(x, y);
+                    return (x, y);
             }
         }
         catch (Exception exception)
         {
-            PatchHelper.Log($"Failed to parse vector Android setting '{key}': {exception.Message}");
+            PatchHelper.Log($"Failed to parse size Android setting '{key}': {exception.Message}");
         }
-        return fallback;
+        return (fallbackX, fallbackY);
     }
 
     private static int JsonElementToInt(JsonElement element, int fallback)

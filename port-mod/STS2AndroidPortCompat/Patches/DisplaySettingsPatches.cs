@@ -126,7 +126,11 @@ public static class DisplaySettingsPatches
 
     private static float GetGlobalScale() => Mathf.Clamp(AndroidSettingsBridge.GetFloat("global_scale", 1f), 0.5f, 4f);
 
-    private static Vector2I GetFullscreenRenderSize() => AndroidSettingsBridge.GetVector2I("fullscreen_render_size", new Vector2I(0, 0));
+    private static Vector2I GetFullscreenRenderSize()
+    {
+        var size = AndroidSettingsBridge.GetSize("fullscreen_render_size");
+        return new Vector2I(size.X, size.Y);
+    }
 
     private static Window GetRootWindow()
     {

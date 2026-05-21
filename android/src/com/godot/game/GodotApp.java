@@ -503,6 +503,11 @@ public class GodotApp extends GodotActivity {
 		return currentResumed && currentWindowFocused;
 	}
 
+	public static String getGodotDataDir() {
+		GodotApp activity = currentInstance;
+		return activity == null ? "" : activity.getFilesDir().getAbsolutePath();
+	}
+
 	public static boolean launchGameSettingsFromGame() {
 		GodotApp activity = currentInstance;
 		if (activity == null) {
