@@ -1,5 +1,6 @@
 using System;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using STS2Mobile.Android;
 
 namespace STS2Mobile.Patches;
@@ -12,7 +13,8 @@ public static class LanMultiplayerBootstrapPatches
     public static void Apply(Harmony harmony)
     {
         _harmony = harmony;
-        PatchHelper.Log("LAN multiplayer compatibility patches disabled during Android startup stabilization.");
+        PatchHelper.Patch(harmony, typeof(NMainMenu), "_Ready", postfix: PatchHelper.Method(typeof(LanMultiplayerBootstrapPatches), nameof(MainMenuReadyPostfix)));
+        PatchHelper.Log("LAN multiplayer compatibility patches deferred until main menu is ready.");
     }
 
     public static void MainMenuReadyPostfix()
