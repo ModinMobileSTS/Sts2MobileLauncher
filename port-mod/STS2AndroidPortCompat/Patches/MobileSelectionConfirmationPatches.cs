@@ -221,7 +221,6 @@ public static class MobileSelectionConfirmationPatches
     private static bool IsEnabled()
     {
         return OS.HasFeature("mobile")
-            && !(NControllerManager.Instance?.IsUsingController ?? false)
             && AndroidSettingsBridge.GetBool("mobile_selection_confirmation", true);
     }
 

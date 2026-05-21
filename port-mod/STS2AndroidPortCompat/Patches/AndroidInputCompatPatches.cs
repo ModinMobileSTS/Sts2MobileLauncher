@@ -5,6 +5,7 @@ using System.Reflection;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.ControllerInput;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
@@ -25,14 +26,15 @@ public static class AndroidInputCompatPatches
     private static readonly Dictionary<int, TouchPointState> ActiveTouchPoints = new();
     private static readonly HashSet<int> SuppressedSecondaryTouchIndices = new();
     private static long _lastBackDispatchFrame = -1;
+    private static ulong _lastTwoFingerDispatchTicks;
 
     public static void Apply(Harmony harmony)
     {
-        PatchHelper.Patch(harmony, typeof(NInputManager), "_Input", prefix: PatchHelper.Method(typeof(AndroidInputCompatPatches), nameof(InputPrefix)));
+        PatchHelper.Patch(harmony, typeof(NGame), "_Input", prefix: PatchHelper.Method(typeof(AndroidInputCompatPatches), nameof(InputPrefix)));
         PatchHelper.Patch(harmony, typeof(NInputManager), "_UnhandledInput", prefix: PatchHelper.Method(typeof(AndroidInputCompatPatches), nameof(UnhandledInputPrefix)));
     }
 
-    public static bool InputPrefix(NInputManager __instance, InputEvent inputEvent)
+    public static bool InputPrefix(Node __instance, InputEvent inputEvent)
     {
         try
         {
@@ -70,7 +72,7 @@ public static class AndroidInputCompatPatches
         return true;
     }
 
-    private static bool TryHandleMobileBackInput(NInputManager inputManager, InputEvent inputEvent)
+    private static bool TryHandleMobileBackInput(Node inputManager, InputEvent inputEvent)
     {
         if (!inputEvent.IsActionPressed(MobileBackAction))
             return false;
@@ -157,7 +159,7 @@ public static class AndroidInputCompatPatches
         SuppressedSecondaryTouchIndices.Clear();
     }
 
-    private static void ProcessMobileRightClickGesture(NInputManager inputManager, InputEvent inputEvent)
+    private static void ProcessMobileRightClickGesture(Node inputManager, InputEvent inputEvent)
     {
         if (inputEvent is InputEventScreenTouch touch)
         {
@@ -177,13 +179,18 @@ public static class AndroidInputCompatPatches
                 {
                     ActiveTouchPoints[touch.Index] = new TouchPointState { StartPosition = touch.Position };
                     SuppressedSecondaryTouchIndices.Add(touch.Index);
-                    var position = firstTouch.StartPosition;
-                    Callable.From(() =>
+                    var position = (firstTouch.StartPosition + touch.Position) * 0.5f;
+                    if (Time.GetTicksMsec() - _lastTwoFingerDispatchTicks > 250UL)
                     {
-                        if (!TryDispatchDirectMobileRightClick(position))
-                            DispatchSyntheticRightClick(position);
-                    }).CallDeferred();
-                    inputManager.GetViewport()?.SetInputAsHandled();
+                        _lastTwoFingerDispatchTicks = Time.GetTicksMsec();
+                        GD.Print($"[MobileRightClick] two-finger gesture detected at {position}");
+                        inputManager.GetViewport()?.SetInputAsHandled();
+                        Callable.From(() =>
+                        {
+                            if (!TryDispatchDirectMobileRightClick(position))
+                                DispatchSyntheticRightClick(position);
+                        }).CallDeferred();
+                    }
                     return;
                 }
                 ActiveTouchPoints[touch.Index] = new TouchPointState { StartPosition = touch.Position };

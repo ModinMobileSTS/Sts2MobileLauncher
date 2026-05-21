@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using Godot;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
@@ -27,6 +28,10 @@ public static class AndroidInGameSettingsPatches
     private static Theme _lineTheme;
     private static Font _regularFont;
     private static Font _boldFont;
+    private static Control _buttonTemplate;
+    private static Texture2D _buttonTexture;
+    private static Material _buttonMaterial;
+    private static Font _buttonFont;
 
     public static void Apply(Harmony harmony)
     {
@@ -148,18 +153,24 @@ public static class AndroidInGameSettingsPatches
         AddHeader(content, T("显示 / 图形", "Display / Graphics"));
         AddSwitchRow(content, "shader_compatibility_mode", T("着色器兼容模式", "Shader compatibility"), false, _ => PatchHelper.Log("Shader compatibility setting changed; already-loaded materials may require a restart."));
         AddSwitchRow(content, "android_flip_screen_180", T("屏幕旋转 180°", "Rotate screen 180°"), false, _ => DisplaySettingsPatches.ApplyRuntimeDisplaySettings());
-        AddSliderRow(content, "ui_font_scale_percent", T("字体大小", "Font size"), 50, 200, 5, 100, v => $"{v}%", v => v, _ => DisplaySettingsPatches.ApplyRuntimeDisplaySettings());
-        AddSliderRow(content, "global_scale", T("游戏缩放", "Game scale"), 50, 200, 5, 100, v => $"{v}%", v => v / 100f, _ => DisplaySettingsPatches.ApplyRuntimeDisplaySettings());
+        AddSizePaginatorRow(content, "fullscreen_render_size", T("渲染分辨率", "Render resolution"), GetResolutionOptions(), (0, 0), _ => DisplaySettingsPatches.ApplyRuntimeDisplaySettings());
+        AddIntPaginatorRow(content, "fps_limit", T("帧率上限", "FPS limit"), new[] { 0, 30, 60, 90, 120, 144 }, 60, v => v <= 0 ? T("无限制", "Unlimited") : v.ToString(), _ => DisplaySettingsPatches.ApplyRuntimeDisplaySettings());
+        AddIntPaginatorRow(content, "ui_font_scale_percent", T("字体大小", "Font size"), Range(50, 200, 5), 100, v => $"{v}%", _ => DisplaySettingsPatches.ApplyRuntimeDisplaySettings());
+        AddIntPaginatorRow(content, "global_scale", T("游戏缩放", "Game scale"), Range(50, 200, 5), 100, v => $"{v}%", v =>
+        {
+            AndroidSettingsBridge.SetFloat("global_scale", v / 100f);
+            DisplaySettingsPatches.ApplyRuntimeDisplaySettings();
+        }, readCurrent: () => Mathf.RoundToInt(AndroidSettingsBridge.GetFloat("global_scale", 1f) * 100f));
 
         AddHeader(content, T("触摸 / 手牌", "Touch / Hand"));
         AddSwitchRow(content, "show_more_hand_card_text", T("显示更多手牌文字", "Show more hand-card text"), true, _ => RefreshHandLayout());
-        AddSliderRow(content, "show_more_hand_card_text_lift_height_percent", T("手牌抬起高度", "Hand-card lift height"), 25, 100, 5, 50, v => $"{v}%", v => v, _ => RefreshHandLayout());
+        AddIntPaginatorRow(content, "show_more_hand_card_text_lift_height_percent", T("手牌抬起高度", "Hand-card lift height"), Range(25, 100, 5), 50, v => $"{v}%", _ => RefreshHandLayout());
         AddSwitchRow(content, "touch_lift_preview", T("抬起触摸时预览", "Touch-lift preview"), true, enabled =>
         {
             if (!enabled)
                 MobileTapPreviewPatches.ClearAllPinned();
         });
-        AddOptionRow(content, "touch_lift_retap_action", T("抬起后二次点击操作", "Touch-lift re-tap action"),
+        AddStringPaginatorRow(content, "touch_lift_retap_action", T("抬起后二次点击操作", "Touch-lift re-tap action"),
             new[]
             {
                 ("put_down", T("放下卡牌", "Put down card")),
@@ -170,13 +181,13 @@ public static class AndroidInGameSettingsPatches
         AddSwitchRow(content, "mobile_two_finger_inspect", T("双指查看", "Two-finger inspect"), true, null);
 
         AddHeader(content, T("系统 / 兼容", "System / Compatibility"));
-        AddSwitchRow(content, "preload_enabled", T("启用预加载", "Enable preload"), true, null);
+        AddSwitchRow(content, "preload_enabled", T("启用预加载", "Enable preload"), true, enabled => PreloadManager.Enabled = enabled);
         AddSwitchRow(content, "audio_compatibility_mode", T("声音兼容模式", "Audio compatibility mode"), false, null);
         AddSwitchRow(content, "android_volume_up_soft_keyboard", T("音量上键打开软键盘", "Volume up opens keyboard"), false, null);
         AddSwitchRow(content, "show_mobile_emoji_button", T("显示联机表情按钮", "Show multiplayer emoji button"), true, null);
         AddSwitchRow(content, "quick_sl_enabled", T("启用快速 SL / 重打按钮", "Enable quick retry button"), true, null);
         AddSwitchRow(content, "max_multiplayer_enabled", T("启用自定义最大联机人数", "Enable custom max multiplayer players"), true, null);
-        AddIntRow(content, "max_multiplayer_players", T("最大联机人数", "Max multiplayer players"), 4, 1, 16, null);
+        AddIntPaginatorRow(content, "max_multiplayer_players", T("最大联机人数", "Max multiplayer players"), Range(1, 128, 1), 4, v => v.ToString(), null);
         AddSwitchRow(content, "lan_multiplayer_enabled", T("启用 LAN 兼容", "Enable LAN compatibility"), true, null);
         AddTextRow(content, "lan_custom_player_id", T("LAN 自定义玩家 ID", "LAN custom player ID"), "", null);
     }
@@ -189,6 +200,13 @@ public static class AndroidInGameSettingsPatches
             _lineTheme = label?.Theme;
             _regularFont = label?.GetThemeFont("normal_font");
             _boldFont = label?.GetThemeFont("bold_font");
+            _buttonTemplate = FindFirstChildOfType<NSettingsButton>(panel);
+            if (_buttonTemplate != null)
+            {
+                _buttonTexture = _buttonTemplate.GetNodeOrNull<TextureRect>("Image")?.Texture;
+                _buttonMaterial = _buttonTemplate.GetNodeOrNull<TextureRect>("Image")?.Material;
+                _buttonFont = _buttonTemplate.GetNodeOrNull<Label>("Label")?.GetThemeFont("font");
+            }
         }
         catch
         {
@@ -224,28 +242,37 @@ public static class AndroidInGameSettingsPatches
         {
             var packed = ResourceLoader.Load<PackedScene>("res://scenes/screens/settings_tickbox.tscn");
             var template = packed?.Instantiate<Control>();
-            if (template != null)
-            {
-                tickbox.CustomMinimumSize = template.CustomMinimumSize;
-                tickbox.SizeFlagsHorizontal = template.SizeFlagsHorizontal;
-                tickbox.MouseFilter = template.MouseFilter;
-                while (template.GetChildCount() > 0)
-                {
-                    var child = template.GetChild(0);
-                    template.RemoveChild(child);
-                    tickbox.AddChild(child);
-                    SetOwnerRecursive(child, tickbox);
-                }
-                template.QueueFree();
-            }
+            if (template == null)
+                throw new InvalidOperationException("settings_tickbox.tscn returned null");
+            MoveVisualChildren(template, tickbox);
         }
         catch (Exception exception)
         {
             PatchHelper.Log($"Falling back to programmatic settings tickbox visuals: {exception.Message}");
-            tickbox.AddChild(new Control { Name = "TickboxVisuals", UniqueNameInOwner = true, CustomMinimumSize = new Vector2(64, 64) });
-            tickbox.AddChild(new Control { Name = "SelectionReticle" });
+            var visuals = new Control { Name = "TickboxVisuals", UniqueNameInOwner = true, CustomMinimumSize = new Vector2(64, 64), Material = new ShaderMaterial() };
+            visuals.AddChild(new ColorRect { Name = "Ticked", Color = new Color(0.95f, 0.72f, 0.12f), UniqueNameInOwner = true, AnchorRight = 1f, AnchorBottom = 1f });
+            visuals.AddChild(new ColorRect { Name = "NotTicked", Color = new Color(0.22f, 0.17f, 0.12f), UniqueNameInOwner = true, AnchorRight = 1f, AnchorBottom = 1f });
+            tickbox.AddChild(visuals);
+            tickbox.AddChild(new NSelectionReticle { Name = "SelectionReticle" });
         }
         return tickbox;
+    }
+
+    private static void MoveVisualChildren(Control source, Control target, Action<Node> beforeAdd = null)
+    {
+        target.CustomMinimumSize = source.CustomMinimumSize;
+        target.SizeFlagsHorizontal = source.SizeFlagsHorizontal;
+        target.SizeFlagsVertical = source.SizeFlagsVertical;
+        target.MouseFilter = source.MouseFilter;
+        while (source.GetChildCount() > 0)
+        {
+            var child = source.GetChild(0);
+            source.RemoveChild(child);
+            beforeAdd?.Invoke(child);
+            target.AddChild(child);
+            SetOwnerRecursive(child, target);
+        }
+        source.Free();
     }
 
     private static void SetOwnerRecursive(Node node, Node owner)
@@ -290,7 +317,7 @@ public static class AndroidInGameSettingsPatches
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
-        row.AddThemeConstantOverride("separation", 16);
+        row.AddThemeConstantOverride("separation", 12);
         var label = new RichTextLabel
         {
             Text = labelText,
@@ -321,14 +348,106 @@ public static class AndroidInGameSettingsPatches
     private static void AddButtonRow(VBoxContainer content, string label, string buttonText, Action onPressed)
     {
         var row = AddBaseRow(content, label);
-        var button = new Button
+        var button = CreateOfficialButton(buttonText, onPressed);
+        row.AddChild(button);
+    }
+
+    private static AndroidSettingsButton CreateOfficialButton(string text, Action onPressed)
+    {
+        var button = new AndroidSettingsButton
         {
-            Text = buttonText,
-            CustomMinimumSize = new Vector2(240, 54),
+            Name = "AndroidSettingsButton",
+            ButtonText = text,
+            PressedAction = onPressed,
+            CustomMinimumSize = new Vector2(220, 64),
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd,
             FocusMode = Control.FocusModeEnum.All,
         };
-        button.Pressed += onPressed;
-        row.AddChild(button);
+        if (_buttonTemplate != null && GodotObject.IsInstanceValid(_buttonTemplate))
+        {
+            try
+            {
+                var duplicate = _buttonTemplate.Duplicate((int)(Node.DuplicateFlags.Groups | Node.DuplicateFlags.Scripts)) as Control;
+                if (duplicate != null)
+                {
+                    button.CustomMinimumSize = duplicate.CustomMinimumSize;
+                    button.SizeFlagsHorizontal = duplicate.SizeFlagsHorizontal;
+                    button.MouseFilter = duplicate.MouseFilter;
+                    MoveVisualChildren(duplicate, button);
+                    if (button.GetNodeOrNull<Label>("Label") is { } officialLabel)
+                        officialLabel.Text = text;
+                    return button;
+                }
+            }
+            catch (Exception exception)
+            {
+                PatchHelper.Log($"Falling back to programmatic settings button visuals: {exception.Message}");
+            }
+        }
+        try
+        {
+            var packed = ResourceLoader.Load<PackedScene>("res://scenes/ui/selection_reticle.tscn");
+            var reticle = packed?.Instantiate<Control>() ?? new NSelectionReticle();
+            reticle.Name = "SelectionReticle";
+            button.AddChild(reticle);
+        }
+        catch
+        {
+            button.AddChild(new NSelectionReticle { Name = "SelectionReticle" });
+        }
+        if (_buttonTexture != null)
+        {
+            button.AddChild(new TextureRect
+            {
+                Name = "Image",
+                Texture = _buttonTexture,
+                Material = _buttonMaterial,
+                CustomMinimumSize = new Vector2(64, 64),
+                LayoutMode = 1,
+                AnchorRight = 1f,
+                AnchorBottom = 1f,
+                GrowHorizontal = Control.GrowDirection.Both,
+                GrowVertical = Control.GrowDirection.Both,
+                PivotOffset = new Vector2(160, 32),
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            });
+        }
+        else
+        {
+            button.AddChild(new ColorRect
+            {
+                Name = "Image",
+                Color = new Color(0.18f, 0.11f, 0.08f, 0.85f),
+                LayoutMode = 1,
+                AnchorRight = 1f,
+                AnchorBottom = 1f,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+            });
+        }
+        var label = new Label
+        {
+            Name = "Label",
+            Text = text,
+            LayoutMode = 1,
+            AnchorRight = 1f,
+            AnchorBottom = 1f,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        label.AddThemeColorOverride("font_color", new Color(0.91f, 0.86359f, 0.7462f));
+        label.AddThemeColorOverride("font_shadow_color", new Color(0f, 0f, 0f, 0.25098f));
+        label.AddThemeColorOverride("font_outline_color", new Color(0.29f, 0.14703f, 0.1421f));
+        label.AddThemeConstantOverride("shadow_offset_x", 4);
+        label.AddThemeConstantOverride("shadow_offset_y", 3);
+        label.AddThemeConstantOverride("outline_size", 12);
+        if (_buttonFont != null)
+            label.AddThemeFontOverride("font", _buttonFont);
+        label.AddThemeFontSizeOverride("font_size", 28);
+        button.AddChild(label);
+        return button;
     }
 
     private static void AddSwitchRow(VBoxContainer content, string key, string label, bool fallback, Action<bool> afterChanged)
@@ -341,6 +460,174 @@ public static class AndroidInGameSettingsPatches
         });
         row.AddChild(check);
     }
+
+    private static void AddIntPaginatorRow(VBoxContainer content, string key, string label, int[] values, int fallback, Func<int, string> format, Action<int> afterChanged, Func<int> readCurrent = null)
+    {
+        var row = AddBaseRow(content, label);
+        var current = readCurrent?.Invoke() ?? AndroidSettingsBridge.GetInt(key, fallback);
+        var paginator = CreateOfficialPaginator(values, current, format, value =>
+        {
+            AndroidSettingsBridge.SetInt(key, value);
+            afterChanged?.Invoke(value);
+        });
+        row.AddChild(paginator);
+    }
+
+    private static void AddStringPaginatorRow(VBoxContainer content, string key, string label, (string Value, string Label)[] options, string fallback, Action<string> afterChanged)
+    {
+        var row = AddBaseRow(content, label);
+        var current = AndroidSettingsBridge.GetString(key, fallback);
+        var labels = new string[options.Length];
+        var currentIndex = 0;
+        for (var i = 0; i < options.Length; i++)
+        {
+            labels[i] = options[i].Label;
+            if (string.Equals(options[i].Value, current, StringComparison.OrdinalIgnoreCase))
+                currentIndex = i;
+        }
+        var paginator = CreateOfficialPaginator(labels, currentIndex, index =>
+        {
+            var value = options[Mathf.Clamp(index, 0, options.Length - 1)].Value;
+            AndroidSettingsBridge.SetString(key, value);
+            afterChanged?.Invoke(value);
+        });
+        row.AddChild(paginator);
+    }
+
+    private static void AddSizePaginatorRow(VBoxContainer content, string key, string label, (int X, int Y)[] values, (int X, int Y) fallback, Action<(int X, int Y)> afterChanged)
+    {
+        var row = AddBaseRow(content, label);
+        var current = AndroidSettingsBridge.GetSize(key, fallback.X, fallback.Y);
+        var currentIndex = 0;
+        var labels = new string[values.Length];
+        for (var i = 0; i < values.Length; i++)
+        {
+            labels[i] = values[i].X <= 0 || values[i].Y <= 0 ? T("自动", "Auto") : $"{values[i].X}x{values[i].Y}";
+            if (values[i].X == current.X && values[i].Y == current.Y)
+                currentIndex = i;
+        }
+        var paginator = CreateOfficialPaginator(labels, currentIndex, index =>
+        {
+            var value = values[Mathf.Clamp(index, 0, values.Length - 1)];
+            AndroidSettingsBridge.SetSize(key, value.X, value.Y);
+            afterChanged?.Invoke(value);
+        });
+        row.AddChild(paginator);
+    }
+
+    private static AndroidSettingsPaginator CreateOfficialPaginator(int[] values, int current, Func<int, string> format, Action<int> onChanged)
+    {
+        var labels = new string[values.Length];
+        var currentIndex = 0;
+        for (var i = 0; i < values.Length; i++)
+        {
+            labels[i] = format(values[i]);
+            if (values[i] == current)
+                currentIndex = i;
+        }
+        return CreateOfficialPaginator(labels, currentIndex, index => onChanged(values[Mathf.Clamp(index, 0, values.Length - 1)]));
+    }
+
+    private static AndroidSettingsPaginator CreateOfficialPaginator(string[] labels, int currentIndex, Action<int> onChanged)
+    {
+        var paginator = new AndroidSettingsPaginator
+        {
+            Name = "Paginator",
+            Labels = labels,
+            InitialIndex = Mathf.Clamp(currentIndex, 0, Math.Max(0, labels.Length - 1)),
+            Changed = onChanged,
+            CustomMinimumSize = new Vector2(420, 64),
+            SizeFlagsHorizontal = Control.SizeFlags.Fill,
+            FocusMode = Control.FocusModeEnum.All,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        try
+        {
+            var packed = ResourceLoader.Load<PackedScene>("res://scenes/screens/paginator.tscn");
+            var template = packed?.Instantiate<Control>();
+            if (template == null)
+                throw new InvalidOperationException("paginator.tscn returned null");
+            var templateMin = template.CustomMinimumSize;
+            MoveVisualChildren(template, paginator, AdjustPaginatorChildLayout);
+            paginator.CustomMinimumSize = new Vector2(Math.Max(420f, templateMin.X), Math.Max(64f, templateMin.Y));
+            paginator.SizeFlagsHorizontal = Control.SizeFlags.Fill;
+        }
+        catch (Exception exception)
+        {
+            PatchHelper.Log($"Falling back to programmatic settings paginator visuals: {exception.Message}");
+            AddProgrammaticPaginatorFallback(paginator, labels.Length > 0 ? labels[paginator.InitialIndex] : string.Empty);
+        }
+        return paginator;
+    }
+
+    private static void AdjustPaginatorChildLayout(Node child)
+    {
+        if (child is Control control)
+        {
+            switch (child.Name.ToString())
+            {
+                case "LeftArrow":
+                    control.CustomMinimumSize = new Vector2(64, 64);
+                    control.AnchorLeft = 0f;
+                    control.AnchorRight = 0f;
+                    control.OffsetLeft = 0f;
+                    control.OffsetRight = 64f;
+                    break;
+                case "LabelContainer":
+                    control.CustomMinimumSize = new Vector2(292, 64);
+                    control.AnchorLeft = 0f;
+                    control.AnchorRight = 1f;
+                    control.OffsetLeft = 64f;
+                    control.OffsetRight = -64f;
+                    break;
+                case "RightArrow":
+                    control.CustomMinimumSize = new Vector2(64, 64);
+                    control.AnchorLeft = 1f;
+                    control.AnchorRight = 1f;
+                    control.OffsetLeft = -64f;
+                    control.OffsetRight = 0f;
+                    break;
+            }
+        }
+    }
+
+    private static void AddProgrammaticPaginatorFallback(AndroidSettingsPaginator paginator, string text)
+    {
+        paginator.MouseFilter = Control.MouseFilterEnum.Pass;
+        var left = new AndroidPaginatorArrow { Name = "LeftArrow", PageLeft = true, CustomMinimumSize = new Vector2(64, 64), MouseFilter = Control.MouseFilterEnum.Pass };
+        left.AddChild(new Label { Text = "‹", HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, LayoutMode = 1, AnchorRight = 1f, AnchorBottom = 1f, MouseFilter = Control.MouseFilterEnum.Ignore });
+        var labelContainer = new Control { Name = "LabelContainer", CustomMinimumSize = new Vector2(260, 64), SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore };
+        var label = new MegaCrit.Sts2.addons.mega_text.MegaLabel { Name = "Label", UniqueNameInOwner = true, Text = text, LayoutMode = 1, AnchorRight = 1f, AnchorBottom = 1f, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MouseFilter = Control.MouseFilterEnum.Ignore, MinFontSize = 12, MaxFontSize = 28 };
+        var vfxLabel = new MegaCrit.Sts2.addons.mega_text.MegaLabel { Name = "VfxLabel", UniqueNameInOwner = true, Text = text, Visible = false, LayoutMode = 1, AnchorRight = 1f, AnchorBottom = 1f, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MouseFilter = Control.MouseFilterEnum.Ignore, MinFontSize = 12, MaxFontSize = 28 };
+        labelContainer.AddChild(label);
+        labelContainer.AddChild(vfxLabel);
+        var right = new AndroidPaginatorArrow { Name = "RightArrow", PageLeft = false, CustomMinimumSize = new Vector2(64, 64), MouseFilter = Control.MouseFilterEnum.Pass };
+        right.AddChild(new Label { Text = "›", HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, LayoutMode = 1, AnchorRight = 1f, AnchorBottom = 1f, MouseFilter = Control.MouseFilterEnum.Ignore });
+        var box = new HBoxContainer { Name = "FallbackBox", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore };
+        box.AddChild(left);
+        box.AddChild(labelContainer);
+        box.AddChild(right);
+        paginator.AddChild(box);
+        paginator.AddChild(new NSelectionReticle { Name = "SelectionReticle" });
+    }
+
+    private static int[] Range(int min, int max, int step)
+    {
+        var values = new List<int>();
+        for (var value = min; value <= max; value += Math.Max(1, step))
+            values.Add(value);
+        return values.ToArray();
+    }
+
+    private static (int X, int Y)[] GetResolutionOptions() => new[]
+    {
+        (0, 0),
+        (1280, 720),
+        (1600, 900),
+        (1920, 1080),
+        (2560, 1440),
+        (3200, 1800),
+    };
 
     private static void AddSliderRow(VBoxContainer content, string key, string label, int min, int max, int step, int fallback, Func<int, string> format, Func<int, object> convert, Action<int> afterChanged)
     {
@@ -556,5 +843,77 @@ public partial class AndroidSettingsTickbox : NSettingsTickbox
     protected override void OnUntick()
     {
         Changed?.Invoke(false);
+    }
+}
+
+public partial class AndroidSettingsPaginator : NPaginator
+{
+    public string[] Labels { get; set; } = Array.Empty<string>();
+    public int InitialIndex { get; set; }
+    public Action<int> Changed { get; set; }
+
+    public override void _Ready()
+    {
+        ConnectSignals();
+        _options.Clear();
+        _options.AddRange(Labels.Length == 0 ? new[] { string.Empty } : Labels);
+        _currentIndex = Mathf.Clamp(InitialIndex, 0, _options.Count - 1);
+        UpdateLabel();
+    }
+
+    protected override void OnIndexChanged(int index)
+    {
+        _currentIndex = Mathf.Clamp(index, 0, _options.Count - 1);
+        UpdateLabel();
+        Changed?.Invoke(_currentIndex);
+    }
+
+    private void UpdateLabel()
+    {
+        if (_label != null)
+            _label.SetTextAutoSize(_options[_currentIndex]);
+    }
+}
+
+public partial class AndroidSettingsButton : NSettingsButton
+{
+    public string ButtonText { get; set; } = string.Empty;
+    public Action PressedAction { get; set; }
+
+    public override void _Ready()
+    {
+        ConnectSignals();
+        if (GetNodeOrNull<Label>("Label") is { } label)
+            label.Text = ButtonText;
+        Connect(NClickableControl.SignalName.Released, Callable.From<NButton>(_ => PressedAction?.Invoke()));
+    }
+}
+
+public partial class AndroidPaginatorArrow : NClickableControl
+{
+    public bool PageLeft { get; set; }
+
+    public override void _Ready()
+    {
+        ConnectSignals();
+    }
+
+    protected override void OnRelease()
+    {
+        base.OnRelease();
+        if (GetParent()?.GetParent() is AndroidSettingsPaginator paginator)
+        {
+            if (PageLeft)
+                paginator.PageLeft();
+            else
+                paginator.PageRight();
+        }
+        else if (GetParent() is AndroidSettingsPaginator directPaginator)
+        {
+            if (PageLeft)
+                directPaginator.PageLeft();
+            else
+                directPaginator.PageRight();
+        }
     }
 }

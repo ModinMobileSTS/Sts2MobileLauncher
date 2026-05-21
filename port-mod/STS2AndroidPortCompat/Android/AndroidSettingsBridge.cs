@@ -196,6 +196,16 @@ public static class AndroidSettingsBridge
 
     public static bool SetString(string key, string value) => SetValue(key, value ?? string.Empty);
 
+    public static bool SetSize(string key, int x, int y)
+    {
+        var node = new JsonObject
+        {
+            ["X"] = x,
+            ["Y"] = y,
+        };
+        return SetValue(key, node);
+    }
+
     public static bool TryGet(string key, out JsonElement element)
     {
         element = default;

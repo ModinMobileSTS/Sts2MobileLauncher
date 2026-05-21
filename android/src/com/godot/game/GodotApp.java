@@ -161,6 +161,7 @@ public class GodotApp extends GodotActivity {
 	public List<String> getCommandLine() {
 		List<String> commandLine = new ArrayList<>(super.getCommandLine());
 		Collections.addAll(commandLine, RendererPreference.buildGodotCommandLineArgs(this));
+		appendAndroidDisplayCommandLineArgs(commandLine);
 		File pckFile = new File(getGameDir(), PCK_FILE_NAME);
 		if (pckFile.isFile()) {
 			try {
@@ -184,6 +185,29 @@ public class GodotApp extends GodotActivity {
 		return commandLine;
 	}
 
+
+	private void appendAndroidDisplayCommandLineArgs(List<String> commandLine) {
+		try {
+			File settingsFile = getSettingsFile();
+			if (!settingsFile.isFile()) {
+				return;
+			}
+			JSONObject settings = new JSONObject(readTextFile(settingsFile));
+			JSONObject size = settings.optJSONObject("fullscreen_render_size");
+			if (size == null) {
+				return;
+			}
+			int width = size.optInt("X", size.optInt("x", 0));
+			int height = size.optInt("Y", size.optInt("y", 0));
+			if (width > 0 && height > 0) {
+				commandLine.add("--resolution");
+				commandLine.add(width + "x" + height);
+				Log.i(TAG, "Applying Android render resolution command line: " + width + "x" + height);
+			}
+		} catch (Exception exception) {
+			Log.w(TAG, "Unable to append Android display command line args.", exception);
+		}
+	}
 
 	private File getGameDir() {
 		if (gameDir == null) {

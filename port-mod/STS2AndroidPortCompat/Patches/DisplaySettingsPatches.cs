@@ -1,9 +1,11 @@
 using System;
 using Godot;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Saves;
-using MegaCrit.Sts2.Core.Settings;
 using STS2Mobile.Android;
 
 namespace STS2Mobile.Patches;
@@ -26,6 +28,11 @@ public static class DisplaySettingsPatches
         PatchHelper.Patch(harmony, typeof(NGame), "InitializeGraphicsPreferences", postfix: PatchHelper.Method(typeof(DisplaySettingsPatches), nameof(InitializeGraphicsPreferencesPostfix)));
         PatchHelper.Patch(harmony, typeof(NGame), "_Notification", postfix: PatchHelper.Method(typeof(DisplaySettingsPatches), nameof(NotificationPostfix)));
         PatchHelper.Patch(harmony, typeof(NGame), "_Ready", postfix: PatchHelper.Method(typeof(DisplaySettingsPatches), nameof(ReadyPostfix)));
+        PatchHelper.Patch(harmony, typeof(NGame), "_Input", postfix: PatchHelper.Method(typeof(DisplaySettingsPatches), nameof(GameInputPostfix)));
+        PatchHelper.Patch(harmony, typeof(NGlobalUi), "_Ready", postfix: PatchHelper.Method(typeof(DisplaySettingsPatches), nameof(ReadyPostfix)));
+        PatchHelper.Patch(harmony, typeof(NGlobalUi), "OnWindowChange", postfix: PatchHelper.Method(typeof(DisplaySettingsPatches), nameof(AutoAspectWindowChangePostfix)));
+        PatchHelper.Patch(harmony, typeof(NMainMenu), "_Ready", postfix: PatchHelper.Method(typeof(DisplaySettingsPatches), nameof(ReadyPostfix)));
+        PatchHelper.Patch(harmony, typeof(NMainMenu), "OnWindowChange", postfix: PatchHelper.Method(typeof(DisplaySettingsPatches), nameof(AutoAspectWindowChangePostfix)));
     }
 
     public static void InitializeGraphicsPreferencesPostfix()
@@ -49,20 +56,29 @@ public static class DisplaySettingsPatches
     {
         try
         {
+            AndroidSettingsPatches.ApplyCompanionSettingsToRuntimeSave();
+            PreloadManager.Enabled = AndroidSettingsBridge.GetBool("preload_enabled", PreloadManager.Enabled);
+            Engine.MaxFps = AndroidSettingsBridge.GetInt("fps_limit", Engine.MaxFps);
+            NGame.ApplySyncSetting();
             var window = GetRootWindow();
             if (window == null)
                 return;
             var renderSize = GetFullscreenRenderSize();
             var useCustomRenderSize = renderSize.X > 0 && renderSize.Y > 0;
-            window.ContentScaleAspect = Window.ContentScaleAspectEnum.Keep;
             window.ContentScaleMode = useCustomRenderSize ? Window.ContentScaleModeEnum.Viewport : Window.ContentScaleModeEnum.CanvasItems;
             if (useCustomRenderSize)
             {
+                window.ContentScaleAspect = Window.ContentScaleAspectEnum.Expand;
                 window.ContentScaleSize = renderSize;
+                window.Size = renderSize;
+                window.Scaling3DMode = Viewport.Scaling3DModeEnum.Bilinear;
+                window.Scaling3DScale = Mathf.Clamp((float)renderSize.X / Mathf.Max(1f, DisplayServer.WindowGetSize().X), 0.1f, 1f);
+                DisplayServer.WindowSetSize(renderSize);
                 ProjectSettings.SetSetting("display/window/stretch/mode", "viewport");
+                ProjectSettings.SetSetting("display/window/stretch/aspect", "keep");
                 ProjectSettings.SetSetting("display/window/size/viewport_width", renderSize.X);
                 ProjectSettings.SetSetting("display/window/size/viewport_height", renderSize.Y);
-                PatchHelper.Log($"[Display] Using Android fullscreen render size: {renderSize}");
+                PatchHelper.Log($"[Display] Using Android fullscreen render size: {renderSize}; viewport={window.GetVisibleRect().Size}; surface={DisplayServer.WindowGetSize()}; scale3D={window.Scaling3DScale:0.###}");
             }
             window.ContentScaleFactor = GetGlobalScale();
         }
@@ -84,8 +100,20 @@ public static class DisplaySettingsPatches
         }
         catch (Exception exception)
         {
-            PatchHelper.Log($"ReadyPostfix font scaling failed: {exception.Message}");
+            PatchHelper.Log($"ReadyPostfix font/display scaling failed: {exception.Message}");
         }
+    }
+
+    public static void GameInputPostfix(InputEvent inputEvent)
+    {
+        if (inputEvent is InputEventMouseButton { Pressed: true } or InputEventScreenTouch { Pressed: true })
+            ApplyDisplaySettingsPostfix();
+    }
+
+    public static void AutoAspectWindowChangePostfix()
+    {
+        if (GetFullscreenRenderSize().X > 0 && GetFullscreenRenderSize().Y > 0)
+            ApplyDisplaySettingsPostfix();
     }
 
     public static void NotificationPostfix(int what)
@@ -97,7 +125,8 @@ public static class DisplaySettingsPatches
                 case (int)Node.NotificationWMWindowFocusIn:
                 case (int)Node.NotificationApplicationResumed:
                 case (int)Node.NotificationApplicationFocusIn:
-                    NGame.ApplySyncSetting();
+                    AndroidSettingsBridge.InvalidateCache();
+                    ApplyRuntimeDisplaySettings();
                     break;
             }
         }
@@ -111,6 +140,9 @@ public static class DisplaySettingsPatches
     {
         try
         {
+            AndroidSettingsPatches.ApplyCompanionSettingsToRuntimeSave();
+            PreloadManager.Enabled = AndroidSettingsBridge.GetBool("preload_enabled", PreloadManager.Enabled);
+            Engine.MaxFps = AndroidSettingsBridge.GetInt("fps_limit", Engine.MaxFps);
             ApplyAndroidScreenOrientationSetting();
             ApplyFontSizeSetting();
             ApplyDisplaySettingsPostfix();

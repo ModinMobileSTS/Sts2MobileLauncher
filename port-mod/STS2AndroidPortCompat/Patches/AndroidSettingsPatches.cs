@@ -39,13 +39,7 @@ public static class AndroidSettingsPatches
         _appliedOnce = true;
         try
         {
-            var settings = SaveManager.Instance.SettingsSave;
-            settings.AspectRatioSetting = ParseAspectRatio(AndroidSettingsBridge.GetString("aspect_ratio", "auto"), settings.AspectRatioSetting);
-            settings.VSync = ParseVSync(AndroidSettingsBridge.GetString("vsync", "off"), settings.VSync);
-            settings.Msaa = AndroidSettingsBridge.GetInt("msaa", settings.Msaa);
-            settings.FpsLimit = AndroidSettingsBridge.GetInt("fps_limit", settings.FpsLimit);
-            settings.Fullscreen = AndroidSettingsBridge.GetBool("fullscreen", settings.Fullscreen);
-            EnsureModSettings(settings);
+            ApplyCompanionSettingsToRuntimeSave(includeModSettings: true);
             PatchHelper.Log("Applied Android settings bridge values (aspect/vsync/msaa/fps/fullscreen/mod settings). Mobile-only fields stay in companion JSON.");
         }
         catch (Exception exception)
@@ -74,6 +68,7 @@ public static class AndroidSettingsPatches
         AndroidSettingsMerge.PendingBeforeSaveJson = null;
         if (!string.IsNullOrWhiteSpace(beforeJson))
             AndroidSettingsMerge.MergeBackAndroidOnlyFields(beforeJson);
+        AndroidSettingsBridge.InvalidateCache();
     }
 
     public static bool GetVSyncStringPrefix(object vsyncType, ref string __result)
@@ -87,6 +82,20 @@ public static class AndroidSettingsPatches
             _ => "Adaptive",
         };
         return false;
+    }
+
+    public static void ApplyCompanionSettingsToRuntimeSave(bool includeModSettings = false)
+    {
+        var settings = SaveManager.Instance?.SettingsSave;
+        if (settings == null)
+            return;
+        settings.AspectRatioSetting = ParseAspectRatio(AndroidSettingsBridge.GetString("aspect_ratio", "auto"), settings.AspectRatioSetting);
+        settings.VSync = ParseVSync(AndroidSettingsBridge.GetString("vsync", "off"), settings.VSync);
+        settings.Msaa = AndroidSettingsBridge.GetInt("msaa", settings.Msaa);
+        settings.FpsLimit = AndroidSettingsBridge.GetInt("fps_limit", settings.FpsLimit);
+        settings.Fullscreen = AndroidSettingsBridge.GetBool("fullscreen", settings.Fullscreen);
+        if (includeModSettings)
+            EnsureModSettings(settings);
     }
 
     private static void EnsureModSettings(SettingsSave settings)
