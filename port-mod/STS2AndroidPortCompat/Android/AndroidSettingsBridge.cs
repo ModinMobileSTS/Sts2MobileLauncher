@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace STS2Mobile.Android;
 
@@ -151,6 +152,49 @@ public static class AndroidSettingsBridge
             return false;
         }
     }
+
+    public static bool Update(Action<JsonObject> update)
+    {
+        try
+        {
+            JsonObject root;
+            if (TryReadRaw(out var json) && !string.IsNullOrWhiteSpace(json))
+                root = JsonNode.Parse(json)?.AsObject() ?? new JsonObject();
+            else
+                root = new JsonObject();
+            update(root);
+            return TryWriteRaw(root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch (Exception exception)
+        {
+            PatchHelper.Log($"Failed to update Android settings: {exception.Message}");
+            return false;
+        }
+    }
+
+    public static bool SetValue(string key, object value)
+    {
+        return Update(root => root[key] = value switch
+        {
+            null => null,
+            bool boolValue => boolValue,
+            int intValue => intValue,
+            long longValue => longValue,
+            float floatValue => floatValue,
+            double doubleValue => doubleValue,
+            string stringValue => stringValue,
+            JsonNode node => node.DeepClone(),
+            _ => value.ToString(),
+        });
+    }
+
+    public static bool SetBool(string key, bool value) => SetValue(key, value);
+
+    public static bool SetInt(string key, int value) => SetValue(key, value);
+
+    public static bool SetFloat(string key, float value) => SetValue(key, value);
+
+    public static bool SetString(string key, string value) => SetValue(key, value ?? string.Empty);
 
     public static bool TryGet(string key, out JsonElement element)
     {

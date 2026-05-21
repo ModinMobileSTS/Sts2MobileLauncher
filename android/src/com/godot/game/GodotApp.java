@@ -158,6 +158,11 @@ public class GodotApp extends GodotActivity {
 		Collections.addAll(commandLine, RendererPreference.buildGodotCommandLineArgs(this));
 		File pckFile = new File(getGameDir(), PCK_FILE_NAME);
 		if (pckFile.isFile()) {
+			try {
+				new PayloadManager(this).patchInstalledPayloadIfNeeded();
+			} catch (IOException exception) {
+				Log.w(TAG, "Unable to patch imported PCK before launch; continuing with existing payload.", exception);
+			}
 			commandLine.add("--main-pack");
 			commandLine.add(pckFile.getAbsolutePath());
 			Log.i(TAG, "Loading imported game PCK: " + pckFile.getAbsolutePath());

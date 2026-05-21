@@ -168,7 +168,9 @@ public final class PayloadManager {
 			ensureDirectory(staging);
 			extractZipSafely(sourceZip, staging);
 			Validation validation = validateGameDir(staging);
-			writeManifest(staging, source, validation);
+			PckPatcher.PatchResult patchResult = patchPayloadPck(staging);
+			validation = validateGameDir(staging);
+			writeManifest(staging, source, validation, patchResult);
 
 			File gameParent = gameDir.getParentFile();
 			if (gameParent != null) {
@@ -287,7 +289,24 @@ public final class PayloadManager {
 		return new Validation(releaseInfo, pck.length(), sts2Dll.length(), counter.files, counter.bytes);
 	}
 
-	private void writeManifest(File gameDir, SourceInfo source, Validation validation) throws Exception {
+	private PckPatcher.PatchResult patchPayloadPck(File gameDir) throws IOException {
+		return PckPatcher.patchSentry(new File(gameDir, PCK_FILE_NAME));
+	}
+
+	public PckPatcher.PatchResult patchInstalledPayloadIfNeeded() throws IOException {
+		File gameDir = getGameDir();
+		File pck = new File(gameDir, PCK_FILE_NAME);
+		if (!pck.isFile()) {
+			return null;
+		}
+		PckPatcher.PatchResult result = PckPatcher.patchSentry(pck);
+		if (result.changed()) {
+			updateManifestPckPatchInfo(gameDir, result);
+		}
+		return result;
+	}
+
+	private void writeManifest(File gameDir, SourceInfo source, Validation validation, PckPatcher.PatchResult patchResult) throws Exception {
 		JSONObject root = new JSONObject();
 		root.put("schema", 1);
 		root.put("imported_at_unix", System.currentTimeMillis() / 1000L);
@@ -310,9 +329,28 @@ public final class PayloadManager {
 		JSONObject compatJson = new JSONObject();
 		compatJson.put("required_port_mod_version", "0.1.0");
 		compatJson.put("payload_layout", "pc_zip_flat_v1");
+		if (patchResult != null) {
+			compatJson.put("pck_patches", patchResult.toJson());
+		}
 		root.put("compat", compatJson);
 
 		writeTextFile(new File(gameDir, MANIFEST_FILE_NAME), root.toString(2));
+	}
+
+	private void updateManifestPckPatchInfo(File gameDir, PckPatcher.PatchResult patchResult) {
+		try {
+			File manifestFile = new File(gameDir, MANIFEST_FILE_NAME);
+			JSONObject root = manifestFile.isFile() ? new JSONObject(readTextFile(manifestFile)) : new JSONObject();
+			JSONObject compat = root.optJSONObject("compat");
+			if (compat == null) {
+				compat = new JSONObject();
+				root.put("compat", compat);
+			}
+			compat.put("pck_patches", patchResult.toJson());
+			writeTextFile(manifestFile, root.toString(2));
+		} catch (Exception exception) {
+			android.util.Log.w("Sts2Re", "Failed to update payload manifest with PCK patch info", exception);
+		}
 	}
 
 	private File getImportRootDir() {

@@ -31,10 +31,10 @@ public static class MobileHandLayoutPatches
             {
                 if (item is not NHandCardHolder holder || !GodotObject.IsInstanceValid(holder) || !holder.Visible)
                     continue;
+                if (IsFocusedHolder(__instance, holder))
+                    continue;
                 var target = holder.TargetPosition;
                 holder.SetTargetPosition(new Vector2(target.X, target.Y + yOffset));
-                if (IsFocusedHolder(__instance, holder))
-                    holder.Position = new Vector2(holder.Position.X, holder.Position.Y + yOffset);
             }
         }
         catch (Exception exception)
@@ -45,6 +45,8 @@ public static class MobileHandLayoutPatches
 
     private static bool IsFocusedHolder(object playerHand, NHandCardHolder holder)
     {
+        if (MobileTapPreviewPatches.IsPinned(holder))
+            return true;
         var focused = playerHand.GetType().GetProperty("FocusedHolder", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(playerHand);
         return ReferenceEquals(focused, holder);
     }

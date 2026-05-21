@@ -99,6 +99,21 @@ public static class DisplaySettingsPatches
         }
     }
 
+    public static void ApplyRuntimeDisplaySettings()
+    {
+        try
+        {
+            ApplyAndroidScreenOrientationSetting();
+            ApplyFontSizeSetting();
+            ApplyDisplaySettingsPostfix();
+            NGame.ApplySyncSetting();
+        }
+        catch (Exception exception)
+        {
+            PatchHelper.Log($"ApplyRuntimeDisplaySettings failed: {exception.Message}");
+        }
+    }
+
     private static void ApplyAndroidScreenOrientationSetting()
     {
         if (!OS.GetName().Equals("Android", StringComparison.OrdinalIgnoreCase))

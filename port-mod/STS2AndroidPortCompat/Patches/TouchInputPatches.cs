@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using Godot;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using STS2Mobile.Android;
 
@@ -39,7 +40,7 @@ public static class TouchInputPatches
     {
         try
         {
-            if (!IsTouchOptimized() || inputEvent is not InputEventMouseButton mouseButton || mouseButton.ButtonIndex != MouseButton.Left || !mouseButton.IsReleased())
+            if (!IsTouchOptimized() || !IsLeftRelease(inputEvent))
                 return;
 
             if (!IsCardInPlayZone(__instance))
@@ -60,15 +61,11 @@ public static class TouchInputPatches
         try
         {
             var targetManager = NTargetManager.Instance;
-            if (targetManager != null && ConsumeCancelledByUntargetedRelease(targetManager))
-                States.GetOrCreateValue(__instance).KeepHolderFocusedAfterCancel = true;
-            if (!States.TryGetValue(__instance, out var state) || !state.KeepHolderFocusedAfterCancel)
-                return;
-            state.KeepHolderFocusedAfterCancel = false;
+            if (targetManager != null)
+                ConsumeCancelledByUntargetedRelease(targetManager);
             var holder = GetField(__instance, "Holder") ?? __instance.GetType().BaseType?.GetField("Holder", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(__instance);
-            var hitbox = holder?.GetType().GetProperty("Hitbox", BindingFlags.Public | BindingFlags.Instance)?.GetValue(holder) as Control;
-            if (hitbox != null && GodotObject.IsInstanceValid(hitbox) && hitbox.IsInsideTree())
-                Callable.From(hitbox.GrabFocus).CallDeferred();
+            if (holder is NHandCardHolder handHolder)
+                MobileTapPreviewPatches.RepinAfterCancelledCardPlay(handHolder);
         }
         catch (Exception exception)
         {
@@ -85,7 +82,7 @@ public static class TouchInputPatches
     {
         try
         {
-            if (!IsTouchOptimized() || inputEvent is not InputEventMouseButton mouseButton || mouseButton.ButtonIndex != MouseButton.Left || !mouseButton.IsReleased())
+            if (!IsTouchOptimized() || !IsLeftRelease(inputEvent))
                 return true;
             var targetMode = GetField(__instance, "_targetMode");
             if (targetMode == null || targetMode.ToString() != "ReleaseMouseToTarget")
@@ -116,8 +113,14 @@ public static class TouchInputPatches
 
     private static bool IsTouchOptimized()
     {
-        return AndroidSettingsBridge.GetBool("touch_lift_preview", true)
-            || AndroidSettingsBridge.GetBool("mobile_selection_confirmation", true);
+        return OS.HasFeature("mobile") && (AndroidSettingsBridge.GetBool("touch_lift_preview", true)
+            || AndroidSettingsBridge.GetBool("mobile_selection_confirmation", true));
+    }
+
+    private static bool IsLeftRelease(InputEvent inputEvent)
+    {
+        return inputEvent is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false }
+            || inputEvent is InputEventScreenTouch { Pressed: false };
     }
 
     private static bool IsCardInPlayZone(object mouseCardPlay)
