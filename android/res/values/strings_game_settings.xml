@@ -277,7 +277,7 @@
     <string name="display_preset_original">Original</string>
     <string name="display_preset_original_desc">Keep vanilla scale</string>
     <string name="display_preset_mobile">Mobile optimized</string>
-    <string name="display_preset_mobile_desc">70%% UI · 165%% font · 720p</string>
+    <string name="display_preset_mobile_desc">110%% UI · 160%% font · Auto resolution</string>
     <string name="welcome_save_title">Save</string>
     <string name="welcome_save_subtitle">Import an existing save now, or skip this step.</string>
     <string name="welcome_save_skip_hint">Skipping is safe. Save import/export is also available on the Game and Settings tabs.</string>

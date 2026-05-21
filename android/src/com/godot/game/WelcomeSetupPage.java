@@ -424,7 +424,7 @@ public final class WelcomeSetupPage {
 		int[] size = repository.getVector(settings, "fullscreen_render_size", 0, 0);
 		float scale = (float) settings.optDouble("global_scale", 1.0);
 		int fontScale = settings.optInt("ui_font_scale_percent", 100);
-		if (Math.abs(scale - 0.7f) < 0.01f && fontScale == 165 && size[0] == 1280 && size[1] == 720) {
+		if (Math.abs(scale - 1.1f) < 0.01f && fontScale == 160 && size[0] == 0 && size[1] == 0) {
 			return ExtraSettingsRepository.DISPLAY_PRESET_MOBILE;
 		}
 		if (Math.abs(scale - 1.0f) < 0.01f && fontScale == 100 && size[0] == 0 && size[1] == 0) {

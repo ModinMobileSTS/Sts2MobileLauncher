@@ -230,9 +230,9 @@ public final class ExtraSettingsRepository {
 				return;
 			}
 			if (DISPLAY_PRESET_MOBILE.equals(preset)) {
-				settings.put("global_scale", 0.7f);
-				settings.put("ui_font_scale_percent", 165);
-				putVector(settings, "fullscreen_render_size", 1280, 720);
+				settings.put("global_scale", 1.1f);
+				settings.put("ui_font_scale_percent", 160);
+				putVector(settings, "fullscreen_render_size", 0, 0);
 			} else if (DISPLAY_PRESET_ORIGINAL.equals(preset)) {
 				settings.put("global_scale", 1.0f);
 				settings.put("ui_font_scale_percent", 100);

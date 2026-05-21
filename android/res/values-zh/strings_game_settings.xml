@@ -277,7 +277,7 @@
     <string name="display_preset_original">原版</string>
     <string name="display_preset_original_desc">保留原版缩放</string>
     <string name="display_preset_mobile">移动优化</string>
-    <string name="display_preset_mobile_desc">70%% UI · 165%% 字体 · 720p</string>
+    <string name="display_preset_mobile_desc">110%% 缩放 · 160%% 字体 · 自动分辨率</string>
     <string name="welcome_save_title">存档设置</string>
     <string name="welcome_save_subtitle">现在可以导入旧存档，也可以直接跳过。</string>
     <string name="welcome_save_skip_hint">跳过不会有影响。游戏页和设置页也能随时导入/导出存档。</string>
