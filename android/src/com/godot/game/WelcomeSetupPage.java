@@ -306,7 +306,6 @@ public final class WelcomeSetupPage {
 		graphicsDetailsList.addView(ExtraSettingsUi.label(context, R.string.welcome_graphics_details_title));
 		if (ExtraSettingsRepository.GRAPHICS_PRESET_QUALITY.equals(selectedGraphicsPreset)) {
 			ExtraSettingsUi.addSmallSpacing(graphicsDetailsList, detailRow(R.drawable.ic_layers_24, R.string.graphics_details_quality_renderer));
-			ExtraSettingsUi.addSmallSpacing(graphicsDetailsList, detailRow(R.drawable.ic_speed_24, R.string.graphics_details_quality_frame));
 			ExtraSettingsUi.addSmallSpacing(graphicsDetailsList, detailRow(R.drawable.ic_sync_24, R.string.graphics_details_quality_sync));
 		} else if (ExtraSettingsRepository.GRAPHICS_PRESET_COMPATIBILITY.equals(selectedGraphicsPreset)) {
 			ExtraSettingsUi.addSmallSpacing(graphicsDetailsList, detailRow(R.drawable.ic_layers_24, R.string.graphics_details_compat_renderer));
@@ -406,11 +405,10 @@ public final class WelcomeSetupPage {
 		String vsync = settings.optString("vsync", "off");
 		int msaa = settings.optInt("msaa", 2);
 		boolean shaderCompat = settings.optBoolean("shader_compatibility_mode", false);
-		int fpsLimit = settings.optInt("fps_limit", 60);
 		if (RendererPreference.RENDERER_OPENGL_ES3.equals(renderer) && msaa == 0 && shaderCompat && "off".equals(vsync)) {
 			return ExtraSettingsRepository.GRAPHICS_PRESET_COMPATIBILITY;
 		}
-		if (RendererPreference.RENDERER_VULKAN.equals(renderer) && msaa == 2 && !shaderCompat && fpsLimit == 0 && "on".equals(vsync)) {
+		if (RendererPreference.RENDERER_VULKAN.equals(renderer) && msaa == 2 && !shaderCompat && "on".equals(vsync)) {
 			return ExtraSettingsRepository.GRAPHICS_PRESET_QUALITY;
 		}
 		if (RendererPreference.RENDERER_OPENGL_ES3.equals(renderer) && msaa == 2 && !shaderCompat && "off".equals(vsync)) {

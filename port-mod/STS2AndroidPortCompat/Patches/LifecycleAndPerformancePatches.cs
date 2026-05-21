@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -85,14 +84,25 @@ public static class LifecycleAndPerformancePatches
             await TryPlayLogoAsync(game, logoAnimation);
         }
 
-        if (PreloadManager.Enabled)
+        AndroidStartupLoadingScreen startupLoadingScreen = await ShowStartupWarmupScreenAndLoadAssetsAsync(game, keepVisibleAfterWarmup: !PreloadManager.Enabled);
+
+        if (startupLoadingScreen != null)
         {
-            var session = StartAndroidStartupWarmup();
-            await WaitForSessionAsync(game, session, "AndroidStartupWarmup");
+            startupLoadingScreen.SetStatus("Loading main menu...", "Creating main menu scene", 0.95f);
+            await game.ToSignal(game.GetTree(), SceneTree.SignalName.ProcessFrame);
         }
 
         await CallPrivateTask(game, "LoadMainMenu");
+
+        if (startupLoadingScreen != null)
+        {
+            startupLoadingScreen.SetStatus("Startup complete", "Launching main menu", 1f);
+            await game.ToSignal(game.GetTree(), SceneTree.SignalName.ProcessFrame);
+            await DismissStartupLoadingScreenAsync(game, startupLoadingScreen);
+        }
+
         PatchHelper.Log($"Android startup preload flow complete at {Time.GetTicksMsec():N0}ms.");
+        LogResourceStats(PreloadManager.Enabled ? "main menu loaded (startup warmup complete)" : "main menu loaded (essential)");
         _ = TaskHelper.RunSafely(LoadDeferredStartupAssetsAndroidAsync());
         TryCheckCommandLineJoin(game);
     }
@@ -100,71 +110,93 @@ public static class LifecycleAndPerformancePatches
     private static async Task LoadDeferredStartupAssetsAndroidAsync()
     {
         OneTimeInitialization.ExecuteDeferred();
+        await Task.Yield();
+        PatchHelper.Log("Android deferred initialization complete; bulk common/main-menu preload is skipped to match the source port warmup flow.");
+        LogResourceStats("main menu loaded (deferred init complete)");
+    }
+
+    private static async Task<AndroidStartupLoadingScreen> ShowStartupWarmupScreenAndLoadAssetsAsync(NGame game, bool keepVisibleAfterWarmup)
+    {
+        bool transitionVisible = false;
+        if (game.Transition != null)
+        {
+            transitionVisible = game.Transition.Visible;
+            game.Transition.Visible = false;
+        }
+
+        var startupLoadingScreen = new AndroidStartupLoadingScreen { Name = "AndroidStartupLoadingScreen" };
+        game.AddChild(startupLoadingScreen);
+        await startupLoadingScreen.PresentAsync();
+
         if (PreloadManager.Enabled)
         {
-            await PreloadManager.LoadCommonAndMainMenuAssets();
-            PatchHelper.Log($"Android deferred preload complete; cached={PreloadManager.Cache.GetCacheKeys().Count()}.");
+            AssetLoadingSession session = StartAndroidStartupWarmup();
+            await startupLoadingScreen.RunWarmup(session);
+            LogResourceStats("startup warmup complete");
         }
         else
         {
-            PatchHelper.Log("Android deferred preload skipped because preload is disabled; deferred initialization still ran.");
+            startupLoadingScreen.SetStatus("Loading main menu...", "Preload disabled", 0.25f);
+            await game.ToSignal(game.GetTree(), SceneTree.SignalName.ProcessFrame);
         }
+
+        if (!keepVisibleAfterWarmup)
+        {
+            startupLoadingScreen.QueueFree();
+            if (game.Transition != null)
+                game.Transition.Visible = transitionVisible;
+            await game.ToSignal(game.GetTree(), SceneTree.SignalName.ProcessFrame);
+            return null;
+        }
+
+        startupLoadingScreen.SetMeta("restore_transition_visible", transitionVisible);
+        return startupLoadingScreen;
+    }
+
+    private static async Task DismissStartupLoadingScreenAsync(NGame game, AndroidStartupLoadingScreen startupLoadingScreen)
+    {
+        bool transitionVisible = startupLoadingScreen.HasMeta("restore_transition_visible") && (bool)startupLoadingScreen.GetMeta("restore_transition_visible");
+        startupLoadingScreen.QueueFree();
+        if (game.Transition != null)
+            game.Transition.Visible = transitionVisible;
+        await game.ToSignal(game.GetTree(), SceneTree.SignalName.ProcessFrame);
     }
 
     private static AssetLoadingSession StartAndroidStartupWarmup()
     {
-        var paths = new HashSet<string>();
-        AddAll(paths, AssetSets.CommonAssets);
-        AddAll(paths, AssetSets.MainMenuSet);
-        AddAll(paths, GetAllVfxScenePaths());
-        PatchHelper.Log($"Android startup warmup preloading {paths.Count:N0} common/menu/VFX assets.");
-        var session = PreloadManager.Cache.CreateSession("AndroidStartupWarmup", paths);
-        NAssetLoader.Instance.LoadInTheBackground(session);
-        return session;
+        PatchHelper.Log("Startup warmup: skipping bulk asset preload; scene-only VFX warmup will run on the loading screen.");
+        return AssetLoadingSession.Empty();
     }
 
-    private static async Task WaitForSessionAsync(Node node, AssetLoadingSession session, string name)
+    private static void LogResourceStats(string context)
     {
-        if (session == null)
-            return;
-        while (!session.IsCompleted)
-            await node.ToSignal(node.GetTree(), SceneTree.SignalName.ProcessFrame);
-        PatchHelper.Log($"{name} preload session completed.");
-    }
-
-    private static IEnumerable<string> GetAllVfxScenePaths()
-    {
-        var paths = new HashSet<string>(StringComparer.Ordinal);
-        CollectScenePathsRecursive("res://scenes/vfx", paths);
-        return paths;
-    }
-
-    private static void CollectScenePathsRecursive(string directoryPath, HashSet<string> target)
-    {
-        using var dir = DirAccess.Open(directoryPath);
-        if (dir == null)
-            return;
-        foreach (var file in dir.GetFiles())
+        try
         {
-            if (file.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase))
-                target.Add(directoryPath + "/" + file);
+            ulong staticMemoryUsage = OS.GetStaticMemoryUsage();
+            ulong videoMemoryUsage = RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.VideoMemUsed);
+            int objectCount = (int)Performance.GetMonitor(Performance.Monitor.ObjectCount);
+            int resourceCount = (int)Performance.GetMonitor(Performance.Monitor.ObjectResourceCount);
+            int nodeCount = (int)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount);
+            int cachedAssets = PreloadManager.Cache.GetCacheKeys().Count();
+            PatchHelper.Log($"[Startup] Resource stats ({context}): StaticMem={FormatBytes(staticMemoryUsage)}, VRAM={FormatBytes(videoMemoryUsage)}, Objects={objectCount:N0}, Resources={resourceCount:N0}, Nodes={nodeCount:N0}, CachedAssets={cachedAssets:N0}");
         }
-        foreach (var directory in dir.GetDirectories())
+        catch (Exception exception)
         {
-            if (!string.IsNullOrWhiteSpace(directory))
-                CollectScenePathsRecursive(directoryPath + "/" + directory, target);
+            PatchHelper.Log($"Resource stats failed ({context}): {exception.Message}");
         }
     }
 
-    private static void AddAll(HashSet<string> target, IEnumerable<string> paths)
+    private static string FormatBytes(ulong bytes)
     {
-        if (paths == null)
-            return;
-        foreach (var path in paths)
+        string[] units = { "B", "KB", "MB", "GB" };
+        int index = 0;
+        double value = bytes;
+        while (value >= 1024.0 && index < units.Length - 1)
         {
-            if (!string.IsNullOrWhiteSpace(path))
-                target.Add(path);
+            value /= 1024.0;
+            index++;
         }
+        return $"{value:0.#}{units[index]}";
     }
 
     private static Node CreateSceneNode(string typeName)

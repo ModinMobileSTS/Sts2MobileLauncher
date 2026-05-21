@@ -207,7 +207,6 @@ public final class ExtraSettingsRepository {
 			} else if (GRAPHICS_PRESET_QUALITY.equals(preset)) {
 				settings.put("msaa", 2);
 				putVector(settings, "fullscreen_render_size", 0, 0);
-				settings.put("fps_limit", 0);
 				settings.put("shader_compatibility_mode", false);
 				settings.put("vsync", "on");
 			} else if (GRAPHICS_PRESET_COMPATIBILITY.equals(preset)) {

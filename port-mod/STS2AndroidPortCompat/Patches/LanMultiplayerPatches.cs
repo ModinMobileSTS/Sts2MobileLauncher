@@ -118,7 +118,8 @@ public static class LanMultiplayerPatches
         var settingsScreenType = typeof(NJoinFriendScreen).Assembly.GetType("MegaCrit.Sts2.Core.Nodes.Screens.Settings.NSettingsScreen");
         if (settingsScreenType != null)
             PatchHelper.Patch(harmony, settingsScreenType, "_Ready", postfix: PatchHelper.Method(typeof(LanMultiplayerPatches), nameof(SettingsScreenReadyPostfix)));
-        PatchHelper.Patch(harmony, typeof(NetMessageBus), "SerializeMessage", prefix: PatchHelper.Method(typeof(LanMultiplayerPatches), nameof(SerializeMessagePrefix)));
+        PatchHelper.Patch(harmony, typeof(MessageTypes), "ToId", prefix: PatchHelper.Method(typeof(LanMultiplayerPatches), nameof(MessageToIdPrefix)));
+        PatchHelper.Patch(harmony, typeof(MessageTypes), "TryGetMessageType", prefix: PatchHelper.Method(typeof(LanMultiplayerPatches), nameof(TryGetMessageTypePrefix)));
         PatchHelper.Patch(harmony, typeof(NetMessageBus), "TryDeserializeMessage", prefix: PatchHelper.Method(typeof(LanMultiplayerPatches), nameof(TryDeserializeMessagePrefix)));
         PatchHelper.Patch(harmony, typeof(NJoinFriendScreen), "OnSubmenuOpened", prefix: PatchHelper.Method(typeof(LanMultiplayerPatches), nameof(JoinFriendOpenedPrefix)));
         PatchHelper.Patch(harmony, typeof(NJoinFriendScreen), "RefreshButtonClicked", prefix: PatchHelper.Method(typeof(LanMultiplayerPatches), nameof(JoinFriendRefreshButtonPrefix)));
@@ -193,21 +194,20 @@ public static class LanMultiplayerPatches
         }
     }
 
-    public static bool SerializeMessagePrefix(NetMessageBus __instance, ulong senderId, INetMessage message, ref byte[] __result, ref int length)
+    public static bool MessageToIdPrefix(INetMessage message, ref int __result)
     {
-        if (!StableMessageTypeIds.TryGetValue(message.GetType(), out var typeId))
+        if (message == null || !StableMessageTypeIds.TryGetValue(message.GetType(), out var typeId))
             return true;
+        __result = typeId;
+        return false;
+    }
 
-        var writer = (PacketWriter)AccessTools.Field(typeof(NetMessageBus), "_writer")?.GetValue(__instance);
-        if (writer == null)
+    public static bool TryGetMessageTypePrefix(int id, ref Type type, ref bool __result)
+    {
+        if (!StableMessageIdTypes.TryGetValue(id, out var stableType))
             return true;
-
-        writer.Reset();
-        writer.WriteByte((byte)typeId);
-        writer.WriteULong(senderId);
-        message.Serialize(writer);
-        length = (int)Math.Ceiling(writer.BitPosition / 8f);
-        __result = writer.Buffer;
+        type = stableType;
+        __result = true;
         return false;
     }
 
@@ -549,6 +549,7 @@ public static class LanMultiplayerPatches
         container.AddChild(MakeInputRow("LanHostRow", "LanHostLabel", "Host IP", "LanHostInput", false));
         container.AddChild(MakeInputRow("LanPortRow", "LanPortLabel", "Port", "LanPortInput", true));
         panel.AddChild(container);
+        AndroidFontCoveragePatches.RegisterTreePostfix(container);
         return container;
     }
 
@@ -573,9 +574,12 @@ public static class LanMultiplayerPatches
         return row;
     }
 
-    private static MegaLabel MakeMegaLabel(string name, string text, int fontSize, Color color)
+    private static Label MakeMegaLabel(string name, string text, int fontSize, Color color)
     {
-        var label = new MegaLabel { Name = name, Text = text };
+        // Use a plain Label for programmatic LAN helper text.  MegaLabel requires
+        // a per-node theme font override in _Ready(); creating it without one
+        // logs engine errors on Android.
+        var label = new Label { Name = name, Text = text };
         label.AddThemeColorOverride("font_color", color);
         label.AddThemeColorOverride("font_outline_color", Colors.Black);
         label.AddThemeConstantOverride("outline_size", 6);

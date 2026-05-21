@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text.Json;
+using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Nodes;
@@ -40,7 +41,7 @@ public static class AndroidSettingsPatches
         try
         {
             ApplyCompanionSettingsToRuntimeSave(includeModSettings: true);
-            PatchHelper.Log("Applied Android settings bridge values (aspect/vsync/msaa/fps/fullscreen/mod settings). Mobile-only fields stay in companion JSON.");
+            PatchHelper.Log("Applied Android settings bridge values (aspect/vsync/msaa/fullscreen/mod settings). FPS stays controlled by the original in-game setting.");
         }
         catch (Exception exception)
         {
@@ -92,10 +93,48 @@ public static class AndroidSettingsPatches
         settings.AspectRatioSetting = ParseAspectRatio(AndroidSettingsBridge.GetString("aspect_ratio", "auto"), settings.AspectRatioSetting);
         settings.VSync = ParseVSync(AndroidSettingsBridge.GetString("vsync", "off"), settings.VSync);
         settings.Msaa = AndroidSettingsBridge.GetInt("msaa", settings.Msaa);
-        settings.FpsLimit = AndroidSettingsBridge.GetInt("fps_limit", settings.FpsLimit);
         settings.Fullscreen = AndroidSettingsBridge.GetBool("fullscreen", settings.Fullscreen);
+        ApplyOptionalSourcePortSettings(settings);
         if (includeModSettings)
             EnsureModSettings(settings);
+    }
+
+    private static void ApplyOptionalSourcePortSettings(SettingsSave settings)
+    {
+        var renderSize = AndroidSettingsBridge.GetSize("fullscreen_render_size");
+        SetOptionalProperty(settings, "FullscreenRenderSize", new Vector2I(renderSize.X, renderSize.Y));
+        SetOptionalProperty(settings, "GlobalScale", AndroidSettingsBridge.GetFloat("global_scale", GetOptionalProperty(settings, "GlobalScale", 1f)));
+        SetOptionalProperty(settings, "UiFontScalePercent", AndroidSettingsBridge.GetInt("ui_font_scale_percent", GetOptionalProperty(settings, "UiFontScalePercent", 100)));
+        SetOptionalProperty(settings, "PreloadEnabled", AndroidSettingsBridge.GetBool("preload_enabled", GetOptionalProperty(settings, "PreloadEnabled", true)));
+        SetOptionalProperty(settings, "AndroidFlipScreen180", AndroidSettingsBridge.GetBool("android_flip_screen_180", GetOptionalProperty(settings, "AndroidFlipScreen180", false)));
+    }
+
+    private static T GetOptionalProperty<T>(object target, string propertyName, T fallback)
+    {
+        try
+        {
+            var property = target.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
+            if (property?.CanRead == true && property.GetValue(target) is T value)
+                return value;
+        }
+        catch
+        {
+        }
+        return fallback;
+    }
+
+    private static void SetOptionalProperty(object target, string propertyName, object value)
+    {
+        try
+        {
+            var property = target.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
+            if (property?.CanWrite == true && property.PropertyType.IsInstanceOfType(value))
+                property.SetValue(target, value);
+        }
+        catch (Exception exception)
+        {
+            PatchHelper.Log($"Failed to apply optional Android setting {propertyName}: {exception.Message}");
+        }
     }
 
     private static void EnsureModSettings(SettingsSave settings)

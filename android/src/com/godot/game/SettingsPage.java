@@ -48,7 +48,6 @@ public final class SettingsPage {
 	);
 	private static final int[] FONT_SCALE_OPTIONS = new int[] { 70, 85, 100, 115, 130, 150, 165 };
 	private static final int[] MSAA_OPTIONS = new int[] { 0, 2, 4, 8 };
-	private static final int[] FPS_OPTIONS = new int[] { 0, 30, 60, 90, 120, 144, 240, 360, 500 };
 	private static final String[] VSYNC_VALUES = new String[] { "off", "on", "adaptive" };
 	private static final String[] ASPECT_VALUES = new String[] { "auto", "sixteen_by_nine", "sixteen_by_ten", "twenty_one_by_nine", "four_by_three" };
 	private static final String[] RENDERER_VALUES = new String[] { RendererPreference.RENDERER_OPENGL_ES3, RendererPreference.RENDERER_VULKAN };
@@ -166,7 +165,6 @@ public final class SettingsPage {
 		addSpinnerRow(content, R.drawable.ic_layers_24, R.string.section_renderer, Arrays.asList(context.getString(R.string.renderer_option_opengl_es3), context.getString(R.string.renderer_option_vulkan)), findStringIndex(RENDERER_VALUES, RendererPreference.getSelectedRenderer(context)), position -> RendererPreference.setSelectedRenderer(context, RENDERER_VALUES[position]));
 		addSpinnerRow(content, R.drawable.ic_blur_on_24, R.string.msaa, buildMsaaLabels(), findIntIndex(MSAA_OPTIONS, settings.optInt("msaa", 2)), position -> repository.saveSetting(root -> root.put("msaa", MSAA_OPTIONS[position])));
 		addSpinnerRow(content, R.drawable.ic_sync_24, R.string.vsync, buildVsyncLabels(), findStringIndex(VSYNC_VALUES, settings.optString("vsync", "off")), position -> repository.saveSetting(root -> root.put("vsync", VSYNC_VALUES[position])));
-		addSpinnerRow(content, R.drawable.ic_speed_24, R.string.fps_limit, buildFpsLabels(), findIntIndex(FPS_OPTIONS, settings.optInt("fps_limit", 60)), position -> repository.saveSetting(root -> root.put("fps_limit", FPS_OPTIONS[position])));
 		addSpinnerRow(content, R.drawable.ic_zoom_in_24, R.string.section_scale, buildScaleLabels((float) settings.optDouble("global_scale", 1.0)), findScaleSelection(settings), position -> {
 			ScaleOption option = SCALE_OPTIONS.get(position);
 			if (option.isCustom()) {
@@ -384,11 +382,10 @@ public final class SettingsPage {
 		String vsync = settings.optString("vsync", "off");
 		int msaa = settings.optInt("msaa", 2);
 		boolean shaderCompat = settings.optBoolean("shader_compatibility_mode", false);
-		int fpsLimit = settings.optInt("fps_limit", 60);
 		if (RendererPreference.RENDERER_OPENGL_ES3.equals(renderer) && msaa == 0 && shaderCompat && "off".equals(vsync)) {
 			return ExtraSettingsRepository.GRAPHICS_PRESET_COMPATIBILITY;
 		}
-		if (RendererPreference.RENDERER_VULKAN.equals(renderer) && msaa == 2 && !shaderCompat && fpsLimit == 0 && "on".equals(vsync)) {
+		if (RendererPreference.RENDERER_VULKAN.equals(renderer) && msaa == 2 && !shaderCompat && "on".equals(vsync)) {
 			return ExtraSettingsRepository.GRAPHICS_PRESET_QUALITY;
 		}
 		if (RendererPreference.RENDERER_OPENGL_ES3.equals(renderer) && msaa == 2 && !shaderCompat && "off".equals(vsync)) {
@@ -641,14 +638,6 @@ public final class SettingsPage {
 
 	private List<String> buildVsyncLabels() {
 		return Arrays.asList(context.getString(R.string.vsync_off), context.getString(R.string.vsync_on), context.getString(R.string.vsync_adaptive));
-	}
-
-	private List<String> buildFpsLabels() {
-		List<String> labels = new ArrayList<>();
-		for (int fps : FPS_OPTIONS) {
-			labels.add(fps == 0 ? context.getString(R.string.fps_unlimited) : Integer.toString(fps));
-		}
-		return labels;
 	}
 
 	private List<String> buildScaleLabels(float currentScale) {

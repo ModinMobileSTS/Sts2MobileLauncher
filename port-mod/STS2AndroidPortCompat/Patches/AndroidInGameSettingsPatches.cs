@@ -42,6 +42,93 @@ public static class AndroidInGameSettingsPatches
         PatchHelper.Patch(harmony, typeof(NSettingsTabManager), "ResetTabs", postfix: PatchHelper.Method(typeof(AndroidInGameSettingsPatches), nameof(SettingsTabManagerResetTabsPostfix)));
     }
 
+    public static void SettingsScreenOriginalTabsReadyPostfix(Node __instance)
+    {
+        try
+        {
+            var graphicsContent = GetSettingsContent(__instance, "%GraphicsSettings");
+            if (graphicsContent == null || graphicsContent.GetNodeOrNull("AndroidUiFontScale") != null)
+                return;
+
+            var row = new HBoxContainer
+            {
+                Name = "AndroidUiFontScale",
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                CustomMinimumSize = new Vector2(0, 64),
+                MouseFilter = Control.MouseFilterEnum.Pass,
+            };
+            row.AddThemeConstantOverride("separation", 12);
+
+            var label = new Label
+            {
+                Name = "Label",
+                Text = T("字体大小", "Font size"),
+                VerticalAlignment = VerticalAlignment.Center,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+            };
+            label.AddThemeFontSizeOverride("font_size", 28);
+            row.AddChild(label);
+
+            var valueLabel = new Label
+            {
+                Name = "ValueLabel",
+                Text = $"{DisplaySettingsPatches.GetUiFontScalePercent()}%",
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                CustomMinimumSize = new Vector2(86, 0),
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+            };
+            valueLabel.AddThemeFontSizeOverride("font_size", 24);
+
+            var slider = new HSlider
+            {
+                Name = "Slider",
+                MinValue = 50,
+                MaxValue = 200,
+                Step = 5,
+                Value = DisplaySettingsPatches.GetUiFontScalePercent(),
+                CustomMinimumSize = new Vector2(340, 0),
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                FocusMode = Control.FocusModeEnum.All,
+            };
+            slider.Connect(Godot.Range.SignalName.ValueChanged, Callable.From<double>(value =>
+            {
+                int percent = Mathf.Clamp(Mathf.RoundToInt((float)value), 50, 200);
+                valueLabel.Text = $"{percent}%";
+                AndroidSettingsBridge.SetInt("ui_font_scale_percent", percent);
+                DisplaySettingsPatches.ApplyRuntimeDisplaySettings();
+                AndroidFontCoveragePatches.RegisterTreePostfix(__instance);
+            }));
+            row.AddChild(slider);
+            row.AddChild(valueLabel);
+            graphicsContent.AddChild(row);
+            AndroidFontCoveragePatches.RegisterTreePostfix(row);
+            PatchHelper.Log("Added Android font-size slider to original Graphics settings tab.");
+        }
+        catch (Exception exception)
+        {
+            PatchHelper.Log($"Android original-tab settings injection failed: {exception.Message}");
+        }
+    }
+
+    private static Control GetSettingsContent(Node settingsScreen, string panelPath)
+    {
+        var panel = settingsScreen.GetNodeOrNull<Node>(panelPath);
+        if (panel == null)
+            return null;
+        try
+        {
+            var property = panel.GetType().GetProperty("Content", BindingFlags.Public | BindingFlags.Instance);
+            if (property?.GetValue(panel) is Control control)
+                return control;
+        }
+        catch
+        {
+        }
+        return panel.GetNodeOrNull<Control>("Content");
+    }
+
     public static void SettingsScreenReadyPostfix(Node __instance)
     {
         try
@@ -154,7 +241,6 @@ public static class AndroidInGameSettingsPatches
         AddSwitchRow(content, "shader_compatibility_mode", T("着色器兼容模式", "Shader compatibility"), false, _ => PatchHelper.Log("Shader compatibility setting changed; already-loaded materials may require a restart."));
         AddSwitchRow(content, "android_flip_screen_180", T("屏幕旋转 180°", "Rotate screen 180°"), false, _ => DisplaySettingsPatches.ApplyRuntimeDisplaySettings());
         AddSizePaginatorRow(content, "fullscreen_render_size", T("渲染分辨率", "Render resolution"), GetResolutionOptions(), (0, 0), _ => DisplaySettingsPatches.ApplyRuntimeDisplaySettings());
-        AddIntPaginatorRow(content, "fps_limit", T("帧率上限", "FPS limit"), new[] { 0, 30, 60, 90, 120, 144 }, 60, v => v <= 0 ? T("无限制", "Unlimited") : v.ToString(), _ => DisplaySettingsPatches.ApplyRuntimeDisplaySettings());
         AddIntPaginatorRow(content, "ui_font_scale_percent", T("字体大小", "Font size"), Range(50, 200, 5), 100, v => $"{v}%", _ => DisplaySettingsPatches.ApplyRuntimeDisplaySettings());
         AddIntPaginatorRow(content, "global_scale", T("游戏缩放", "Game scale"), Range(50, 200, 5), 100, v => $"{v}%", v =>
         {
@@ -599,6 +685,8 @@ public static class AndroidInGameSettingsPatches
         var labelContainer = new Control { Name = "LabelContainer", CustomMinimumSize = new Vector2(260, 64), SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore };
         var label = new MegaCrit.Sts2.addons.mega_text.MegaLabel { Name = "Label", UniqueNameInOwner = true, Text = text, LayoutMode = 1, AnchorRight = 1f, AnchorBottom = 1f, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MouseFilter = Control.MouseFilterEnum.Ignore, MinFontSize = 12, MaxFontSize = 28 };
         var vfxLabel = new MegaCrit.Sts2.addons.mega_text.MegaLabel { Name = "VfxLabel", UniqueNameInOwner = true, Text = text, Visible = false, LayoutMode = 1, AnchorRight = 1f, AnchorBottom = 1f, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MouseFilter = Control.MouseFilterEnum.Ignore, MinFontSize = 12, MaxFontSize = 28 };
+        ApplyMegaLabelFontOverride(label);
+        ApplyMegaLabelFontOverride(vfxLabel);
         labelContainer.AddChild(label);
         labelContainer.AddChild(vfxLabel);
         var right = new AndroidPaginatorArrow { Name = "RightArrow", PageLeft = false, CustomMinimumSize = new Vector2(64, 64), MouseFilter = Control.MouseFilterEnum.Pass };
@@ -609,6 +697,13 @@ public static class AndroidInGameSettingsPatches
         box.AddChild(right);
         paginator.AddChild(box);
         paginator.AddChild(new NSelectionReticle { Name = "SelectionReticle" });
+    }
+
+    private static void ApplyMegaLabelFontOverride(MegaCrit.Sts2.addons.mega_text.MegaLabel label)
+    {
+        Font font = _buttonFont ?? _regularFont ?? ThemeDB.FallbackFont;
+        if (font != null)
+            label.AddThemeFontOverride("font", font);
     }
 
     private static int[] Range(int min, int max, int step)
