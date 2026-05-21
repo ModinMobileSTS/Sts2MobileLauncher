@@ -16,9 +16,14 @@ public static class LifecycleAndPerformancePatches
         var muteHandlerType = typeof(NGame).Assembly.GetType("MegaCrit.Sts2.Core.Nodes.NMuteInBackgroundHandler");
         if (muteHandlerType != null)
         {
-            PatchHelper.Patch(harmony, muteHandlerType, "_Ready", postfix: PatchHelper.Method(typeof(LifecycleAndPerformancePatches), nameof(MuteReadyPostfix)));
-            PatchHelper.Patch(harmony, muteHandlerType, "_Process", prefix: PatchHelper.Method(typeof(LifecycleAndPerformancePatches), nameof(MuteProcessPrefix)));
-            PatchHelper.Patch(harmony, muteHandlerType, "_Notification", prefix: PatchHelper.Method(typeof(LifecycleAndPerformancePatches), nameof(MuteNotificationPrefix)));
+            // Do not patch inherited Godot lifecycle wrappers (_Ready/_Process) or _Notification
+            // in the imported PC assembly.  On Android/Godot 4.5 those Harmony lookups force
+            // GodotSharp MethodName static constructors for Resource/ResourceFormat* to run while
+            // the native engine is still initializing, which aborts with StringName refcount errors
+            // such as "Unreferenced static string to 0: _recognize_path" / "_reset_state".
+            // The vanilla PC notification handler is good enough for startup; keep the early
+            // preload bridge below and defer fuller background-audio parity until runtime is stable.
+            PatchHelper.Log("Background audio lifecycle patch disabled on imported PC assembly for Android startup safety.");
         }
     }
 
