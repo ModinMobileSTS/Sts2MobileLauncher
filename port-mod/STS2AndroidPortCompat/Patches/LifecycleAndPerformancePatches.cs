@@ -93,6 +93,8 @@ public static class LifecycleAndPerformancePatches
         }
 
         await CallPrivateTask(game, "LoadMainMenu");
+        await game.ToSignal(game.GetTree(), SceneTree.SignalName.ProcessFrame);
+        await WarmMainMenuHotspotsAsync(game, startupLoadingScreen);
 
         if (startupLoadingScreen != null)
         {
@@ -111,7 +113,7 @@ public static class LifecycleAndPerformancePatches
     {
         OneTimeInitialization.ExecuteDeferred();
         await Task.Yield();
-        PatchHelper.Log("Android deferred initialization complete; bulk common/main-menu preload is skipped to match the source port warmup flow.");
+        PatchHelper.Log("Android deferred initialization complete; bulk common/main-menu preload remains disabled to match the source-port startup flow.");
         LogResourceStats("main menu loaded (deferred init complete)");
     }
 
@@ -130,7 +132,7 @@ public static class LifecycleAndPerformancePatches
 
         if (PreloadManager.Enabled)
         {
-            AssetLoadingSession session = StartAndroidStartupWarmup();
+            AssetLoadingSession session = await StartAndroidStartupWarmupAsync();
             await startupLoadingScreen.RunWarmup(session);
             LogResourceStats("startup warmup complete");
         }
@@ -162,10 +164,48 @@ public static class LifecycleAndPerformancePatches
         await game.ToSignal(game.GetTree(), SceneTree.SignalName.ProcessFrame);
     }
 
-    private static AssetLoadingSession StartAndroidStartupWarmup()
+    private static Task<AssetLoadingSession> StartAndroidStartupWarmupAsync()
     {
         PatchHelper.Log("Startup warmup: skipping bulk asset preload; scene-only VFX warmup will run on the loading screen.");
-        return AssetLoadingSession.Empty();
+        return Task.FromResult(AssetLoadingSession.Empty());
+    }
+
+    private static async Task WarmMainMenuHotspotsAsync(NGame game, AndroidStartupLoadingScreen startupLoadingScreen)
+    {
+        try
+        {
+            object mainMenu = game.GetType().GetProperty("MainMenu", BindingFlags.Public | BindingFlags.Instance)?.GetValue(game);
+            if (mainMenu == null)
+                return;
+            object submenuStack = mainMenu.GetType().GetProperty("SubmenuStack", BindingFlags.Public | BindingFlags.Instance)?.GetValue(mainMenu);
+            if (submenuStack == null)
+                return;
+            MethodInfo getSubmenuType = submenuStack.GetType().GetMethod("GetSubmenuType", new[] { typeof(Type) });
+            if (getSubmenuType == null)
+                return;
+
+            string[] hotTypeNames =
+            {
+                "MegaCrit.Sts2.Core.Nodes.Screens.MainMenu.NSingleplayerSubmenu",
+                "MegaCrit.Sts2.Core.Nodes.Screens.MainMenu.NMultiplayerSubmenu",
+            };
+
+            for (int i = 0; i < hotTypeNames.Length; i++)
+            {
+                Type submenuType = game.GetType().Assembly.GetType(hotTypeNames[i]);
+                if (submenuType == null)
+                    continue;
+                startupLoadingScreen?.SetStatus("Loading main menu...", $"Preparing menu {i + 1}/{hotTypeNames.Length}", 0.975f + (0.01f * i));
+                getSubmenuType.Invoke(submenuStack, new object[] { submenuType });
+                await game.ToSignal(game.GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
+
+            PatchHelper.Log("Main menu hotspot preload complete: singleplayer/multiplayer submenus instantiated.");
+        }
+        catch (Exception exception)
+        {
+            PatchHelper.Log($"Main menu hotspot preload skipped: {exception.Message}");
+        }
     }
 
     private static void LogResourceStats(string context)

@@ -39,6 +39,7 @@ import org.fmod.FMOD;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -75,6 +76,9 @@ public class GodotApp extends GodotActivity {
 	private static final String SETTINGS_FILE_NAME = "settings.save";
 	private static final String SOFT_KEYBOARD_SHORTCUT_SETTING_KEY = "android_volume_up_soft_keyboard";
 	private static final String PCK_FILE_NAME = PayloadManager.PCK_FILE_NAME;
+	private static final String ASSEMBLY_SETUP_PREFERENCES_NAME = "sts2_assembly_setup";
+	private static final String KEY_ASSEMBLY_SETUP_VERSION_CODE = "last_version_code";
+	private static final String KEY_ASSEMBLY_SETUP_COMPAT_STAMP = "compat_stamp";
 
 	private static volatile GodotApp currentInstance;
 	private static volatile boolean currentWindowFocused;
@@ -224,7 +228,8 @@ public class GodotApp extends GodotActivity {
 		File destDir = new File(getFilesDir(), ".godot/mono/publish/arm64");
 		File srcDir = findAssembliesDir();
 		Set<String> protectedBclNames = new HashSet<>();
-		boolean copiedAnyBcl = copyBclAssemblies(destDir, protectedBclNames);
+		boolean versionChanged = isAssemblyAssetVersionChanged();
+		boolean copiedAnyBcl = copyBclAssemblies(destDir, protectedBclNames, versionChanged);
 		if (!srcDir.isDirectory()) {
 			Log.w(TAG, "Game assembly source directory is missing: " + srcDir.getAbsolutePath());
 			return;
@@ -259,7 +264,7 @@ public class GodotApp extends GodotActivity {
 		Log.i(TAG, "Assembly setup complete. BCL copied=" + copiedAnyBcl + ", game copied=" + copied + ", skipped=" + skipped);
 	}
 
-	private boolean copyBclAssemblies(File destDir, Set<String> copiedNames) {
+	private boolean copyBclAssemblies(File destDir, Set<String> copiedNames, boolean versionChanged) {
 		try {
 			String[] bclFiles = getAssets().list("dotnet_bcl");
 			if (bclFiles == null || bclFiles.length == 0) {
@@ -267,19 +272,64 @@ public class GodotApp extends GodotActivity {
 				return false;
 			}
 			ensureDirectory(destDir);
+			for (String name : bclFiles) {
+				copiedNames.add(name);
+			}
+			boolean bclReady = new File(destDir, "STS2Mobile.dll").isFile()
+				&& new File(destDir, "GodotSharp.dll").isFile();
+			String compatStamp = buildCompatAssemblyStamp();
+			SharedPreferences preferences = getSharedPreferences(ASSEMBLY_SETUP_PREFERENCES_NAME, MODE_PRIVATE);
+			String previousCompatStamp = preferences.getString(KEY_ASSEMBLY_SETUP_COMPAT_STAMP, "");
+			boolean compatChanged = !compatStamp.equals(previousCompatStamp);
+			if (!versionChanged && !compatChanged && bclReady) {
+				Log.i(TAG, "Skipping dotnet_bcl copy because app version and compat assembly stamp are unchanged.");
+				return false;
+			}
 			int count = 0;
 			for (String name : bclFiles) {
 				try (InputStream inputStream = getAssets().open("dotnet_bcl/" + name)) {
 					copyStreamToFile(inputStream, new File(destDir, name));
-					copiedNames.add(name);
 					count++;
 				}
 			}
+			preferences.edit().putString(KEY_ASSEMBLY_SETUP_COMPAT_STAMP, compatStamp).apply();
 			Log.i(TAG, "Copied " + count + " dotnet_bcl assemblies.");
 			return true;
 		} catch (IOException exception) {
 			Log.e(TAG, "Failed to copy dotnet_bcl assemblies.", exception);
 			return false;
+		}
+	}
+
+	private boolean isAssemblyAssetVersionChanged() {
+		SharedPreferences preferences = getSharedPreferences(ASSEMBLY_SETUP_PREFERENCES_NAME, MODE_PRIVATE);
+		int currentVersion = BuildConfig.VERSION_CODE;
+		int previousVersion = preferences.getInt(KEY_ASSEMBLY_SETUP_VERSION_CODE, -1);
+		if (previousVersion == currentVersion) {
+			return false;
+		}
+		preferences.edit().putInt(KEY_ASSEMBLY_SETUP_VERSION_CODE, currentVersion).apply();
+		Log.i(TAG, "Assembly asset version changed: " + previousVersion + " -> " + currentVersion);
+		return true;
+	}
+
+	private String buildCompatAssemblyStamp() {
+		try (InputStream inputStream = getAssets().open("dotnet_bcl/STS2Mobile.dll")) {
+			java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+			byte[] buffer = new byte[8192];
+			int read;
+			while ((read = inputStream.read(buffer)) != -1) {
+				digest.update(buffer, 0, read);
+			}
+			byte[] hash = digest.digest();
+			StringBuilder builder = new StringBuilder(hash.length * 2);
+			for (byte value : hash) {
+				builder.append(String.format(java.util.Locale.US, "%02x", value & 0xFF));
+			}
+			return builder.toString();
+		} catch (Exception exception) {
+			Log.w(TAG, "Unable to build compat assembly stamp; forcing dotnet_bcl recopy.", exception);
+			return "";
 		}
 	}
 

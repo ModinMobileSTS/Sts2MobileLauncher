@@ -1,0 +1,140 @@
+[gd_scene load_steps=8 format=3 uid="uid://isargfuwrb03"]
+
+[ext_resource type="Script" uid="uid://be5tcq5cnqlvj" path="res://src/Core/Nodes/Events/NEventLayout.cs" id="1_76lfr"]
+[ext_resource type="Script" uid="uid://dtfio45agppyj" path="res://addons/mega_text/MegaLabel.cs" id="2_filnj"]
+[ext_resource type="FontVariation" uid="uid://b8ce4a71ref23" path="res://themes/spectral_bold_shared.tres" id="3_6oi2a"]
+[ext_resource type="FontVariation" uid="uid://c6wnuvk3exmk5" path="res://themes/kreon_regular_shared.tres" id="5_yprta"]
+[ext_resource type="FontVariation" uid="uid://bg85h22rkxs6g" path="res://themes/kreon_bold_shared.tres" id="6_n00v4"]
+[ext_resource type="FontVariation" uid="uid://bhyxo1pcdm73o" path="res://themes/bitter_medium_italic_glyph_space_one.tres" id="8_nmm38"]
+[ext_resource type="Script" uid="uid://c2oywrx8xbqfx" path="res://addons/mega_text/MegaRichTextLabel.cs" id="20_161ax"]
+
+[node name="DefaultEventLayout" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -39.0
+offset_bottom = -39.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_76lfr")
+metadata/_edit_lock_ = true
+metadata/_edit_group_ = true
+
+[node name="Portrait" type="TextureRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -1280.0
+offset_top = -556.0
+offset_right = 1280.0
+offset_bottom = 644.0
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(1.04, 1.04)
+pivot_offset = Vector2(1280, 600)
+expand_mode = 1
+stretch_mode = 5
+
+[node name="VfxContainer" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 39.0
+offset_bottom = 39.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -38.0
+offset_top = 255.0
+offset_right = 762.0
+offset_bottom = 295.0
+grow_horizontal = 2
+
+[node name="Title" type="Label" parent="VBoxContainer"]
+unique_name_in_owner = true
+modulate = Color(1, 1, 1, 0)
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.937255, 0.784314, 0.317647, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.501961)
+theme_override_constants/shadow_offset_x = 3
+theme_override_constants/shadow_offset_y = 2
+theme_override_constants/shadow_outline_size = 0
+theme_override_fonts/font = ExtResource("3_6oi2a")
+theme_override_font_sizes/font_size = 36
+text = "Event Name (for dev eyes only)"
+horizontal_alignment = 1
+vertical_alignment = 2
+script = ExtResource("2_filnj")
+MinFontSize = 24
+MaxFontSize = 36
+
+[node name="EventDescription" type="RichTextLabel" parent="VBoxContainer"]
+unique_name_in_owner = true
+modulate = Color(1, 1, 1, 0)
+clip_contents = false
+custom_minimum_size = Vector2(0, 280)
+layout_mode = 2
+theme_override_colors/default_color = Color(1, 0.964706, 0.886275, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.501961)
+theme_override_constants/line_separation = -2
+theme_override_constants/shadow_outline_size = 0
+theme_override_constants/shadow_offset_x = 3
+theme_override_constants/shadow_offset_y = 2
+theme_override_fonts/normal_font = ExtResource("5_yprta")
+theme_override_fonts/bold_font = ExtResource("6_n00v4")
+theme_override_font_sizes/normal_font_size = 26
+theme_override_font_sizes/bold_font_size = 26
+theme_override_font_sizes/bold_italics_font_size = 26
+theme_override_font_sizes/italics_font_size = 26
+theme_override_font_sizes/mono_font_size = 26
+bbcode_enabled = true
+text = "You discover a secluded chamber.
+
+Steam rises from [blue][wave]bubbling pools[/wave][/blue] of hot liquid that shifts colors with hypnotic rhythm. Barnacled growths hang from the ceiling, dripping viscous fluid that hisses and writhes when it touches the surface. The air feels heavy, laden with salt and something unmistakably organic.
+
+As you approach the edge of the largest pool, the liquid ripples. The waters bubble more intensely as if anticipating your entry."
+scroll_active = false
+horizontal_alignment = 1
+vertical_alignment = 1
+visible_characters_behavior = 1
+script = ExtResource("20_161ax")
+AutoSizeEnabled = true
+MinFontSize = 18
+MaxFontSize = 26
+
+[node name="SharedEventLabel" type="Label" parent="VBoxContainer"]
+unique_name_in_owner = true
+modulate = Color(1, 1, 1, 0)
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5294118, 0.80784315, 0.92156863, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.5)
+theme_override_fonts/font = ExtResource("8_nmm38")
+theme_override_font_sizes/font_size = 22
+text = "This is a collaborative event. Vote on a path everyone will take."
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("2_filnj")
+MinFontSize = 10
+MaxFontSize = 22
+
+[node name="Spacer" type="Control" parent="VBoxContainer"]
+custom_minimum_size = Vector2(0, 24)
+layout_mode = 2
+
+[node name="OptionsContainer" type="VBoxContainer" parent="VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
