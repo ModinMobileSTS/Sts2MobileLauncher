@@ -11,7 +11,7 @@ public static class PlatformPatches
     public static void Apply(Harmony harmony)
     {
         PatchHelper.Patch(harmony, typeof(NGame), "InitializePlatform", prefix: PatchHelper.Method(typeof(PlatformPatches), nameof(InitializePlatformPrefix)));
-        PatchHelper.Patch(harmony, typeof(OsDebugInfo), "LogSystemInfo", prefix: PatchHelper.Method(typeof(PlatformPatches), nameof(SkipPrefix)));
+        PatchHelper.Patch(harmony, typeof(OsDebugInfo), "LogSystemInfo", prefix: PatchHelper.Method(typeof(PlatformPatches), nameof(CompleteTaskPrefix)));
         PatchHelper.PatchGetter(harmony, typeof(PrefsSave), "UploadData", prefix: PatchHelper.Method(typeof(PlatformPatches), nameof(ReturnFalsePrefix)));
         PatchHelper.Patch(harmony, typeof(GodotFileIo), "CreateDirectory", prefix: PatchHelper.Method(typeof(PlatformPatches), nameof(CreateDirectoryPrefix)));
         PatchHelper.Patch(harmony, typeof(SentryService), "Initialize", prefix: PatchHelper.Method(typeof(PlatformPatches), nameof(SkipPrefix)));
@@ -21,6 +21,12 @@ public static class PlatformPatches
     {
         PatchHelper.Log("Skipping desktop Steam initialization on Android.");
         __result = Task.FromResult(true);
+        return false;
+    }
+
+    public static bool CompleteTaskPrefix(ref Task __result)
+    {
+        __result = Task.CompletedTask;
         return false;
     }
 

@@ -1,5 +1,9 @@
 # Build outputs
 build/
+
+# Local coding agent state
+.agent/
+.pi/
 dist/
 out/
 *.apk

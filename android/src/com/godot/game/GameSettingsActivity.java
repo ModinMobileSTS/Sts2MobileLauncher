@@ -9,6 +9,7 @@ import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -549,10 +550,34 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		}
 		contentFrame.post(() -> {
 			ScrollView scrollView = findScrollView(contentFrame);
-			if (scrollView != null) {
-				scrollView.setScrollY(scrollY);
+			if (scrollView == null) {
+				return;
 			}
+			if (scrollView.getHeight() > 0 && scrollView.getChildCount() > 0 && scrollView.getChildAt(0).getHeight() > 0) {
+				scrollView.post(() -> scrollToRestoredY(scrollView, scrollY));
+				return;
+			}
+			ViewTreeObserver observer = scrollView.getViewTreeObserver();
+			observer.addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+				@Override
+				public void onGlobalLayout() {
+					ViewTreeObserver currentObserver = scrollView.getViewTreeObserver();
+					if (currentObserver.isAlive()) {
+						currentObserver.removeOnGlobalLayoutListener(this);
+					}
+					scrollView.post(() -> scrollToRestoredY(scrollView, scrollY));
+				}
+			});
 		});
+	}
+
+	private void scrollToRestoredY(ScrollView scrollView, int scrollY) {
+		int maxScrollY = scrollY;
+		if (scrollView.getChildCount() > 0) {
+			int viewportHeight = scrollView.getHeight() - scrollView.getPaddingTop() - scrollView.getPaddingBottom();
+			maxScrollY = Math.max(0, scrollView.getChildAt(0).getHeight() - viewportHeight);
+		}
+		scrollView.scrollTo(0, Math.min(scrollY, maxScrollY));
 	}
 
 	private ScrollView findScrollView(View view) {
@@ -599,10 +624,10 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				String result = operation.run();
 				runOnUiThread(() -> {
 					busy = false;
+					if (!isFullDataRestoreMessage(result)) {
+						refreshCurrentScreen();
+					}
 					if (!isSilentSettingsSavedMessage(result)) {
-						if (!isFullDataRestoreMessage(result)) {
-							refreshCurrentScreen();
-						}
 						showMessage(result);
 					}
 				});
