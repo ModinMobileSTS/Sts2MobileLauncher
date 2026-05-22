@@ -10,177 +10,98 @@ import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.URI;
 import java.net.URL;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class ExtraSettingsUpdateChecker {
-	public static final String DOWNLOAD_URL = "https://pan.quark.cn/s/0eaccff60679#/list/share/d4c45fa0a6db4d17b6ed46e168fecfa1";
+	public static final String GAME_DOWNLOAD_URL = "https://pan.quark.cn/s/9e8dcfd284cb";
+	public static final String RELEASES_URL = "https://github.com/ModinMobileSTS/Sts2MobileLauncher/releases";
 
 	private static final String TAG = "Sts2UpdateChecker";
-	private static final String WINDOWS_10_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-	private static final String TOKEN_URL = "https://drive-h.quark.cn/1/clouddrive/share/sharepage/token";
-	private static final String DETAIL_URL = "https://drive-h.quark.cn/1/clouddrive/share/sharepage/detail";
-	private static final Pattern PWD_PATTERN = Pattern.compile("/s/([^/?#]+)");
-	private static final Pattern FID_PATTERN = Pattern.compile("/list/share/([^/?#]+)");
+	private static final String RELEASES_API_URL = "https://api.github.com/repos/ModinMobileSTS/Sts2MobileLauncher/releases?per_page=20";
+	private static final String USER_AGENT = "Sts2MobileLauncher/" + BuildConfig.VERSION_NAME + " Android";
+	private static final Pattern VERSION_WITH_DOT_PATTERN = Pattern.compile("(?i)(?:^|[^0-9A-Za-z])v?(\\d+(?:\\.\\d+)+)([-+][0-9A-Za-z.-]+)?(?:$|[^0-9A-Za-z])");
+	private static final Pattern SINGLE_NUMBER_VERSION_PATTERN = Pattern.compile("(?i)(?:^|[^0-9A-Za-z])v?(\\d+)([-+][0-9A-Za-z.-]+)?(?:$|[^0-9A-Za-z])");
 
 	private ExtraSettingsUpdateChecker() {
 	}
 
 	public static UpdateInfo checkForUpdate(Context context) throws Exception {
-		ShareUrl shareUrl = parseShareUrl(DOWNLOAD_URL);
-		String pwdId = shareUrl.pwdId;
-		String pdirFid = shareUrl.pdirFid == null ? "0" : shareUrl.pdirFid;
-		JSONObject pageToken = requestShareToken(pwdId);
-		String stoken = pageToken.getJSONObject("data").getString("stoken");
-		List<UpdateInfo> candidates = new ArrayList<>();
-		collectLatestEntries(candidates, requestDetail(pwdId, stoken, "0", true));
-		if (!"0".equals(pdirFid)) {
-			collectLatestEntries(candidates, requestDetail(pwdId, stoken, pdirFid, false));
-		}
-		UpdateInfo newest = null;
-		for (UpdateInfo candidate : candidates) {
-			if (newest == null || candidate.versionCode > newest.versionCode) {
-				newest = candidate;
-			}
-		}
-		if (newest == null) {
-			Log.d(TAG, "No [最新] entry found in update share.");
+		JSONObject latestRelease = requestLatestRelease();
+		if (latestRelease == null) {
+			Log.d(TAG, "No GitHub release entry found.");
 			return null;
 		}
-		long currentVersionCode = BuildConfig.VERSION_CODE;
-		Log.d(TAG, "Current versionCode=" + currentVersionCode + ", latest=" + newest.versionName + " code=" + newest.versionCode);
-		return currentVersionCode < newest.versionCode ? newest : null;
-	}
 
-	private static ShareUrl parseShareUrl(String url) throws Exception {
-		URI uri = URI.create(url);
-		Matcher pwdMatcher = PWD_PATTERN.matcher(uri.getPath() == null ? "" : uri.getPath());
-		if (!pwdMatcher.find()) {
-			throw new IllegalArgumentException("Unable to parse pwd_id from " + url);
+		String latestVersionName = firstNonEmpty(latestRelease.optString("tag_name", ""), latestRelease.optString("name", ""));
+		if (latestVersionName.isEmpty()) {
+			Log.d(TAG, "Latest GitHub release has no tag/name.");
+			return null;
 		}
-		String pdirFid = null;
-		String fragment = uri.getFragment();
-		if (fragment != null) {
-			Matcher fidMatcher = FID_PATTERN.matcher(fragment);
-			if (fidMatcher.find()) {
-				pdirFid = fidMatcher.group(1);
-			}
-		}
-		return new ShareUrl(pwdMatcher.group(1), pdirFid);
-	}
 
-	private static JSONObject requestShareToken(String pwdId) throws Exception {
-		JSONObject body = new JSONObject();
-		body.put("pwd_id", pwdId);
-		body.put("passcode", "");
-		body.put("support_visit_limit_private_share", true);
-		JSONObject response = requestJson(
-			"POST",
-			TOKEN_URL + "?pr=ucpro&fr=pc&uc_param_str=",
-			body.toString(),
-			new String[][] {
-				{ "Content-Type", "application/json" },
-				{ "Origin", "https://pan.quark.cn" },
-				{ "Accept", "application/json, text/plain, */*" }
-			}
+		String currentVersionName = BuildConfig.VERSION_NAME;
+		int comparison = compareVersions(latestVersionName, currentVersionName);
+		Log.d(TAG, "Current launcher version=" + currentVersionName + ", latest release=" + latestVersionName + ", compare=" + comparison);
+		if (comparison <= 0) {
+			return null;
+		}
+
+		return new UpdateInfo(
+			latestVersionName,
+			latestRelease.optString("name", ""),
+			latestRelease.optString("body", ""),
+			firstNonEmpty(latestRelease.optString("html_url", ""), RELEASES_URL),
+			latestRelease.optBoolean("prerelease", false)
 		);
-		Log.d(TAG, "token API code=" + response.optInt("code") + ", message=" + response.optString("message") + ", title=" + response.optJSONObject("data"));
-		if (response.optInt("code", -1) != 0) {
-			throw new IOException("Token API returned code=" + response.optInt("code") + ", message=" + response.optString("message"));
-		}
-		return response;
 	}
 
-	private static JSONObject requestDetail(String pwdId, String stoken, String pdirFid, boolean fetchShare) throws Exception {
-		String url = DETAIL_URL
-			+ "?pr=ucpro&fr=pc&uc_param_str=&ver=2"
-			+ "&pwd_id=" + encode(pwdId)
-			+ "&stoken=" + encode(stoken)
-			+ "&pdir_fid=" + encode(pdirFid)
-			+ "&force=0&_page=1&_size=100"
-			+ "&_fetch_banner=" + (fetchShare ? "1" : "0")
-			+ "&_fetch_share=" + (fetchShare ? "1" : "0")
-			+ "&fetch_total=1&sort=file_type:asc,file_name:asc";
-		JSONObject response = requestJson(
-			"GET",
-			url,
-			null,
-			new String[][] {
-				{ "Accept", "application/json, text/plain, */*" },
-				{ "Origin", "https://pan.quark.cn" }
-			}
-		);
-		JSONArray items = response.optJSONObject("data") == null ? null : response.optJSONObject("data").optJSONArray("list");
-		Log.d(TAG, "detail API pdir_fid=" + pdirFid + ", code=" + response.optInt("code") + ", count=" + (items == null ? 0 : items.length()));
-		if (response.optInt("code", -1) != 0) {
-			throw new IOException("Detail API returned code=" + response.optInt("code") + ", message=" + response.optString("message"));
-		}
-		return response;
-	}
-
-	private static void collectLatestEntries(List<UpdateInfo> out, JSONObject detail) {
-		JSONObject data = detail.optJSONObject("data");
-		JSONArray items = data == null ? null : data.optJSONArray("list");
-		if (items == null) {
-			return;
-		}
-		for (int i = 0; i < items.length(); i++) {
-			JSONObject item = items.optJSONObject(i);
-			if (item == null) {
+	private static JSONObject requestLatestRelease() throws Exception {
+		JSONArray releases = requestJsonArray(RELEASES_API_URL);
+		for (int i = 0; i < releases.length(); i++) {
+			JSONObject release = releases.optJSONObject(i);
+			if (release == null || release.optBoolean("draft", false)) {
 				continue;
 			}
-			UpdateInfo info = parseUpdateEntry(item.optString("file_name", ""));
-			if (info != null) {
-				out.add(info);
+			return release;
+		}
+		return null;
+	}
+
+	private static int compareVersions(String latestVersionName, String currentVersionName) {
+		Version latest = Version.parse(latestVersionName);
+		Version current = Version.parse(currentVersionName);
+		if (latest == null || current == null) {
+			return normalizeVersionLabel(latestVersionName).equalsIgnoreCase(normalizeVersionLabel(currentVersionName)) ? 0 : -1;
+		}
+
+		int count = Math.max(latest.parts.length, current.parts.length);
+		for (int i = 0; i < count; i++) {
+			long latestPart = i < latest.parts.length ? latest.parts[i] : 0;
+			long currentPart = i < current.parts.length ? current.parts[i] : 0;
+			if (latestPart != currentPart) {
+				return latestPart > currentPart ? 1 : -1;
 			}
 		}
+
+		if (latest.preRelease != current.preRelease) {
+			return latest.preRelease ? -1 : 1;
+		}
+		return 0;
 	}
 
-	private static UpdateInfo parseUpdateEntry(String fileName) {
-		if (fileName == null || !fileName.startsWith("[最新]")) {
-			return null;
-		}
-		String[] parts = fileName.split("-", 4);
-		if (parts.length != 4) {
-			Log.d(TAG, "Skip malformed latest entry: " + fileName);
-			return null;
-		}
-		try {
-			long versionCode = Long.parseLong(parts[3].trim().replaceAll("[^0-9]", ""));
-			return new UpdateInfo(parts[1].trim(), parts[2].trim(), versionCode);
-		} catch (Exception exception) {
-			Log.d(TAG, "Skip latest entry with invalid code: " + fileName, exception);
-			return null;
-		}
-	}
-
-	private static JSONObject requestJson(String method, String url, String body, String[][] extraHeaders) throws Exception {
-		HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
-		connection.setRequestMethod(method);
+	private static JSONArray requestJsonArray(String url) throws Exception {
+		HttpURLConnection connection = (HttpURLConnection)new URL(url).openConnection();
+		connection.setRequestMethod("GET");
 		connection.setConnectTimeout(30000);
 		connection.setReadTimeout(30000);
-		connection.setRequestProperty("User-Agent", WINDOWS_10_UA);
+		connection.setRequestProperty("User-Agent", USER_AGENT);
+		connection.setRequestProperty("Accept", "application/vnd.github+json");
+		connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
 		connection.setRequestProperty("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
-		connection.setRequestProperty("Referer", DOWNLOAD_URL);
-		for (String[] header : extraHeaders) {
-			connection.setRequestProperty(header[0], header[1]);
-		}
-		if (body != null) {
-			connection.setDoOutput(true);
-			byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-			connection.setFixedLengthStreamingMode(bytes.length);
-			try (OutputStream stream = connection.getOutputStream()) {
-				stream.write(bytes);
-			}
-		}
+
 		int status = connection.getResponseCode();
 		String text;
 		try (InputStream stream = new BufferedInputStream(status >= 400 ? nonNullErrorStream(connection) : connection.getInputStream())) {
@@ -189,7 +110,7 @@ public final class ExtraSettingsUpdateChecker {
 		if (status < 200 || status >= 300) {
 			throw new IOException("HTTP " + status + " from " + url + ": " + text);
 		}
-		return new JSONObject(text);
+		return new JSONArray(text);
 	}
 
 	private static InputStream nonNullErrorStream(HttpURLConnection connection) throws IOException {
@@ -207,29 +128,65 @@ public final class ExtraSettingsUpdateChecker {
 		return new String(output.toByteArray(), StandardCharsets.UTF_8);
 	}
 
-	private static String encode(String value) throws Exception {
-		return URLEncoder.encode(value, "UTF-8");
+	private static String firstNonEmpty(String first, String second) {
+		String trimmedFirst = first == null ? "" : first.trim();
+		if (!trimmedFirst.isEmpty()) {
+			return trimmedFirst;
+		}
+		return second == null ? "" : second.trim();
 	}
 
-	private static final class ShareUrl {
-		final String pwdId;
-		final String pdirFid;
+	private static String normalizeVersionLabel(String value) {
+		return value == null ? "" : value.trim().replaceFirst("^[vV]", "");
+	}
 
-		ShareUrl(String pwdId, String pdirFid) {
-			this.pwdId = pwdId;
-			this.pdirFid = pdirFid;
+	private static final class Version {
+		final long[] parts;
+		final boolean preRelease;
+
+		Version(long[] parts, boolean preRelease) {
+			this.parts = parts;
+			this.preRelease = preRelease;
+		}
+
+		static Version parse(String label) {
+			if (label == null) {
+				return null;
+			}
+			Matcher matcher = VERSION_WITH_DOT_PATTERN.matcher(label);
+			if (!matcher.find()) {
+				matcher = SINGLE_NUMBER_VERSION_PATTERN.matcher(label);
+				if (!matcher.find()) {
+					return null;
+				}
+			}
+			String[] tokens = matcher.group(1).split("\\.");
+			long[] parts = new long[tokens.length];
+			try {
+				for (int i = 0; i < tokens.length; i++) {
+					parts[i] = Long.parseLong(tokens[i]);
+				}
+			} catch (NumberFormatException exception) {
+				return null;
+			}
+			String suffix = matcher.group(2);
+			return new Version(parts, suffix != null && suffix.startsWith("-"));
 		}
 	}
 
 	public static final class UpdateInfo {
 		public final String versionName;
+		public final String title;
 		public final String changelog;
-		public final long versionCode;
+		public final String releaseUrl;
+		public final boolean prerelease;
 
-		UpdateInfo(String versionName, String changelog, long versionCode) {
+		UpdateInfo(String versionName, String title, String changelog, String releaseUrl, boolean prerelease) {
 			this.versionName = versionName;
+			this.title = title;
 			this.changelog = changelog;
-			this.versionCode = versionCode;
+			this.releaseUrl = releaseUrl;
+			this.prerelease = prerelease;
 		}
 	}
 }

@@ -14,7 +14,7 @@ import com.google.android.material.materialswitch.MaterialSwitch;
 public final class AboutPage {
 	private static final String AUTHOR_BILIBILI_URL = "https://space.bilibili.com/116375500";
 	private static final String AUTHOR_GITHUB_URL = "https://github.com/wsdx233";
-	private static final String DOWNLOAD_URL = ExtraSettingsUpdateChecker.DOWNLOAD_URL;
+	private static final String GAME_DOWNLOAD_URL = ExtraSettingsUpdateChecker.GAME_DOWNLOAD_URL;
 	private static final String STEAM_URL = "https://store.steampowered.com/app/2868840/Slay_the_Spire_2/";
 	private static final String SLAY_AMETHYST_URL = "https://github.com/ModinMobileSTS/SlayTheAmethystModded";
 	private static final String QUICK_RESTART_URL = "https://github.com/freude916/sts2-quickRestart";
@@ -42,7 +42,7 @@ public final class AboutPage {
 
 		ExtraSettingsUi.addCardSpacing(root, authorCard());
 		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_desktop_windows_24, R.string.steam_link_title, R.string.steam_link_desc, STEAM_URL));
-		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_download_24, R.string.download_link_title, R.string.download_link_desc, DOWNLOAD_URL));
+		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_download_24, R.string.download_link_title, R.string.download_link_desc, GAME_DOWNLOAD_URL));
 		ExtraSettingsUi.addCardSpacing(root, updateCheckCard());
 		ExtraSettingsUi.addCardSpacing(root, friendHeader());
 		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_extension_24, R.string.friend_link_amethyst_title, R.string.friend_link_amethyst_desc, SLAY_AMETHYST_URL));
@@ -90,7 +90,7 @@ public final class AboutPage {
 		row.addView(texts, textParams);
 		texts.addView(ExtraSettingsUi.sectionTitle(context, R.string.update_check_title));
 		texts.addView(ExtraSettingsUi.body(context, R.string.update_check_desc));
-		texts.addView(ExtraSettingsUi.caption(context, context.getString(R.string.update_check_current_version_format, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)));
+		texts.addView(ExtraSettingsUi.caption(context, context.getString(R.string.update_check_current_version_format, BuildConfig.VERSION_NAME)));
 
 		MaterialButton check = ExtraSettingsUi.iconButton(context, R.drawable.ic_sync_24);
 		check.setContentDescription(context.getString(R.string.update_check_manual));

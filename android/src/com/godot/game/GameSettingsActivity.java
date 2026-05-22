@@ -508,16 +508,14 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		String message = getString(
 			R.string.update_available_message,
 			BuildConfig.VERSION_NAME,
-			BuildConfig.VERSION_CODE,
 			updateInfo.versionName,
-			updateInfo.versionCode,
 			updateInfo.changelog
 		);
 		new MaterialAlertDialogBuilder(this)
 			.setTitle(R.string.update_available_title)
 			.setMessage(message)
 			.setNegativeButton(R.string.update_later, null)
-			.setPositiveButton(R.string.update_download, (dialog, which) -> openUrl(ExtraSettingsUpdateChecker.DOWNLOAD_URL))
+			.setPositiveButton(R.string.update_download, (dialog, which) -> openUrl(updateInfo.releaseUrl))
 			.show();
 	}
 
