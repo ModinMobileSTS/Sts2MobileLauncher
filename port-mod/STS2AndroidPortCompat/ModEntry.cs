@@ -58,6 +58,7 @@ public static class ModEntry
             MobileSelectionConfirmationPatches.Apply(_harmony);
             MobileTapPreviewPatches.Apply(_harmony);
             MobileHandLayoutPatches.Apply(_harmony);
+            IntentAnimationPatches.Apply(_harmony);
             QuickRestartPatches.Apply(_harmony);
             LifecycleAndPerformancePatches.Apply(_harmony);
             LanMultiplayerBootstrapPatches.Apply(_harmony);

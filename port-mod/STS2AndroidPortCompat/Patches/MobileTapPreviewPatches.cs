@@ -12,6 +12,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Combat;
+using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Runs;
@@ -24,17 +25,21 @@ public static class MobileTapPreviewPatches
     private const float DirectDragThreshold = 30f;
     private static readonly ConditionalWeakTable<NPlayerHand, PreviewState> States = new();
     private static readonly ConditionalWeakTable<NCardHolder, PinnedState> PinnedHolders = new();
+    private static readonly ConditionalWeakTable<NCardHolder, SuppressedHoverState> SuppressedHolders = new();
     private static readonly HashSet<int> ConnectedCreatures = new();
+    private static readonly HashSet<int> ConnectedHandHolders = new();
     private static readonly MethodInfo StartCardPlayMethod = typeof(NPlayerHand).GetMethod("StartCardPlay", BindingFlags.NonPublic | BindingFlags.Instance, null, new[] { typeof(NHandCardHolder), typeof(bool) }, null);
 
     public static void Apply(Harmony harmony)
     {
         PatchHelper.Patch(harmony, typeof(NGame), "_Input", prefix: PatchHelper.Method(typeof(MobileTapPreviewPatches), nameof(GameInputPrefix)));
         PatchHelper.Patch(harmony, typeof(NPlayerHand), "OnHolderPressed", prefix: PatchHelper.Method(typeof(MobileTapPreviewPatches), nameof(OnHolderPressedPrefix)));
+        PatchHelper.Patch(harmony, typeof(NPlayerHand), "OnHolderFocused", prefix: PatchHelper.Method(typeof(MobileTapPreviewPatches), nameof(OnHolderFocusedPrefix)));
         PatchHelper.Patch(harmony, typeof(NPlayerHand), "StartCardPlay", prefix: PatchHelper.Method(typeof(MobileTapPreviewPatches), nameof(StartCardPlayPrefix)));
         PatchHelper.Patch(harmony, typeof(NPlayerHand), "CancelAllCardPlay", prefix: PatchHelper.Method(typeof(MobileTapPreviewPatches), nameof(ClearPinnedPrefix)));
         PatchHelper.Patch(harmony, typeof(NPlayerHand), "OnCombatEnded", prefix: PatchHelper.Method(typeof(MobileTapPreviewPatches), nameof(ClearPinnedPrefix)));
         PatchHelper.Patch(harmony, typeof(NCardHolder), "RefreshFocusState", prefix: PatchHelper.Method(typeof(MobileTapPreviewPatches), nameof(CardHolderRefreshFocusStatePrefix)));
+        PatchHelper.Patch(harmony, typeof(NHandCardHolder), "_Ready", postfix: PatchHelper.Method(typeof(MobileTapPreviewPatches), nameof(HandHolderReadyPostfix)));
         PatchHelper.Patch(harmony, typeof(NCreature), "_Ready", postfix: PatchHelper.Method(typeof(MobileTapPreviewPatches), nameof(CreatureReadyPostfix)));
     }
 
@@ -47,7 +52,7 @@ public static class MobileTapPreviewPatches
             var hand = NPlayerHand.Instance;
             if (hand == null || !IsCombatInputActive())
                 return true;
-            if (HandleMobileTapPreviewDirectDrag(hand, inputEvent) || HandleMobilePinnedCardPlayZoneTap(hand, inputEvent))
+            if (HandleMobileTapPreviewDirectDrag(hand, inputEvent) || HandlePendingPutDownRelease(hand, inputEvent) || HandleMobilePinnedCardPlayZoneTap(hand, inputEvent))
             {
                 __instance.GetViewport()?.SetInputAsHandled();
                 return false;
@@ -73,10 +78,11 @@ public static class MobileTapPreviewPatches
             var state = States.GetOrCreateValue(__instance);
             if (IsSameValidHolder(state.PinnedHolder, handHolder))
             {
-                ClearDirectDrag(state);
                 switch (GetRetapAction())
                 {
                     case RetapAction.Play:
+                        ClearDirectDrag(state);
+                        state.PendingPutDownHolder = null;
                         if (ShouldPlayPinnedCardOnTap(handHolder.CardNode?.Model))
                         {
                             TryPlayPinnedCardOnTap(__instance, handHolder);
@@ -85,20 +91,41 @@ public static class MobileTapPreviewPatches
                         ClearPinned(__instance, keepDragCandidate: true);
                         return true;
                     case RetapAction.None:
+                        ClearDirectDrag(state);
+                        state.PendingPutDownHolder = null;
                         return false;
                     case RetapAction.PutDown:
                     default:
-                        ClearPinned(__instance);
+                        state.PendingPutDownHolder = handHolder;
+                        ArmDirectDrag(__instance, handHolder);
                         return false;
                 }
             }
 
+            state.PendingPutDownHolder = null;
             SetPinned(__instance, handHolder, armDirectDrag: true);
             return false;
         }
         catch (Exception exception)
         {
             PatchHelper.Log($"Mobile tap preview failed; falling back to original press: {exception.Message}");
+            return true;
+        }
+    }
+
+    public static bool OnHolderFocusedPrefix(NPlayerHand __instance, NHandCardHolder holder)
+    {
+        try
+        {
+            if (holder == null || IsPinned(holder) || !SuppressedHolders.TryGetValue(holder, out _))
+                return true;
+            ClearFocusedHolderIfMatches(__instance, holder);
+            RefreshLayout(__instance);
+            return false;
+        }
+        catch (Exception exception)
+        {
+            PatchHelper.Log($"Suppressed hand-card focus failed: {exception.Message}");
             return true;
         }
     }
@@ -115,24 +142,57 @@ public static class MobileTapPreviewPatches
 
     public static bool CardHolderRefreshFocusStatePrefix(NCardHolder __instance)
     {
-        if (!PinnedHolders.TryGetValue(__instance, out _))
-            return true;
+        if (PinnedHolders.TryGetValue(__instance, out _))
+        {
+            try
+            {
+                var isFocusedField = typeof(NCardHolder).GetField("_isFocused", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (isFocusedField?.GetValue(__instance) is not true)
+                {
+                    isFocusedField?.SetValue(__instance, true);
+                    InvokeDoCardHoverEffects(__instance, true);
+                }
+                if (__instance.CardModel != null)
+                    RunManager.Instance.HoveredModelTracker.OnLocalCardHovered(__instance.CardModel);
+                return false;
+            }
+            catch (Exception exception)
+            {
+                PatchHelper.Log($"Pinned card refresh failed: {exception.Message}");
+                return true;
+            }
+        }
+
+        if (SuppressedHolders.TryGetValue(__instance, out _))
+        {
+            try
+            {
+                ForceHolderUnfocused(__instance);
+                return false;
+            }
+            catch (Exception exception)
+            {
+                PatchHelper.Log($"Suppressed card hover refresh failed: {exception.Message}");
+                return true;
+            }
+        }
+
+        return true;
+    }
+
+    public static void HandHolderReadyPostfix(NHandCardHolder __instance)
+    {
         try
         {
-            var isFocusedField = typeof(NCardHolder).GetField("_isFocused", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (isFocusedField?.GetValue(__instance) is not true)
-            {
-                isFocusedField?.SetValue(__instance, true);
-                InvokeDoCardHoverEffects(__instance, true);
-            }
-            if (__instance.CardModel != null)
-                RunManager.Instance.HoveredModelTracker.OnLocalCardHovered(__instance.CardModel);
-            return false;
+            var hitbox = __instance.Hitbox;
+            if (hitbox == null || !ConnectedHandHolders.Add((int)__instance.GetInstanceId()))
+                return;
+            hitbox.Connect(NClickableControl.SignalName.MouseReleased, Callable.From<InputEvent>(inputEvent => OnHandHolderMouseReleased(__instance, inputEvent)));
+            hitbox.Connect(Control.SignalName.MouseExited, Callable.From(() => OnHandHolderHitboxMouseExited(__instance)));
         }
         catch (Exception exception)
         {
-            PatchHelper.Log($"Pinned card refresh failed: {exception.Message}");
-            return true;
+            PatchHelper.Log($"Hand-card release/exit bridge failed: {exception.Message}");
         }
     }
 
@@ -240,9 +300,14 @@ public static class MobileTapPreviewPatches
     {
         var state = States.GetOrCreateValue(hand);
         if (state.PinnedHolder != null && !ReferenceEquals(state.PinnedHolder, holder))
+        {
+            SuppressedHolders.Remove(state.PinnedHolder);
             UnpinHolder(state.PinnedHolder);
+        }
         state.PinnedHolder = holder;
+        SuppressedHolders.Remove(holder);
         PinnedHolders.GetOrCreateValue(holder);
+        SetFocusedHolder(hand, holder);
         RunManager.Instance.HoveredModelTracker.OnLocalCardHovered(holder.CardModel);
         ForcePinnedPreview(holder);
         if (armDirectDrag)
@@ -255,13 +320,23 @@ public static class MobileTapPreviewPatches
             PatchHelper.Log($"Pinned hand card preview: {holder.CardModel?.Id}");
     }
 
-    private static void ClearPinned(NPlayerHand hand, bool keepDragCandidate = false)
+    private static void ClearPinned(NPlayerHand hand, bool keepDragCandidate = false, bool suppressHoverUntilExit = false)
     {
         if (!States.TryGetValue(hand, out var state) || state.PinnedHolder == null)
             return;
         var holder = state.PinnedHolder;
         UnpinHolder(holder);
         state.PinnedHolder = null;
+        if (holder is NHandCardHolder clearedHandHolder)
+            ClearFocusedHolderIfMatches(hand, clearedHandHolder);
+        if (ReferenceEquals(state.PendingPutDownHolder, holder))
+            state.PendingPutDownHolder = null;
+        if (suppressHoverUntilExit)
+        {
+            if (holder is NHandCardHolder handHolder)
+                ClearFocusedHolderIfMatches(hand, handHolder);
+            SuppressHoverUntilExit(holder);
+        }
         if (!keepDragCandidate)
             ClearDirectDrag(state);
         try
@@ -279,14 +354,7 @@ public static class MobileTapPreviewPatches
         try
         {
             PinnedHolders.Remove(holder);
-            var isHoveredField = typeof(NCardHolder).GetField("_isHovered", BindingFlags.NonPublic | BindingFlags.Instance);
-            isHoveredField?.SetValue(holder, false);
-            var isFocusedField = typeof(NCardHolder).GetField("_isFocused", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (isFocusedField?.GetValue(holder) is true)
-            {
-                isFocusedField.SetValue(holder, false);
-                InvokeDoCardHoverEffects(holder, false);
-            }
+            ForceHolderUnfocused(holder);
         }
         catch (Exception exception)
         {
@@ -324,6 +392,128 @@ public static class MobileTapPreviewPatches
     {
         state.DragHolder = null;
         state.DragStartPosition = Vector2.Zero;
+    }
+
+    private static void OnHandHolderMouseReleased(NHandCardHolder holder, InputEvent inputEvent)
+    {
+        try
+        {
+            var hand = NPlayerHand.Instance;
+            if (hand == null || !States.TryGetValue(hand, out var state))
+                return;
+            CompletePendingPutDown(hand, state, holder, "holder release");
+        }
+        catch (Exception exception)
+        {
+            PatchHelper.Log($"Pinned-card put-down release failed: {exception.Message}");
+        }
+    }
+
+    private static bool HandlePendingPutDownRelease(NPlayerHand hand, InputEvent input)
+    {
+        if (!IsDirectDragRelease(input) || !States.TryGetValue(hand, out var state) || state.PendingPutDownHolder == null)
+            return false;
+        return CompletePendingPutDown(hand, state, state.PendingPutDownHolder, "global release");
+    }
+
+    private static bool CompletePendingPutDown(NPlayerHand hand, PreviewState state, NHandCardHolder holder, string source)
+    {
+        if (!ReferenceEquals(state.PendingPutDownHolder, holder))
+            return false;
+        state.PendingPutDownHolder = null;
+        if (hand.InCardPlay || !IsSameValidHolder(state.PinnedHolder, holder))
+            return false;
+        ClearPinned(hand, suppressHoverUntilExit: true);
+        PatchHelper.Log($"Put down pinned hand card on re-tap {source}: {holder.CardModel?.Id}");
+        return true;
+    }
+
+    private static void OnHandHolderHitboxMouseExited(NHandCardHolder holder)
+    {
+        try
+        {
+            if (!SuppressedHolders.TryGetValue(holder, out _))
+                return;
+            SuppressedHolders.Remove(holder);
+            InvokeRefreshFocusState(holder);
+        }
+        catch (Exception exception)
+        {
+            PatchHelper.Log($"Clear suppressed card hover failed: {exception.Message}");
+        }
+    }
+
+    private static void SuppressHoverUntilExit(NCardHolder holder)
+    {
+        if (holder == null || !GodotObject.IsInstanceValid(holder))
+            return;
+        SuppressedHolders.GetOrCreateValue(holder);
+        try
+        {
+            holder.ReleaseFocus();
+            holder.Hitbox?.ReleaseFocus();
+        }
+        catch
+        {
+        }
+        ForceHolderUnfocused(holder);
+    }
+
+    private static void ForceHolderUnfocused(NCardHolder holder)
+    {
+        if (holder == null || !GodotObject.IsInstanceValid(holder))
+            return;
+        var isHoveredField = typeof(NCardHolder).GetField("_isHovered", BindingFlags.NonPublic | BindingFlags.Instance);
+        isHoveredField?.SetValue(holder, false);
+        var isFocusedField = typeof(NCardHolder).GetField("_isFocused", BindingFlags.NonPublic | BindingFlags.Instance);
+        if (isFocusedField?.GetValue(holder) is true)
+        {
+            isFocusedField.SetValue(holder, false);
+            InvokeDoCardHoverEffects(holder, false);
+        }
+    }
+
+    private static void SetFocusedHolder(NPlayerHand hand, NHandCardHolder holder)
+    {
+        try
+        {
+            WriteFocusedHolder(hand, holder);
+        }
+        catch (Exception exception)
+        {
+            PatchHelper.Log($"Set focused hand-card holder failed: {exception.Message}");
+        }
+    }
+
+    private static void ClearFocusedHolderIfMatches(NPlayerHand hand, NHandCardHolder holder)
+    {
+        try
+        {
+            if (!ReferenceEquals(GetFocusedHolder(hand), holder))
+                return;
+            WriteFocusedHolder(hand, null);
+        }
+        catch (Exception exception)
+        {
+            PatchHelper.Log($"Clear focused hand-card holder failed: {exception.Message}");
+        }
+    }
+
+    private static object GetFocusedHolder(NPlayerHand hand)
+    {
+        return typeof(NPlayerHand).GetProperty("FocusedHolder", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(hand);
+    }
+
+    private static void WriteFocusedHolder(NPlayerHand hand, NHandCardHolder holder)
+    {
+        var focusedProperty = typeof(NPlayerHand).GetProperty("FocusedHolder", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        var setter = focusedProperty?.GetSetMethod(true);
+        if (setter != null)
+        {
+            setter.Invoke(hand, new object[] { holder });
+            return;
+        }
+        typeof(NPlayerHand).GetField("<FocusedHolder>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)?.SetValue(hand, holder);
     }
 
     private static bool HandleMobileTapPreviewDirectDrag(NPlayerHand hand, InputEvent input)
@@ -375,7 +565,7 @@ public static class MobileTapPreviewPatches
             return false;
         if (position.Y < hand.GetViewport().GetVisibleRect().Size.Y * 0.75f || IsPositionOverAnyHandCard(hand, position))
             return false;
-        ClearPinned(hand);
+        ClearPinned(hand, suppressHoverUntilExit: true);
         return true;
     }
 
@@ -533,6 +723,11 @@ public static class MobileTapPreviewPatches
         }
     }
 
+    private static void InvokeRefreshFocusState(NCardHolder holder)
+    {
+        holder.GetType().GetMethod("RefreshFocusState", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(holder, null);
+    }
+
     private static void InvokeDoCardHoverEffects(NCardHolder holder, bool isHovered)
     {
         holder.GetType().GetMethod("DoCardHoverEffects", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(holder, new object[] { isHovered });
@@ -564,10 +759,15 @@ public static class MobileTapPreviewPatches
     {
         public NCardHolder PinnedHolder;
         public NHandCardHolder DragHolder;
+        public NHandCardHolder PendingPutDownHolder;
         public Vector2 DragStartPosition;
     }
 
     private sealed class PinnedState
+    {
+    }
+
+    private sealed class SuppressedHoverState
     {
     }
 }
