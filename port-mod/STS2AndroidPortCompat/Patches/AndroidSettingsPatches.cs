@@ -27,10 +27,6 @@ public static class AndroidSettingsPatches
                 "SaveSettings",
                 prefix: PatchHelper.Method(typeof(AndroidSettingsPatches), nameof(SaveSettingsPrefix)),
                 postfix: PatchHelper.Method(typeof(AndroidSettingsPatches), nameof(SaveSettingsPostfix)));
-
-        var vsyncPaginatorType = typeof(NGame).Assembly.GetType("MegaCrit.Sts2.Core.Nodes.Screens.Settings.NVSyncPaginator");
-        if (vsyncPaginatorType != null)
-            PatchHelper.Patch(harmony, vsyncPaginatorType, "GetVSyncString", prefix: PatchHelper.Method(typeof(AndroidSettingsPatches), nameof(GetVSyncStringPrefix)));
     }
 
     public static void InitSettingsDataPostfix()
@@ -70,19 +66,6 @@ public static class AndroidSettingsPatches
         if (!string.IsNullOrWhiteSpace(beforeJson))
             AndroidSettingsMerge.MergeBackAndroidOnlyFields(beforeJson);
         AndroidSettingsBridge.InvalidateCache();
-    }
-
-    public static bool GetVSyncStringPrefix(object vsyncType, ref string __result)
-    {
-        var value = (int)vsyncType;
-        __result = value switch
-        {
-            1 => "Off",
-            2 => "On",
-            3 => "Adaptive",
-            _ => "Adaptive",
-        };
-        return false;
     }
 
     public static void ApplyCompanionSettingsToRuntimeSave(bool includeModSettings = false)

@@ -10,6 +10,8 @@ public static class PatchHelper
 
     public static MethodInfo Method(Type type, string name) => type.GetMethod(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
 
+    public static event Action<string> LogEmitted;
+
     public static void Patch(Harmony harmony, Type targetType, string methodName, MethodInfo prefix = null, MethodInfo postfix = null, MethodInfo transpiler = null, BindingFlags flags = AllFlags)
     {
         try
@@ -49,6 +51,16 @@ public static class PatchHelper
         return true;
     }
 
+    public static void PatchCritical(Harmony harmony, Type targetType, string methodName, MethodInfo prefix = null, MethodInfo postfix = null, BindingFlags flags = AllFlags)
+    {
+        var target = targetType.GetMethod(methodName, flags) ?? throw new InvalidOperationException($"Critical patch failed: {targetType.FullName}.{methodName} not found");
+        harmony.Patch(
+            target,
+            prefix: prefix == null ? null : new HarmonyMethod(prefix),
+            postfix: postfix == null ? null : new HarmonyMethod(postfix));
+        Log($"Patched {targetType.FullName}.{methodName} (critical)");
+    }
+
     public static void PatchGetter(Harmony harmony, Type targetType, string propertyName, MethodInfo prefix)
     {
         try
@@ -69,5 +81,9 @@ public static class PatchHelper
         }
     }
 
-    public static void Log(string message) => Console.Error.WriteLine($"[STS2Mobile] {message}");
+    public static void Log(string message)
+    {
+        Console.Error.WriteLine($"[STS2Mobile] {message}");
+        LogEmitted?.Invoke(message);
+    }
 }

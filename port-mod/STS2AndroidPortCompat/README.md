@@ -26,6 +26,23 @@ old-port-only game-source additions:
 ```
 
 
+Startup/mod compatibility notes:
+
+- `ModEntry` now keeps the working `StS2-Launcher_Mod_Manager` patch order as
+  the baseline: diagnostics, BaseLib AssemblyLoad hook, ModelDb/platform/
+  release-info/settings/layout/input, LAN, then ModManager scan redirection.
+- `BaseLibCompatPatches` is intentionally the same degraded-mode workaround as
+  the reference launcher: `BaseLib.Utils.Patching.AsyncMethodCall.Create` is
+  prefix-disabled when BaseLib loads, so BaseLib's async hook state-machine
+  surgery is skipped while the rest of BaseLib can load.
+- `ModLoaderPatches` still rewrites `ModManager.Initialize` at the original
+  `Path.Combine(..., "mods")` IL site, letting the game perform its normal
+  recursive manifest scan, dependency sort, settings filtering, DLL/PCK load,
+  and initializer/PatchAll flow.
+- The Java shell normalizes imported `mod_manifest.json` to a `<ModId>.json`
+  alias because the current PC `ModManager` scans any `*.json` manifest and
+  loads payloads by `<ModId>.dll` / `<ModId>.pck`.
+
 Overlay resource pack:
 
 ```bash

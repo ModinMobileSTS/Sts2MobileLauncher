@@ -34,24 +34,15 @@ public static class BaseLibCompatPatches
     {
         _harmony = harmony;
         AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
-        PatchHelper.Log("BaseLibCompatPatches: registered AssemblyLoad listener for BaseLib.");
-
-        // Defensive path for unusual reload/test flows where BaseLib was already
-        // loaded before this patcher registered the AssemblyLoad callback.
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            if (assembly.GetName().Name == "BaseLib")
-            {
-                TryPatchBaseLib(assembly);
-                break;
-            }
-        }
+        PatchHelper.Log("BaseLibCompatPatches: registered AssemblyLoad listener for BaseLib");
     }
 
     private static void OnAssemblyLoad(object sender, AssemblyLoadEventArgs args)
     {
-        if (args.LoadedAssembly.GetName().Name == "BaseLib")
-            TryPatchBaseLib(args.LoadedAssembly);
+        if (_patched) return;
+        var asmName = args.LoadedAssembly.GetName().Name;
+        if (asmName != "BaseLib") return;
+        TryPatchBaseLib(args.LoadedAssembly);
     }
 
     private static void TryPatchBaseLib(System.Reflection.Assembly baseLibAssembly)
@@ -63,31 +54,31 @@ public static class BaseLibCompatPatches
             var asyncMethodCallType = baseLibAssembly.GetType("BaseLib.Utils.Patching.AsyncMethodCall");
             if (asyncMethodCallType == null)
             {
-                PatchHelper.Log("BaseLibCompat: AsyncMethodCall type not found in BaseLib assembly.");
+                PatchHelper.Log("BaseLibCompat: AsyncMethodCall type not found in BaseLib assembly");
                 return;
             }
 
             var createMethod = AccessTools.Method(asyncMethodCallType, "Create");
             if (createMethod == null)
             {
-                PatchHelper.Log("BaseLibCompat: AsyncMethodCall.Create method not found.");
+                PatchHelper.Log("BaseLibCompat: AsyncMethodCall.Create method not found");
                 return;
             }
 
             var prefix = AccessTools.Method(typeof(BaseLibCompatPatches), nameof(AsyncMethodCallCreatePrefix));
             _harmony.Patch(createMethod, prefix: new HarmonyMethod(prefix));
             _patched = true;
-            PatchHelper.Log("Patched BaseLib.Utils.Patching.AsyncMethodCall.Create (state-machine hooks disabled for Android compatibility).");
+            PatchHelper.Log("Patched BaseLib.Utils.Patching.AsyncMethodCall.Create (state-machine hooks disabled for mobile compat)");
         }
         catch (Exception exception)
         {
-            PatchHelper.Log($"BaseLibCompat: failed to patch on load: {exception}");
+            PatchHelper.Log($"BaseLibCompat: failed to patch on load: {exception.Message}");
         }
     }
 
     public static bool AsyncMethodCallCreatePrefix(IEnumerable<CodeInstruction> code, ref List<CodeInstruction> __result)
     {
-        PatchHelper.Log("[BaseLibCompat] Skipping AsyncMethodCall.Create; async state-machine hooks are disabled on Android.");
+        Console.WriteLine("[BaseLibCompat] Skipping AsyncMethodCall.Create (mobile workaround) — async hook will not fire");
         __result = code.ToList();
         return false;
     }

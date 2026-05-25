@@ -344,17 +344,67 @@ public final class ExtraSettingsRepository {
 			try {
 				ensureRuntimeModAlias(entry, ".pck");
 				ensureRuntimeModAlias(entry, ".dll");
+				ensureRuntimeModAlias(entry, ".json");
+			} catch (Exception ignored) {
+			}
+		}
+		for (ModEntry entry : entries) {
+			try {
+				deleteDuplicateManifestAlias(entry);
 			} catch (Exception ignored) {
 			}
 		}
 	}
 
-	private void ensureRuntimeModAlias(ModEntry entry, String extension) throws IOException {
-		if (entry.modId.equals(entry.pckName)) {
-			return;
-		}
+	private void deleteDuplicateManifestAlias(ModEntry entry) throws IOException {
 		File parent = entry.manifestFile.getParentFile();
 		if (parent == null) {
+			return;
+		}
+		File preferred = new File(parent, entry.modId + ".json");
+		File manifest = entry.manifestFile.getCanonicalFile();
+		File preferredCanonical = preferred.getCanonicalFile();
+		if (manifest.equals(preferredCanonical) || !preferredCanonical.isFile()) {
+			return;
+		}
+		ModEntry preferredEntry = tryParseModEntry(preferredCanonical);
+		if (preferredEntry != null && entry.modId.equals(preferredEntry.modId) && isGeneratedManifestAlias(preferredEntry.manifestFile)) {
+			deleteIfExists(entry.manifestFile);
+		}
+	}
+
+	private void markGeneratedManifestAlias(File manifestFile) {
+		try {
+			JSONObject manifest = new JSONObject(readTextFile(manifestFile));
+			manifest.put("android_generated_manifest_alias", true);
+			writeTextFile(manifestFile, manifest.toString(2));
+		} catch (Exception ignored) {
+		}
+	}
+
+	private boolean isGeneratedManifestAlias(File manifestFile) {
+		try {
+			return new JSONObject(readTextFile(manifestFile)).optBoolean("android_generated_manifest_alias", false);
+		} catch (Exception ignored) {
+			return false;
+		}
+	}
+
+	private void ensureRuntimeModAlias(ModEntry entry, String extension) throws IOException {
+		File parent = entry.manifestFile.getParentFile();
+		if (parent == null) {
+			return;
+		}
+		if (".json".equals(extension)) {
+			File source = entry.manifestFile;
+			File target = new File(parent, entry.modId + extension);
+			if (!source.equals(target) && source.isFile() && !target.exists()) {
+				copyRecursively(source, target);
+				markGeneratedManifestAlias(target);
+			}
+			return;
+		}
+		if (entry.modId.equals(entry.pckName)) {
 			return;
 		}
 		File source = new File(parent, entry.pckName + extension);
@@ -370,6 +420,7 @@ public final class ExtraSettingsRepository {
 		File parent = manifestFile.getParentFile();
 		deleteIfExists(manifestFile);
 		if (parent != null) {
+			deleteIfExists(new File(parent, modEntry.modId + ".json"));
 			deleteIfExists(new File(parent, modEntry.modId + ".pck"));
 			deleteIfExists(new File(parent, modEntry.modId + ".dll"));
 			if (!modEntry.modId.equals(modEntry.pckName)) {
