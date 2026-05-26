@@ -163,8 +163,12 @@ public final class GameLaunchPreparationManager {
 
 	private void stageSelectedCompatOverlay() throws IOException {
 		CompatPackManager manager = new CompatPackManager(context);
-		File overlay = manager.getSelectedCompatOverlayPck();
 		File dest = new File(context.getFilesDir(), "port_compat.pck");
+		if (!manager.isCompatPackEnabled()) {
+			deleteFileIfExists(dest);
+			return;
+		}
+		File overlay = manager.getSelectedCompatOverlayPck();
 		if (overlay != null && overlay.isFile()) {
 			copyFile(overlay, dest);
 			return;
@@ -179,29 +183,40 @@ public final class GameLaunchPreparationManager {
 			return;
 		}
 		FileBrowserSupport.ensureDirectory(destDir);
+		CompatPackManager compatPackManager = new CompatPackManager(context);
+		boolean compatEnabled = compatPackManager.isCompatPackEnabled();
 		for (String name : bclFiles) {
+			if ("STS2Mobile.dll".equals(name) && !compatEnabled) {
+				continue;
+			}
 			copiedNames.add(name);
 		}
-		String compatStamp = new CompatPackManager(context).buildSelectedCompatStamp();
+		String compatStamp = compatPackManager.buildSelectedCompatStamp();
 		SharedPreferences preferences = context.getSharedPreferences(ASSEMBLY_SETUP_PREFERENCES_NAME, Context.MODE_PRIVATE);
 		int previousVersion = preferences.getInt(KEY_ASSEMBLY_SETUP_VERSION_CODE, -1);
 		String previousCompatStamp = preferences.getString(KEY_ASSEMBLY_SETUP_COMPAT_STAMP, "");
-		boolean bclReady = new File(destDir, "STS2Mobile.dll").isFile()
-			&& new File(destDir, "GodotSharp.dll").isFile();
+		boolean bclReady = new File(destDir, "GodotSharp.dll").isFile()
+			&& (!compatEnabled || new File(destDir, "STS2Mobile.dll").isFile());
 		if (previousVersion == BuildConfig.VERSION_CODE && compatStamp.equals(previousCompatStamp) && bclReady) {
 			return;
 		}
 
-		File selectedCompatDll = new CompatPackManager(context).getSelectedCompatDll();
+		File selectedCompatDll = compatPackManager.getSelectedCompatDll();
 		for (String name : bclFiles) {
-			if ("STS2Mobile.dll".equals(name) && selectedCompatDll != null && selectedCompatDll.isFile()) {
-				continue;
+			if ("STS2Mobile.dll".equals(name)) {
+				if (!compatEnabled) {
+					deleteFileIfExists(new File(destDir, "STS2Mobile.dll"));
+					continue;
+				}
+				if (selectedCompatDll != null && selectedCompatDll.isFile()) {
+					continue;
+				}
 			}
 			try (InputStream inputStream = assets.open("dotnet_bcl/" + name)) {
 				copyStreamToFile(inputStream, new File(destDir, name));
 			}
 		}
-		if (selectedCompatDll != null && selectedCompatDll.isFile()) {
+		if (compatEnabled && selectedCompatDll != null && selectedCompatDll.isFile()) {
 			copyFile(selectedCompatDll, new File(destDir, "STS2Mobile.dll"));
 		}
 		preferences.edit()
@@ -322,6 +337,12 @@ public final class GameLaunchPreparationManager {
 			while ((read = inputStream.read(buffer)) != -1) {
 				outputStream.write(buffer, 0, read);
 			}
+		}
+	}
+
+	private void deleteFileIfExists(File file) throws IOException {
+		if (file.exists() && !file.delete()) {
+			throw new IOException("Unable to delete file: " + file.getAbsolutePath());
 		}
 	}
 

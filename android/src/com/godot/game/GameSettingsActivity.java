@@ -171,18 +171,20 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				}
 				return;
 			}
-			CompatPackManager.CompatPack compatPack = compatPackManager.findBestMatch(payloadStatus.manifest);
-			if (compatPack != null && (compatPackManager.getSelectedPack() == null || !compatPack.packId.equals(compatPackManager.getSelectedPackId()))) {
-				compatPackManager.selectPack(compatPack.packId);
-			}
-			CompatPackManager.CompatPack selectedCompatPack = compatPackManager.getSelectedPack();
-			if (selectedCompatPack == null) {
-				showMessage(getString(R.string.launch_requires_compat_pack));
-				return;
-			}
-			if (!compatPackManager.isPackCompatibleWithPayload(selectedCompatPack, payloadStatus.manifest)) {
-				showCompatMismatchDialog(payloadStatus, selectedCompatPack);
-				return;
+			if (compatPackManager.isCompatPackEnabled()) {
+				CompatPackManager.CompatPack compatPack = compatPackManager.findBestMatch(payloadStatus.manifest);
+				if (compatPack != null && (compatPackManager.getSelectedPack() == null || !compatPack.packId.equals(compatPackManager.getSelectedPackId()))) {
+					compatPackManager.selectPack(compatPack.packId);
+				}
+				CompatPackManager.CompatPack selectedCompatPack = compatPackManager.getSelectedPack();
+				if (selectedCompatPack == null) {
+					showMessage(getString(R.string.launch_requires_compat_pack));
+					return;
+				}
+				if (!compatPackManager.isPackCompatibleWithPayload(selectedCompatPack, payloadStatus.manifest)) {
+					showCompatMismatchDialog(payloadStatus, selectedCompatPack);
+					return;
+				}
 			}
 			prepareAndStartGame();
 		} catch (Exception exception) {

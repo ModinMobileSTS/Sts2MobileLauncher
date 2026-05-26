@@ -67,6 +67,9 @@ public final class CompatPackManager {
 	}
 
 	public CompatPack getSelectedPack() {
+		if (!isCompatPackEnabled()) {
+			return null;
+		}
 		String id = getSelectedPackId();
 		if (TextUtils.isEmpty(id)) {
 			return null;
@@ -79,7 +82,18 @@ public final class CompatPackManager {
 	}
 
 	public String getSelectedPackId() {
+		if (!isCompatPackEnabled()) {
+			return "";
+		}
 		return prefs().getString(KEY_SELECTED_COMPAT_PACK_ID, "");
+	}
+
+	public boolean isCompatPackEnabled() {
+		try {
+			return new ExtraSettingsRepository(context).isAndroidCompatPackEnabled();
+		} catch (Exception exception) {
+			return true;
+		}
 	}
 
 	public void selectPack(String packId) throws Exception {
@@ -107,6 +121,9 @@ public final class CompatPackManager {
 	}
 
 	public String buildSelectedCompatStamp() {
+		if (!isCompatPackEnabled()) {
+			return "compat-disabled";
+		}
 		CompatPack pack = getSelectedPack();
 		if (pack == null || !pack.ready) {
 			return "no-selected-compat";
@@ -494,7 +511,8 @@ public final class CompatPackManager {
 		FileBrowserSupport.ensureDirectory(launcherDir);
 		JSONObject root = new JSONObject();
 		root.put("schema", 1);
-		if (pack != null) {
+		root.put("compat_pack_enabled", isCompatPackEnabled());
+		if (pack != null && isCompatPackEnabled()) {
 			root.put("selected_compat_pack_id", pack.packId);
 			root.put("selected_compat_pack_dir", pack.dir.getAbsolutePath());
 		}

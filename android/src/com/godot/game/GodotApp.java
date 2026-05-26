@@ -437,12 +437,21 @@ public class GodotApp extends GodotActivity {
 		return activity == null ? "" : activity.getFilesDir().getAbsolutePath();
 	}
 
+	public static boolean isAndroidCompatPackEnabled() {
+		GodotApp activity = currentInstance;
+		return activity != null && new CompatPackManager(activity).isCompatPackEnabled();
+	}
+
 	public static String getSelectedCompatPackDir() {
 		GodotApp activity = currentInstance;
 		if (activity == null) {
 			return "";
 		}
-		CompatPackManager.CompatPack pack = new CompatPackManager(activity).getSelectedPack();
+		CompatPackManager manager = new CompatPackManager(activity);
+		if (!manager.isCompatPackEnabled()) {
+			return "";
+		}
+		CompatPackManager.CompatPack pack = manager.getSelectedPack();
 		return pack == null ? "" : pack.dir.getAbsolutePath();
 	}
 
@@ -451,7 +460,11 @@ public class GodotApp extends GodotActivity {
 		if (activity == null) {
 			return "";
 		}
-		File file = new CompatPackManager(activity).getSelectedCompatOverlayPck();
+		CompatPackManager manager = new CompatPackManager(activity);
+		if (!manager.isCompatPackEnabled()) {
+			return "";
+		}
+		File file = manager.getSelectedCompatOverlayPck();
 		return file == null ? "" : file.getAbsolutePath();
 	}
 

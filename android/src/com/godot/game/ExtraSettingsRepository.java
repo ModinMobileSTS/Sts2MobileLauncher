@@ -38,7 +38,8 @@ import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 public final class ExtraSettingsRepository {
-	public static final int SETTINGS_SCHEMA_VERSION = 5;
+	public static final int SETTINGS_SCHEMA_VERSION = 6;
+	public static final String KEY_ANDROID_COMPAT_PACK_ENABLED = "android_compat_pack_enabled";
 
 	private static final String MOD_SOURCE_MODS_DIRECTORY = "mods_directory";
 	private static final String SETTINGS_FILE_NAME = "settings.save";
@@ -120,6 +121,7 @@ public final class ExtraSettingsRepository {
 		putVector(settings, "window_size", 1920, 1080);
 		putVector(settings, "fullscreen_render_size", 0, 0);
 		settings.put("preload_enabled", true);
+		settings.put(KEY_ANDROID_COMPAT_PACK_ENABLED, true);
 		settings.put("global_scale", 1.0f);
 		settings.put("ui_font_scale_percent", 100);
 		settings.put("show_more_hand_card_text", true);
@@ -154,6 +156,7 @@ public final class ExtraSettingsRepository {
 		changed |= putIfMissing(settings, "aspect_ratio", "auto");
 		changed |= putIfMissing(settings, "shader_compatibility_mode", false);
 		changed |= putIfMissing(settings, "preload_enabled", true);
+		changed |= putIfMissing(settings, KEY_ANDROID_COMPAT_PACK_ENABLED, true);
 		changed |= putIfMissing(settings, "fullscreen_render_size", vector(0, 0));
 		changed |= putIfMissing(settings, "global_scale", 1.0f);
 		changed |= putIfMissing(settings, "ui_font_scale_percent", 100);
@@ -186,6 +189,10 @@ public final class ExtraSettingsRepository {
 		}
 		object.put(key, value);
 		return true;
+	}
+
+	public boolean isAndroidCompatPackEnabled() throws Exception {
+		return loadSettingsJson().optBoolean(KEY_ANDROID_COMPAT_PACK_ENABLED, true);
 	}
 
 	public void applyFirstRunDefaults() throws Exception {

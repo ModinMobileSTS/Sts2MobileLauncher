@@ -259,6 +259,7 @@ public final class SettingsPage {
 		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
 		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_dashboard_24, R.string.settings_system_title, R.string.settings_system_subtitle, null));
 		addSwitchRow(content, R.drawable.ic_bolt_24, R.string.preload_switch, R.string.preload_hint, settings.optBoolean("preload_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_enabled", checked)));
+		addSwitchRow(content, R.drawable.ic_extension_24, R.string.android_compat_pack_enabled_switch, R.string.android_compat_pack_enabled_hint, settings.optBoolean(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, true), checked -> repository.saveSetting(root -> root.put(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, checked)));
 		MaterialButton clearTextureCache = ExtraSettingsUi.outlineButton(context, R.string.clear_texture_cache, R.drawable.ic_layers_24);
 		clearTextureCache.setOnClickListener(v -> actions.requestClearTextureCache());
 		ExtraSettingsUi.addSmallSpacing(content, clearTextureCache);

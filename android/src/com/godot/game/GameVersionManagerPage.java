@@ -55,13 +55,14 @@ public final class GameVersionManagerPage {
 	}
 
 	private View buildOverviewCard(PayloadManager.Status payload, List<CompatPackManager.CompatPack> packs) {
+		boolean compatEnabled = compatPackManager.isCompatPackEnabled();
 		CompatPackManager.CompatPack selected = findSelectedPack(packs);
-		CompatPackManager.CompatPack matched = compatPackManager.findBestMatch(payload.manifest, packs);
+		CompatPackManager.CompatPack matched = compatEnabled ? compatPackManager.findBestMatch(payload.manifest, packs) : null;
 		MaterialCardView card = ExtraSettingsUi.card(context);
 		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
 		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_layers_24, R.string.version_manager_title, R.string.version_manager_subtitle, null));
 		ExtraSettingsUi.addSmallSpacing(content, metricRow(payload.ready ? R.drawable.ic_check_circle_24 : R.drawable.ic_error_outline_24, payload.ready ? context.getString(R.string.version_manager_game_ready_format, payload.shortVersionLabel()) : context.getString(R.string.payload_status_missing_short)));
-		ExtraSettingsUi.addSmallSpacing(content, metricRow(selected != null && selected.ready ? R.drawable.ic_extension_24 : R.drawable.ic_error_outline_24, selected != null && selected.ready ? context.getString(R.string.version_manager_selected_compat_format, selected.displayName, selected.targetLabel()) : context.getString(R.string.version_manager_no_compat_selected)));
+		ExtraSettingsUi.addSmallSpacing(content, metricRow(compatEnabled && selected != null && selected.ready ? R.drawable.ic_extension_24 : R.drawable.ic_error_outline_24, compatEnabled ? (selected != null && selected.ready ? context.getString(R.string.version_manager_selected_compat_format, selected.displayName, selected.targetLabel()) : context.getString(R.string.version_manager_no_compat_selected)) : context.getString(R.string.version_manager_compat_disabled)));
 		if (matched != null && (selected == null || !matched.packId.equals(selected.packId))) {
 			ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(context, context.getString(R.string.version_manager_match_hint, matched.displayName)));
 			MaterialButton useMatch = ExtraSettingsUi.tonalButton(context, R.string.version_manager_use_matched_compat, R.drawable.ic_check_circle_24);

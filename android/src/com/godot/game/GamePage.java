@@ -89,11 +89,12 @@ public final class GamePage {
 		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_controller_24, R.string.game_status_title, R.string.game_status_subtitle, null));
 		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_extension_24, context.getString(R.string.game_mod_count_format, mods.size(), enabledMods)));
 		PayloadManager.Status payloadStatus = payloadManager.getStatus();
+		boolean compatEnabled = compatPackManager.isCompatPackEnabled();
 		CompatPackManager.CompatPack selectedCompat = compatPackManager.getSelectedPack();
-		CompatPackManager.CompatPack matchedCompat = compatPackManager.findBestMatch(payloadStatus.manifest);
+		CompatPackManager.CompatPack matchedCompat = compatEnabled ? compatPackManager.findBestMatch(payloadStatus.manifest) : null;
 		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_tune_24, context.getString(R.string.game_graphics_summary_format, renderer, formatMsaa(msaa), formatVsync(vsync), formatAspect(aspect))));
 		ExtraSettingsUi.addSmallSpacing(content, metricRow(payloadStatus.ready ? R.drawable.ic_check_circle_24 : R.drawable.ic_error_outline_24, payloadStatus.ready ? context.getString(R.string.payload_status_ready_short, payloadStatus.shortVersionLabel()) : context.getString(R.string.payload_status_missing_short)));
-		ExtraSettingsUi.addSmallSpacing(content, metricRow(selectedCompat != null && selectedCompat.ready ? R.drawable.ic_layers_24 : R.drawable.ic_error_outline_24, selectedCompat != null && selectedCompat.ready ? context.getString(R.string.game_compat_status_format, selectedCompat.displayName, selectedCompat.targetLabel()) : context.getString(R.string.version_manager_no_compat_selected)));
+		ExtraSettingsUi.addSmallSpacing(content, metricRow(compatEnabled && selectedCompat != null && selectedCompat.ready ? R.drawable.ic_layers_24 : R.drawable.ic_error_outline_24, compatEnabled ? (selectedCompat != null && selectedCompat.ready ? context.getString(R.string.game_compat_status_format, selectedCompat.displayName, selectedCompat.targetLabel()) : context.getString(R.string.version_manager_no_compat_selected)) : context.getString(R.string.game_compat_disabled_status)));
 		if (matchedCompat != null && (selectedCompat == null || !matchedCompat.packId.equals(selectedCompat.packId))) {
 			ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(context, context.getString(R.string.version_manager_match_hint, matchedCompat.displayName)));
 		}

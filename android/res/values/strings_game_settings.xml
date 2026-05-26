@@ -403,6 +403,8 @@
     <string name="settings_system_title">System</string>
     <string name="settings_system_subtitle">Startup, audio, multiplayer and diagnostics.</string>
     <string name="preload_hint">Warm up frequently used resources during startup.</string>
+    <string name="android_compat_pack_enabled_switch">Enable Android compatibility pack</string>
+    <string name="android_compat_pack_enabled_hint">Enabled by default. Turn this off to start the original game without STS2Mobile.dll / port_compat.pck patches. Many mobile features may stop working; fully restart the game after changing it.</string>
     <string name="clear_texture_cache">Clear texture cache</string>
     <string name="status_clear_texture_cache_done">Texture cache will be rebuilt on next launch.</string>
     <string name="settings_lan_subtitle">LAN identity and compatibility helpers.</string>
@@ -466,7 +468,9 @@
     <string name="version_manager_game_ready_format">Active game: %1$s</string>
     <string name="version_manager_selected_compat_format">Compat: %1$s · target %2$s</string>
     <string name="game_compat_status_format">Compat pack: %1$s · target %2$s</string>
+    <string name="game_compat_disabled_status">Android compatibility pack disabled; launching original game body.</string>
     <string name="version_manager_no_compat_selected">No compatibility pack selected.</string>
+    <string name="version_manager_compat_disabled">Android compatibility pack disabled in Settings.</string>
     <string name="version_manager_match_hint">A matching compatibility pack is available: %1$s</string>
     <string name="version_manager_use_matched_compat">Use matched pack</string>
     <string name="version_manager_game_payload_title">Active game body</string>
