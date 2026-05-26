@@ -208,8 +208,8 @@ android {
         }
 
         release {
-            // Keep `run-as` available for save/settings validation while the
-            // restructured port is still under active sideload testing.
+            // Keep `run-as` available for sideload validation while default
+            // packaging uses release optimizations.
             debuggable true
 
             // Signing and zip-aligning are skipped for prebuilt builds, but

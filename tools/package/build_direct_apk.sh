@@ -19,8 +19,11 @@ PAYLOAD_DIR="$ROOT/android/assets/payload"
 mkdir -p "$PAYLOAD_DIR"
 trap 'rm -f "$PAYLOAD_DIR/SlayTheSpire2.zip"' EXIT
 cp -f "$ZIP_SRC" "$PAYLOAD_DIR/SlayTheSpire2.zip"
-"$ROOT/tools/android/gradle-with-s2-env.sh" assembleMonoDebug
-APK="$ROOT/android/build/outputs/apk/mono/debug/sts2-re.apk"
+"$ROOT/tools/android/gradle-with-s2-env.sh" assembleMonoRelease \
+  -Prelease_keystore_file="${RELEASE_KEYSTORE_FILE:-/home/wsdx233/.android/debug.keystore}" \
+  -Prelease_keystore_password="${RELEASE_KEYSTORE_PASSWORD:-android}" \
+  -Prelease_keystore_alias="${RELEASE_KEYSTORE_ALIAS:-androiddebugkey}"
+APK="$ROOT/android/build/outputs/apk/mono/release/sts2-re.apk"
 DIST_APK="$ROOT/dist/sts2-re-direct.apk"
 if [[ -f "$APK" ]]; then
   mkdir -p "$ROOT/dist"

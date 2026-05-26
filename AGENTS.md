@@ -144,7 +144,7 @@ s2_re/
 - NDK：`28.1.13356709`
 - Java source/target：`17`
 - flavor：`mono`
-- build type：`debug`
+- build type：`release`
 - ABI：`arm64-v8a`
 - applicationId：`com.megacrit.sts2re`
 - versionName/versionCode：`0.1.0` / `1`
@@ -182,9 +182,9 @@ tools/package/build_importer_apk.sh
 
 1. `tools/android/sync-runtime-from-references.sh`
 2. `tools/android/build-port-mod.sh`
-3. `tools/android/gradle-with-s2-env.sh assembleMonoDebug`
+3. `tools/android/gradle-with-s2-env.sh assembleMonoRelease`
 4. 复制输出：
-   - Gradle 产物：`android/build/outputs/apk/mono/debug/sts2-re.apk`
+   - Gradle 产物：`android/build/outputs/apk/mono/release/sts2-re.apk`
    - 稳定副本：`dist/sts2-re-importer.apk`
 
 ### 7.2 直装版 APK（临时内置游戏 zip）
@@ -201,9 +201,9 @@ tools/package/build_direct_apk.sh "../s2_pc/Slay the Spire 2.zip"
 2. 同步 runtime。
 3. 编译并 stage `STS2Mobile.dll` / `port_compat.pck`。
 4. 临时复制 zip 到 `android/assets/payload/SlayTheSpire2.zip`。
-5. `assembleMonoDebug`。
+5. `assembleMonoRelease`。
 6. 复制输出：
-   - Gradle 产物：`android/build/outputs/apk/mono/debug/sts2-re.apk`
+   - Gradle 产物：`android/build/outputs/apk/mono/release/sts2-re.apk`
    - 稳定副本：`dist/sts2-re-direct.apk`
 7. 自动删除临时内置 zip。
 
@@ -287,7 +287,7 @@ adb shell run-as com.megacrit.sts2re ls files/game
 
 - 当前工程是“重构 shell + payload + compat MOD”的组合，不是传统 Android Studio `app/` 子模块结构；Gradle 根就在 `android/`。
 - `android/build.gradle` 仍保留 Godot Android template 的导出辅助 task/属性；实际打包推荐用 `tools/package/*.sh`，不要只裸跑 Gradle，除非你已同步 runtime 并准备好环境。
-- `release` build type 当前保留 `debuggable true` 用于 sideload/run-as 验证；正式发布前需要重新审视签名、debuggable、混淆/资源优化、FileProvider 暴露范围。
+- `release` build type 当前保留 `debuggable true`，默认脚本仍打 release APK 以获得 release 优化，同时保留 `run-as` 便于 sideload 验证；正式发布前需要重新审视签名、debuggable、混淆/资源优化、FileProvider 暴露范围。
 - `settings_shortcuts.xml` / `game_shortcuts.xml` 的 `targetPackage` 与 `applicationId` 强相关；改包名时必须同步。
 - `<files>/default/<account>` 的账号选择逻辑与旧移植版兼容但较脆弱，多账号/自定义 platform player id 改动要同时检查 Java 与兼容 MOD。
 - `settings.save` 的 Android-only key 是 Java 附加设置与 Harmony patcher 的协议，改 key 要同步 `ExtraSettingsRepository`、页面 UI、`AndroidSettingsBridge`、相关 patches。

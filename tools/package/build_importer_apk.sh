@@ -4,8 +4,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 "$ROOT/tools/android/sync-runtime-from-references.sh"
 "$ROOT/tools/android/stage-bundled-compat-packs.sh"
-"$ROOT/tools/android/gradle-with-s2-env.sh" assembleMonoDebug
-APK="$ROOT/android/build/outputs/apk/mono/debug/sts2-re.apk"
+"$ROOT/tools/android/gradle-with-s2-env.sh" assembleMonoRelease \
+  -Prelease_keystore_file="${RELEASE_KEYSTORE_FILE:-/home/wsdx233/.android/debug.keystore}" \
+  -Prelease_keystore_password="${RELEASE_KEYSTORE_PASSWORD:-android}" \
+  -Prelease_keystore_alias="${RELEASE_KEYSTORE_ALIAS:-androiddebugkey}"
+APK="$ROOT/android/build/outputs/apk/mono/release/sts2-re.apk"
 DIST_APK="$ROOT/dist/sts2-re-importer.apk"
 if [[ -f "$APK" ]]; then
   mkdir -p "$ROOT/dist"
