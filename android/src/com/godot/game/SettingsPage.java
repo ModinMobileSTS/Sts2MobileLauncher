@@ -259,6 +259,9 @@ public final class SettingsPage {
 		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
 		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_dashboard_24, R.string.settings_system_title, R.string.settings_system_subtitle, null));
 		addSwitchRow(content, R.drawable.ic_bolt_24, R.string.preload_switch, R.string.preload_hint, settings.optBoolean("preload_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_enabled", checked)));
+		MaterialButton clearTextureCache = ExtraSettingsUi.outlineButton(context, R.string.clear_texture_cache, R.drawable.ic_layers_24);
+		clearTextureCache.setOnClickListener(v -> actions.requestClearTextureCache());
+		ExtraSettingsUi.addSmallSpacing(content, clearTextureCache);
 		addSwitchRow(content, R.drawable.ic_volume_up_24, R.string.audio_compatibility_switch, R.string.audio_compatibility_hint, settings.optBoolean("audio_compatibility_mode", false), checked -> repository.saveSetting(root -> root.put("audio_compatibility_mode", checked)));
 		addSwitchRow(content, R.drawable.ic_mood_24, R.string.show_mobile_emoji_button_switch, R.string.show_mobile_emoji_button_help, settings.optBoolean("show_mobile_emoji_button", true), checked -> repository.saveSetting(root -> root.put("show_mobile_emoji_button", checked)));
 		addSwitchRow(content, R.drawable.ic_restart_alt_24, R.string.quick_sl_enabled_switch, R.string.quick_sl_enabled_help, settings.optBoolean("quick_sl_enabled", true), checked -> repository.saveSetting(root -> root.put("quick_sl_enabled", checked)));

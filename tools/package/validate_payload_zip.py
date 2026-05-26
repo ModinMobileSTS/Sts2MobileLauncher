@@ -39,6 +39,9 @@ def main() -> int:
                 print(f"Invalid PCK magic: {magic!r}", file=sys.stderr)
                 return 1
         release_info = json.loads(zf.read("release_info.json").decode("utf-8"))
+        sts2_dll_bytes = zf.read("data_sts2_windows_x86_64/sts2.dll")
+        sts2_dll_sha256 = hashlib.sha256(sts2_dll_bytes).hexdigest()
+        sts2_dll_size = len(sts2_dll_bytes)
     sha256 = hashlib.sha256()
     with path.open("rb") as fp:
         for chunk in iter(lambda: fp.read(1024 * 1024), b""):
@@ -48,6 +51,14 @@ def main() -> int:
         "size": path.stat().st_size,
         "sha256": sha256.hexdigest(),
         "release_info": release_info,
+        "identity": {
+            "version": release_info.get("version", ""),
+            "commit": release_info.get("commit", ""),
+            "branch": release_info.get("branch", ""),
+            "main_assembly_hash": release_info.get("main_assembly_hash"),
+            "sts2_dll_sha256": sts2_dll_sha256,
+            "sts2_dll_size": sts2_dll_size,
+        },
     }, ensure_ascii=False, indent=2))
     return 0
 

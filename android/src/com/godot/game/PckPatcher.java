@@ -10,7 +10,6 @@ import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Arrays;
-import java.util.Locale;
 
 /**
  * Length-preserving patches for app-private Godot PCK payload copies.
@@ -113,7 +112,6 @@ public final class PckPatcher {
 			}
 		}
 		if (result.changed()) {
-			result.pckSha256AfterPatch = sha256(pckFile);
 			Log.i(TAG, "Patched Sentry metadata in PCK: " + result.toJson());
 		} else {
 			Log.i(TAG, "PCK Sentry metadata already patched or absent: " + result.toJson());
@@ -176,25 +174,6 @@ public final class PckPatcher {
 		}
 	}
 
-	private static String sha256(File file) throws IOException {
-		try {
-			MessageDigest digest = MessageDigest.getInstance("SHA-256");
-			try (java.io.InputStream input = new java.io.BufferedInputStream(new java.io.FileInputStream(file))) {
-				byte[] buffer = new byte[1024 * 1024];
-				int read;
-				while ((read = input.read(buffer)) >= 0) {
-					digest.update(buffer, 0, read);
-				}
-			}
-			return toHex(digest.digest());
-		} catch (Exception exception) {
-			if (exception instanceof IOException) {
-				throw (IOException) exception;
-			}
-			throw new IOException("Unable to compute SHA-256", exception);
-		}
-	}
-
 	private static int indexOf(byte[] data, byte[] search) {
 		outer:
 		for (int i = 0; i <= data.length - search.length; i++) {
@@ -252,14 +231,6 @@ public final class PckPatcher {
 		return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24) | (b4 << 32) | (b5 << 40) | (b6 << 48) | (b7 << 56);
 	}
 
-	private static String toHex(byte[] bytes) {
-		StringBuilder builder = new StringBuilder(bytes.length * 2);
-		for (byte value : bytes) {
-			builder.append(String.format(Locale.US, "%02x", value & 0xff));
-		}
-		return builder.toString();
-	}
-
 	public static final class PatchResult {
 		public int formatVersion;
 		public int godotMajor;
@@ -271,7 +242,6 @@ public final class PckPatcher {
 		public boolean projectBinaryPatched;
 		public boolean projectGodotPatched;
 		public boolean extensionListPatched;
-		public String pckSha256AfterPatch = "";
 
 		public boolean changed() {
 			return projectBinaryPatched || projectGodotPatched || extensionListPatched;
@@ -288,7 +258,6 @@ public final class PckPatcher {
 				object.put("project_binary_patched", projectBinaryPatched);
 				object.put("project_godot_patched", projectGodotPatched);
 				object.put("extension_list_patched", extensionListPatched);
-				object.put("pck_sha256_after_patch", pckSha256AfterPatch);
 				object.put("godot_version", godotMajor + "." + godotMinor + "." + godotPatch);
 				object.put("format_version", formatVersion);
 			} catch (Exception ignored) {

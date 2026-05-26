@@ -1,0 +1,4 @@
+[submodule "port-mod"]
+	path = port-mod
+	url = ../sts2-android-compat
+	branch = compat/v0.106.1-beta

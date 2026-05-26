@@ -231,6 +231,7 @@
 
     <string name="tab_game">游戏</string>
     <string name="tab_mods">模组</string>
+    <string name="tab_versions">版本</string>
     <string name="tab_settings">设置</string>
     <string name="tab_about">关于</string>
     <string name="welcome_title">欢迎来到 StS2 手机版</string>
@@ -402,6 +403,8 @@
     <string name="settings_system_title">系统</string>
     <string name="settings_system_subtitle">启动、声音、联机与诊断。</string>
     <string name="preload_hint">启动时预热常用资源。</string>
+    <string name="clear_texture_cache">清理贴图缓存</string>
+    <string name="status_clear_texture_cache_done">贴图缓存将在下次启动时重建。</string>
     <string name="settings_lan_subtitle">局域网身份与兼容辅助。</string>
     <string name="status_import_mod_done_count">已导入 %1$d 个 MOD 项。</string>
     <string name="about_page_subtitle">制作信息与友链。</string>
@@ -440,6 +443,11 @@
     <string name="payload_stats_format">%1$d 个文件，总计 %2$s；PCK %3$s；sts2.dll %4$s</string>
     <string name="payload_source_format">来源：%1$s / %2$s / SHA-256 %3$s</string>
     <string name="launch_requires_payload">请先导入游戏压缩包再启动。</string>
+    <string name="launch_requires_compat_pack">请先安装或选择对应的移动端兼容包再启动。</string>
+    <string name="launch_incompatible_compat_pack_dialog_title">兼容包版本不匹配</string>
+    <string name="launch_incompatible_compat_pack_dialog_message">当前兼容包：%1$s\n兼容包目标：%2$s\n当前游戏：%3$s\n\n此检查只比较游戏版本号。你可以前往“版本”页切换兼容包，也可以选择继续启动。</string>
+    <string name="launch_anyway">仍然启动</string>
+    <string name="status_busy_prepare_launch">正在准备游戏文件…</string>
     <string name="import_game_payload">导入游戏压缩包</string>
     <string name="extract_bundled_payload">解压内置游戏</string>
     <string name="clear_game_payload">清除游戏本体</string>
@@ -452,4 +460,45 @@
     <string name="status_clear_game_payload_done">游戏本体已清除。</string>
     <string name="clear_game_payload_confirm_title">清除已导入的游戏本体？</string>
     <string name="clear_game_payload_confirm_message">只会删除私有 game 目录下的游戏本体；存档、附加设置和 MOD 文件会保留。</string>
+
+    <string name="version_manager_title">版本管理器</string>
+    <string name="version_manager_subtitle">管理不同游戏本体和移动端兼容包。</string>
+    <string name="version_manager_game_ready_format">当前游戏：%1$s</string>
+    <string name="version_manager_selected_compat_format">兼容包：%1$s · 目标 %2$s</string>
+    <string name="game_compat_status_format">兼容包：%1$s · 目标 %2$s</string>
+    <string name="version_manager_no_compat_selected">尚未选择兼容包。</string>
+    <string name="version_manager_match_hint">找到匹配的兼容包：%1$s</string>
+    <string name="version_manager_use_matched_compat">使用匹配兼容包</string>
+    <string name="version_manager_game_payload_title">当前游戏本体</string>
+    <string name="version_manager_game_payload_subtitle">导入或替换当前启用的 PC 游戏压缩包。</string>
+    <string name="version_manager_archived_games_title">已安装游戏版本</string>
+    <string name="version_manager_archived_games_subtitle">导入过的游戏本体会归档到这里，方便之后切换。</string>
+    <string name="archive_active_game_version">归档当前游戏</string>
+    <string name="version_manager_no_archived_games">还没有归档游戏版本。导入游戏压缩包或归档当前游戏即可添加。</string>
+    <string name="version_manager_compat_packs_title">兼容包</string>
+    <string name="version_manager_compat_packs_subtitle">安装、导入和选择移动端兼容包。</string>
+    <string name="version_manager_no_compat_packs">还没有安装兼容包。</string>
+    <string name="version_manager_compat_target_format">兼容 %1$s · %2$s · 目标 %3$s</string>
+    <string name="version_manager_installed_at_format">安装时间：%1$s</string>
+    <string name="import_compat_pack">导入兼容包</string>
+    <string name="install_bundled_compat_packs">安装内置兼容包</string>
+    <string name="version_manager_select">选择</string>
+    <string name="status_busy_import_compat_pack">正在导入兼容包…</string>
+    <string name="status_import_compat_pack_done">兼容包已安装：%1$s</string>
+    <string name="status_busy_install_bundled_compat">正在安装内置兼容包…</string>
+    <string name="status_install_bundled_compat_done">已安装 %1$d 个内置兼容包。</string>
+    <string name="status_busy_select_compat_pack">正在选择兼容包…</string>
+    <string name="status_select_compat_pack_done">兼容包已选择，重启游戏后生效。</string>
+    <string name="status_busy_delete_compat_pack">正在删除兼容包…</string>
+    <string name="status_delete_compat_pack_done">兼容包已删除。</string>
+    <string name="delete_compat_pack_confirm_title">删除兼容包？</string>
+    <string name="delete_compat_pack_confirm_message">只会删除所选移动端兼容包；游戏本体、存档和用户 MOD 会保留。</string>
+    <string name="status_busy_archive_game_version">正在归档当前游戏版本…</string>
+    <string name="status_archive_game_version_done">游戏版本已归档：%1$s</string>
+    <string name="status_busy_select_game_version">正在切换游戏版本…</string>
+    <string name="status_select_game_version_done">游戏版本已选择，重启游戏后生效。</string>
+    <string name="status_busy_delete_game_version">正在删除归档游戏版本…</string>
+    <string name="status_delete_game_version_done">归档游戏版本已删除。</string>
+    <string name="delete_game_version_confirm_title">删除归档游戏版本？</string>
+    <string name="delete_game_version_confirm_message">这会删除归档的游戏本体。当前启用的游戏、存档和 MOD 不会被删除。</string>
 </resources>

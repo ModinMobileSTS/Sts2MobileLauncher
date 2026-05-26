@@ -7,6 +7,14 @@ public interface ExtraSettingsActions {
 	void requestImportGamePayload();
 	void requestExtractBundledPayload();
 	void requestClearGamePayload();
+	void requestImportCompatPack();
+	void requestInstallBundledCompatPacks();
+	void requestSelectCompatPack(String packId);
+	void requestDeleteCompatPack(String packId);
+	void requestClearTextureCache();
+	void requestArchiveActiveGameVersion();
+	void requestSelectGameVersion(String versionId);
+	void requestDeleteGameVersion(String versionId);
 	void requestExportFullDataBackup();
 	void requestImportFullDataBackup();
 	void requestImportMod();
@@ -15,6 +23,7 @@ public interface ExtraSettingsActions {
 	void openUrl(String url);
 	void requestUpdateCheck();
 	void openSettingsTab();
+	void openVersionsTab();
 	void refreshCurrentScreen();
 	void showMessage(String message);
 	void showError(Exception exception);

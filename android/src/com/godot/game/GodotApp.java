@@ -39,7 +39,6 @@ import org.fmod.FMOD;
 
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -63,9 +62,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Template activity for Godot Android builds.
@@ -76,9 +73,6 @@ public class GodotApp extends GodotActivity {
 	private static final String SETTINGS_FILE_NAME = "settings.save";
 	private static final String SOFT_KEYBOARD_SHORTCUT_SETTING_KEY = "android_volume_up_soft_keyboard";
 	private static final String PCK_FILE_NAME = PayloadManager.PCK_FILE_NAME;
-	private static final String ASSEMBLY_SETUP_PREFERENCES_NAME = "sts2_assembly_setup";
-	private static final String KEY_ASSEMBLY_SETUP_VERSION_CODE = "last_version_code";
-	private static final String KEY_ASSEMBLY_SETUP_COMPAT_STAMP = "compat_stamp";
 
 	private static volatile GodotApp currentInstance;
 	private static volatile boolean currentWindowFocused;
@@ -155,7 +149,9 @@ public class GodotApp extends GodotActivity {
 		} catch (Throwable throwable) {
 			Log.w(TAG, "FMOD init failed; continuing so launcher diagnostics remain available.", throwable);
 		}
-		setupAssemblies();
+		if (!getIntent().getBooleanExtra("launch_prepared", false)) {
+			prepareLaunchFallback();
+		}
 		super.onCreate(savedInstanceState);
 		currentInstance = this;
 		currentWindowFocused = hasWindowFocus();
@@ -168,11 +164,6 @@ public class GodotApp extends GodotActivity {
 		appendAndroidDisplayCommandLineArgs(commandLine);
 		File pckFile = new File(getGameDir(), PCK_FILE_NAME);
 		if (pckFile.isFile()) {
-			try {
-				new PayloadManager(this).patchInstalledPayloadIfNeeded();
-			} catch (IOException exception) {
-				Log.w(TAG, "Unable to patch imported PCK before launch; continuing with existing payload.", exception);
-			}
 			commandLine.add("--main-pack");
 			commandLine.add(pckFile.getAbsolutePath());
 			Log.i(TAG, "Loading imported game PCK: " + pckFile.getAbsolutePath());
@@ -220,139 +211,13 @@ public class GodotApp extends GodotActivity {
 		return gameDir;
 	}
 
-	private void setupAssemblies() {
-		if (!BuildConfig.FLAVOR.equals("mono")) {
-			return;
-		}
-		extractAssetIfChanged("port_compat.pck", new File(getFilesDir(), "port_compat.pck"));
-		File destDir = new File(getFilesDir(), ".godot/mono/publish/arm64");
-		File srcDir = findAssembliesDir();
-		Set<String> protectedBclNames = new HashSet<>();
-		boolean versionChanged = isAssemblyAssetVersionChanged();
-		boolean copiedAnyBcl = copyBclAssemblies(destDir, protectedBclNames, versionChanged);
-		if (!srcDir.isDirectory()) {
-			Log.w(TAG, "Game assembly source directory is missing: " + srcDir.getAbsolutePath());
-			return;
-		}
-		File[] files = srcDir.listFiles();
-		if (files == null) {
-			return;
-		}
-		int copied = 0;
-		int skipped = 0;
-		for (File src : files) {
-			if (!src.isFile() || src.getName().endsWith(".so")) {
-				continue;
-			}
-			String name = src.getName();
-			if (protectedBclNames.contains(name) || isProtectedBclAssembly(name)) {
-				skipped++;
-				continue;
-			}
-			File dest = new File(destDir, name);
-			if (dest.isFile() && dest.length() == src.length() && dest.lastModified() >= src.lastModified()) {
-				skipped++;
-				continue;
-			}
-			try {
-				copyFile(src, dest);
-				copied++;
-			} catch (IOException exception) {
-				Log.e(TAG, "Failed to copy game assembly: " + name, exception);
-			}
-		}
-		Log.i(TAG, "Assembly setup complete. BCL copied=" + copiedAnyBcl + ", game copied=" + copied + ", skipped=" + skipped);
-	}
-
-	private boolean copyBclAssemblies(File destDir, Set<String> copiedNames, boolean versionChanged) {
+	private void prepareLaunchFallback() {
 		try {
-			String[] bclFiles = getAssets().list("dotnet_bcl");
-			if (bclFiles == null || bclFiles.length == 0) {
-				Log.w(TAG, "No dotnet_bcl assets found.");
-				return false;
-			}
-			ensureDirectory(destDir);
-			for (String name : bclFiles) {
-				copiedNames.add(name);
-			}
-			boolean bclReady = new File(destDir, "STS2Mobile.dll").isFile()
-				&& new File(destDir, "GodotSharp.dll").isFile();
-			String compatStamp = buildCompatAssemblyStamp();
-			SharedPreferences preferences = getSharedPreferences(ASSEMBLY_SETUP_PREFERENCES_NAME, MODE_PRIVATE);
-			String previousCompatStamp = preferences.getString(KEY_ASSEMBLY_SETUP_COMPAT_STAMP, "");
-			boolean compatChanged = !compatStamp.equals(previousCompatStamp);
-			if (!versionChanged && !compatChanged && bclReady) {
-				Log.i(TAG, "Skipping dotnet_bcl copy because app version and compat assembly stamp are unchanged.");
-				return false;
-			}
-			int count = 0;
-			for (String name : bclFiles) {
-				try (InputStream inputStream = getAssets().open("dotnet_bcl/" + name)) {
-					copyStreamToFile(inputStream, new File(destDir, name));
-					count++;
-				}
-			}
-			preferences.edit().putString(KEY_ASSEMBLY_SETUP_COMPAT_STAMP, compatStamp).apply();
-			Log.i(TAG, "Copied " + count + " dotnet_bcl assemblies.");
-			return true;
-		} catch (IOException exception) {
-			Log.e(TAG, "Failed to copy dotnet_bcl assemblies.", exception);
-			return false;
-		}
-	}
-
-	private boolean isAssemblyAssetVersionChanged() {
-		SharedPreferences preferences = getSharedPreferences(ASSEMBLY_SETUP_PREFERENCES_NAME, MODE_PRIVATE);
-		int currentVersion = BuildConfig.VERSION_CODE;
-		int previousVersion = preferences.getInt(KEY_ASSEMBLY_SETUP_VERSION_CODE, -1);
-		if (previousVersion == currentVersion) {
-			return false;
-		}
-		preferences.edit().putInt(KEY_ASSEMBLY_SETUP_VERSION_CODE, currentVersion).apply();
-		Log.i(TAG, "Assembly asset version changed: " + previousVersion + " -> " + currentVersion);
-		return true;
-	}
-
-	private String buildCompatAssemblyStamp() {
-		try (InputStream inputStream = getAssets().open("dotnet_bcl/STS2Mobile.dll")) {
-			java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
-			byte[] buffer = new byte[8192];
-			int read;
-			while ((read = inputStream.read(buffer)) != -1) {
-				digest.update(buffer, 0, read);
-			}
-			byte[] hash = digest.digest();
-			StringBuilder builder = new StringBuilder(hash.length * 2);
-			for (byte value : hash) {
-				builder.append(String.format(java.util.Locale.US, "%02x", value & 0xFF));
-			}
-			return builder.toString();
+			new GameLaunchPreparationManager(this).prepareForLaunch();
+			Log.i(TAG, "Launch preparation complete via Activity fallback.");
 		} catch (Exception exception) {
-			Log.w(TAG, "Unable to build compat assembly stamp; forcing dotnet_bcl recopy.", exception);
-			return "";
+			Log.e(TAG, "Failed to prepare launch before Godot startup.", exception);
 		}
-	}
-
-	private File findAssembliesDir() {
-		File root = getGameDir();
-		File[] children = root.listFiles();
-		if (children != null) {
-			for (File child : children) {
-				if (child.isDirectory() && child.getName().startsWith("data_")) {
-					return child;
-				}
-			}
-		}
-		return new File(root, PayloadManager.ASSEMBLY_DIR_NAME);
-	}
-
-	private boolean isProtectedBclAssembly(String name) {
-		return name.startsWith("System.")
-			|| name.equals("mscorlib.dll")
-			|| name.equals("netstandard.dll")
-			|| name.equals("Microsoft.CSharp.dll")
-			|| name.equals("Microsoft.VisualBasic.dll")
-			|| name.equals("Microsoft.VisualBasic.Core.dll");
 	}
 
 	private String extractBootstrapPck() {
@@ -394,26 +259,6 @@ public class GodotApp extends GodotActivity {
 				outputStream.write(buffer, 0, read);
 			}
 			return outputStream.toByteArray();
-		}
-	}
-
-	private void copyFile(File src, File dest) throws IOException {
-		try (InputStream inputStream = new FileInputStream(src)) {
-			copyStreamToFile(inputStream, dest);
-		}
-	}
-
-	private void copyStreamToFile(InputStream inputStream, File dest) throws IOException {
-		File parent = dest.getParentFile();
-		if (parent != null) {
-			ensureDirectory(parent);
-		}
-		try (OutputStream outputStream = new FileOutputStream(dest)) {
-			byte[] buffer = new byte[8192];
-			int read;
-			while ((read = inputStream.read(buffer)) != -1) {
-				outputStream.write(buffer, 0, read);
-			}
 		}
 	}
 
@@ -590,6 +435,24 @@ public class GodotApp extends GodotActivity {
 	public static String getGodotDataDir() {
 		GodotApp activity = currentInstance;
 		return activity == null ? "" : activity.getFilesDir().getAbsolutePath();
+	}
+
+	public static String getSelectedCompatPackDir() {
+		GodotApp activity = currentInstance;
+		if (activity == null) {
+			return "";
+		}
+		CompatPackManager.CompatPack pack = new CompatPackManager(activity).getSelectedPack();
+		return pack == null ? "" : pack.dir.getAbsolutePath();
+	}
+
+	public static String getSelectedCompatOverlayPck() {
+		GodotApp activity = currentInstance;
+		if (activity == null) {
+			return "";
+		}
+		File file = new CompatPackManager(activity).getSelectedCompatOverlayPck();
+		return file == null ? "" : file.getAbsolutePath();
 	}
 
 	public static boolean launchGameSettingsFromGame() {

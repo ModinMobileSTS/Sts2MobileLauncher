@@ -20,12 +20,14 @@ public final class GamePage {
 	private final Context context;
 	private final ExtraSettingsRepository repository;
 	private final PayloadManager payloadManager;
+	private final CompatPackManager compatPackManager;
 	private final ExtraSettingsActions actions;
 
 	public GamePage(Context context, ExtraSettingsRepository repository, ExtraSettingsActions actions) {
 		this.context = context;
 		this.repository = repository;
 		this.payloadManager = new PayloadManager(context);
+		this.compatPackManager = new CompatPackManager(context);
 		this.actions = actions;
 	}
 
@@ -87,8 +89,14 @@ public final class GamePage {
 		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_controller_24, R.string.game_status_title, R.string.game_status_subtitle, null));
 		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_extension_24, context.getString(R.string.game_mod_count_format, mods.size(), enabledMods)));
 		PayloadManager.Status payloadStatus = payloadManager.getStatus();
+		CompatPackManager.CompatPack selectedCompat = compatPackManager.getSelectedPack();
+		CompatPackManager.CompatPack matchedCompat = compatPackManager.findBestMatch(payloadStatus.manifest);
 		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_tune_24, context.getString(R.string.game_graphics_summary_format, renderer, formatMsaa(msaa), formatVsync(vsync), formatAspect(aspect))));
 		ExtraSettingsUi.addSmallSpacing(content, metricRow(payloadStatus.ready ? R.drawable.ic_check_circle_24 : R.drawable.ic_error_outline_24, payloadStatus.ready ? context.getString(R.string.payload_status_ready_short, payloadStatus.shortVersionLabel()) : context.getString(R.string.payload_status_missing_short)));
+		ExtraSettingsUi.addSmallSpacing(content, metricRow(selectedCompat != null && selectedCompat.ready ? R.drawable.ic_layers_24 : R.drawable.ic_error_outline_24, selectedCompat != null && selectedCompat.ready ? context.getString(R.string.game_compat_status_format, selectedCompat.displayName, selectedCompat.targetLabel()) : context.getString(R.string.version_manager_no_compat_selected)));
+		if (matchedCompat != null && (selectedCompat == null || !matchedCompat.packId.equals(selectedCompat.packId))) {
+			ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(context, context.getString(R.string.version_manager_match_hint, matchedCompat.displayName)));
+		}
 		MaterialButton launch = ExtraSettingsUi.tonalButton(context, R.string.launch_game, R.drawable.ic_rocket_launch_24);
 		launch.setOnClickListener(v -> actions.launchGame());
 		ExtraSettingsUi.addSmallSpacing(content, launch);
@@ -162,19 +170,27 @@ public final class GamePage {
 
 		LinearLayout row1 = ExtraSettingsUi.horizontal(context);
 		MaterialButton settings = ExtraSettingsUi.tonalButton(context, R.string.tab_settings, R.drawable.ic_settings_24);
-		MaterialButton logs = ExtraSettingsUi.outlineButton(context, R.string.view_logs, R.drawable.ic_article_24);
+		MaterialButton versions = ExtraSettingsUi.outlineButton(context, R.string.tab_versions, R.drawable.ic_layers_24);
 		settings.setOnClickListener(v -> actions.openSettingsTab());
-		logs.setOnClickListener(v -> actions.openLogViewer());
+		versions.setOnClickListener(v -> actions.openVersionsTab());
 		LinearLayout.LayoutParams a = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
 		LinearLayout.LayoutParams b = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
 		b.setMarginStart(ExtraSettingsUi.dp(context, 10));
 		row1.addView(settings, a);
-		row1.addView(logs, b);
+		row1.addView(versions, b);
 		ExtraSettingsUi.addSmallSpacing(content, row1);
 
+		LinearLayout row2 = ExtraSettingsUi.horizontal(context);
+		MaterialButton logs = ExtraSettingsUi.outlineButton(context, R.string.view_logs, R.drawable.ic_article_24);
 		MaterialButton files = ExtraSettingsUi.outlineButton(context, R.string.view_files, R.drawable.ic_folder_24);
+		logs.setOnClickListener(v -> actions.openLogViewer());
 		files.setOnClickListener(v -> actions.openFileBrowser());
-		ExtraSettingsUi.addSmallSpacing(content, files);
+		LinearLayout.LayoutParams c = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		LinearLayout.LayoutParams d = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		d.setMarginStart(ExtraSettingsUi.dp(context, 10));
+		row2.addView(logs, c);
+		row2.addView(files, d);
+		ExtraSettingsUi.addSmallSpacing(content, row2);
 		return card;
 	}
 

@@ -1,9 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <ReferenceFlavor Condition="'$(ReferenceFlavor)' == ''">runtime</ReferenceFlavor>
-    <RuntimeReferenceDir>../../../s2/.cache/StS2-Launcher_Mod_Manager/upstream/godot-export/.godot/mono/publish/arm64</RuntimeReferenceDir>
-    <OriginalReferenceDir>../refs/original</OriginalReferenceDir>
-    <CompatReferenceDir Condition="'$(ReferenceFlavor)' == 'original'">$(OriginalReferenceDir)</CompatReferenceDir>
-    <CompatReferenceDir Condition="'$(CompatReferenceDir)' == ''">$(RuntimeReferenceDir)</CompatReferenceDir>
-  </PropertyGroup>
-</Project>

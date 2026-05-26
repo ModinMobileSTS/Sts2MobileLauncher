@@ -9,6 +9,10 @@
         android:icon="@drawable/ic_extension_24"
         android:title="@string/tab_mods" />
     <item
+        android:id="@+id/nav_versions"
+        android:icon="@drawable/ic_layers_24"
+        android:title="@string/tab_versions" />
+    <item
         android:id="@+id/nav_settings"
         android:icon="@drawable/ic_settings_24"
         android:title="@string/tab_settings" />

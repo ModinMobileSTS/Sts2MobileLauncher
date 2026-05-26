@@ -231,6 +231,7 @@
 
     <string name="tab_game">Game</string>
     <string name="tab_mods">Mods</string>
+    <string name="tab_versions">Versions</string>
     <string name="tab_settings">Settings</string>
     <string name="tab_about">About</string>
     <string name="welcome_title">Welcome to StS2 Mobile</string>
@@ -402,6 +403,8 @@
     <string name="settings_system_title">System</string>
     <string name="settings_system_subtitle">Startup, audio, multiplayer and diagnostics.</string>
     <string name="preload_hint">Warm up frequently used resources during startup.</string>
+    <string name="clear_texture_cache">Clear texture cache</string>
+    <string name="status_clear_texture_cache_done">Texture cache will be rebuilt on next launch.</string>
     <string name="settings_lan_subtitle">LAN identity and compatibility helpers.</string>
     <string name="status_import_mod_done_count">Imported %1$d MOD item(s).</string>
     <string name="about_page_subtitle">Credits and friendly links.</string>
@@ -440,6 +443,11 @@
     <string name="payload_stats_format">%1$d files, total %2$s; PCK %3$s; sts2.dll %4$s</string>
     <string name="payload_source_format">Source: %1$s / %2$s / SHA-256 %3$s</string>
     <string name="launch_requires_payload">Import a game zip before launching.</string>
+    <string name="launch_requires_compat_pack">Install or select a compatible mobile compatibility pack before launching.</string>
+    <string name="launch_incompatible_compat_pack_dialog_title">Compatibility pack version mismatch</string>
+    <string name="launch_incompatible_compat_pack_dialog_message">Selected pack: %1$s\nPack target: %2$s\nCurrent game: %3$s\n\nThis check only compares game version labels. You can switch packs in Versions or continue anyway.</string>
+    <string name="launch_anyway">Launch anyway</string>
+    <string name="status_busy_prepare_launch">Preparing game files…</string>
     <string name="import_game_payload">Import game zip</string>
     <string name="extract_bundled_payload">Extract bundled game</string>
     <string name="clear_game_payload">Clear game</string>
@@ -452,4 +460,45 @@
     <string name="status_clear_game_payload_done">Game payload cleared.</string>
     <string name="clear_game_payload_confirm_title">Clear imported game?</string>
     <string name="clear_game_payload_confirm_message">This deletes only the imported game body under the private game directory. Saves, extra settings and MOD files are kept.</string>
+
+    <string name="version_manager_title">Version manager</string>
+    <string name="version_manager_subtitle">Manage game bodies and mobile compatibility packs.</string>
+    <string name="version_manager_game_ready_format">Active game: %1$s</string>
+    <string name="version_manager_selected_compat_format">Compat: %1$s · target %2$s</string>
+    <string name="game_compat_status_format">Compat pack: %1$s · target %2$s</string>
+    <string name="version_manager_no_compat_selected">No compatibility pack selected.</string>
+    <string name="version_manager_match_hint">A matching compatibility pack is available: %1$s</string>
+    <string name="version_manager_use_matched_compat">Use matched pack</string>
+    <string name="version_manager_game_payload_title">Active game body</string>
+    <string name="version_manager_game_payload_subtitle">Import or replace the currently active PC game zip.</string>
+    <string name="version_manager_archived_games_title">Installed game versions</string>
+    <string name="version_manager_archived_games_subtitle">Imported game bodies are archived here for later switching.</string>
+    <string name="archive_active_game_version">Archive active game</string>
+    <string name="version_manager_no_archived_games">No archived game versions yet. Import a game zip or archive the active game.</string>
+    <string name="version_manager_compat_packs_title">Compatibility packs</string>
+    <string name="version_manager_compat_packs_subtitle">Install, import and select mobile compatibility packs.</string>
+    <string name="version_manager_no_compat_packs">No compatibility packs installed.</string>
+    <string name="version_manager_compat_target_format">Compat %1$s · %2$s · target %3$s</string>
+    <string name="version_manager_installed_at_format">Installed: %1$s</string>
+    <string name="import_compat_pack">Import compat pack</string>
+    <string name="install_bundled_compat_packs">Install bundled packs</string>
+    <string name="version_manager_select">Select</string>
+    <string name="status_busy_import_compat_pack">Importing compatibility pack…</string>
+    <string name="status_import_compat_pack_done">Compatibility pack installed: %1$s</string>
+    <string name="status_busy_install_bundled_compat">Installing bundled compatibility packs…</string>
+    <string name="status_install_bundled_compat_done">Bundled compatibility packs installed: %1$d.</string>
+    <string name="status_busy_select_compat_pack">Selecting compatibility pack…</string>
+    <string name="status_select_compat_pack_done">Compatibility pack selected. Restart the game to apply it.</string>
+    <string name="status_busy_delete_compat_pack">Deleting compatibility pack…</string>
+    <string name="status_delete_compat_pack_done">Compatibility pack deleted.</string>
+    <string name="delete_compat_pack_confirm_title">Delete compatibility pack?</string>
+    <string name="delete_compat_pack_confirm_message">This deletes only the selected mobile compatibility pack. Game bodies, saves and user MODs are kept.</string>
+    <string name="status_busy_archive_game_version">Archiving active game version…</string>
+    <string name="status_archive_game_version_done">Game version archived: %1$s</string>
+    <string name="status_busy_select_game_version">Switching game version…</string>
+    <string name="status_select_game_version_done">Game version selected. Restart the game to apply it.</string>
+    <string name="status_busy_delete_game_version">Deleting archived game version…</string>
+    <string name="status_delete_game_version_done">Archived game version deleted.</string>
+    <string name="delete_game_version_confirm_title">Delete archived game version?</string>
+    <string name="delete_game_version_confirm_message">This deletes the archived game body. The currently active game, saves and MODs are kept unless this archive is selected later.</string>
 </resources>

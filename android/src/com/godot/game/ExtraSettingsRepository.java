@@ -153,6 +153,7 @@ public final class ExtraSettingsRepository {
 		changed |= putIfMissing(settings, "schema_version", SETTINGS_SCHEMA_VERSION);
 		changed |= putIfMissing(settings, "aspect_ratio", "auto");
 		changed |= putIfMissing(settings, "shader_compatibility_mode", false);
+		changed |= putIfMissing(settings, "preload_enabled", true);
 		changed |= putIfMissing(settings, "fullscreen_render_size", vector(0, 0));
 		changed |= putIfMissing(settings, "global_scale", 1.0f);
 		changed |= putIfMissing(settings, "ui_font_scale_percent", 100);

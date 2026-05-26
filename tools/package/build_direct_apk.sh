@@ -14,7 +14,7 @@ if [[ ! -f "$ZIP_SRC" ]]; then
 fi
 python3 "$ROOT/tools/package/validate_payload_zip.py" "$ZIP_SRC"
 "$ROOT/tools/android/sync-runtime-from-references.sh"
-"$ROOT/tools/android/build-port-mod.sh"
+"$ROOT/tools/android/stage-bundled-compat-packs.sh"
 PAYLOAD_DIR="$ROOT/android/assets/payload"
 mkdir -p "$PAYLOAD_DIR"
 trap 'rm -f "$PAYLOAD_DIR/SlayTheSpire2.zip"' EXIT

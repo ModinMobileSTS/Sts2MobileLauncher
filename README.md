@@ -1,22 +1,22 @@
 # Slay the Spire 2 Android 重构移植版
 
-> 非官方、实验性的 Android 移植/重构工程。  
+> 非官方、实验性的 Android 移植/重构工程。
 > 本仓库**不包含**《Slay the Spire 2》游戏本体、用户 payload、完整 Godot/Mono 运行时大文件或签名密钥；请仅使用你合法拥有的 PC 版游戏文件进行本地构建和测试。
 
 ## 项目简介
 
 本项目将 Slay the Spire 2 Android 侧拆成三层维护：
 
-1. **Android shell / launcher / 附加设置**  
+1. **Android shell / launcher / 附加设置**
    APK 默认启动附加设置页，负责导入本地 PC 游戏 zip、管理私有目录、启动 Godot Activity、查看日志/文件、备份存档和管理 MOD。
 
-2. **原版游戏 payload**  
+2. **原版游戏 payload**
    用户本地提供 `SlayTheSpire2.zip`，导入到应用私有目录 `<files>/game/`。构建直装版 APK 时也可以临时内置 zip，但不会提交到仓库。
 
-3. **Android 适配 MOD / Harmony patcher**  
-   `port-mod/STS2AndroidPortCompat` 编译为 `STS2Mobile.dll`，由 patched Godot runtime 启动时加载，对 PC 原版程序集做 Android 平台适配。
+3. **移动端兼容插件 / compatibility pack**
+   `port-mod/` 是独立 git 仓库 `../sts2-android-compat` 的 submodule。插件按游戏版本使用 git 分支维护，可导出为独立 zip 兼容包（`compat_manifest.json` + `STS2Mobile.dll` + `port_compat.pck`），由启动器安装、选择并在启动 Godot 前 staging。
 
-核心目标不是维护一份完整重编译的游戏源码，而是让 Android 壳、用户本地游戏资源和移动端兼容补丁分离，便于后续维护、验证与更新。
+核心目标不是维护一份完整重编译的游戏源码，而是让 Android 壳、用户本地游戏资源和移动端兼容补丁分离，便于后续多游戏版本、多兼容包维护、验证与更新。
 
 ## 当前状态
 
@@ -46,18 +46,17 @@ s2_re/
     res/                           # 附加设置、崩溃页、文件浏览器、图标、主题等资源
     assets/
       bootstrap.pck                # 无游戏 payload 时的最小 Godot bootstrap pack
-      port_compat.pck              # Android 适配 overlay pack，脚本生成
+      port_compat.pck              # legacy fallback overlay pack，脚本生成
+      compat_packs/                # 内置兼容包 zip；默认包含最新版 beta 包
       dotnet_bcl/                  # 大型 .NET/Godot runtime DLL，生成/同步产物，gitignore
       payload/                     # 直装版临时内置 zip，gitignore
     libs/                          # Godot/FMOD/template AAR，生成/同步产物，gitignore
 
-  port-mod/                        # Android 适配 MOD / Harmony patcher
-    STS2AndroidPortCompat/
-      STS2Mobile.csproj            # 实际运行时加载的程序集项目
-      ModEntry.cs                  # InitializeGodotSharp / Apply 入口
-      Patches/                     # 平台、设置、输入、MOD、LAN、shader 等补丁
+  port-mod/                        # git submodule: ../sts2-android-compat
+    STS2AndroidPortCompat/         # 兼容插件源码，输出 STS2Mobile.dll
     overlay/                       # 打包进 port_compat.pck 的 shader/resource overlay
-    refs/original/                 # 指向 PC 原版 DLL 的本地引用 symlink
+    refs/                          # 本地 original compile gate 引用说明/symlink
+    tools/build-compat-pack.sh     # 导出独立可安装兼容包 zip
 
   tools/
     android/                       # Android runtime 同步、Gradle 环境、兼容 MOD 构建脚本
@@ -67,6 +66,21 @@ s2_re/
   docs/                            # 差异、验证、迁移文档
   dist/                            # APK 输出副本，gitignore
 ```
+
+## 多版本与兼容包
+
+启动器现在内置“版本”页，管理两类对象：
+
+- **游戏本体版本**：导入的 PC zip 仍会激活到 `<files>/game/`，同时可归档到 `<files>/game-versions/<id>/game/`，之后可在版本页切换。
+- **移动端兼容包**：安装到 `<files>/compat-packs/<pack_id>/`，每个包包含 manifest、`STS2Mobile.dll` 和 `port_compat.pck`。启动游戏前只按 payload manifest 中的游戏版本号自动匹配或检查当前选择的兼容包；不再因 `sts2.dll` SHA-256 不一致阻止启动。
+
+内置默认兼容包位于：
+
+```text
+android/assets/compat_packs/sts2-android-compat-v0.106.1-beta.zip
+```
+
+当前首个目标版本为 `0.106.1 beta`，兼容插件源码由 submodule 分支 `compat/v0.106.1-beta` 维护，参考游戏源码目录为 `../s2_original/s201061/`。
 
 ## 不提交的内容
 
@@ -199,10 +213,16 @@ adb shell run-as com.megacrit.sts2re ls files/game
 tools/android/sync-runtime-from-references.sh
 ```
 
-构建并 stage Android 兼容 MOD：
+构建并 stage 当前 submodule 兼容插件到 legacy assets fallback：
 
 ```bash
 tools/android/build-port-mod.sh
+```
+
+构建并复制内置兼容包 zip 到 `android/assets/compat_packs/`：
+
+```bash
+tools/android/stage-bundled-compat-packs.sh
 ```
 
 只编译 Java / Gradle 检查：
@@ -217,7 +237,13 @@ tools/android/gradle-with-s2-env.sh :compileMonoDebugJavaWithJavac
 ../s2/.local/dotnet/dotnet build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj -v:q
 ```
 
-使用 PC 原版程序集做 compile gate，检查是否误依赖旧移植版专属 API：
+使用 PC 原版程序集做 compile gate，检查是否误依赖旧移植版专属 API。0.106.1 beta 目标使用：
+
+```bash
+../s2/.local/dotnet/dotnet build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj -p:ReferenceFlavor=original-v0.106.1 -v:q
+```
+
+旧 0.103.2 基线可使用：
 
 ```bash
 ../s2/.local/dotnet/dotnet build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj -p:ReferenceFlavor=original -v:q
@@ -234,11 +260,14 @@ tools/android/make-port-overlay-pck.py
 应用私有目录中的关键路径：
 
 ```text
-<files>/game/                              # 导入后的游戏 payload
+<files>/game/                              # 当前启用的游戏 payload
 <files>/game/SlayTheSpire2.pck             # 主 PCK
 <files>/game/release_info.json             # 游戏 release 信息
-<files>/game/.payload_manifest.json        # 导入 manifest
-<files>/default/1/settings.save            # 附加设置 / 游戏设置
+<files>/game/.payload_manifest.json        # 导入 manifest，含版本 / sts2.dll sha256 identity
+<files>/game-versions/<id>/game/            # 版本管理器归档的游戏本体
+<files>/compat-packs/<pack_id>/             # 已安装移动端兼容包
+<files>/launcher/selected_compat_pack.json  # 当前兼容包选择记录
+<files>/default/1/settings.save             # 附加设置 / 游戏设置
 <files>/mods/                              # 本地 MOD 目录
 <files>/.godot/mono/publish/arm64/          # Godot/Mono publish 目录
 ```
@@ -250,12 +279,12 @@ tools/android/make-port-overlay-pck.py
 - `GodotApp` 是真正的 Godot 游戏 Activity：
   - 有 `<files>/game/SlayTheSpire2.pck` 时传入 `--main-pack`。
   - 无 payload 时使用 `assets/bootstrap.pck`。
-  - 启动前同步 APK assets 中的 `dotnet_bcl` 与导入 payload 中的 `data_*/*.dll` 到 Godot publish 目录。
+  - 常规启动由 `GameSettingsActivity` 先在后台同步 APK assets 中的 `dotnet_bcl`、所选兼容包和导入 payload 中的 `data_*/*.dll` 到 Godot publish 目录，避免在 Activity 主线程做大文件复制。
 - `STS2Mobile.dll` / `STS2Mobile.ModEntry` 是 patched Godot runtime 期望加载的 Android 兼容 MOD 入口。
 
-## 兼容 MOD 概览
+## 兼容插件概览
 
-`port-mod/STS2AndroidPortCompat` 负责在运行时通过 Harmony patch 适配 Android 环境，当前覆盖方向包括：
+`port-mod/` 作为独立 submodule 负责在运行时通过 Harmony patch 适配 Android 环境。不同游戏版本通过该独立仓库的分支维护，并使用 `tools/build-compat-pack.sh` 导出可安装兼容包。当前覆盖方向包括：
 
 - 禁用或替代桌面 Steam / Sentry / platform 路径
 - 从 Android 私有目录读取 `release_info.json`
@@ -318,7 +347,7 @@ tools/android/build-port-mod.sh
 
 - 修改 Java bridge 包名或类名要谨慎，C# 侧和兼容 MOD 默认寻找 `com.godot.game.GodotApp`。
 - 修改附加设置 key 时，需要同步 Java 的设置仓库、UI 和 `port-mod` 中的 `AndroidSettingsBridge` / patches。
-- 修改 `port-mod/overlay` 后需要重新生成 `android/assets/port_compat.pck`。
+- 修改 `port-mod/overlay` 后需要重新生成 `android/assets/port_compat.pck`，并重新导出/复制内置兼容包。
 - 修改 `tools/android/make-bootstrap-pck.py` 后需要重新生成 `android/assets/bootstrap.pck`。
 - 改包名时需要同步 shortcuts、FileProvider、manifest、Gradle 配置和所有 hard-coded target package。
 - 正式发布前应重新配置签名、版本号、release build type、安全策略和版权合规流程。
@@ -326,7 +355,7 @@ tools/android/build-port-mod.sh
 ## 相关文档
 
 - [`AGENTS.md`](AGENTS.md)：面向后续编码代理/维护者的完整项目速览
-- [`port-mod/README.md`](port-mod/README.md)：Android 兼容 MOD 说明
+- [`port-mod/README.md`](port-mod/README.md)：Android 兼容插件 / compat pack 说明
 - [`docs/inventory/`](docs/inventory/)：旧移植版与 PC 原版差异清单
 - [`docs/validation/`](docs/validation/)：阶段性验证记录
 

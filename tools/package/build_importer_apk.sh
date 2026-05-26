@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 "$ROOT/tools/android/sync-runtime-from-references.sh"
-"$ROOT/tools/android/build-port-mod.sh"
+"$ROOT/tools/android/stage-bundled-compat-packs.sh"
 "$ROOT/tools/android/gradle-with-s2-env.sh" assembleMonoDebug
 APK="$ROOT/android/build/outputs/apk/mono/debug/sts2-re.apk"
 DIST_APK="$ROOT/dist/sts2-re-importer.apk"

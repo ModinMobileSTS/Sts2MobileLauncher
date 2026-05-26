@@ -91,9 +91,20 @@ public final class PayloadManager {
 			if (manifest == null) {
 				throw new IOException("Payload manifest is missing; import the game zip again.");
 			}
-			Validation validation = validateGameDir(gameDir);
-			JSONObject releaseInfo = validation.releaseInfo;
-			JSONObject source = manifest == null ? null : manifest.optJSONObject("source");
+			File pck = new File(gameDir, PCK_FILE_NAME);
+			File releaseInfoFile = new File(gameDir, RELEASE_INFO_FILE_NAME);
+			File sts2Dll = new File(gameDir, STS2_DLL_PATH);
+			requireFile(pck, "Missing " + PCK_FILE_NAME);
+			requireFile(releaseInfoFile, "Missing " + RELEASE_INFO_FILE_NAME);
+			requireFile(sts2Dll, "Missing " + STS2_DLL_PATH);
+			validatePckMagic(pck);
+
+			JSONObject releaseInfo = releaseInfoFromManifest(manifest);
+			if (releaseInfo == null) {
+				releaseInfo = new JSONObject(readTextFile(releaseInfoFile));
+			}
+			JSONObject source = manifest.optJSONObject("source");
+			JSONObject game = manifest.optJSONObject("game");
 			return new Status(
 				true,
 				"ready",
@@ -103,10 +114,10 @@ public final class PayloadManager {
 				source == null ? "" : source.optString("kind", ""),
 				source == null ? "" : source.optString("display_name", ""),
 				source == null ? "" : source.optString("sha256", ""),
-				validation.pckSize,
-				validation.dllSize,
-				validation.fileCount,
-				validation.totalBytes,
+				game == null ? pck.length() : game.optLong("pck_size", pck.length()),
+				game == null ? sts2Dll.length() : game.optLong("dll_size", sts2Dll.length()),
+				game == null ? 0 : game.optInt("file_count", 0),
+				game == null ? 0L : game.optLong("total_uncompressed_bytes", 0L),
 				manifest
 			);
 		} catch (Exception exception) {
@@ -353,7 +364,7 @@ public final class PayloadManager {
 		JSONObject releaseInfo = new JSONObject(readTextFile(releaseInfoFile));
 		Counter counter = new Counter();
 		countFiles(gameDir, counter);
-		return new Validation(releaseInfo, pck.length(), sts2Dll.length(), counter.files, counter.bytes);
+		return new Validation(releaseInfo, pck.length(), sts2Dll.length(), counter.files, counter.bytes, sha256(sts2Dll), sha256(pck));
 	}
 
 	private PckPatcher.PatchResult patchPayloadPck(File gameDir) throws IOException {
@@ -367,9 +378,8 @@ public final class PayloadManager {
 			return null;
 		}
 		PckPatcher.PatchResult result = PckPatcher.patchSentry(pck);
-		if (result.changed()) {
-			updateManifestPckPatchInfo(gameDir, result);
-		}
+		// Record even a no-op patch result so legacy installs do not rescan the PCK on every launch.
+		updateManifestPckPatchInfo(gameDir, result);
 		return result;
 	}
 
@@ -385,9 +395,22 @@ public final class PayloadManager {
 		sourceJson.put("sha256", source.sha256);
 		root.put("source", sourceJson);
 
+		JSONObject identityJson = new JSONObject();
+		identityJson.put("release_info", validation.releaseInfo);
+		identityJson.put("version", validation.releaseInfo.optString("version", ""));
+		identityJson.put("commit", validation.releaseInfo.optString("commit", ""));
+		identityJson.put("branch", validation.releaseInfo.optString("branch", ""));
+		identityJson.put("main_assembly_hash", validation.releaseInfo.opt("main_assembly_hash"));
+		identityJson.put("sts2_dll_sha256", validation.dllSha256);
+		identityJson.put("sts2_dll_size", validation.dllSize);
+		identityJson.put("pck_sha256_after_patch", validation.pckSha256);
+		root.put("identity", identityJson);
+
 		JSONObject gameJson = new JSONObject();
 		gameJson.put("pck_size", validation.pckSize);
 		gameJson.put("release_info", validation.releaseInfo);
+		gameJson.put("sts2_dll_sha256", validation.dllSha256);
+		gameJson.put("pck_sha256_after_patch", validation.pckSha256);
 		gameJson.put("dll_size", validation.dllSize);
 		gameJson.put("file_count", validation.fileCount);
 		gameJson.put("total_uncompressed_bytes", validation.totalBytes);
@@ -458,6 +481,19 @@ public final class PayloadManager {
 		} catch (Exception ignored) {
 			return null;
 		}
+	}
+
+	private JSONObject releaseInfoFromManifest(JSONObject manifest) {
+		if (manifest == null) {
+			return null;
+		}
+		JSONObject identity = manifest.optJSONObject("identity");
+		JSONObject releaseInfo = identity == null ? null : identity.optJSONObject("release_info");
+		if (releaseInfo != null) {
+			return releaseInfo;
+		}
+		JSONObject game = manifest.optJSONObject("game");
+		return game == null ? null : game.optJSONObject("release_info");
 	}
 
 	private String copyToFileWithSha256(InputStream inputStream, File destination) throws Exception {
@@ -630,6 +666,18 @@ public final class PayloadManager {
 		}
 	}
 
+	private String sha256(File file) throws Exception {
+		MessageDigest digest = MessageDigest.getInstance("SHA-256");
+		try (InputStream inputStream = new BufferedInputStream(new FileInputStream(file))) {
+			byte[] buffer = new byte[8192];
+			int read;
+			while ((read = inputStream.read(buffer)) != -1) {
+				digest.update(buffer, 0, read);
+			}
+		}
+		return toHex(digest.digest());
+	}
+
 	private String toHex(byte[] bytes) {
 		StringBuilder builder = new StringBuilder(bytes.length * 2);
 		for (byte value : bytes) {
@@ -733,13 +781,17 @@ public final class PayloadManager {
 		final long dllSize;
 		final int fileCount;
 		final long totalBytes;
+		final String dllSha256;
+		final String pckSha256;
 
-		Validation(JSONObject releaseInfo, long pckSize, long dllSize, int fileCount, long totalBytes) {
+		Validation(JSONObject releaseInfo, long pckSize, long dllSize, int fileCount, long totalBytes, String dllSha256, String pckSha256) {
 			this.releaseInfo = releaseInfo;
 			this.pckSize = pckSize;
 			this.dllSize = dllSize;
 			this.fileCount = fileCount;
 			this.totalBytes = totalBytes;
+			this.dllSha256 = dllSha256;
+			this.pckSha256 = pckSha256;
 		}
 	}
 

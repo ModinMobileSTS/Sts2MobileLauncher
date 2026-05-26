@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.net.Uri;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
@@ -34,12 +35,15 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	private static final int REQUEST_EXPORT_SAVE = 1001;
 	private static final int REQUEST_IMPORT_SAVE = 1002;
 	private static final int REQUEST_IMPORT_GAME_PAYLOAD = 1006;
+	private static final int REQUEST_IMPORT_COMPAT_PACK = 1007;
 	private static final int REQUEST_IMPORT_MOD = 1003;
 	private static final int REQUEST_EXPORT_FULL_DATA_BACKUP = 1004;
 	private static final int REQUEST_IMPORT_FULL_DATA_BACKUP = 1005;
 
 	private ExtraSettingsRepository repository;
 	private PayloadManager payloadManager;
+	private CompatPackManager compatPackManager;
+	private GameBodyVersionManager gameBodyVersionManager;
 	private FrameLayout contentFrame;
 	private BottomNavigationView bottomNavigationView;
 	private boolean busy;
@@ -52,7 +56,10 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		super.onCreate(savedInstanceState);
 		repository = new ExtraSettingsRepository(this);
 		payloadManager = new PayloadManager(this);
+		compatPackManager = new CompatPackManager(this);
+		gameBodyVersionManager = new GameBodyVersionManager(this);
 		repository.ensureAppDirectories();
+		installBundledCompatPacksInBackground(false);
 		if (!ExtraSettingsPreferences.isFirstRunSetupCompleted(this)) {
 			showWelcome();
 		} else {
@@ -105,7 +112,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 		setContentView(shell);
 		int savedTab = ExtraSettingsPreferences.getLastSelectedMainTab(this, R.id.nav_game);
-		if (savedTab != R.id.nav_game && savedTab != R.id.nav_mods && savedTab != R.id.nav_settings && savedTab != R.id.nav_about) {
+		if (savedTab != R.id.nav_game && savedTab != R.id.nav_mods && savedTab != R.id.nav_versions && savedTab != R.id.nav_settings && savedTab != R.id.nav_about) {
 			savedTab = R.id.nav_game;
 		}
 		bottomNavigationView.setSelectedItemId(savedTab);
@@ -139,6 +146,8 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		View page;
 		if (itemId == R.id.nav_mods) {
 			page = new ModsPage(this, repository, this).build();
+		} else if (itemId == R.id.nav_versions) {
+			page = new GameVersionManagerPage(this, this).build();
 		} else if (itemId == R.id.nav_settings) {
 			page = new SettingsPage(this, repository, this).build();
 		} else if (itemId == R.id.nav_about) {
@@ -162,9 +171,20 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				}
 				return;
 			}
-			Intent intent = GodotApp.createLaunchIntent(this, true);
-			startActivity(intent);
-			finish();
+			CompatPackManager.CompatPack compatPack = compatPackManager.findBestMatch(payloadStatus.manifest);
+			if (compatPack != null && (compatPackManager.getSelectedPack() == null || !compatPack.packId.equals(compatPackManager.getSelectedPackId()))) {
+				compatPackManager.selectPack(compatPack.packId);
+			}
+			CompatPackManager.CompatPack selectedCompatPack = compatPackManager.getSelectedPack();
+			if (selectedCompatPack == null) {
+				showMessage(getString(R.string.launch_requires_compat_pack));
+				return;
+			}
+			if (!compatPackManager.isPackCompatibleWithPayload(selectedCompatPack, payloadStatus.manifest)) {
+				showCompatMismatchDialog(payloadStatus, selectedCompatPack);
+				return;
+			}
+			prepareAndStartGame();
 		} catch (Exception exception) {
 			showError(exception);
 		}
@@ -212,6 +232,81 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			return;
 		}
 		runPayloadImportOperation(null, true);
+	}
+
+	@Override
+	public void requestImportCompatPack() {
+		if (busy) {
+			return;
+		}
+		Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+		intent.addCategory(Intent.CATEGORY_OPENABLE);
+		intent.setType("*/*");
+		intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "application/zip", "application/octet-stream" });
+		startActivityForResult(intent, REQUEST_IMPORT_COMPAT_PACK);
+	}
+
+	@Override
+	public void requestInstallBundledCompatPacks() {
+		installBundledCompatPacksInBackground(true);
+	}
+
+	@Override
+	public void requestSelectCompatPack(String packId) {
+		runAsyncOperation(getString(R.string.status_busy_select_compat_pack), () -> {
+			compatPackManager.selectPack(packId);
+			return getString(R.string.status_select_compat_pack_done);
+		});
+	}
+
+	@Override
+	public void requestDeleteCompatPack(String packId) {
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.delete_compat_pack_confirm_title)
+			.setMessage(R.string.delete_compat_pack_confirm_message)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(android.R.string.ok, (dialog, which) -> runAsyncOperation(getString(R.string.status_busy_delete_compat_pack), () -> {
+				compatPackManager.deletePack(packId);
+				return getString(R.string.status_delete_compat_pack_done);
+			}))
+			.show();
+	}
+
+	@Override
+	public void requestClearTextureCache() {
+		runAsyncOperation(getString(R.string.status_busy_prepare_launch), () -> {
+			new GameLaunchPreparationManager(this).clearTextureCacheForNextLaunch();
+			return getString(R.string.status_clear_texture_cache_done);
+		});
+	}
+
+	@Override
+	public void requestArchiveActiveGameVersion() {
+		runAsyncOperation(getString(R.string.status_busy_archive_game_version), () -> {
+			GameBodyVersionManager.GameBodyVersion version = gameBodyVersionManager.archiveActivePayload();
+			return getString(R.string.status_archive_game_version_done, version.label);
+		});
+	}
+
+	@Override
+	public void requestSelectGameVersion(String versionId) {
+		runAsyncOperation(getString(R.string.status_busy_select_game_version), () -> {
+			gameBodyVersionManager.selectVersion(versionId);
+			return getString(R.string.status_select_game_version_done);
+		});
+	}
+
+	@Override
+	public void requestDeleteGameVersion(String versionId) {
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.delete_game_version_confirm_title)
+			.setMessage(R.string.delete_game_version_confirm_message)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(android.R.string.ok, (dialog, which) -> runAsyncOperation(getString(R.string.status_busy_delete_game_version), () -> {
+				gameBodyVersionManager.deleteVersion(versionId);
+				return getString(R.string.status_delete_game_version_done);
+			}))
+			.show();
 	}
 
 	@Override
@@ -293,6 +388,12 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			});
 		} else if (requestCode == REQUEST_IMPORT_GAME_PAYLOAD && data.getData() != null) {
 			runPayloadImportOperation(data.getData(), false);
+		} else if (requestCode == REQUEST_IMPORT_COMPAT_PACK && data.getData() != null) {
+			Uri uri = data.getData();
+			runAsyncOperation(getString(R.string.status_busy_import_compat_pack), () -> {
+				CompatPackManager.CompatPack pack = compatPackManager.importCompatPack(uri);
+				return getString(R.string.status_import_compat_pack_done, pack.displayName);
+			});
 		} else if (requestCode == REQUEST_EXPORT_FULL_DATA_BACKUP && data.getData() != null) {
 			Uri uri = data.getData();
 			runAsyncOperation(getString(R.string.status_busy_export_full_data_backup), () -> {
@@ -345,6 +446,15 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				PayloadManager.Status status = bundled
 					? payloadManager.extractBundledPayload((percent, stage) -> runOnUiThread(() -> progressDialog.setProgress(percent)), control)
 					: payloadManager.importPayloadZip(uri, (percent, stage) -> runOnUiThread(() -> progressDialog.setProgress(percent)), control);
+				try {
+					gameBodyVersionManager.archiveActivePayload();
+					CompatPackManager.CompatPack match = compatPackManager.findBestMatch(status.manifest);
+					if (match != null) {
+						compatPackManager.selectPack(match.packId);
+					}
+				} catch (Exception exception) {
+					Log.w(TAG, "Unable to archive imported game or select matching compatibility pack.", exception);
+				}
 				runOnUiThread(() -> {
 					busy = false;
 					progressDialog.dismiss();
@@ -365,6 +475,64 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		}, "sts2-payload-import");
 		workerRef[0] = worker;
 		worker.start();
+	}
+
+	private void showCompatMismatchDialog(PayloadManager.Status payloadStatus, CompatPackManager.CompatPack selectedCompatPack) {
+		String payloadVersion = compatPackManager.getPayloadVersion(payloadStatus.manifest);
+		if (TextUtils.isEmpty(payloadVersion)) {
+			payloadVersion = payloadStatus.shortVersionLabel();
+		}
+		String message = getString(R.string.launch_incompatible_compat_pack_dialog_message, selectedCompatPack.displayName, selectedCompatPack.targetLabel(), payloadVersion);
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.launch_incompatible_compat_pack_dialog_title)
+			.setMessage(message)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setNeutralButton(R.string.tab_versions, (dialog, which) -> openVersionsTab())
+			.setPositiveButton(R.string.launch_anyway, (dialog, which) -> prepareAndStartGame())
+			.show();
+	}
+
+	private void prepareAndStartGame() {
+		if (busy) {
+			return;
+		}
+		busy = true;
+		showMessage(getString(R.string.status_busy_prepare_launch));
+		new Thread(() -> {
+			try {
+				new GameLaunchPreparationManager(this).prepareForLaunch();
+				runOnUiThread(() -> {
+					busy = false;
+					Intent intent = GodotApp.createLaunchIntent(this, true);
+					intent.putExtra("launch_prepared", true);
+					startActivity(intent);
+					finish();
+				});
+			} catch (Exception exception) {
+				runOnUiThread(() -> {
+					busy = false;
+					showError(exception);
+				});
+			}
+		}, "sts2-launch-prepare").start();
+	}
+
+	private void installBundledCompatPacksInBackground(boolean showResult) {
+		if (showResult) {
+			runAsyncOperation(getString(R.string.status_busy_install_bundled_compat), () -> {
+				int count = compatPackManager.installBundledCompatPacks();
+				return getString(R.string.status_install_bundled_compat_done, count);
+			});
+			return;
+		}
+		new Thread(() -> {
+			try {
+				compatPackManager.installBundledCompatPacks();
+				runOnUiThread(this::refreshCurrentScreen);
+			} catch (Exception exception) {
+				Log.w(TAG, "Unable to install bundled compatibility packs.", exception);
+			}
+		}, "sts2-compat-bootstrap").start();
 	}
 
 	private boolean isImportCancelledException(Exception exception) {
@@ -525,6 +693,15 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			bottomNavigationView.setSelectedItemId(R.id.nav_settings);
 		} else {
 			openTab(R.id.nav_settings);
+		}
+	}
+
+	@Override
+	public void openVersionsTab() {
+		if (bottomNavigationView != null) {
+			bottomNavigationView.setSelectedItemId(R.id.nav_versions);
+		} else {
+			openTab(R.id.nav_versions);
 		}
 	}
 

@@ -14,6 +14,7 @@ out/
 # Local/private inputs and large payloads
 local-inputs/
 *.zip
+!android/assets/compat_packs/*.zip
 *.7z
 *.rar
 *.keystore
