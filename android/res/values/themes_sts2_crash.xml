@@ -20,7 +20,6 @@
         <item name="android:navigationBarColor">#191D26</item>
         <item name="android:windowBackground">#0F1117</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
     </style>
 
     <style name="Theme.Sts2Crash" parent="Theme.Material3.Dark.NoActionBar">

@@ -7,9 +7,6 @@ import android.text.TextUtils;
 import org.json.JSONObject;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -193,10 +190,7 @@ public final class GameBodyVersionManager {
 	}
 
 	private String readTextFile(File file) throws Exception {
-		try (InputStream inputStream = new FileInputStream(file)) {
-			byte[] bytes = inputStream.readAllBytes();
-			return new String(bytes, StandardCharsets.UTF_8);
-		}
+		return FileBrowserSupport.readTextFile(file);
 	}
 
 	private File getVersionsRootDir() {
