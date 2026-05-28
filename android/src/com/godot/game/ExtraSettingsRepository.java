@@ -928,26 +928,22 @@ public final class ExtraSettingsRepository {
 				return null;
 			}
 			JSONObject manifest = new JSONObject(content);
+			String modId = firstNonEmpty(
+				manifest.optString("id", ""),
+				manifest.optString("mod_id", ""),
+				manifest.optString("modId", ""),
+				manifest.optString("ID", "")
+			).trim();
+			if (modId.isEmpty()) {
+				return null;
+			}
 			String pckName = firstNonEmpty(
 				manifest.optString("pck_name", ""),
 				manifest.optString("pckName", ""),
 				manifest.optString("PckName", ""),
 				findPayloadBaseName(manifestFile.getParentFile()),
-				stripExtension(manifestFile.getName())
+				modId
 			).trim();
-			String modId = firstNonEmpty(
-				manifest.optString("id", ""),
-				manifest.optString("mod_id", ""),
-				manifest.optString("modId", ""),
-				manifest.optString("ID", ""),
-				pckName
-			).trim();
-			if (modId.isEmpty()) {
-				return null;
-			}
-			if (pckName.isEmpty()) {
-				pckName = modId;
-			}
 			String displayName = firstNonEmpty(manifest.optString("name", ""), manifest.optString("display_name", ""), modId).trim();
 			String version = firstNonEmpty(manifest.optString("version", ""), manifest.optString("mod_version", ""), manifest.optString("Version", ""));
 			String authors = readAuthors(manifest);
