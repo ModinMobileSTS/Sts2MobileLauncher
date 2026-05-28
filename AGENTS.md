@@ -88,6 +88,8 @@ s2_re/
       build_direct_apk.sh          # 构建临时内置游戏 zip 的直装版 APK
     diff/
       make_diff_inventory.py       # diff 清单工具
+    git/
+      report-heads.sh              # 输出当前仓库与子模块各分支 HEAD 状态
   docs/
     inventory/                     # 差异/迁移清单
     validation/                    # 验证记录
@@ -241,6 +243,24 @@ tools/package/validate_payload_zip.py "../s2_pc/Slay the Spire 2.zip"
 
 ## 8. Git / 产物注意事项
 
+### 8.1 仓库 / 子模块 HEAD 巡检
+
+查看当前仓库 HEAD，以及每个子模块的当前 checkout、本地分支 HEAD、远端分支 HEAD、父仓库记录的 submodule commit、dirty/upstream ahead-behind 状态：
+
+```bash
+tools/git/report-heads.sh
+```
+
+如需先刷新远端引用再输出报告：
+
+```bash
+tools/git/report-heads.sh --fetch
+```
+
+该脚本只读取/可选 fetch Git 信息，不修改工作区文件；适合在提交前、同步子模块前后、排查 `port-mod` 分支/HEAD 不一致时使用。
+
+### 8.2 产物与大文件注意事项
+
 - `.gitignore` 已排除：
   - `dist/`、`*.apk`、`*.aab`、`*.apks`
   - `local-inputs/`、`*.zip`、keystore/jks/p12
@@ -291,3 +311,6 @@ adb shell run-as com.megacrit.sts2re ls files/game
 - `settings_shortcuts.xml` / `game_shortcuts.xml` 的 `targetPackage` 与 `applicationId` 强相关；改包名时必须同步。
 - `<files>/default/<account>` 的账号选择逻辑与旧移植版兼容但较脆弱，多账号/自定义 platform player id 改动要同时检查 Java 与兼容 MOD。
 - `settings.save` 的 Android-only key 是 Java 附加设置与 Harmony patcher 的协议，改 key 要同步 `ExtraSettingsRepository`、页面 UI、`AndroidSettingsBridge`、相关 patches。
+
+## 修改说明
+完成用户要求的修改后，请用脚本构建一个importer版本apk，便于用户测试。

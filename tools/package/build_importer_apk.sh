@@ -3,6 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 "$ROOT/tools/android/sync-runtime-from-references.sh"
+"$ROOT/tools/android/build-port-mod.sh"
 "$ROOT/tools/android/stage-bundled-compat-packs.sh"
 "$ROOT/tools/android/gradle-with-s2-env.sh" assembleMonoRelease \
   -Prelease_keystore_file="${RELEASE_KEYSTORE_FILE:-/home/wsdx233/.android/debug.keystore}" \

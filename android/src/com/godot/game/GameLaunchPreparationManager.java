@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -45,9 +46,114 @@ public final class GameLaunchPreparationManager {
 	}
 
 	public void prepareForLaunch() throws Exception {
+		normalizeSavedLanguageIfNeeded();
+		refreshBundledCompatPacksIfNeeded();
 		patchPayloadIfNeeded();
 		clearTextureCacheIfPayloadChanged();
 		prepareAssembliesAndOverlay();
+	}
+
+	private void normalizeSavedLanguageIfNeeded() {
+		try {
+			Locale locale = Locale.getDefault();
+			String rawLocale = locale == null ? "" : locale.toString();
+			String languageTag = locale == null ? "" : locale.toLanguageTag();
+			ExtraSettingsRepository repository = new ExtraSettingsRepository(context);
+			org.json.JSONObject settings = repository.loadSettingsJson();
+			String current = settings.optString("language", "").trim();
+			if (isSupportedGameLanguage(current)) {
+				return;
+			}
+			if (!isProblematicAndroidLocale(rawLocale, languageTag, current)) {
+				return;
+			}
+			String resolved = resolveAndroidGameLanguage(locale);
+			settings.put("language", resolved);
+			repository.saveSettingsJson(settings);
+			Log.i(TAG, "Normalized unsupported game language '" + current + "' for problematic Android locale raw=" + rawLocale + " tag=" + languageTag + " -> " + resolved);
+		} catch (Exception exception) {
+			Log.w(TAG, "Unable to normalize game language before launch; continuing with existing settings.", exception);
+		}
+	}
+
+	private boolean isProblematicAndroidLocale(String rawLocale, String languageTag, String currentLanguage) {
+		String raw = rawLocale == null ? "" : rawLocale;
+		String tag = languageTag == null ? "" : languageTag;
+		String current = currentLanguage == null ? "" : currentLanguage;
+		return raw.contains("#")
+			|| tag.contains("#")
+			|| current.contains("#")
+			|| raw.contains("@")
+			|| current.contains("@");
+	}
+
+	private boolean isSupportedGameLanguage(String language) {
+		switch (language) {
+			case "eng":
+			case "zhs":
+			case "deu":
+			case "esp":
+			case "fra":
+			case "ita":
+			case "jpn":
+			case "kor":
+			case "pol":
+			case "ptb":
+			case "rus":
+			case "spa":
+			case "tha":
+			case "tur":
+				return true;
+			default:
+				return false;
+		}
+	}
+
+	private String resolveAndroidGameLanguage(Locale locale) {
+		if (locale == null) {
+			return "eng";
+		}
+		String language = locale.getLanguage() == null ? "" : locale.getLanguage().toLowerCase(Locale.ROOT);
+		String country = locale.getCountry() == null ? "" : locale.getCountry().toUpperCase(Locale.ROOT);
+		if (language.startsWith("zh")) {
+			// The current game payload only exposes simplified Chinese (zhs).  Mapping
+			// all Android Chinese variants here avoids Godot/Mono later seeing Huawei
+			// style locale strings such as zh_CN_#Hans / zh-CN-#Hans.
+			return "zhs";
+		}
+		if ("pt".equals(language)) {
+			return "ptb";
+		}
+		if ("es".equals(language)) {
+			return "ES".equals(country) ? "spa" : "esp";
+		}
+		switch (language) {
+			case "de": return "deu";
+			case "fr": return "fra";
+			case "it": return "ita";
+			case "ja": return "jpn";
+			case "ko": return "kor";
+			case "pl": return "pol";
+			case "ru": return "rus";
+			case "th": return "tha";
+			case "tr": return "tur";
+			default: return "eng";
+		}
+	}
+
+	private void refreshBundledCompatPacksIfNeeded() {
+		try {
+			CompatPackManager manager = new CompatPackManager(context);
+			if (!manager.isCompatPackEnabled()) {
+				return;
+			}
+			int count = manager.installBundledCompatPacks();
+			if (count > 0) {
+				Log.i(TAG, "Bundled compatibility packs refreshed before launch: " + count);
+			}
+		} catch (Exception exception) {
+			Log.w(TAG, "Unable to refresh bundled compatibility packs before launch; continuing with currently selected pack.", exception);
+		}
 	}
 
 	public void prepareAssembliesAndOverlay() throws Exception {
@@ -185,12 +291,14 @@ public final class GameLaunchPreparationManager {
 		FileBrowserSupport.ensureDirectory(destDir);
 		CompatPackManager compatPackManager = new CompatPackManager(context);
 		boolean compatEnabled = compatPackManager.isCompatPackEnabled();
+		File selectedCompatDll = compatPackManager.getSelectedCompatDll();
 		for (String name : bclFiles) {
 			if ("STS2Mobile.dll".equals(name) && !compatEnabled) {
 				continue;
 			}
 			copiedNames.add(name);
 		}
+		syncCompatEntryDll(destDir, compatEnabled, selectedCompatDll);
 		String compatStamp = compatPackManager.buildSelectedCompatStamp();
 		SharedPreferences preferences = context.getSharedPreferences(ASSEMBLY_SETUP_PREFERENCES_NAME, Context.MODE_PRIVATE);
 		int previousVersion = preferences.getInt(KEY_ASSEMBLY_SETUP_VERSION_CODE, -1);
@@ -201,28 +309,39 @@ public final class GameLaunchPreparationManager {
 			return;
 		}
 
-		File selectedCompatDll = compatPackManager.getSelectedCompatDll();
 		for (String name : bclFiles) {
 			if ("STS2Mobile.dll".equals(name)) {
-				if (!compatEnabled) {
-					deleteFileIfExists(new File(destDir, "STS2Mobile.dll"));
-					continue;
-				}
-				if (selectedCompatDll != null && selectedCompatDll.isFile()) {
-					continue;
-				}
+				continue;
 			}
 			try (InputStream inputStream = assets.open("dotnet_bcl/" + name)) {
 				copyStreamToFile(inputStream, new File(destDir, name));
 			}
 		}
-		if (compatEnabled && selectedCompatDll != null && selectedCompatDll.isFile()) {
-			copyFile(selectedCompatDll, new File(destDir, "STS2Mobile.dll"));
-		}
 		preferences.edit()
 			.putInt(KEY_ASSEMBLY_SETUP_VERSION_CODE, BuildConfig.VERSION_CODE)
 			.putString(KEY_ASSEMBLY_SETUP_COMPAT_STAMP, compatStamp)
 			.apply();
+	}
+
+	private void syncCompatEntryDll(File destDir, boolean compatEnabled, File selectedCompatDll) throws IOException {
+		File dest = new File(destDir, "STS2Mobile.dll");
+		if (!compatEnabled) {
+			deleteFileIfExists(dest);
+			return;
+		}
+		if (selectedCompatDll != null && selectedCompatDll.isFile()) {
+			copyFileIfDifferent(selectedCompatDll, dest);
+			return;
+		}
+		try (InputStream inputStream = assets.open("dotnet_bcl/STS2Mobile.dll")) {
+			// STS2Mobile.dll is small compared with the BCL/runtime set.  Refresh it
+			// on every launch so sideloaded APK hotfixes replace stale files even when
+			// versionCode and selected compat-pack stamp did not change.
+			copyStreamToFile(inputStream, dest);
+		} catch (IOException exception) {
+			Log.w(TAG, "No fallback STS2Mobile.dll asset found; Android compatibility patcher will be unavailable.", exception);
+			deleteFileIfExists(dest);
+		}
 	}
 
 	private boolean copyGameAssembliesIfNeeded(File srcDir, File destDir, Set<String> protectedBclNames, boolean forceCopy) throws IOException {
