@@ -17,6 +17,7 @@ public class Sts2Application extends Application {
 	@Override
 	public void onCreate() {
 		super.onCreate();
+		AndroidTempDirectory.configure(this, "Sts2Application");
 
 		CaocConfig.Builder.create()
 			.backgroundMode(CaocConfig.BACKGROUND_MODE_SHOW_CUSTOM)

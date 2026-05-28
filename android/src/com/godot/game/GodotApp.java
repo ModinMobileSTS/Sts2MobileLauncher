@@ -126,6 +126,7 @@ public class GodotApp extends GodotActivity {
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
+		AndroidTempDirectory.configure(this, TAG);
 		gameDir = new File(getFilesDir(), PayloadManager.GAME_DIR_NAME);
 		SplashScreen.installSplashScreen(this);
 		if (!ExtraSettingsPreferences.isFirstRunSetupCompleted(this)) {

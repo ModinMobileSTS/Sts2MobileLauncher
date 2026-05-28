@@ -46,6 +46,7 @@ public final class GameLaunchPreparationManager {
 	}
 
 	public void prepareForLaunch() throws Exception {
+		AndroidTempDirectory.configure(context, TAG);
 		normalizeSavedLanguageIfNeeded();
 		refreshBundledCompatPacksIfNeeded();
 		patchPayloadIfNeeded();
