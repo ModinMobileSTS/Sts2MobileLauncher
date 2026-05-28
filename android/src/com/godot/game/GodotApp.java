@@ -58,11 +58,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Template activity for Godot Android builds.
@@ -73,6 +75,7 @@ public class GodotApp extends GodotActivity {
 	private static final String SETTINGS_FILE_NAME = "settings.save";
 	private static final String SOFT_KEYBOARD_SHORTCUT_SETTING_KEY = "android_volume_up_soft_keyboard";
 	private static final String PCK_FILE_NAME = PayloadManager.PCK_FILE_NAME;
+	private static final int MAX_GODOT_LOG_FILES = 5;
 
 	private static volatile GodotApp currentInstance;
 	private static volatile boolean currentWindowFocused;
@@ -161,25 +164,94 @@ public class GodotApp extends GodotActivity {
 	public List<String> getCommandLine() {
 		List<String> commandLine = new ArrayList<>(super.getCommandLine());
 		Collections.addAll(commandLine, RendererPreference.buildGodotCommandLineArgs(this));
+		appendGodotLogFileCommandLineArgs(commandLine);
 		appendAndroidDisplayCommandLineArgs(commandLine);
 		File pckFile = new File(getGameDir(), PCK_FILE_NAME);
 		if (pckFile.isFile()) {
 			commandLine.add("--main-pack");
 			commandLine.add(pckFile.getAbsolutePath());
 			Log.i(TAG, "Loading imported game PCK: " + pckFile.getAbsolutePath());
+			appendAndroidLaunchLog("Loading imported game PCK: " + pckFile.getAbsolutePath());
 		} else {
 			String bootstrapPck = extractBootstrapPck();
 			if (bootstrapPck != null) {
 				commandLine.add("--main-pack");
 				commandLine.add(bootstrapPck);
 				Log.i(TAG, "Using bootstrap PCK because no imported payload is ready.");
+				appendAndroidLaunchLog("Using bootstrap PCK because no imported payload is ready: " + bootstrapPck);
 			} else {
 				Log.w(TAG, "No imported PCK and no bootstrap PCK asset available.");
+				appendAndroidLaunchLog("No imported PCK and no bootstrap PCK asset available.");
 			}
 		}
 		return commandLine;
 	}
 
+	private void appendGodotLogFileCommandLineArgs(List<String> commandLine) {
+		File logsDir = new File(getFilesDir(), "logs");
+		File godotLogFile = new File(logsDir, "godot.log");
+		try {
+			ensureDirectory(logsDir);
+			rotateGodotLogIfNeeded(logsDir, godotLogFile);
+			commandLine.add("--log-file");
+			commandLine.add(godotLogFile.getAbsolutePath());
+			Log.i(TAG, "Writing Godot runtime log to: " + godotLogFile.getAbsolutePath());
+			appendAndroidLaunchLog("Configured Godot --log-file: " + godotLogFile.getAbsolutePath());
+		} catch (Exception exception) {
+			Log.w(TAG, "Unable to configure Godot runtime log file.", exception);
+		}
+	}
+
+	private void rotateGodotLogIfNeeded(File logsDir, File godotLogFile) {
+		if (!godotLogFile.isFile() || godotLogFile.length() <= 0) {
+			return;
+		}
+		File archivedLogFile = buildArchivedGodotLogFile(logsDir, godotLogFile.lastModified());
+		if (godotLogFile.renameTo(archivedLogFile)) {
+			Log.i(TAG, "Archived previous Godot log to: " + archivedLogFile.getAbsolutePath());
+			appendAndroidLaunchLog("Archived previous Godot log to: " + archivedLogFile.getAbsolutePath());
+			pruneArchivedGodotLogs(logsDir);
+		} else {
+			Log.w(TAG, "Unable to archive previous Godot log: " + godotLogFile.getAbsolutePath());
+		}
+	}
+
+	private File buildArchivedGodotLogFile(File logsDir, long timestampMillis) {
+		String timestamp = new SimpleDateFormat("yyyy-MM-dd'T'HH.mm.ss", Locale.US).format(new java.util.Date(Math.max(0L, timestampMillis)));
+		File candidate = new File(logsDir, "godot" + timestamp + ".log");
+		int suffix = 1;
+		while (candidate.exists()) {
+			candidate = new File(logsDir, "godot" + timestamp + "-" + suffix + ".log");
+			suffix++;
+		}
+		return candidate;
+	}
+
+	private void pruneArchivedGodotLogs(File logsDir) {
+		File[] archivedLogs = logsDir.listFiles((dir, name) -> name != null && name.matches("godot\\d{4}-\\d{2}-\\d{2}T\\d{2}\\.\\d{2}\\.\\d{2}(?:-\\d+)?\\.log"));
+		if (archivedLogs == null || archivedLogs.length <= MAX_GODOT_LOG_FILES - 1) {
+			return;
+		}
+		Arrays.sort(archivedLogs, Comparator.comparingLong(File::lastModified).reversed());
+		for (int i = MAX_GODOT_LOG_FILES - 1; i < archivedLogs.length; i++) {
+			if (!archivedLogs[i].delete()) {
+				Log.w(TAG, "Unable to delete old archived Godot log: " + archivedLogs[i].getAbsolutePath());
+			}
+		}
+	}
+
+	private void appendAndroidLaunchLog(String message) {
+		try {
+			File logsDir = new File(getFilesDir(), "logs");
+			ensureDirectory(logsDir);
+			File launchLog = new File(logsDir, "android-launch.log");
+			String line = new java.util.Date() + "  " + message + "\n";
+			try (OutputStream outputStream = new FileOutputStream(launchLog, true)) {
+				outputStream.write(line.getBytes(StandardCharsets.UTF_8));
+			}
+		} catch (Exception ignored) {
+		}
+	}
 
 	private void appendAndroidDisplayCommandLineArgs(List<String> commandLine) {
 		try {
