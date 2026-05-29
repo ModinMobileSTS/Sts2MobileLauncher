@@ -38,6 +38,21 @@ for pack in data.get('packs', []):
 PY
   safe_id="$(printf '%s' "$pack_id" | tr -c 'A-Za-z0-9._-' '_')"
   worktree="$WORKTREE_ROOT/$safe_id"
+  current_branch="$(git -C "$COMPAT_ROOT" branch --show-current 2>/dev/null || true)"
+  if [[ "$branch" == "$current_branch" ]]; then
+    echo "Building bundled compat pack '$pack_id' from current dirty worktree ($branch)"
+    if [[ ! -x "$COMPAT_ROOT/tools/build-compat-pack.sh" ]]; then
+      echo "Missing compat build script in current worktree: tools/build-compat-pack.sh" >&2
+      exit 1
+    fi
+    (
+      cd "$COMPAT_ROOT"
+      DOTNET_BIN="$DOTNET_BIN" ./tools/build-compat-pack.sh
+    )
+    cp -f "$COMPAT_ROOT"/dist/compat-pack/*.zip "$ASSET_DIR"/
+    continue
+  fi
+
   echo "Building bundled compat pack '$pack_id' from $branch"
   git -C "$COMPAT_ROOT" worktree remove --force "$worktree" >/dev/null 2>&1 || true
   rm -rf "$worktree"
