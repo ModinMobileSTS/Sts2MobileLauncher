@@ -49,6 +49,7 @@ public final class GameLaunchPreparationManager {
 		AndroidTempDirectory.configure(context, TAG);
 		normalizeSavedLanguageIfNeeded();
 		refreshBundledCompatPacksIfNeeded();
+		logSelectedCompatPackForLaunch();
 		patchPayloadIfNeeded();
 		clearTextureCacheIfPayloadChanged();
 		prepareAssembliesAndOverlay();
@@ -155,6 +156,74 @@ public final class GameLaunchPreparationManager {
 		} catch (Exception exception) {
 			Log.w(TAG, "Unable to refresh bundled compatibility packs before launch; continuing with currently selected pack.", exception);
 		}
+	}
+
+	private void logSelectedCompatPackForLaunch() {
+		try {
+			CompatPackManager manager = new CompatPackManager(context);
+			if (!manager.isCompatPackEnabled()) {
+				Log.i(TAG, "Android compatibility pack disabled for this launch.");
+				return;
+			}
+			CompatPackManager.CompatPack pack = manager.getSelectedPack();
+			if (pack == null || !pack.ready) {
+				Log.w(TAG, "No ready Android compatibility pack is selected for this launch.");
+				return;
+			}
+			org.json.JSONObject source = pack.manifest.optJSONObject("installed_source");
+			org.json.JSONObject buildInfo = pack.manifest.optJSONObject("build_info");
+			Log.i(TAG,
+				"Selected compatibility pack for launch:"
+					+ " id=" + safe(pack.packId)
+					+ "; display=" + safe(pack.displayName)
+					+ "; compat_version=" + safe(pack.compatVersion)
+					+ "; channel=" + safe(pack.channel)
+					+ "; target=" + safe(pack.targetLabel())
+					+ "; target_commit=" + safe(pack.targetCommit)
+					+ "; source=" + safe(source == null ? "" : source.optString("kind", ""))
+					+ "; source_name=" + safe(source == null ? "" : source.optString("display_name", ""))
+					+ "; source_zip_sha256=" + shortSha(source == null ? "" : source.optString("zip_sha256", ""))
+					+ "; build_branch=" + safe(buildInfo == null ? "" : buildInfo.optString("branch", ""))
+					+ "; build_commit=" + safe(buildInfo == null ? "" : buildInfo.optString("commit", ""))
+					+ "; build_dirty=" + safe(buildInfo == null ? "" : buildInfo.optString("dirty", ""))
+					+ "; build_subject=" + safe(buildInfo == null ? "" : buildInfo.optString("subject", ""))
+					+ "; notes=" + notesForLog(pack.manifest.optJSONArray("notes")));
+		} catch (Exception exception) {
+			Log.w(TAG, "Unable to log selected compatibility pack for launch.", exception);
+		}
+	}
+
+	private String safe(String value) {
+		if (value == null || value.trim().isEmpty()) {
+			return "unknown";
+		}
+		return value.replace('\n', ' ').replace('\r', ' ').trim();
+	}
+
+	private String shortSha(String value) {
+		String text = value == null ? "" : value.trim();
+		if (text.isEmpty()) {
+			return "unknown";
+		}
+		return text.substring(0, Math.min(12, text.length()));
+	}
+
+	private String notesForLog(org.json.JSONArray notes) {
+		if (notes == null || notes.length() == 0) {
+			return "unknown";
+		}
+		StringBuilder builder = new StringBuilder();
+		for (int i = 0; i < notes.length(); i++) {
+			String note = notes.optString(i, "").trim();
+			if (note.isEmpty()) {
+				continue;
+			}
+			if (builder.length() > 0) {
+				builder.append(" | ");
+			}
+			builder.append(note.replace('\n', ' ').replace('\r', ' '));
+		}
+		return builder.length() == 0 ? "unknown" : builder.toString();
 	}
 
 	public void prepareAssembliesAndOverlay() throws Exception {

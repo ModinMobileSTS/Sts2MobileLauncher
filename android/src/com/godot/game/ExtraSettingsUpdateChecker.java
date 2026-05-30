@@ -59,7 +59,16 @@ public final class ExtraSettingsUpdateChecker {
 	}
 
 	private static JSONObject requestLatestRelease() throws Exception {
-		JSONArray releases = requestJsonArray(RELEASES_API_URL);
+		JSONArray releases;
+		try {
+			releases = requestJsonArray(RELEASES_API_URL);
+		} catch (IOException exception) {
+			if (exception.getMessage() != null && exception.getMessage().contains("HTTP 404")) {
+				Log.d(TAG, "GitHub releases endpoint is not public or does not exist; update check skipped.");
+				return null;
+			}
+			throw exception;
+		}
 		for (int i = 0; i < releases.length(); i++) {
 			JSONObject release = releases.optJSONObject(i);
 			if (release == null || release.optBoolean("draft", false)) {
