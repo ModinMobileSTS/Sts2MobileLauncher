@@ -1,5 +1,7 @@
 # Build outputs
 build/
+!doc/build/
+!doc/build/**
 
 # Local coding agent state
 .agent/

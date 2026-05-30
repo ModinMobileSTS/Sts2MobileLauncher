@@ -22,7 +22,7 @@
 
 - Android 包名：`com.megacrit.sts2re`
 - Java package / Godot bridge：`com.godot.game`
-- 构建类型：`monoDebug`
+- 默认构建任务：`assembleMonoRelease`（release build type 当前仍保留 `debuggable true` 便于本地验证）
 - ABI：`arm64-v8a`
 - minSdk / targetSdk：`24 / 35`
 - Android Gradle Plugin：`8.6.1`
@@ -47,23 +47,24 @@ s2_re/
     assets/
       bootstrap.pck                # 无游戏 payload 时的最小 Godot bootstrap pack
       port_compat.pck              # legacy fallback overlay pack，脚本生成
-      compat_packs/                # 内置兼容包 zip；默认包含最新版 beta 包
+      compat_packs/                # 内置兼容包 zip；当前包含正式/稳定与 beta 包
       dotnet_bcl/                  # 大型 .NET/Godot runtime DLL，生成/同步产物，gitignore
       payload/                     # 直装版临时内置 zip，gitignore
     libs/                          # Godot/FMOD/template AAR，生成/同步产物，gitignore
 
-  port-mod/                        # git submodule: ../sts2-android-compat
+  port-mod/                        # git submodule: ../sts2-android-compat，多分支兼容补丁仓库
     STS2AndroidPortCompat/         # 兼容插件源码，输出 STS2Mobile.dll
     overlay/                       # 打包进 port_compat.pck 的 shader/resource overlay
     refs/                          # 本地 original compile gate 引用说明/symlink
     tools/build-compat-pack.sh     # 导出独立可安装兼容包 zip
 
   tools/
-    android/                       # Android runtime 同步、Gradle 环境、兼容 MOD 构建脚本
+    android/                       # Android runtime 同步、Gradle 环境、兼容包构建/staging 脚本
     package/                       # APK 打包、payload zip 校验脚本
     diff/                          # 差异清单工具
 
-  docs/                            # 差异、验证、迁移文档
+  doc/                             # 新规范化文档入口：changelog、结构、构建、运行时加载流程
+  docs/                            # 历史差异、验证、迁移文档
   dist/                            # APK 输出副本，gitignore
 ```
 
@@ -74,13 +75,13 @@ s2_re/
 - **游戏本体版本**：导入的 PC zip 仍会激活到 `<files>/game/`，同时可归档到 `<files>/game-versions/<id>/game/`，之后可在版本页切换。
 - **移动端兼容包**：安装到 `<files>/compat-packs/<pack_id>/`，每个包包含 manifest、`STS2Mobile.dll` 和 `port_compat.pck`。启动游戏前只按 payload manifest 中的游戏版本号自动匹配或检查当前选择的兼容包；不再因 `sts2.dll` SHA-256 不一致阻止启动。
 
-内置默认兼容包位于：
+内置兼容包位于：
 
 ```text
-android/assets/compat_packs/sts2-android-compat-v0.106.1-beta.zip
+android/assets/compat_packs/*.zip
 ```
 
-当前首个目标版本为 `0.106.1 beta`，兼容插件源码由 submodule 分支 `compat/v0.106.1-beta` 维护，参考游戏源码目录为 `../s2_original/s201061/`。
+当前内置包列表由 `tools/android/bundled-compat-packs.json` 控制，包含正式/稳定 `v0.103.2`（`compat/v0.103.2`，参考目录 `../s2_original/s21032/`）和 beta `v0.106.1`（`compat/v0.106.1-beta`，参考目录 `../s2_original/s201061/`）。
 
 ## 不提交的内容
 
@@ -101,7 +102,8 @@ android/assets/compat_packs/sts2-android-compat-v0.106.1-beta.zip
 
 ```text
 ../s2/                                      # 旧 Android 移植版/参考工程
-../s2_original/s21032/                      # PC 原版/解包工程基线
+../s2_original/s21032/                      # v0.103.2 正式/稳定 PC 原版/解包基线
+../s2_original/s201061/                     # v0.106.1 beta PC 原版/解包基线
 ../s2_pc/Slay the Spire 2.zip               # 本地测试用 PC 游戏 zip，可替换为你自己的路径
 ```
 
@@ -160,7 +162,7 @@ tools/package/build_importer_apk.sh
 输出：
 
 ```text
-android/build/outputs/apk/mono/debug/sts2-re.apk
+android/build/outputs/apk/mono/release/sts2-re.apk
 dist/sts2-re-importer.apk
 ```
 
@@ -175,7 +177,7 @@ tools/package/build_direct_apk.sh "/path/to/SlayTheSpire2.zip"
 输出：
 
 ```text
-android/build/outputs/apk/mono/debug/sts2-re.apk
+android/build/outputs/apk/mono/release/sts2-re.apk
 dist/sts2-re-direct.apk
 ```
 
@@ -355,6 +357,8 @@ tools/android/build-port-mod.sh
 ## 相关文档
 
 - [`AGENTS.md`](AGENTS.md)：面向后续编码代理/维护者的完整项目速览
+- [`doc/`](doc/)：规范化文档入口（changelog、项目结构、构建、兼容包/MOD 加载流程）
+- [`doc/runtime/compat-pack-loading-flow.md`](doc/runtime/compat-pack-loading-flow.md)：Android 兼容包与普通 MOD 详细加载流程
 - [`port-mod/README.md`](port-mod/README.md)：Android 兼容插件 / compat pack 说明
 - [`docs/inventory/`](docs/inventory/)：旧移植版与 PC 原版差异清单
 - [`docs/validation/`](docs/validation/)：阶段性验证记录
