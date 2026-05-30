@@ -345,6 +345,27 @@ public final class ExtraSettingsRepository {
 		return normalizedName;
 	}
 
+	public String importDownloadedModFile(File sourceFile, String displayName) throws Exception {
+		if (sourceFile == null || !sourceFile.isFile()) {
+			throw new IOException(context.getString(R.string.nexus_mod_store_download_missing_file));
+		}
+		File modsRoot = getModsRootDir();
+		ensureDirectory(modsRoot);
+		String normalizedName = sanitizeFileName(TextUtils.isEmpty(displayName) ? sourceFile.getName() : displayName);
+		String lowerName = normalizedName.toLowerCase(Locale.ROOT);
+		boolean shouldUnzip = lowerName.endsWith(".zip") || isZipFile(sourceFile);
+		if (shouldUnzip) {
+			unzipFileIntoDirectory(sourceFile, modsRoot);
+		} else {
+			copyRecursively(sourceFile, new File(modsRoot, normalizedName));
+		}
+		normalizeRuntimeModAliases(modsRoot);
+		JSONObject settings = loadSettingsJson();
+		ensureModSettings(settings).put("mods_enabled", true);
+		saveSettingsJson(settings);
+		return normalizedName;
+	}
+
 	private void normalizeRuntimeModAliases(File modsRoot) {
 		List<ModEntry> entries = new ArrayList<>();
 		collectManifestFiles(modsRoot, entries);
@@ -1149,34 +1170,47 @@ public final class ExtraSettingsRepository {
 		try (InputStream rawStream = context.getContentResolver().openInputStream(uri);
 			 BufferedInputStream bufferedInputStream = new BufferedInputStream(requireNonNull(rawStream));
 			 ZipInputStream zipInputStream = new ZipInputStream(bufferedInputStream)) {
-			ZipEntry entry;
-			while ((entry = zipInputStream.getNextEntry()) != null) {
-				String entryName = entry.getName().replace('\\', '/');
-				if (entryName.startsWith("__MACOSX/") || entryName.contains("../")) {
-					zipInputStream.closeEntry();
-					continue;
-				}
-				File outputFile = new File(targetDirectory, entryName);
-				String targetRootPath = targetDirectory.getCanonicalPath();
-				String outputPath = outputFile.getCanonicalPath();
-				if (!outputPath.equals(targetRootPath) && !outputPath.startsWith(targetRootPath + File.separator)) {
-					zipInputStream.closeEntry();
-					throw new IOException("Blocked invalid zip entry: " + entryName);
-				}
-				if (entry.isDirectory()) {
-					ensureDirectory(outputFile);
-					zipInputStream.closeEntry();
-					continue;
-				}
-				File parent = outputFile.getParentFile();
-				if (parent != null) {
-					ensureDirectory(parent);
-				}
-				try (OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(outputFile))) {
-					copyStream(zipInputStream, outputStream);
-				}
+			unzipStreamIntoDirectory(zipInputStream, targetDirectory);
+		}
+	}
+
+	private void unzipFileIntoDirectory(File sourceFile, File targetDirectory) throws Exception {
+		ensureDirectory(targetDirectory);
+		try (InputStream rawStream = new FileInputStream(sourceFile);
+			 BufferedInputStream bufferedInputStream = new BufferedInputStream(rawStream);
+			 ZipInputStream zipInputStream = new ZipInputStream(bufferedInputStream)) {
+			unzipStreamIntoDirectory(zipInputStream, targetDirectory);
+		}
+	}
+
+	private void unzipStreamIntoDirectory(ZipInputStream zipInputStream, File targetDirectory) throws Exception {
+		ZipEntry entry;
+		while ((entry = zipInputStream.getNextEntry()) != null) {
+			String entryName = entry.getName().replace('\\', '/');
+			if (entryName.startsWith("__MACOSX/") || entryName.contains("../")) {
 				zipInputStream.closeEntry();
+				continue;
 			}
+			File outputFile = new File(targetDirectory, entryName);
+			String targetRootPath = targetDirectory.getCanonicalPath();
+			String outputPath = outputFile.getCanonicalPath();
+			if (!outputPath.equals(targetRootPath) && !outputPath.startsWith(targetRootPath + File.separator)) {
+				zipInputStream.closeEntry();
+				throw new IOException("Blocked invalid zip entry: " + entryName);
+			}
+			if (entry.isDirectory()) {
+				ensureDirectory(outputFile);
+				zipInputStream.closeEntry();
+				continue;
+			}
+			File parent = outputFile.getParentFile();
+			if (parent != null) {
+				ensureDirectory(parent);
+			}
+			try (OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(outputFile))) {
+				copyStream(zipInputStream, outputStream);
+			}
+			zipInputStream.closeEntry();
 		}
 	}
 
@@ -1205,12 +1239,24 @@ public final class ExtraSettingsRepository {
 			if (inputStream == null) {
 				return false;
 			}
-			byte[] signature = new byte[4];
-			int read = inputStream.read(signature);
-			return read == 4 && signature[0] == 'P' && signature[1] == 'K' && (signature[2] == 3 || signature[2] == 5 || signature[2] == 7) && (signature[3] == 4 || signature[3] == 6 || signature[3] == 8);
+			return hasZipSignature(inputStream);
 		} catch (Exception ignored) {
 			return false;
 		}
+	}
+
+	private boolean isZipFile(File file) {
+		try (InputStream inputStream = new BufferedInputStream(new FileInputStream(file))) {
+			return hasZipSignature(inputStream);
+		} catch (Exception ignored) {
+			return false;
+		}
+	}
+
+	private boolean hasZipSignature(InputStream inputStream) throws IOException {
+		byte[] signature = new byte[4];
+		int read = inputStream.read(signature);
+		return read == 4 && signature[0] == 'P' && signature[1] == 'K' && (signature[2] == 3 || signature[2] == 5 || signature[2] == 7) && (signature[3] == 4 || signature[3] == 6 || signature[3] == 8);
 	}
 
 	private String queryDisplayName(Uri uri) {

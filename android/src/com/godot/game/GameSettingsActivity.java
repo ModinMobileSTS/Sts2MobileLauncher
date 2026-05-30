@@ -371,6 +371,15 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	}
 
 	@Override
+	public void openModStore() {
+		try {
+			startActivity(new Intent(this, NexusModsStoreActivity.class));
+		} catch (Exception exception) {
+			showError(exception);
+		}
+	}
+
+	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 		super.onActivityResult(requestCode, resultCode, data);
 		if (resultCode != RESULT_OK || data == null) {

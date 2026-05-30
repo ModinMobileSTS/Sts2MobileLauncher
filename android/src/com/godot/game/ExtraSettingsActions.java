@@ -18,6 +18,7 @@ public interface ExtraSettingsActions {
 	void requestExportFullDataBackup();
 	void requestImportFullDataBackup();
 	void requestImportMod();
+	void openModStore();
 	void openLogViewer();
 	void openFileBrowser();
 	void openUrl(String url);

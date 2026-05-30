@@ -88,6 +88,15 @@
         </activity>
 
         <activity
+            android:name=".NexusModsStoreActivity"
+            android:label="@string/nexus_mod_store_title"
+            android:theme="@style/Theme.Sts2ExtraSettings"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize"
+            android:resizeableActivity="true" />
+
+        <activity
             android:name=".LogViewerActivity"
             android:label="@string/log_viewer_title"
             android:theme="@style/Theme.Sts2Crash.AppBar"

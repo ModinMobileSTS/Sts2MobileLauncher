@@ -36,7 +36,17 @@ mod_manifest.json
 
 并添加 `android_generated_manifest_alias=true`，必要时删除重复的 `mod_manifest.json`。
 
-## 3. MOD 启用/禁用协议
+## 3. NexusMods 商店导入
+
+`ModsPage` 的“导入 MOD”按钮下方提供 `NexusModsStoreActivity` 入口。该商店是移动端友好的 Material 3 卡片界面，当前约定：
+
+- 用户必须手动输入并保存自己的 NexusMods Personal API Key；获取教程入口指向 <https://www.nexusmods.com/settings/api-keys>，提示用户滑到页面底部并点击 “Request Personal API Key”。
+- API Key 存在 Android 私有 `SharedPreferences`（`sts2_nexus_mod_store`）中，不写入仓库、不导出到构建产物。
+- 默认游戏域名为 `slaythespire2`。官方 API 没有完整全站文本搜索接口，因此关键词搜索会聚合并筛选 trending/latest/updated feed；输入 Nexus MOD URL 或数字 MOD ID 会走精确查询。
+- 下载流程会获取 NexusMods 文件列表，选择文件后尝试生成下载链接并把下载到的 ZIP 交给 `ExtraSettingsRepository.importDownloadedModFile()`，最终进入 `<files>/mods/` 并启用 MOD 总开关。
+- NexusMods 对非 Premium 用户可能要求先访问网页；此时界面会引导打开网页并支持粘贴 `nxm://...key=...&expires=...` 链接重试下载。
+
+## 4. MOD 启用/禁用协议
 
 Java 附加设置页通过 `ExtraSettingsRepository` 写入：
 
@@ -57,7 +67,7 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入：
 - 相关 `Patches/*Settings*.cs`；
 - `doc/changelog/`。
 
-## 4. compat pack 分支维护
+## 5. compat pack 分支维护
 
 当前维护分支：
 
@@ -88,7 +98,7 @@ tools/package/build_importer_apk.sh
 
 对 `compat/v0.103.2` 分支，把 `ReferenceFlavor` 改为 `original`。
 
-## 5. 新增游戏版本 checklist
+## 6. 新增游戏版本 checklist
 
 新增一个目标游戏版本时，至少需要：
 
@@ -109,7 +119,7 @@ tools/package/build_importer_apk.sh
 8. 更新 `AGENTS.md`、`doc/architecture/project-structure.md`、本文件和 changelog。
 9. 构建 `tools/package/build_importer_apk.sh` 并做至少一次导入/启动 smoke test。
 
-## 6. patch 开发注意事项
+## 7. patch 开发注意事项
 
 - 优先使用 prefix/postfix 和反射兜底，谨慎使用复杂 transpiler；Android 上 MonoMod/Cecil/Godot StringName 生命周期问题更容易暴露。
 - 任何直接引用游戏内部类型的 patch 都可能随游戏版本变化失效，应保留在对应 compat 分支。
@@ -118,7 +128,7 @@ tools/package/build_importer_apk.sh
 - Shader/resource overlay 资源应放入 `port-mod/overlay/`，重新打包 `port_compat.pck` 后才能生效。
 - 普通 MOD loader 的目标是尽量复用游戏原本的 scanner、dependency sort 和 TryLoadMod，减少与 PC 行为分叉。
 
-## 7. 兼容包 manifest 约定
+## 8. 兼容包 manifest 约定
 
 典型 manifest：
 
@@ -149,7 +159,7 @@ tools/package/build_importer_apk.sh
 
 `CompatPackManager` 当前主要用 `target_game.version` 与 payload manifest 的 `version` 匹配。`sts2_dll_sha256` 记录用于诊断和未来更严格匹配。
 
-## 8. 用户 MOD 测试建议
+## 9. 用户 MOD 测试建议
 
 1. 先确认无普通 MOD 时游戏可启动。
 2. 安装 BaseLib/RitsuLib 等基础库 MOD，查看 log 中 BaseLib/RitsuLib compatibility patch 是否正常。

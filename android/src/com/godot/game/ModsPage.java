@@ -170,6 +170,10 @@ public final class ModsPage {
 		importButton.setOnClickListener(v -> actions.requestImportMod());
 		ExtraSettingsUi.addSmallSpacing(content, importButton);
 
+		MaterialButton storeButton = ExtraSettingsUi.tonalButton(context, R.string.nexus_mod_store_open, R.drawable.ic_download_24);
+		storeButton.setOnClickListener(v -> actions.openModStore());
+		ExtraSettingsUi.addSmallSpacing(content, storeButton);
+
 		TextInputLayout searchLayout = new TextInputLayout(context);
 		searchLayout.setHint(context.getString(R.string.mod_search_hint));
 		searchLayout.setStartIconDrawable(R.drawable.ic_search_24);
