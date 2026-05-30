@@ -137,6 +137,14 @@ STS2Mobile.ModEntry
 1. temp 目录配置与 build info 日志。
 2. `RenderDiagnosticPatches`。
 3. BaseLib/RitsuLib/ModelDb/UnlockState 兼容。
+   - 关键时序不变式：MOD 如 YuWanCard/BaseLib 用 `ModelDb.GetEntry` 的 Harmony postfix 给自定义内容 ID 加命名空间前缀（如 `ENCOUNTER.YUWANCARD-KILLER_ELITE`），并按 type **永久缓存**第一次 `GetEntry` 结果。PC 上每个 MOD 的 `PatchAll` 在 `ModManager.Initialize`（`ExecuteVeryEarly`）期间运行，严格早于 `ModelDb.Init`（`ExecuteEssential`），因此 ID 计算时前缀 patch 早已就位。兼容层必须**在 MOD patch 全部应用前，绝不对任何模型类型调用 `ModelDb.GetId`/`GetEntry`**，否则会污染前缀缓存并把模型注册到错误 key。
+   - `ModelDbInitPatch` 把 `ModelDb.Init` 替换为干净的 two-phase，并分两层处理占位：
+     - **早期原版占位**：`ModLoaderPatches` 在加载任何 MOD 之前预注册 `AbstractModelSubtypes.All`（仅原版）。Android/Mono 下 MOD initializer Harmony patch 某个 getter（如 HextechRunes patch `UnlockState.Relics`）会提前触发 `UnlockState..cctor`，走 `ModelDb.AllEncounters -> Act<Overgrowth>` 等原版模型；BaseLib post-mod-init act patching 与 MOD 静态构造（如 `wuwancients.HiddenSeaRecord..cctor` 引用多个原版遗物）也会提前触发 `BowlbugsNormal..cctor -> MONSTER.BOWLBUG_EGG`。原版类型不带命名空间前缀，提前算 ID 不会污染任何 MOD 的 `GetEntry` 前缀缓存。
+     - phase 1：`ExecuteEssential` 中、调用 `ModelDb.Init()` **之前**，按**最终** `ModelDb.GetId(Type)`（MOD GetEntry 前缀此时已生效）补齐全部模型（含 MOD 自定义类型）的占位；已有的原版占位跳过。这样在 MOD 的 `ModelDb.Init` prefix（在 `Priority.Last` phase 2 之前运行）提前触发 MOD 间静态构造（如 `RELIC.LONG_SNAKE_NECKLACE`）时不会缺失。
+     - phase 2：`InitPrefix`（`Priority.Last`）在占位之上原地运行真实静态/实例构造器，跳过原版 one-pass body。部分 MOD 的 `ModelDb.Init` prefix 会自己返回 `false` 并让 Harmony 跳过后续 prefix，因此兼容层同时安装 `Priority.First` postfix 与 `ExecuteEssential` 后置兜底，确保构造 phase 一定执行。
+   - 真正的模型构造仍保留在 `OneTimeInitialization.ExecuteEssential -> ModelDb.Init`；用户 MOD 的 `ModelDb.Init` prefix/postfix 仍会执行（prefix `Priority.Last`，跑完后返回 false 跳过原版 one-pass body，postfix 照常运行）；构造前后会清理早期占位枚举产生的 `ModelDb` / 模型实例派生缓存。
+   - 自定义模型 ID 完全交给原版 `ModelDb.Init` + MOD 的 `GetEntry` patch 自然产生，不再人为迁移 key 或做动态兜底。
+   - `UnlockStateCompatPatches` 会在 `ModelDb` 初始化完成前让 `ModelDb.AllEncounters` 返回空列表，避免 Android/Mono 因 Harmony patch getter 提前运行 `UnlockState..cctor` 时枚举到尚未构造/注册完成的 MOD encounter；初始化完成后会修复可能提前创建的 static readonly `UnlockState.all`，恢复正常“全部 encounter 已见过”的语义。
 4. Platform、release info、settings、display、font/UI scale。
 5. 移动端 layout/input、事件/商店/奖励/战斗背景等 UI 修正。
 6. Android UI safety、游戏内设置入口、shader overlay、Android back/touch/controller、奖励/商人二次确认、tap preview、hand layout。
@@ -168,6 +176,7 @@ OS.GetDataDir()/port_compat.pck
 - Prefix 替换 `ModManager.Initialize()`，避免 Android 上高风险 IL transpiler。
 - 设置原版私有字段 `_settings`、`_fileIo`、`_gameVersion`。
 - 添加 assembly resolve fallback。
+- 为对齐 PC 时序，在用户 MOD 的 Harmony patch 全部应用前不对任何 MOD 模型类型调用 `ModelDb.GetId`/`GetEntry`。原版模型占位提前到**加载任何 MOD 之前**（`ModLoaderPatches` 触发，原版不带前缀，安全，修复 MOD patch getter / MOD 静态构造引用原版模型的早访问）；MOD 自定义模型占位延迟到 `ModelDb.Init()` 之前的 phase 1，按最终 ID 进行。
 - 扫描 `AppPaths.ModsDir`，当前为：
 
 ```text

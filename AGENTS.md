@@ -159,6 +159,7 @@ s2_re/
 - 主要页面/管理器：
   - `WelcomeSetupPage`：首次向导。
   - `GamePage` / `SettingsPage` / `ModsPage` / `GameVersionManagerPage`：主页、设置、MOD、版本/兼容包管理。
+  - `NexusModsStoreActivity`：从 `ModsPage` 的“导入 MOD”下方进入 NexusMods 商店；用户手动保存 Personal API Key 后可浏览热门/最新/近期更新结果、按 URL/数字 ID 精确查询、下载 ZIP 并导入到 `<files>/mods/`。非 Premium 下载若被 NexusMods API 拒绝，可引导用户打开网页并粘贴 NXM 链接中的 `key/expires`。
   - `PayloadManager`：导入/校验/安装 PC 游戏 zip。
   - `GameBodyVersionManager`：把当前 `<files>/game/` 归档为 `<files>/game-versions/<id>/game/` 并支持切换。
   - `CompatPackManager`：安装、选择、删除兼容包；从 APK assets 安装内置兼容包；按 payload manifest 匹配目标版本。
@@ -283,10 +284,26 @@ tools/android/stage-bundled-compat-packs.sh
 3. 复制兼容包 `port_compat.pck` 到 `<files>/port_compat.pck`；无选择时使用 `android/assets/port_compat.pck` fallback。
 4. 复制 `<files>/game/data_*/*.dll` 到 publish 目录，但保护 BCL/System/GodotSharp 等 runtime DLL 不被 payload 覆盖。
 5. patched Godot runtime 加载 `STS2Mobile.dll` / `STS2Mobile.ModEntry`，调用 `InitializeGodotSharp` 与 `Apply`。
-6. `ModEntry.Apply()` 以固定顺序应用 Harmony patches：诊断、BaseLib/RitsuLib、平台/release/settings/layout/input、shader、LAN、ModLoader 等。
-7. `ModLoaderPatches` 接管原版 `ModManager.Initialize()`，扫描 `<files>/mods`，跳过 Steam Workshop，并处理 `mod_manifest.json` → `<ModId>.json` manifest alias。
+6. `ModEntry.Apply()` 以固定顺序应用 Harmony patches：诊断、BaseLib/RitsuLib、ModelDb/UnlockState、平台/release/settings/layout/input、shader、LAN、ModLoader 等。
+7. `ModLoaderPatches` 接管原版 `ModManager.Initialize()`，扫描 `<files>/mods`，跳过 Steam Workshop，并处理 `mod_manifest.json` → `<ModId>.json` manifest alias；**加载任何 MOD 之前先预注册仅原版模型占位**（`AbstractModelSubtypes.All`），避免 Android/Mono 下 MOD initializer Harmony patch 某个 getter（如 HextechRunes patch `UnlockState.Relics`）时提前触发 `UnlockState..cctor -> ACT.OVERGROWTH`、或 MOD 静态构造引用原版模型时崩溃；原版类型不带命名空间前缀，提前算 ID 不会污染 YuWanCard/BaseLib 的 `GetEntry` 前缀缓存。**不对 MOD 模型类型提前算 ID**，MOD 占位延迟到 phase 1。
+8. `ModelDbInitPatch` 分三个阶段处理模型占位：
+   - **早期原版占位**（加载 MOD 前，由 `ModLoaderPatches` 触发）：仅原版，解决 MOD patch getter / MOD 静态构造引用原版模型的早访问。
+   - **phase 1**（`ExecuteEssential` 中、`ModelDb.Init()` 调用**之前**）：MOD patch 已全部应用，按最终 `ModelDb.GetId(Type)` 补齐全部模型（含 MOD 自定义类型）占位；解决 MOD 间静态构造引用（如 `wuwancients.HiddenSeaRecord..cctor -> RELIC.LONG_SNAKE_NECKLACE`），这些构造会在 MOD 的 `ModelDb.Init` prefix 期间被 Android/Mono 提前触发。
+   - **phase 2**（`InitPrefix` 中，`Priority.Last`）：在占位上原地运行真实静态/实例构造器，并跳过原版 one-pass body。因部分 MOD 的 `ModelDb.Init` prefix 会自己返回 `false` 并让 Harmony 跳过后续 prefix，兼容层还安装 `Priority.First` postfix 与 `ExecuteEssential` 后置兜底，确保构造 phase 一定执行。自定义模型 ID（含 `ENCOUNTER.YUWANCARD-KILLER_ELITE` 等带前缀 ID）完全由原版 `ModelDb.Init` + MOD `GetEntry` patch 自然产生，不再人为迁移 key。用户 MOD 的 `ModelDb.Init` prefix/postfix 生命周期保留。
+   - `UnlockStateCompatPatches` 在 `ModelDb` 初始化完成前让 `ModelDb.AllEncounters` 返回空列表，避免 Android/Mono 因 Harmony patch getter 提前运行 `UnlockState..cctor` 时枚举到尚未构造/注册完成的 MOD encounter；初始化完成后会修复可能提前创建的 static readonly `UnlockState.all`。
 
 详细流程见 `doc/runtime/compat-pack-loading-flow.md`。
+
+### 8.5 MOD 兼容性排查规范
+
+排查普通 MOD 在 Android 上无法加载、依赖缺失、初始化顺序异常或行为与 PC 不一致时，遵循以下约定：
+
+- 可以把常用前置/依赖 MOD 仓库 clone 到工作区外或 `.agent/reference-repos/` 等不提交的位置，并 checkout 到与目标游戏版本、目标 MOD 版本匹配的 tag/branch/commit 后对照排查；不要把这些第三方源码或构建产物提交到本仓库。
+- 优先参考对应版本 PC 原版/解包代码，尤其是 `ModManager`、依赖排序、manifest 解析、assembly resolve、资源加载和初始化回调的时序；重点确认 Android 兼容层是否漏掉某一步、提前/延后某一步，或改变了原版加载顺序导致 MOD 兼容问题。
+- 对没有公开源码的 MOD，可以通过反编译其程序集获取可参考信息，用于定位入口类、manifest、依赖声明、Harmony patch、资源路径和初始化假设；反编译结果只作为本地诊断依据，不要提交第三方反编译源码或违反其许可条款。
+- 常见前置/依赖仓库：
+  - RitsuLib: <https://github.com/BAKAOLC/STS2-RitsuLib>
+  - BaseLib-StS2: <https://github.com/Alchyr/BaseLib-StS2>
 
 ## 9. 构建 / 打包环境
 
