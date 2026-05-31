@@ -27,7 +27,7 @@ s2_re/
 
 ## 3. Android shell 主要组件
 
-- `GameSettingsActivity`：默认 launcher，承载欢迎向导、设置页、版本页、MOD 页，负责启动前检查。
+- `GameSettingsActivity`：默认 launcher，承载欢迎向导、设置页、版本页、MOD 页，负责启动前检查；桌面图标默认打开附加设置，也可在设置页切换为完成向导后自动直接启动游戏。
 - `GodotApp`：真正的 Godot Activity，拼接 Godot 命令行，加载 imported PCK 或 bootstrap PCK，暴露 Java bridge 给 C#。
 - `PayloadManager`：导入 PC zip、校验必需文件、patch 私有 PCK copy、写 `.payload_manifest.json` 并安装到 payload store。
 - `LaunchProfileManager`：维护 payload store 与 launch profile，支持同一游戏本体多套全局/隔离存档和 MOD 配置，切换时不复制 PCK。

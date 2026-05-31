@@ -37,9 +37,9 @@
 
         <activity
             android:name=".GameSettingsActivity"
-            android:label="@string/game_settings_activity_name"
+            android:label="@string/godot_project_name_string"
             android:theme="@style/Theme.Sts2ExtraSettings"
-            android:icon="@drawable/ic_extra_settings_gear"
+            android:icon="@mipmap/icon"
             android:exported="true"
             android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize"

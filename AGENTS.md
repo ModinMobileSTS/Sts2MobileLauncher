@@ -156,7 +156,7 @@ s2_re/
 ## 6. Android shell 关键点
 
 - Java package 保持 `com.godot.game`，便于兼容旧 C# / patched runtime 桥；实际 `applicationId` 由 `android/gradle.properties` 设置为 `com.megacrit.sts2re`。
-- `GameSettingsActivity` 是默认 `LAUNCHER`：首次进入欢迎向导/附加设置页。
+- `GameSettingsActivity` 是默认 `LAUNCHER`：首次进入欢迎向导/附加设置页；设置页的“桌面图标启动后”偏好可让桌面图标在向导完成且 payload 就绪后自动走 `launchGame()` 直接进游戏，默认仍打开附加设置。
 - 主要页面/管理器：
   - `WelcomeSetupPage`：首次向导。
   - `GamePage` / `SettingsPage` / `ModsPage` / `GameVersionManagerPage`：主页、设置、MOD、版本/兼容包管理。

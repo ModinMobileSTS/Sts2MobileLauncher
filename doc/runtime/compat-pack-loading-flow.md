@@ -43,7 +43,7 @@ port-mod branch
 
 ## 3. 安装 / 首次进入设置页
 
-1. Android 默认启动 `GameSettingsActivity`。
+1. Android 默认启动 `GameSettingsActivity`。桌面图标名称/图标使用主应用资源；“设置 → 系统 → 桌面图标启动后”默认打开附加设置，也可切换为向导完成后自动走 `GameSettingsActivity.launchGame()` 直接启动游戏。设置页快捷方式和游戏内返回设置不触发自动直启。
 2. 设置页可在后台调用 `CompatPackManager.installBundledCompatPacks()`：
    - 枚举 APK assets `compat_packs/*.zip`。
    - 复制到私有临时目录。

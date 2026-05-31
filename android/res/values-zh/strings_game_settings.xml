@@ -480,6 +480,9 @@
     <string name="touch_lift_preview_hint">战斗中抬起触摸时显示卡牌预览。</string>
     <string name="settings_system_title">系统</string>
     <string name="settings_system_subtitle">启动、声音、联机与诊断。</string>
+    <string name="launcher_startup_behavior_title">桌面图标启动后</string>
+    <string name="launcher_startup_behavior_settings_option">打开附加设置</string>
+    <string name="launcher_startup_behavior_game_option">直接启动游戏</string>
     <string name="preload_hint">启动时预热常用资源。</string>
     <string name="clear_texture_cache">清理贴图缓存</string>
     <string name="status_clear_texture_cache_done">贴图缓存将在下次启动时重建。</string>

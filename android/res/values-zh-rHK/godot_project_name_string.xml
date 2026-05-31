@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--WARNING: THIS FILE WILL BE OVERWRITTEN AT BUILD TIME-->
 <resources>
 	<string name="godot_project_name_string">杀戮尖塔2</string>
 </resources>

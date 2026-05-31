@@ -7,7 +7,11 @@ public final class ExtraSettingsPreferences {
 	private static final String PREFERENCES_NAME = "sts2_extra_settings";
 	private static final String KEY_FIRST_RUN_SETUP_COMPLETED = "first_run_setup_completed";
 	private static final String KEY_LAST_SELECTED_MAIN_TAB = "last_selected_main_tab";
+	public static final String LAUNCHER_STARTUP_SETTINGS = "settings";
+	public static final String LAUNCHER_STARTUP_GAME = "game";
+
 	private static final String KEY_UPDATE_CHECK_ENABLED = "update_check_enabled";
+	private static final String KEY_LAUNCHER_STARTUP_BEHAVIOR = "launcher_startup_behavior";
 	private static final String KEY_LOG_LEVEL = "log_level";
 
 	private ExtraSettingsPreferences() {
@@ -35,6 +39,21 @@ public final class ExtraSettingsPreferences {
 
 	public static void setUpdateCheckEnabled(Context context, boolean enabled) {
 		getPreferences(context).edit().putBoolean(KEY_UPDATE_CHECK_ENABLED, enabled).apply();
+	}
+
+	public static String getLauncherStartupBehavior(Context context) {
+		return normalizeLauncherStartupBehavior(getPreferences(context).getString(KEY_LAUNCHER_STARTUP_BEHAVIOR, LAUNCHER_STARTUP_SETTINGS));
+	}
+
+	public static void setLauncherStartupBehavior(Context context, String behavior) {
+		getPreferences(context).edit().putString(KEY_LAUNCHER_STARTUP_BEHAVIOR, normalizeLauncherStartupBehavior(behavior)).apply();
+	}
+
+	private static String normalizeLauncherStartupBehavior(String behavior) {
+		if (LAUNCHER_STARTUP_GAME.equals(behavior)) {
+			return LAUNCHER_STARTUP_GAME;
+		}
+		return LAUNCHER_STARTUP_SETTINGS;
 	}
 
 	public static String getLogLevel(Context context, String fallback) {

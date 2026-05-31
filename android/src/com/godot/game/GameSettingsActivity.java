@@ -53,6 +53,8 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	private boolean busy;
 	private boolean launchUpdateCheckRequested;
 	private boolean bundledPayloadAutoExtractRequested;
+	private boolean bundledCompatPackBootstrapFinished;
+	private boolean pendingLauncherDirectLaunch;
 	private int currentTabId = R.id.nav_game;
 
 	@Override
@@ -70,6 +72,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			showWelcome();
 		} else {
 			showMainShell();
+			maybeLaunchGameFromLauncherIntent(savedInstanceState);
 		}
 	}
 
@@ -141,6 +144,38 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		}
 		bundledPayloadAutoExtractRequested = true;
 		requestExtractBundledPayload();
+	}
+
+	private void maybeLaunchGameFromLauncherIntent(Bundle savedInstanceState) {
+		if (savedInstanceState != null || contentFrame == null) {
+			return;
+		}
+		if (!ExtraSettingsPreferences.LAUNCHER_STARTUP_GAME.equals(ExtraSettingsPreferences.getLauncherStartupBehavior(this))) {
+			return;
+		}
+		Intent intent = getIntent();
+		if (intent == null || !Intent.ACTION_MAIN.equals(intent.getAction()) || !intent.hasCategory(Intent.CATEGORY_LAUNCHER)) {
+			return;
+		}
+		pendingLauncherDirectLaunch = true;
+		runPendingLauncherDirectLaunch();
+	}
+
+	private void runPendingLauncherDirectLaunch() {
+		if (!pendingLauncherDirectLaunch || !bundledCompatPackBootstrapFinished || contentFrame == null) {
+			return;
+		}
+		contentFrame.post(() -> {
+			if (!pendingLauncherDirectLaunch || isFinishing() || isDestroyed()) {
+				return;
+			}
+			if (busy) {
+				contentFrame.postDelayed(this::runPendingLauncherDirectLaunch, 500);
+				return;
+			}
+			pendingLauncherDirectLaunch = false;
+			launchGame();
+		});
 	}
 
 	private void openTab(int itemId) {
@@ -657,9 +692,17 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		new Thread(() -> {
 			try {
 				compatPackManager.installBundledCompatPacks();
-				runOnUiThread(this::refreshCurrentScreen);
+				runOnUiThread(() -> {
+					bundledCompatPackBootstrapFinished = true;
+					refreshCurrentScreen();
+					runPendingLauncherDirectLaunch();
+				});
 			} catch (Exception exception) {
 				Log.w(TAG, "Unable to install bundled compatibility packs.", exception);
+				runOnUiThread(() -> {
+					bundledCompatPackBootstrapFinished = true;
+					runPendingLauncherDirectLaunch();
+				});
 			}
 		}, "sts2-compat-bootstrap").start();
 	}

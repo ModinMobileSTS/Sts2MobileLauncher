@@ -54,6 +54,7 @@ public final class SettingsPage {
 	private static final String[] ASPECT_VALUES = new String[] { "auto", "sixteen_by_nine", "sixteen_by_ten", "twenty_one_by_nine", "four_by_three" };
 	private static final String[] RENDERER_VALUES = new String[] { RendererPreference.RENDERER_OPENGL_ES3, RendererPreference.RENDERER_VULKAN };
 	private static final String[] LOG_LEVEL_VALUES = new String[] { ExtraSettingsRepository.LOG_LEVEL_INFO, ExtraSettingsRepository.LOG_LEVEL_DEBUG, ExtraSettingsRepository.LOG_LEVEL_VERY_DEBUG };
+	private static final String[] LAUNCHER_STARTUP_VALUES = new String[] { ExtraSettingsPreferences.LAUNCHER_STARTUP_SETTINGS, ExtraSettingsPreferences.LAUNCHER_STARTUP_GAME };
 
 	private final Context context;
 	private final ExtraSettingsRepository repository;
@@ -281,6 +282,7 @@ public final class SettingsPage {
 		MaterialCardView card = ExtraSettingsUi.card(context);
 		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
 		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_dashboard_24, R.string.settings_system_title, R.string.settings_system_subtitle, null));
+		addSpinnerRow(content, R.drawable.ic_rocket_launch_24, R.string.launcher_startup_behavior_title, buildLauncherStartupBehaviorLabels(), findStringIndex(LAUNCHER_STARTUP_VALUES, ExtraSettingsPreferences.getLauncherStartupBehavior(context)), position -> ExtraSettingsPreferences.setLauncherStartupBehavior(context, LAUNCHER_STARTUP_VALUES[position]));
 		addSwitchRow(content, R.drawable.ic_bolt_24, R.string.preload_switch, R.string.preload_hint, settings.optBoolean("preload_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_enabled", checked)));
 		addSwitchRow(content, R.drawable.ic_extension_24, R.string.android_compat_pack_enabled_switch, R.string.android_compat_pack_enabled_hint, settings.optBoolean(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, true), checked -> repository.saveSetting(root -> root.put(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, checked)));
 		MaterialButton clearTextureCache = ExtraSettingsUi.outlineButton(context, R.string.clear_texture_cache, R.drawable.ic_layers_24);
@@ -679,6 +681,13 @@ public final class SettingsPage {
 			context.getString(R.string.log_level_info_option),
 			context.getString(R.string.log_level_debug_option),
 			context.getString(R.string.log_level_very_debug_option)
+		);
+	}
+
+	private List<String> buildLauncherStartupBehaviorLabels() {
+		return Arrays.asList(
+			context.getString(R.string.launcher_startup_behavior_settings_option),
+			context.getString(R.string.launcher_startup_behavior_game_option)
 		);
 	}
 

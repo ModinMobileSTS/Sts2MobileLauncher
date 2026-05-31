@@ -480,6 +480,9 @@
     <string name="touch_lift_preview_hint">Show card preview when lifting a touch in combat.</string>
     <string name="settings_system_title">System</string>
     <string name="settings_system_subtitle">Startup, audio, multiplayer and diagnostics.</string>
+    <string name="launcher_startup_behavior_title">Launcher startup</string>
+    <string name="launcher_startup_behavior_settings_option">Open Extra Settings</string>
+    <string name="launcher_startup_behavior_game_option">Launch Game directly</string>
     <string name="preload_hint">Warm up frequently used resources during startup.</string>
     <string name="android_compat_pack_enabled_switch">Enable Android compatibility pack</string>
     <string name="android_compat_pack_enabled_hint">Enabled by default. Turn this off to start the original game without STS2Mobile.dll / port_compat.pck patches. Many mobile features may stop working; fully restart the game after changing it.</string>
