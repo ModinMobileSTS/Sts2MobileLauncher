@@ -14,6 +14,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
+import android.widget.TextView;
 
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
@@ -52,6 +53,7 @@ public final class SettingsPage {
 	private static final String[] VSYNC_VALUES = new String[] { "off", "on", "adaptive" };
 	private static final String[] ASPECT_VALUES = new String[] { "auto", "sixteen_by_nine", "sixteen_by_ten", "twenty_one_by_nine", "four_by_three" };
 	private static final String[] RENDERER_VALUES = new String[] { RendererPreference.RENDERER_OPENGL_ES3, RendererPreference.RENDERER_VULKAN };
+	private static final String[] LOG_LEVEL_VALUES = new String[] { ExtraSettingsRepository.LOG_LEVEL_INFO, ExtraSettingsRepository.LOG_LEVEL_DEBUG, ExtraSettingsRepository.LOG_LEVEL_VERY_DEBUG };
 
 	private final Context context;
 	private final ExtraSettingsRepository repository;
@@ -82,6 +84,7 @@ public final class SettingsPage {
 			ExtraSettingsUi.addCardSpacing(root, buildSaveCard());
 			ExtraSettingsUi.addCardSpacing(root, buildInputCard(settings));
 			ExtraSettingsUi.addCardSpacing(root, buildSystemCard(settings));
+			ExtraSettingsUi.addCardSpacing(root, buildLogCard(settings));
 			ExtraSettingsUi.addCardSpacing(root, buildLanCard(settings));
 			ExtraSettingsUi.addCardSpacing(root, buildFullDataBackupCard());
 		} catch (Exception exception) {
@@ -204,12 +207,12 @@ public final class SettingsPage {
 	}
 
 	private View buildFullDataBackupCard() {
-		ExtraSettingsRepository.FullDataStatus status = repository.getFullDataStatus();
 		MaterialCardView card = ExtraSettingsUi.card(context);
 		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
 		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_save_24, R.string.full_data_backup_title, R.string.full_data_backup_subtitle, infoButton(R.string.full_data_backup_title, R.string.full_data_backup_info)));
-		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_folder_24, context.getString(R.string.full_data_backup_size_format, status.formattedBytes, status.modCount)));
-		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(context, status.dataRoot.getAbsolutePath()));
+		TextView statusText = addMetricRow(content, R.drawable.ic_folder_24, context.getString(R.string.full_data_backup_calculating));
+		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(context, context.getDataDir().getAbsolutePath()));
+		loadFullDataStatusAsync(statusText);
 		LinearLayout row = ExtraSettingsUi.horizontal(context);
 		MaterialButton export = ExtraSettingsUi.outlineButton(context, R.string.full_data_backup_export, R.drawable.ic_download_24);
 		MaterialButton importBackup = ExtraSettingsUi.tonalButton(context, R.string.full_data_backup_import, R.drawable.ic_upload_file_24);
@@ -226,6 +229,26 @@ public final class SettingsPage {
 		row.addView(ExtraSettingsUi.icon(context, iconRes, ExtraSettingsUi.COLOR_PRIMARY, 22));
 		row.addView(ExtraSettingsUi.body(context, text), labelParams());
 		return row;
+	}
+
+	private TextView addMetricRow(LinearLayout parent, int iconRes, String text) {
+		LinearLayout row = ExtraSettingsUi.horizontal(context);
+		row.addView(ExtraSettingsUi.icon(context, iconRes, ExtraSettingsUi.COLOR_PRIMARY, 22));
+		TextView textView = ExtraSettingsUi.body(context, text);
+		row.addView(textView, labelParams());
+		ExtraSettingsUi.addSmallSpacing(parent, row);
+		return textView;
+	}
+
+	private void loadFullDataStatusAsync(TextView target) {
+		new Thread(() -> {
+			try {
+				ExtraSettingsRepository.FullDataStatus status = repository.getFullDataStatus();
+				target.post(() -> target.setText(context.getString(R.string.full_data_backup_size_format, status.formattedBytes, status.modCount)));
+			} catch (Exception exception) {
+				target.post(() -> target.setText(exception.getMessage() == null ? exception.toString() : exception.getMessage()));
+			}
+		}, "sts2-full-data-size").start();
 	}
 
 	private View buildInputCard(JSONObject settings) {
@@ -268,14 +291,20 @@ public final class SettingsPage {
 		addSwitchRow(content, R.drawable.ic_restart_alt_24, R.string.quick_sl_enabled_switch, R.string.quick_sl_enabled_help, settings.optBoolean("quick_sl_enabled", true), checked -> repository.saveSetting(root -> root.put("quick_sl_enabled", checked)));
 		addSwitchRow(content, R.drawable.ic_groups_24, R.string.max_multiplayer_enabled_switch, R.string.max_multiplayer_enabled_help, settings.optBoolean("max_multiplayer_enabled", true), checked -> repository.saveSetting(root -> root.put("max_multiplayer_enabled", checked)));
 
-		LinearLayout row = ExtraSettingsUi.horizontal(context);
-		MaterialButton logs = ExtraSettingsUi.outlineButton(context, R.string.view_logs, R.drawable.ic_article_24);
 		MaterialButton files = ExtraSettingsUi.outlineButton(context, R.string.view_files, R.drawable.ic_folder_24);
-		logs.setOnClickListener(v -> actions.openLogViewer());
 		files.setOnClickListener(v -> actions.openFileBrowser());
-		row.addView(logs, weighted(0));
-		row.addView(files, weighted(10));
-		ExtraSettingsUi.addSmallSpacing(content, row);
+		ExtraSettingsUi.addSmallSpacing(content, files);
+		return card;
+	}
+
+	private View buildLogCard(JSONObject settings) {
+		MaterialCardView card = ExtraSettingsUi.card(context);
+		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
+		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_article_24, R.string.section_log, R.string.section_log_subtitle, infoButton(R.string.section_log, R.string.log_level_info)));
+		addSpinnerRow(content, R.drawable.ic_tune_24, R.string.log_level, buildLogLevelLabels(), findStringIndex(LOG_LEVEL_VALUES, repository.getConfiguredLogLevel(settings)), position -> repository.saveLogLevel(LOG_LEVEL_VALUES[position]));
+		MaterialButton logs = ExtraSettingsUi.outlineButton(context, R.string.view_logs, R.drawable.ic_article_24);
+		logs.setOnClickListener(v -> actions.openLogViewer());
+		ExtraSettingsUi.addSmallSpacing(content, logs);
 		return card;
 	}
 
@@ -643,6 +672,14 @@ public final class SettingsPage {
 
 	private List<String> buildVsyncLabels() {
 		return Arrays.asList(context.getString(R.string.vsync_off), context.getString(R.string.vsync_on), context.getString(R.string.vsync_adaptive));
+	}
+
+	private List<String> buildLogLevelLabels() {
+		return Arrays.asList(
+			context.getString(R.string.log_level_info_option),
+			context.getString(R.string.log_level_debug_option),
+			context.getString(R.string.log_level_very_debug_option)
+		);
 	}
 
 	private List<String> buildScaleLabels(float currentScale) {

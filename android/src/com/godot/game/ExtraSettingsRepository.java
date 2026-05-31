@@ -40,6 +40,10 @@ import java.util.zip.ZipOutputStream;
 public final class ExtraSettingsRepository {
 	public static final int SETTINGS_SCHEMA_VERSION = 6;
 	public static final String KEY_ANDROID_COMPAT_PACK_ENABLED = "android_compat_pack_enabled";
+	public static final String KEY_LOG_LEVEL = "log_level";
+	public static final String LOG_LEVEL_INFO = "info";
+	public static final String LOG_LEVEL_DEBUG = "debug";
+	public static final String LOG_LEVEL_VERY_DEBUG = "very_debug";
 
 	private static final String MOD_SOURCE_MODS_DIRECTORY = "mods_directory";
 	private static final String SETTINGS_FILE_NAME = "settings.save";
@@ -134,6 +138,7 @@ public final class ExtraSettingsRepository {
 		settings.put("lan_multiplayer_enabled", true);
 		settings.put("lan_compatibility_mod_names", new JSONArray());
 		settings.put("audio_compatibility_mode", false);
+		settings.put(KEY_LOG_LEVEL, getStoredLogLevel());
 		settings.put("android_volume_up_soft_keyboard", false);
 		settings.put("android_flip_screen_180", false);
 		settings.put("lan_use_custom_player_id", false);
@@ -170,6 +175,8 @@ public final class ExtraSettingsRepository {
 		changed |= putIfMissing(settings, "lan_multiplayer_enabled", true);
 		changed |= putIfMissing(settings, "lan_compatibility_mod_names", new JSONArray());
 		changed |= putIfMissing(settings, "audio_compatibility_mode", false);
+		changed |= putIfMissing(settings, KEY_LOG_LEVEL, getStoredLogLevel());
+		changed |= normalizeExistingLogLevel(settings);
 		changed |= putIfMissing(settings, "android_volume_up_soft_keyboard", false);
 		changed |= putIfMissing(settings, "android_flip_screen_180", false);
 		changed |= putIfMissing(settings, "lan_use_custom_player_id", false);
@@ -193,6 +200,58 @@ public final class ExtraSettingsRepository {
 
 	public boolean isAndroidCompatPackEnabled() throws Exception {
 		return loadSettingsJson().optBoolean(KEY_ANDROID_COMPAT_PACK_ENABLED, true);
+	}
+
+	public String getConfiguredLogLevel(JSONObject settings) {
+		String value = settings == null ? getStoredLogLevel() : settings.optString(KEY_LOG_LEVEL, getStoredLogLevel());
+		return normalizeLogLevel(value);
+	}
+
+	public String getLogLevelForLaunch() {
+		String value = getStoredLogLevel();
+		try {
+			JSONObject settings = loadSettingsJson();
+			value = settings.optString(KEY_LOG_LEVEL, value);
+		} catch (Exception ignored) {
+		}
+		String normalized = normalizeLogLevel(value);
+		ExtraSettingsPreferences.setLogLevel(context, normalized);
+		return normalized;
+	}
+
+	public void saveLogLevel(String value) throws Exception {
+		String normalized = normalizeLogLevel(value);
+		ExtraSettingsPreferences.setLogLevel(context, normalized);
+		saveSetting(settings -> settings.put(KEY_LOG_LEVEL, normalized));
+	}
+
+	public static String normalizeLogLevel(String value) {
+		if (value == null) {
+			return LOG_LEVEL_INFO;
+		}
+		String normalized = value.trim().toLowerCase(Locale.ROOT).replace('-', '_').replace(" ", "_");
+		if ("verydebug".equals(normalized) || "very_debug".equals(normalized)) {
+			return LOG_LEVEL_VERY_DEBUG;
+		}
+		if (LOG_LEVEL_DEBUG.equals(normalized)) {
+			return LOG_LEVEL_DEBUG;
+		}
+		return LOG_LEVEL_INFO;
+	}
+
+	private boolean normalizeExistingLogLevel(JSONObject settings) throws JSONException {
+		String rawValue = settings.optString(KEY_LOG_LEVEL, getStoredLogLevel());
+		String normalized = normalizeLogLevel(rawValue);
+		ExtraSettingsPreferences.setLogLevel(context, normalized);
+		if (normalized.equals(rawValue)) {
+			return false;
+		}
+		settings.put(KEY_LOG_LEVEL, normalized);
+		return true;
+	}
+
+	private String getStoredLogLevel() {
+		return normalizeLogLevel(ExtraSettingsPreferences.getLogLevel(context, LOG_LEVEL_INFO));
 	}
 
 	public void applyFirstRunDefaults() throws Exception {
@@ -1500,20 +1559,7 @@ public final class ExtraSettingsRepository {
 	}
 
 	private long directorySize(File file) {
-		if (file == null || !file.exists() || isSymbolicLink(file)) {
-			return 0L;
-		}
-		if (file.isFile()) {
-			return file.length();
-		}
-		long total = 0L;
-		File[] children = file.listFiles();
-		if (children != null) {
-			for (File child : children) {
-				total += directorySize(child);
-			}
-		}
-		return total;
+		return DirectoryStatsCalculator.calculate(file).totalBytes;
 	}
 
 	public String formatByteCount(long bytes) {

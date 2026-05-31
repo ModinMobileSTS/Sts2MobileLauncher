@@ -112,6 +112,7 @@ port-mod branch
 
 - 添加 renderer/display 参数。
 - 配置 `--log-file` 到当前 profile 日志目录 `<files>/instances/<profile_id>/logs/godot.log`，没有 profile 时 fallback 到 `<files>/logs/`。
+- 根据附加设置中的 `log_level`（`info` / `debug` / `very_debug`）追加 STS2 原生命令行 `-log <LogType> <LogLevel>`，覆盖 `Generic`、`Network`、`Actions`、`GameSync`、`VisualSync` 的运行日志等级；Debug/Very Debug 会增加日志量并在下次启动生效。
 - 如果当前 profile payload 的 `SlayTheSpire2.pck` 存在，添加：
 
 ```text

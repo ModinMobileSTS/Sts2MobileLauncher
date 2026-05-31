@@ -148,6 +148,12 @@
     <string name="volume_up_soft_keyboard_switch">Use volume up to open soft keyboard</string>
     <string name="volume_up_soft_keyboard_hint">Disabled by default. When enabled, pressing the volume up key in-game opens the system soft keyboard so you can use the console or keyboard shortcuts more easily.</string>
     <string name="section_log">Logs</string>
+    <string name="section_log_subtitle">Configure runtime log detail and inspect generated logs.</string>
+    <string name="log_level">Log level</string>
+    <string name="log_level_info_option">Normal (Info)</string>
+    <string name="log_level_debug_option">Debug</string>
+    <string name="log_level_very_debug_option">Very Debug</string>
+    <string name="log_level_info">Debug and Very Debug output can be very large and may affect performance. The selected level is applied next time the game starts.</string>
     <string name="view_logs">View Logs</string>
     <string name="section_files">Files</string>
     <string name="view_files">Browse Files</string>
@@ -454,6 +460,7 @@
     <string name="full_data_backup_subtitle">Compress and export all private app data.</string>
     <string name="full_data_backup_info">Backs up the whole app private data directory, including game saves, game options, Extra Settings preferences, imported MODs, MOD profiles, logs and other private files. Importing replaces current private data with the backup contents; fully restart the game afterwards.</string>
     <string name="full_data_backup_size_format">Private data: %1$s · MOD manifests: %2$d</string>
+    <string name="full_data_backup_calculating">Private data: calculating…</string>
     <string name="full_data_backup_export">Export full backup</string>
     <string name="full_data_backup_import">Restore full backup</string>
     <string name="full_data_backup_import_confirm_title">Restore full app data?</string>
@@ -514,6 +521,7 @@
     <string name="payload_status_ready">Ready: %1$s</string>
     <string name="payload_status_missing">Not ready: %1$s</string>
     <string name="payload_stats_format">%1$d files, total %2$s; PCK %3$s; sts2.dll %4$s</string>
+    <string name="payload_stats_calculating">File size: calculating…</string>
     <string name="payload_source_format">Source: %1$s / %2$s / SHA-256 %3$s</string>
     <string name="launch_requires_payload">Import a game zip before launching.</string>
     <string name="launch_requires_compat_pack">Install or select a compatible mobile compatibility pack before launching.</string>

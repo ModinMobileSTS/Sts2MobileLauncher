@@ -166,6 +166,7 @@ public class GodotApp extends GodotActivity {
 		List<String> commandLine = new ArrayList<>(super.getCommandLine());
 		Collections.addAll(commandLine, RendererPreference.buildGodotCommandLineArgs(this));
 		appendGodotLogFileCommandLineArgs(commandLine);
+		appendSts2LogLevelCommandLineArgs(commandLine);
 		appendAndroidDisplayCommandLineArgs(commandLine);
 		File pckFile = new File(getGameDir(), PCK_FILE_NAME);
 		if (pckFile.isFile()) {
@@ -201,6 +202,30 @@ public class GodotApp extends GodotActivity {
 		} catch (Exception exception) {
 			Log.w(TAG, "Unable to configure Godot runtime log file.", exception);
 		}
+	}
+
+	private void appendSts2LogLevelCommandLineArgs(List<String> commandLine) {
+		String configuredLevel = new ExtraSettingsRepository(this).getLogLevelForLaunch();
+		String commandLineLevel = toSts2LogLevelArgument(configuredLevel);
+		String[] logTypes = new String[] { "Generic", "Network", "Actions", "GameSync", "VisualSync" };
+		for (String logType : logTypes) {
+			commandLine.add("-log");
+			commandLine.add(logType);
+			commandLine.add(commandLineLevel);
+		}
+		Log.i(TAG, "Configured STS2 runtime log level: " + commandLineLevel);
+		appendAndroidLaunchLog("Configured STS2 runtime log level: " + commandLineLevel);
+	}
+
+	private String toSts2LogLevelArgument(String value) {
+		String normalized = ExtraSettingsRepository.normalizeLogLevel(value);
+		if (ExtraSettingsRepository.LOG_LEVEL_VERY_DEBUG.equals(normalized)) {
+			return "VeryDebug";
+		}
+		if (ExtraSettingsRepository.LOG_LEVEL_DEBUG.equals(normalized)) {
+			return "Debug";
+		}
+		return "Info";
 	}
 
 	private void rotateGodotLogIfNeeded(File logsDir, File godotLogFile) {

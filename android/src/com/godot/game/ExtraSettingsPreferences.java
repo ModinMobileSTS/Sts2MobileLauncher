@@ -8,6 +8,7 @@ public final class ExtraSettingsPreferences {
 	private static final String KEY_FIRST_RUN_SETUP_COMPLETED = "first_run_setup_completed";
 	private static final String KEY_LAST_SELECTED_MAIN_TAB = "last_selected_main_tab";
 	private static final String KEY_UPDATE_CHECK_ENABLED = "update_check_enabled";
+	private static final String KEY_LOG_LEVEL = "log_level";
 
 	private ExtraSettingsPreferences() {
 	}
@@ -34,6 +35,15 @@ public final class ExtraSettingsPreferences {
 
 	public static void setUpdateCheckEnabled(Context context, boolean enabled) {
 		getPreferences(context).edit().putBoolean(KEY_UPDATE_CHECK_ENABLED, enabled).apply();
+	}
+
+	public static String getLogLevel(Context context, String fallback) {
+		String value = getPreferences(context).getString(KEY_LOG_LEVEL, fallback);
+		return value == null ? fallback : value;
+	}
+
+	public static void setLogLevel(Context context, String logLevel) {
+		getPreferences(context).edit().putString(KEY_LOG_LEVEL, logLevel).apply();
 	}
 
 	private static SharedPreferences getPreferences(Context context) {

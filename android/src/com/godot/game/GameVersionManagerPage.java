@@ -9,10 +9,12 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.TextView;
 
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 
+import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
@@ -91,7 +93,7 @@ public final class GameVersionManagerPage {
 		if (status.ready) {
 			ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_check_circle_24, status.shortVersionLabel()));
 			ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_folder_24, status.gameDir.getAbsolutePath()));
-			ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_article_24, context.getString(R.string.payload_stats_format, status.fileCount, Formatter.formatFileSize(context, status.totalBytes), Formatter.formatFileSize(context, status.pckSize), Formatter.formatFileSize(context, status.dllSize))));
+			addPayloadStatsRow(content, status.gameDir, status.fileCount, status.totalBytes, status.pckSize, status.dllSize);
 		} else {
 			ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_error_outline_24, status.message));
 		}
@@ -178,7 +180,7 @@ public final class GameVersionManagerPage {
 		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
 		content.addView(ExtraSettingsUi.sectionTitle(context, selectedPayload ? payload.label + "  ✓" : payload.label));
 		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_folder_24, payload.gameDir.getAbsolutePath()));
-		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_article_24, context.getString(R.string.payload_stats_format, payload.fileCount, Formatter.formatFileSize(context, payload.totalBytes), Formatter.formatFileSize(context, payload.pckSize), Formatter.formatFileSize(context, payload.dllSize))));
+		addPayloadStatsRow(content, payload.gameDir, payload.fileCount, payload.totalBytes, payload.pckSize, payload.dllSize);
 		if (payload.installedAtUnix > 0) {
 			ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(context, context.getString(R.string.version_manager_installed_at_format, formatTime(payload.installedAtUnix))));
 		}
@@ -283,6 +285,43 @@ public final class GameVersionManagerPage {
 		params.setMarginStart(ExtraSettingsUi.dp(context, 12));
 		row.addView(ExtraSettingsUi.body(context, text == null ? "" : text), params);
 		return row;
+	}
+
+	private TextView addMetricRow(LinearLayout parent, int iconRes, String text) {
+		LinearLayout row = ExtraSettingsUi.horizontal(context);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		row.addView(ExtraSettingsUi.icon(context, iconRes, ExtraSettingsUi.COLOR_PRIMARY, 22));
+		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		params.setMarginStart(ExtraSettingsUi.dp(context, 12));
+		TextView textView = ExtraSettingsUi.body(context, text == null ? "" : text);
+		row.addView(textView, params);
+		ExtraSettingsUi.addSmallSpacing(parent, row);
+		return textView;
+	}
+
+	private void addPayloadStatsRow(LinearLayout parent, File gameDir, int fileCount, long totalBytes, long pckSize, long dllSize) {
+		if (fileCount > 0 || totalBytes > 0L) {
+			ExtraSettingsUi.addSmallSpacing(parent, metricRow(R.drawable.ic_article_24, formatPayloadStats(fileCount, totalBytes, pckSize, dllSize)));
+			return;
+		}
+		TextView target = addMetricRow(parent, R.drawable.ic_article_24, context.getString(R.string.payload_stats_calculating));
+		loadPayloadStatsAsync(target, gameDir, pckSize, dllSize);
+	}
+
+	private void loadPayloadStatsAsync(TextView target, File gameDir, long pckSize, long dllSize) {
+		new Thread(() -> {
+			DirectoryStatsCalculator.DirectoryStats stats = DirectoryStatsCalculator.calculate(gameDir);
+			target.post(() -> target.setText(formatPayloadStats(stats.fileCount, stats.totalBytes, pckSize, dllSize)));
+		}, "sts2-payload-size").start();
+	}
+
+	private String formatPayloadStats(int fileCount, long totalBytes, long pckSize, long dllSize) {
+		return context.getString(
+			R.string.payload_stats_format,
+			fileCount,
+			Formatter.formatFileSize(context, Math.max(0L, totalBytes)),
+			Formatter.formatFileSize(context, Math.max(0L, pckSize)),
+			Formatter.formatFileSize(context, Math.max(0L, dllSize)));
 	}
 
 	private String formatTime(long unixSeconds) {

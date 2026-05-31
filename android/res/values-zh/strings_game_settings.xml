@@ -148,6 +148,12 @@
     <string name="volume_up_soft_keyboard_switch">按音量上键打开软键盘</string>
     <string name="volume_up_soft_keyboard_hint">默认关闭。开启后，在游戏内按下音量上键会调出系统软键盘，方便操作控制台或使用键盘快捷键。</string>
     <string name="section_log">日志</string>
+    <string name="section_log_subtitle">配置运行日志详细程度，并查看已生成的日志。</string>
+    <string name="log_level">日志等级</string>
+    <string name="log_level_info_option">普通（Info）</string>
+    <string name="log_level_debug_option">Debug</string>
+    <string name="log_level_very_debug_option">Very Debug</string>
+    <string name="log_level_info">Debug 和 Very Debug 会产生大量日志，可能影响性能。所选等级会在下次启动游戏时生效。</string>
     <string name="view_logs">查看日志</string>
     <string name="section_files">文件</string>
     <string name="view_files">文件浏览器</string>
@@ -454,6 +460,7 @@
     <string name="full_data_backup_subtitle">压缩导出整个应用私有数据。</string>
     <string name="full_data_backup_info">会备份整个应用私有数据目录，包括游戏存档、游戏选项、附加设置偏好、已导入 MOD、MOD 方案、日志和其它私有文件。恢复时会用备份内容替换当前私有数据；完成后建议完全重启游戏。</string>
     <string name="full_data_backup_size_format">私有数据：%1$s · MOD 清单：%2$d</string>
+    <string name="full_data_backup_calculating">私有数据：计算中…</string>
     <string name="full_data_backup_export">导出完整备份</string>
     <string name="full_data_backup_import">恢复完整备份</string>
     <string name="full_data_backup_import_confirm_title">恢复完整应用数据？</string>
@@ -512,6 +519,7 @@
     <string name="payload_status_ready">准备就绪：%1$s</string>
     <string name="payload_status_missing">未就绪：%1$s</string>
     <string name="payload_stats_format">%1$d 个文件，总计 %2$s；PCK %3$s；sts2.dll %4$s</string>
+    <string name="payload_stats_calculating">文件大小：计算中…</string>
     <string name="payload_source_format">来源：%1$s / %2$s / SHA-256 %3$s</string>
     <string name="launch_requires_payload">请先导入游戏压缩包再启动。</string>
     <string name="launch_requires_compat_pack">请先安装或选择对应的移动端兼容包再启动。</string>

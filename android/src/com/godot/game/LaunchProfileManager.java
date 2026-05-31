@@ -96,7 +96,7 @@ public final class LaunchProfileManager {
 		long pckSize = game == null ? pck.length() : game.optLong("pck_size", pck.length());
 		long dllSize = game == null ? dll.length() : game.optLong("dll_size", dll.length());
 		int fileCount = game == null ? 0 : game.optInt("file_count", 0);
-		long totalBytes = game == null ? directorySize(gameDir) : game.optLong("total_uncompressed_bytes", directorySize(gameDir));
+		long totalBytes = game == null ? 0L : game.optLong("total_uncompressed_bytes", 0L);
 		return new GamePayload(
 			payloadDir.getName(),
 			label,
@@ -757,23 +757,6 @@ public final class LaunchProfileManager {
 			sanitized = sanitized.substring(0, sanitized.length() - 1);
 		}
 		return TextUtils.isEmpty(sanitized) ? "unnamed" : sanitized;
-	}
-
-	private long directorySize(File file) {
-		if (file == null || !file.exists()) {
-			return 0L;
-		}
-		if (file.isFile()) {
-			return file.length();
-		}
-		long total = 0L;
-		File[] children = file.listFiles();
-		if (children != null) {
-			for (File child : children) {
-				total += directorySize(child);
-			}
-		}
-		return total;
 	}
 
 	private SharedPreferences prefs() {
