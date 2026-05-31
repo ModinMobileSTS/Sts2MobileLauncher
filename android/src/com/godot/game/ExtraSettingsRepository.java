@@ -1459,14 +1459,7 @@ public final class ExtraSettingsRepository {
 	}
 
 	public File getAccountRootDir() {
-		File defaultDirectory = new File(context.getFilesDir(), "default");
-		File[] accountDirectories = defaultDirectory.listFiles(File::isDirectory);
-		if (accountDirectories != null && accountDirectories.length > 0) {
-			List<File> directories = new ArrayList<>(Arrays.asList(accountDirectories));
-			directories.sort(Comparator.comparing(File::getName, String::compareToIgnoreCase));
-			return directories.get(0);
-		}
-		return new File(defaultDirectory, "1");
+		return new LaunchProfileManager(context).getSelectedAccountRootDir();
 	}
 
 	public File getSettingsFile() {
@@ -1474,7 +1467,7 @@ public final class ExtraSettingsRepository {
 	}
 
 	public File getModsRootDir() {
-		return new File(context.getFilesDir(), "mods");
+		return new LaunchProfileManager(context).getSelectedModsRootDir();
 	}
 
 	private File getSharedPreferencesRootDir() {

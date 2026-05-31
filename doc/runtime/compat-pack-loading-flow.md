@@ -1,17 +1,18 @@
 # MOD 与兼容包加载流程
 
-本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。
+本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。当前说明适用于内置的 `v0.103.2` 正式/稳定兼容分支与 `v0.106.1` beta 兼容分支。
 
 ## 1. 术语
 
-- **payload**：用户导入的 PC 版游戏 zip 解压结果，当前激活目录为 `<files>/game/`。
+- **payload**：用户导入的 PC 版游戏 zip 解压结果，安装到 `<files>/payloads/<payload_id>/game/`；切换版本不再复制到固定 active 目录。
 - **compat pack**：Android 移动端兼容包，安装到 `<files>/compat-packs/<pack_id>/`，包含：
   - `compat_manifest.json`
   - `STS2Mobile.dll`
   - `port_compat.pck`
   - `SHA256SUMS`
 - **compat fallback**：APK assets 中的 `android/assets/dotnet_bcl/STS2Mobile.dll` 与 `android/assets/port_compat.pck`，主要用于兼容旧启动路径或无已选包的兜底。
-- **普通用户 MOD**：放在 `<files>/mods/` 下，由游戏原版 `ModManager` 在被兼容层 patch 后扫描加载。
+- **launch profile / 启动配置**：安装在 `<files>/instances/<profile_id>/instance.json`，绑定一个 payload、一个可选 compat pack，并决定存档/设置与 MOD 使用全局目录还是 profile 独立目录。
+- **普通用户 MOD**：默认放在全局 `<files>/mods/`；当当前 launch profile 的 `mods_mode=isolated` 时放在 `<files>/instances/<profile_id>/mods/`。由游戏原版 `ModManager` 在被兼容层 patch 后扫描加载。
 
 Compat pack 不是普通用户 MOD。它必须早于原版 `ModManager.Initialize()` 加载，否则无法 patch Steam/Sentry/platform、路径、MOD 扫描、输入、shader 等 Android 必需行为。
 
@@ -63,18 +64,19 @@ port-mod branch
    - `sts2.deps.json`
    - `sts2.runtimeconfig.json`
 4. `PckPatcher` 只修改私有 PCK copy，禁用 Sentry autoload/gdextension 元数据，避免 Android 缺少桌面 Sentry 扩展导致启动前解析错误。
-5. 写入 `<files>/game/.payload_manifest.json`，包含 `release_info`、`version`、`commit`、`sts2_dll_sha256`、PCK patch 结果等。
-6. 原子替换 `<files>/game/`。
-7. 导入完成后尝试归档版本，并按 payload manifest 中的 `version` 自动选择最佳 compat pack。
+5. 写入 staging 中的 `.payload_manifest.json`，包含 `release_info`、`version`、`commit`、`sts2_dll_sha256`、PCK patch 结果等。
+6. 按 manifest 身份生成 `payload_id`，原子安装到 `<files>/payloads/<payload_id>/game/`；同一 payload 已存在时只替换 payload store 中的该目录，不再复制到 `<files>/game/`。
+7. 导入完成后创建或选择一个 launch profile，profile 会绑定该 payload，并按 payload manifest 中的 `version` 自动选择最佳 compat pack。
+8. 旧安装中的 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制。
 
 ## 5. 启动前检查
 
 `GameSettingsActivity.launchGame()`：
 
-1. 检查 payload ready；没有 payload 时提示导入，直装版可先解压内置 payload。
+1. 检查当前 launch profile 绑定的 payload 是否 ready；没有 payload 时提示导入，直装版可先解压内置 payload。
 2. 如果 Android 兼容包开关启用：
    - 调 `CompatPackManager.findBestMatch(payload.manifest)`。
-   - 找到匹配包且当前未选中时自动选择。
+   - 找到匹配包且当前 profile 未绑定匹配包时自动选择。
    - 若无选中包，阻止启动。
    - 若选中包 target version 与 payload version 不一致，弹出风险对话框，用户可取消、去版本页或强制启动。
 3. 启动后台线程执行 `GameLaunchPreparationManager.prepareForLaunch()`。
@@ -99,8 +101,8 @@ port-mod branch
    - 兼容包开关关闭：删除 publish 目录中的 `STS2Mobile.dll`。
    - 有 selected pack：复制 selected `STS2Mobile.dll`。
    - 无 selected pack：尝试复制 fallback `dotnet_bcl/STS2Mobile.dll`。
-   - 复制 `<files>/game/data_*/*` 的游戏 assemblies，跳过 `.so`，并保护 BCL/System/GodotSharp 等 runtime DLL。
-   - 使用 SharedPreferences stamp 避免不必要的大文件重复复制；payload 变化时强制刷新游戏 assemblies。
+   - 复制当前 profile payload 目录中 `data_*/*` 的游戏 assemblies，跳过 `.so`，并保护 BCL/System/GodotSharp 等 runtime DLL。
+   - 使用 SharedPreferences stamp 避免不必要的大文件重复复制；payload/profile 变化时强制刷新游戏 assemblies，并清理 publish 目录里旧 payload 遗留的游戏 DLL/JSON。
 
 `GodotApp` 仍保留 fallback：如果不是从设置页 prepared 启动，会自己调用同一准备流程。
 
@@ -109,11 +111,11 @@ port-mod branch
 `GodotApp.getCommandLine()`：
 
 - 添加 renderer/display 参数。
-- 配置 `--log-file <files>/logs/godot.log`。
-- 如果 `<files>/game/SlayTheSpire2.pck` 存在，添加：
+- 配置 `--log-file` 到当前 profile 日志目录 `<files>/instances/<profile_id>/logs/godot.log`，没有 profile 时 fallback 到 `<files>/logs/`。
+- 如果当前 profile payload 的 `SlayTheSpire2.pck` 存在，添加：
 
 ```text
---main-pack <files>/game/SlayTheSpire2.pck
+--main-pack <files>/payloads/<payload_id>/game/SlayTheSpire2.pck
 ```
 
 - 否则解压并使用 `bootstrap.pck`。
@@ -145,7 +147,7 @@ STS2Mobile.ModEntry
    - 真正的模型构造仍保留在 `OneTimeInitialization.ExecuteEssential -> ModelDb.Init`；用户 MOD 的 `ModelDb.Init` prefix/postfix 仍会执行（prefix `Priority.Last`，跑完后返回 false 跳过原版 one-pass body，postfix 照常运行）；构造前后会清理早期占位枚举产生的 `ModelDb` / 模型实例派生缓存。
    - 自定义模型 ID 完全交给原版 `ModelDb.Init` + MOD 的 `GetEntry` patch 自然产生，不再人为迁移 key 或做动态兜底。
    - `UnlockStateCompatPatches` 会在 `ModelDb` 初始化完成前让 `ModelDb.AllEncounters` 返回空列表，避免 Android/Mono 因 Harmony patch getter 提前运行 `UnlockState..cctor` 时枚举到尚未构造/注册完成的 MOD encounter；初始化完成后会修复可能提前创建的 static readonly `UnlockState.all`，恢复正常“全部 encounter 已见过”的语义。
-4. Platform、release info、settings、display、font/UI scale。
+4. Platform、release info、save path、settings、display、font/UI scale；其中 `AppPaths` 从 Mono publish 目录或 Android 进程包名推导 `<files>` 后读取 `launcher/selected_instance.json`，`SavePathPatches` 将原版 `UserDataPathProvider` 重定向到当前 launch profile 的 account root。
 5. 移动端 layout/input、事件/商店/奖励/战斗背景等 UI 修正。
 6. Android UI safety、游戏内设置入口、shader overlay、Android back/touch/controller、奖励/商人二次确认、tap preview、hand layout。
 7. intent animation、quick restart、lifecycle/performance。
@@ -177,10 +179,14 @@ OS.GetDataDir()/port_compat.pck
 - 设置原版私有字段 `_settings`、`_fileIo`、`_gameVersion`。
 - 添加 assembly resolve fallback。
 - 为对齐 PC 时序，在用户 MOD 的 Harmony patch 全部应用前不对任何 MOD 模型类型调用 `ModelDb.GetId`/`GetEntry`。原版模型占位提前到**加载任何 MOD 之前**（`ModLoaderPatches` 触发，原版不带前缀，安全，修复 MOD patch getter / MOD 静态构造引用原版模型的早访问）；MOD 自定义模型占位延迟到 `ModelDb.Init()` 之前的 phase 1，按最终 ID 进行。
-- 扫描 `AppPaths.ModsDir`，当前为：
+- 扫描 `AppPaths.ModsDir`。该路径由当前 launch profile 决定：
 
 ```text
+# mods_mode=global
 <files>/mods
+
+# mods_mode=isolated
+<files>/instances/<profile_id>/mods
 ```
 
 - 跳过 `ReadSteamMods()`，不枚举 Steam Workshop。

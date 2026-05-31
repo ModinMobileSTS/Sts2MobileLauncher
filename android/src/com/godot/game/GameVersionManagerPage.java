@@ -1,6 +1,7 @@
 package com.godot.game;
 
 import android.content.Context;
+import android.text.TextUtils;
 import android.text.format.Formatter;
 import android.view.Gravity;
 import android.view.View;
@@ -21,18 +22,19 @@ public final class GameVersionManagerPage {
 	private final Context context;
 	private final PayloadManager payloadManager;
 	private final CompatPackManager compatPackManager;
-	private final GameBodyVersionManager gameBodyVersionManager;
+	private final LaunchProfileManager launchProfileManager;
 	private final ExtraSettingsActions actions;
 
 	public GameVersionManagerPage(Context context, ExtraSettingsActions actions) {
 		this.context = context;
 		this.payloadManager = new PayloadManager(context);
 		this.compatPackManager = new CompatPackManager(context);
-		this.gameBodyVersionManager = new GameBodyVersionManager(context);
+		this.launchProfileManager = new LaunchProfileManager(context);
 		this.actions = actions;
 	}
 
 	public View build() {
+		launchProfileManager.bootstrapIfNeeded();
 		FrameLayout frame = new FrameLayout(context);
 		frame.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 
@@ -44,24 +46,34 @@ public final class GameVersionManagerPage {
 
 		root.addView(ExtraSettingsUi.title(context, R.string.tab_versions));
 		PayloadManager.Status payload = payloadManager.getStatus();
+		List<LaunchProfileManager.GamePayload> payloads = launchProfileManager.listPayloads();
+		List<LaunchProfileManager.LaunchProfile> profiles = launchProfileManager.listProfiles();
 		List<CompatPackManager.CompatPack> packs = compatPackManager.listInstalledPacks();
-		ExtraSettingsUi.addCardSpacing(root, buildOverviewCard(payload, packs));
+		LaunchProfileManager.LaunchProfile selectedProfile = launchProfileManager.getSelectedProfile();
+		ExtraSettingsUi.addCardSpacing(root, buildOverviewCard(selectedProfile, payload, packs));
 		ExtraSettingsUi.addCardSpacing(root, buildGamePayloadCard(payload));
-		ExtraSettingsUi.addCardSpacing(root, buildArchivedGamesCard(payload));
+		ExtraSettingsUi.addCardSpacing(root, buildLaunchProfilesCard(profiles, packs, selectedProfile));
+		ExtraSettingsUi.addCardSpacing(root, buildInstalledPayloadsCard(payloads, selectedProfile));
 		ExtraSettingsUi.addCardSpacing(root, buildCompatPacksCard(packs));
 
 		frame.addView(scrollView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 		return frame;
 	}
 
-	private View buildOverviewCard(PayloadManager.Status payload, List<CompatPackManager.CompatPack> packs) {
+	private View buildOverviewCard(LaunchProfileManager.LaunchProfile profile, PayloadManager.Status payload, List<CompatPackManager.CompatPack> packs) {
 		boolean compatEnabled = compatPackManager.isCompatPackEnabled();
 		CompatPackManager.CompatPack selected = findSelectedPack(packs);
 		CompatPackManager.CompatPack matched = compatEnabled ? compatPackManager.findBestMatch(payload.manifest, packs) : null;
 		MaterialCardView card = ExtraSettingsUi.card(context);
 		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
 		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_layers_24, R.string.version_manager_title, R.string.version_manager_subtitle, null));
-		ExtraSettingsUi.addSmallSpacing(content, metricRow(payload.ready ? R.drawable.ic_check_circle_24 : R.drawable.ic_error_outline_24, payload.ready ? context.getString(R.string.version_manager_game_ready_format, payload.shortVersionLabel()) : context.getString(R.string.payload_status_missing_short)));
+		if (profile != null) {
+			ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_check_circle_24, context.getString(R.string.launch_profile_selected_format, profile.displayName)));
+			ExtraSettingsUi.addSmallSpacing(content, metricRow(payload.ready ? R.drawable.ic_desktop_windows_24 : R.drawable.ic_error_outline_24, payload.ready ? context.getString(R.string.version_manager_game_ready_format, payload.shortVersionLabel()) : context.getString(R.string.payload_status_missing_short)));
+			ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_save_24, context.getString(R.string.launch_profile_data_modes_format, modeLabel(profile.saveMode), modeLabel(profile.modsMode))));
+		} else {
+			ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_error_outline_24, context.getString(R.string.launch_profile_none_selected)));
+		}
 		ExtraSettingsUi.addSmallSpacing(content, metricRow(compatEnabled && selected != null && selected.ready ? R.drawable.ic_extension_24 : R.drawable.ic_error_outline_24, compatEnabled ? (selected != null && selected.ready ? context.getString(R.string.version_manager_selected_compat_format, selected.displayName, selected.targetLabel()) : context.getString(R.string.version_manager_no_compat_selected)) : context.getString(R.string.version_manager_compat_disabled)));
 		if (matched != null && (selected == null || !matched.packId.equals(selected.packId))) {
 			ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(context, context.getString(R.string.version_manager_match_hint, matched.displayName)));
@@ -98,48 +110,92 @@ public final class GameVersionManagerPage {
 		return card;
 	}
 
-	private View buildArchivedGamesCard(PayloadManager.Status payload) {
-		List<GameBodyVersionManager.GameBodyVersion> versions = gameBodyVersionManager.listVersions();
-		String selectedId = gameBodyVersionManager.getSelectedVersionId();
+	private View buildLaunchProfilesCard(List<LaunchProfileManager.LaunchProfile> profiles, List<CompatPackManager.CompatPack> packs, LaunchProfileManager.LaunchProfile selectedProfile) {
 		MaterialCardView card = ExtraSettingsUi.card(context);
 		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
-		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_desktop_windows_24, R.string.version_manager_archived_games_title, R.string.version_manager_archived_games_subtitle, null));
-		MaterialButton archiveActive = ExtraSettingsUi.tonalButton(context, R.string.archive_active_game_version, R.drawable.ic_save_24);
-		archiveActive.setOnClickListener(v -> actions.requestArchiveActiveGameVersion());
-		archiveActive.setEnabled(payload.ready);
-		ExtraSettingsUi.addSmallSpacing(content, archiveActive);
-		if (versions.isEmpty()) {
-			ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.body(context, R.string.version_manager_no_archived_games));
+		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_gamepad_24, R.string.launch_profiles_title, R.string.launch_profiles_subtitle, null));
+		if (profiles.isEmpty()) {
+			ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.body(context, R.string.launch_profiles_empty));
 			return card;
 		}
-		for (GameBodyVersionManager.GameBodyVersion version : versions) {
-			ExtraSettingsUi.addSmallSpacing(content, buildArchivedGameRow(version, version.id.equals(selectedId)));
+		for (LaunchProfileManager.LaunchProfile profile : profiles) {
+			ExtraSettingsUi.addSmallSpacing(content, buildLaunchProfileRow(profile, findPackById(packs, profile.compatPackId), selectedProfile != null && selectedProfile.id.equals(profile.id)));
 		}
 		return card;
 	}
 
-	private View buildArchivedGameRow(GameBodyVersionManager.GameBodyVersion version, boolean selected) {
+	private View buildLaunchProfileRow(LaunchProfileManager.LaunchProfile profile, CompatPackManager.CompatPack pack, boolean selected) {
 		MaterialCardView card = ExtraSettingsUi.clickableCard(context);
 		card.setStrokeColor(selected ? ExtraSettingsUi.COLOR_PRIMARY : ExtraSettingsUi.COLOR_OUTLINE);
 		card.setStrokeWidth(ExtraSettingsUi.dp(context, selected ? 2 : 1));
 		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
-		content.addView(ExtraSettingsUi.sectionTitle(context, selected ? version.label + "  ✓" : version.label));
-		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_folder_24, version.gameDir.getAbsolutePath()));
-		if (version.installedAtUnix > 0) {
-			ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(context, context.getString(R.string.version_manager_installed_at_format, formatTime(version.installedAtUnix))));
+		content.addView(ExtraSettingsUi.sectionTitle(context, selected ? profile.displayName + "  ✓" : profile.displayName));
+		String payloadLabel = profile.payload == null ? profile.payloadId : profile.payload.label;
+		ExtraSettingsUi.addSmallSpacing(content, metricRow(profile.ready ? R.drawable.ic_desktop_windows_24 : R.drawable.ic_error_outline_24, context.getString(R.string.launch_profile_payload_format, payloadLabel)));
+		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_save_24, context.getString(R.string.launch_profile_data_modes_format, modeLabel(profile.saveMode), modeLabel(profile.modsMode))));
+		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_extension_24, pack == null ? context.getString(R.string.version_manager_no_compat_selected) : context.getString(R.string.version_manager_selected_compat_format, pack.displayName, pack.targetLabel())));
+		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_folder_24, profile.dir.getAbsolutePath()));
+		if (profile.updatedAtUnix > 0) {
+			ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(context, context.getString(R.string.version_manager_installed_at_format, formatTime(profile.updatedAtUnix))));
 		}
 		LinearLayout row = ExtraSettingsUi.horizontal(context);
 		MaterialButton select = ExtraSettingsUi.tonalButton(context, R.string.version_manager_select, R.drawable.ic_check_circle_24);
-		select.setEnabled(!selected && version.ready);
-		select.setOnClickListener(v -> actions.requestSelectGameVersion(version.id));
-		MaterialButton delete = ExtraSettingsUi.outlineButton(context, R.string.delete, R.drawable.ic_delete_24);
-		delete.setOnClickListener(v -> actions.requestDeleteGameVersion(version.id));
+		select.setEnabled(!selected && profile.ready);
+		select.setOnClickListener(v -> actions.requestSelectLaunchProfile(profile.id));
+		MaterialButton edit = ExtraSettingsUi.outlineButton(context, R.string.edit, R.drawable.ic_edit_24);
+		edit.setOnClickListener(v -> actions.requestEditLaunchProfile(profile.id));
 		LinearLayout.LayoutParams left = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
 		LinearLayout.LayoutParams right = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
 		right.setMarginStart(ExtraSettingsUi.dp(context, 10));
 		row.addView(select, left);
-		row.addView(delete, right);
+		row.addView(edit, right);
 		ExtraSettingsUi.addSmallSpacing(content, row);
+
+		MaterialButton delete = ExtraSettingsUi.outlineButton(context, R.string.delete, R.drawable.ic_delete_24);
+		delete.setOnClickListener(v -> actions.requestDeleteLaunchProfile(profile.id));
+		ExtraSettingsUi.addSmallSpacing(content, delete);
+		return card;
+	}
+
+	private View buildInstalledPayloadsCard(List<LaunchProfileManager.GamePayload> payloads, LaunchProfileManager.LaunchProfile selectedProfile) {
+		MaterialCardView card = ExtraSettingsUi.card(context);
+		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
+		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_desktop_windows_24, R.string.version_manager_archived_games_title, R.string.version_manager_archived_games_subtitle, null));
+		if (payloads.isEmpty()) {
+			ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.body(context, R.string.version_manager_no_archived_games));
+			return card;
+		}
+		for (LaunchProfileManager.GamePayload payload : payloads) {
+			ExtraSettingsUi.addSmallSpacing(content, buildPayloadRow(payload, selectedProfile != null && payload.id.equals(selectedProfile.payloadId)));
+		}
+		return card;
+	}
+
+	private View buildPayloadRow(LaunchProfileManager.GamePayload payload, boolean selectedPayload) {
+		MaterialCardView card = ExtraSettingsUi.clickableCard(context);
+		card.setStrokeColor(selectedPayload ? ExtraSettingsUi.COLOR_PRIMARY : ExtraSettingsUi.COLOR_OUTLINE);
+		card.setStrokeWidth(ExtraSettingsUi.dp(context, selectedPayload ? 2 : 1));
+		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
+		content.addView(ExtraSettingsUi.sectionTitle(context, selectedPayload ? payload.label + "  ✓" : payload.label));
+		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_folder_24, payload.gameDir.getAbsolutePath()));
+		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_article_24, context.getString(R.string.payload_stats_format, payload.fileCount, Formatter.formatFileSize(context, payload.totalBytes), Formatter.formatFileSize(context, payload.pckSize), Formatter.formatFileSize(context, payload.dllSize))));
+		if (payload.installedAtUnix > 0) {
+			ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(context, context.getString(R.string.version_manager_installed_at_format, formatTime(payload.installedAtUnix))));
+		}
+		LinearLayout row = ExtraSettingsUi.horizontal(context);
+		MaterialButton use = ExtraSettingsUi.tonalButton(context, R.string.version_manager_select, R.drawable.ic_check_circle_24);
+		use.setOnClickListener(v -> actions.requestSelectGameVersion(payload.id));
+		MaterialButton create = ExtraSettingsUi.outlineButton(context, R.string.create_launch_profile, R.drawable.ic_add_circle_24);
+		create.setOnClickListener(v -> actions.requestCreateLaunchProfile(payload.id));
+		LinearLayout.LayoutParams left = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		LinearLayout.LayoutParams right = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		right.setMarginStart(ExtraSettingsUi.dp(context, 10));
+		row.addView(use, left);
+		row.addView(create, right);
+		ExtraSettingsUi.addSmallSpacing(content, row);
+		MaterialButton delete = ExtraSettingsUi.outlineButton(context, R.string.delete, R.drawable.ic_delete_24);
+		delete.setOnClickListener(v -> actions.requestDeleteGamePayload(payload.id));
+		ExtraSettingsUi.addSmallSpacing(content, delete);
 		return card;
 	}
 
@@ -198,15 +254,25 @@ public final class GameVersionManagerPage {
 
 	private CompatPackManager.CompatPack findSelectedPack(List<CompatPackManager.CompatPack> packs) {
 		String selectedId = compatPackManager.getSelectedPackId();
-		if (selectedId == null || selectedId.isEmpty() || packs == null) {
+		return findPackById(packs, selectedId);
+	}
+
+	private CompatPackManager.CompatPack findPackById(List<CompatPackManager.CompatPack> packs, String packId) {
+		if (TextUtils.isEmpty(packId) || packs == null) {
 			return null;
 		}
 		for (CompatPackManager.CompatPack pack : packs) {
-			if (selectedId.equals(pack.packId)) {
+			if (packId.equals(pack.packId)) {
 				return pack;
 			}
 		}
 		return null;
+	}
+
+	private String modeLabel(String mode) {
+		return LaunchProfileManager.SAVE_MODE_ISOLATED.equals(mode) || LaunchProfileManager.MODS_MODE_ISOLATED.equals(mode)
+			? context.getString(R.string.launch_profile_mode_isolated_label)
+			: context.getString(R.string.launch_profile_mode_global_label);
 	}
 
 	private View metricRow(int iconRes, String text) {

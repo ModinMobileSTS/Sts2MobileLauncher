@@ -29,8 +29,9 @@ s2_re/
 
 - `GameSettingsActivity`：默认 launcher，承载欢迎向导、设置页、版本页、MOD 页，负责启动前检查。
 - `GodotApp`：真正的 Godot Activity，拼接 Godot 命令行，加载 imported PCK 或 bootstrap PCK，暴露 Java bridge 给 C#。
-- `PayloadManager`：导入 PC zip、校验必需文件、patch 私有 PCK copy、写 `.payload_manifest.json`。
-- `GameBodyVersionManager`：归档当前 payload 到 `<files>/game-versions/<id>/game/`，支持切换。
+- `PayloadManager`：导入 PC zip、校验必需文件、patch 私有 PCK copy、写 `.payload_manifest.json` 并安装到 payload store。
+- `LaunchProfileManager`：维护 payload store 与 launch profile，支持同一游戏本体多套全局/隔离存档和 MOD 配置，切换时不复制 PCK。
+- `GameBodyVersionManager`：legacy facade，版本选择委托给 `LaunchProfileManager`。
 - `CompatPackManager`：安装/选择/删除兼容包，从 APK assets 安装内置包，按 payload version 匹配。
 - `GameLaunchPreparationManager`：启动前准备 Mono publish 目录、兼容包 dll、overlay pck、游戏 assemblies、纹理缓存。
 
@@ -58,32 +59,33 @@ android/assets/payload/SlayTheSpire2.zip     # 直装版临时 payload，gitigno
 应用私有目录：
 
 ```text
-<files>/game/                              # 当前激活 payload
-<files>/game/.payload_manifest.json        # payload 身份与 patch 记录
-<files>/game-versions/<id>/game/            # 已归档 payload 版本
+<files>/payloads/<payload_id>/game/         # 不可变导入游戏本体，切换版本不复制 PCK
+<files>/payloads/<payload_id>/game/.payload_manifest.json # payload 身份与 patch 记录
+<files>/instances/<profile_id>/instance.json # 启动配置：绑定 payload/compat/save/mod 模式
+<files>/instances/<profile_id>/default/1/settings.save # 隔离存档/设置模式使用
+<files>/instances/<profile_id>/mods/        # 隔离 MOD 模式使用
+<files>/instances/<profile_id>/logs/        # 当前配置日志
 <files>/compat-packs/<pack_id>/             # 已安装兼容包
-<files>/launcher/selected_game_version.json # 当前游戏版本选择
+<files>/launcher/selected_instance.json     # 当前启动配置与解析后的运行路径
+<files>/launcher/selected_game_version.json # legacy 兼容诊断记录，指向当前 payload
 <files>/launcher/selected_compat_pack.json  # 当前兼容包选择
-<files>/default/1/settings.save             # 附加设置与游戏设置
-<files>/mods/                              # 普通用户 MOD
+<files>/default/1/settings.save             # 全局存档/设置根，profile 选择 global 时使用
+<files>/mods/                              # 全局普通用户 MOD 根，profile 选择 global 时使用
 <files>/.godot/mono/publish/arm64/          # Mono publish 目录
 <files>/port_compat.pck                    # 启动前 staging 的 overlay
-<files>/logs/                              # Godot/launcher 日志
+<files>/logs/                              # legacy/global 日志 fallback
 ```
 
 ## 6. 版本选择模型
 
-当前实现是“激活目录 + 归档版本”的轻量模型：
+当前实现是“payload store + launch profile”的完整多实例模型：
 
-- Godot 实际启动固定使用 `<files>/game/`。
-- 版本页可把当前 `<files>/game/` 归档到 `<files>/game-versions/<id>/game/`。
-- 切换版本时，把归档版本复制回 `<files>/game/`，并更新选择记录。
-- 导入新 payload 成功后，会自动归档并尝试选择匹配兼容包。
-
-未来如果演进为完整 instance/profile 模型，应避免直接破坏现有路径，先提供迁移层：
-
-- 当前 `<files>/game`、`<files>/mods`、`<files>/default/1/settings.save` 仍是 Java 与 C# 默认桥接路径。
-- 新 instance 路径需要同步 `GodotApp` 静态 bridge、`AppPaths`、`ModLoaderPatches`、设置/存档迁移、版本页 UI。
+- 导入 PC zip 后，payload 安装到 `<files>/payloads/<payload_id>/game/`，`payload_id` 由版本、commit 与 payload hash 派生；同一 payload 不再复制到固定 active 目录。
+- 版本页维护 `<files>/instances/<profile_id>/instance.json` 启动配置。一个 profile 绑定一个 payload、一个可选 compat pack，并分别记录 save/settings 与 MOD 使用 `global` 还是 `isolated`。
+- 切换游戏版本/配置只更新 `<files>/launcher/selected_instance.json` 与 SharedPreferences，不复制 `SlayTheSpire2.pck` 或解压目录。
+- 同一个 payload 可以创建多个 profile：例如同一 beta 本体分别使用全局 MOD、独立 MOD、独立存档等。
+- Java 侧 `GodotApp` / `GameLaunchPreparationManager` 根据当前 profile 动态解析 PCK、assembly、settings、mods 与 logs 路径，并写入 `selected_instance.json`；C# 兼容层 `AppPaths` 从 Mono publish 目录或 Android 进程包名推导 `<files>` 后读取该 JSON（避免兼容层早期初始化时调用 Godot API/Java bridge），并由 `SavePathPatches` 将原版 `UserDataPathProvider` 重定向到当前 profile 的 account root。
+- 旧 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制；`selected_game_version.json` 保留为 legacy 诊断文件。
 
 ## 7. 不提交内容
 

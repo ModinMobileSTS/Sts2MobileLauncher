@@ -13,9 +13,12 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
+import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -44,6 +47,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	private PayloadManager payloadManager;
 	private CompatPackManager compatPackManager;
 	private GameBodyVersionManager gameBodyVersionManager;
+	private LaunchProfileManager launchProfileManager;
 	private FrameLayout contentFrame;
 	private BottomNavigationView bottomNavigationView;
 	private boolean busy;
@@ -58,6 +62,8 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		payloadManager = new PayloadManager(this);
 		compatPackManager = new CompatPackManager(this);
 		gameBodyVersionManager = new GameBodyVersionManager(this);
+		launchProfileManager = new LaunchProfileManager(this);
+		launchProfileManager.bootstrapIfNeeded();
 		repository.ensureAppDirectories();
 		installBundledCompatPacksInBackground(false);
 		if (!ExtraSettingsPreferences.isFirstRunSetupCompleted(this)) {
@@ -300,15 +306,128 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 	@Override
 	public void requestDeleteGameVersion(String versionId) {
+		requestDeleteGamePayload(versionId);
+	}
+
+	@Override
+	public void requestCreateLaunchProfile(String payloadId) {
+		showLaunchProfileDialog(null, payloadId);
+	}
+
+	@Override
+	public void requestEditLaunchProfile(String profileId) {
+		showLaunchProfileDialog(profileId, null);
+	}
+
+	@Override
+	public void requestSelectLaunchProfile(String profileId) {
+		runAsyncOperation(getString(R.string.status_busy_select_launch_profile), () -> {
+			launchProfileManager.selectProfile(profileId);
+			return getString(R.string.status_select_launch_profile_done);
+		});
+	}
+
+	@Override
+	public void requestDeleteLaunchProfile(String profileId) {
 		new MaterialAlertDialogBuilder(this)
-			.setTitle(R.string.delete_game_version_confirm_title)
-			.setMessage(R.string.delete_game_version_confirm_message)
+			.setTitle(R.string.delete_launch_profile_confirm_title)
+			.setMessage(R.string.delete_launch_profile_confirm_message)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(android.R.string.ok, (dialog, which) -> runAsyncOperation(getString(R.string.status_busy_delete_launch_profile), () -> {
+				launchProfileManager.deleteProfile(profileId);
+				repository.ensureAppDirectories();
+				return getString(R.string.status_delete_launch_profile_done);
+			}))
+			.show();
+	}
+
+	@Override
+	public void requestDeleteGamePayload(String payloadId) {
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.delete_game_payload_confirm_title)
+			.setMessage(R.string.delete_game_payload_confirm_message)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (dialog, which) -> runAsyncOperation(getString(R.string.status_busy_delete_game_version), () -> {
-				gameBodyVersionManager.deleteVersion(versionId);
+				launchProfileManager.deletePayload(payloadId);
+				repository.ensureAppDirectories();
 				return getString(R.string.status_delete_game_version_done);
 			}))
 			.show();
+	}
+
+	private void showLaunchProfileDialog(String profileId, String payloadId) {
+		try {
+			LaunchProfileManager.LaunchProfile profile = TextUtils.isEmpty(profileId) ? null : launchProfileManager.readProfile(profileId);
+			LaunchProfileManager.GamePayload payload = profile != null ? profile.payload : launchProfileManager.readPayload(payloadId);
+			if (payload == null || !payload.ready) {
+				showMessage(getString(R.string.launch_profile_payload_missing));
+				return;
+			}
+			LinearLayout content = ExtraSettingsUi.vertical(this);
+			int padding = ExtraSettingsUi.dp(this, 8);
+			content.setPadding(padding, padding, padding, 0);
+
+			EditText nameInput = new EditText(this);
+			nameInput.setSingleLine(true);
+			nameInput.setHint(R.string.launch_profile_name_hint);
+			nameInput.setText(profile == null ? payload.label : profile.displayName);
+			content.addView(nameInput, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+			TextView saveLabel = ExtraSettingsUi.sectionTitle(this, getString(R.string.launch_profile_save_mode_title));
+			ExtraSettingsUi.addSmallSpacing(content, saveLabel);
+			RadioGroup saveGroup = new RadioGroup(this);
+			saveGroup.setOrientation(RadioGroup.VERTICAL);
+			RadioButton saveGlobal = new RadioButton(this);
+			saveGlobal.setText(R.string.launch_profile_save_mode_global);
+			saveGlobal.setId(View.generateViewId());
+			RadioButton saveIsolated = new RadioButton(this);
+			saveIsolated.setText(R.string.launch_profile_save_mode_isolated);
+			saveIsolated.setId(View.generateViewId());
+			saveGroup.addView(saveGlobal);
+			saveGroup.addView(saveIsolated);
+			saveGroup.check((profile == null || LaunchProfileManager.SAVE_MODE_ISOLATED.equals(profile.saveMode)) ? saveIsolated.getId() : saveGlobal.getId());
+			content.addView(saveGroup);
+
+			TextView modsLabel = ExtraSettingsUi.sectionTitle(this, getString(R.string.launch_profile_mods_mode_title));
+			ExtraSettingsUi.addSmallSpacing(content, modsLabel);
+			RadioGroup modsGroup = new RadioGroup(this);
+			modsGroup.setOrientation(RadioGroup.VERTICAL);
+			RadioButton modsGlobal = new RadioButton(this);
+			modsGlobal.setText(R.string.launch_profile_mods_mode_global);
+			modsGlobal.setId(View.generateViewId());
+			RadioButton modsIsolated = new RadioButton(this);
+			modsIsolated.setText(R.string.launch_profile_mods_mode_isolated);
+			modsIsolated.setId(View.generateViewId());
+			modsGroup.addView(modsGlobal);
+			modsGroup.addView(modsIsolated);
+			modsGroup.check((profile == null || LaunchProfileManager.MODS_MODE_ISOLATED.equals(profile.modsMode)) ? modsIsolated.getId() : modsGlobal.getId());
+			content.addView(modsGroup);
+
+			ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(this, getString(R.string.launch_profile_mode_hint)));
+
+			new MaterialAlertDialogBuilder(this)
+				.setTitle(profile == null ? R.string.create_launch_profile_title : R.string.edit_launch_profile_title)
+				.setView(content)
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(android.R.string.ok, (dialog, which) -> {
+					String name = nameInput.getText() == null ? "" : nameInput.getText().toString().trim();
+					String saveMode = saveGroup.getCheckedRadioButtonId() == saveIsolated.getId() ? LaunchProfileManager.SAVE_MODE_ISOLATED : LaunchProfileManager.SAVE_MODE_GLOBAL;
+					String modsMode = modsGroup.getCheckedRadioButtonId() == modsIsolated.getId() ? LaunchProfileManager.MODS_MODE_ISOLATED : LaunchProfileManager.MODS_MODE_GLOBAL;
+					runAsyncOperation(getString(R.string.status_busy_save_launch_profile), () -> {
+						if (profile == null) {
+							launchProfileManager.createProfile(payload.id, name, saveMode, modsMode, true);
+							repository.ensureAppDirectories();
+							return getString(R.string.status_create_launch_profile_done);
+						}
+						launchProfileManager.updateProfile(profile.id, name, saveMode, modsMode, profile.compatPackId);
+						repository.ensureAppDirectories();
+						return getString(R.string.status_update_launch_profile_done);
+					});
+				})
+				.show();
+		} catch (Exception exception) {
+			showError(exception);
+		}
 	}
 
 	@Override
@@ -458,13 +577,12 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 					? payloadManager.extractBundledPayload((percent, stage) -> runOnUiThread(() -> progressDialog.setProgress(percent)), control)
 					: payloadManager.importPayloadZip(uri, (percent, stage) -> runOnUiThread(() -> progressDialog.setProgress(percent)), control);
 				try {
-					gameBodyVersionManager.archiveActivePayload();
 					CompatPackManager.CompatPack match = compatPackManager.findBestMatch(status.manifest);
 					if (match != null) {
 						compatPackManager.selectPack(match.packId);
 					}
 				} catch (Exception exception) {
-					Log.w(TAG, "Unable to archive imported game or select matching compatibility pack.", exception);
+					Log.w(TAG, "Unable to select matching compatibility pack for imported game.", exception);
 				}
 				runOnUiThread(() -> {
 					busy = false;

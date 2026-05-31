@@ -24,7 +24,8 @@ Android 侧拆成三层维护：
    - 负责首次向导、本地 PC 游戏 zip 导入、私有目录管理、游戏版本/兼容包管理、启动 Godot Activity、日志/文件浏览、存档备份、MOD 管理。
 2. **原版游戏 payload**
    - 用户本地提供 `SlayTheSpire2.zip`。
-   - 导入后激活到 `<files>/game/`，也可归档到 `<files>/game-versions/<id>/game/` 供版本页切换。
+   - 导入后安装到 `<files>/payloads/<payload_id>/game/`；版本/配置切换只切换 launch profile 指针，不再复制完整 PCK/解压目录。
+   - “版本”页可为同一个 payload 创建多个 `<files>/instances/<profile_id>/instance.json` 启动配置，并分别选择存档/设置、MOD 使用全局目录或隔离目录。
    - 直装版构建时可临时内置 zip 到 APK assets，但构建脚本退出会清理，不能提交。
 3. **Android 兼容包 / Harmony patcher**
    - `port-mod/STS2AndroidPortCompat` 编译输出 `STS2Mobile.dll`。
@@ -159,17 +160,18 @@ s2_re/
 - 主要页面/管理器：
   - `WelcomeSetupPage`：首次向导。
   - `GamePage` / `SettingsPage` / `ModsPage` / `GameVersionManagerPage`：主页、设置、MOD、版本/兼容包管理。
-  - `NexusModsStoreActivity`：从 `ModsPage` 的“导入 MOD”下方进入 NexusMods 商店；用户手动保存 Personal API Key 后可浏览热门/最新/近期更新结果、按 URL/数字 ID 精确查询、下载 ZIP 并导入到 `<files>/mods/`。非 Premium 下载若被 NexusMods API 拒绝，可引导用户打开网页并粘贴 NXM 链接中的 `key/expires`。
-  - `PayloadManager`：导入/校验/安装 PC 游戏 zip。
-  - `GameBodyVersionManager`：把当前 `<files>/game/` 归档为 `<files>/game-versions/<id>/game/` 并支持切换。
+  - `NexusModsStoreActivity`：从 `ModsPage` 的“导入 MOD”下方进入 NexusMods 商店；用户手动保存 Personal API Key 后可浏览热门/最新/近期更新结果、按 URL/数字 ID 精确查询、下载 ZIP 并导入到当前 launch profile 的 MOD 目录（全局 `<files>/mods/` 或隔离 `<files>/instances/<id>/mods/`）。非 Premium 下载若被 NexusMods API 拒绝，可引导用户打开网页并粘贴 NXM 链接中的 `key/expires`。
+  - `PayloadManager`：导入/校验/安装 PC 游戏 zip 到 payload store。
+  - `LaunchProfileManager`：维护 `<files>/payloads/<payload_id>/game/` 与 `<files>/instances/<profile_id>/instance.json`，支持同一游戏本体创建多个全局/隔离存档和 MOD 的启动配置；切换配置不复制 PCK。
+  - `GameBodyVersionManager`：legacy facade，版本选择委托给 `LaunchProfileManager`，不再执行 active/归档目录复制。
   - `CompatPackManager`：安装、选择、删除兼容包；从 APK assets 安装内置兼容包；按 payload manifest 匹配目标版本。
   - `GameLaunchPreparationManager`：启动前后台准备 Mono publish 目录、兼容包 dll、overlay pck、payload assembly 和纹理缓存清理。
   - `GodotApp`：真正的 Godot 游戏 Activity。
 - `GodotApp` 启动行为：
   - 首次向导未完成时会重定向回 `GameSettingsActivity`。
-  - `getCommandLine()` 加 renderer/display/log 参数；有 `<files>/game/SlayTheSpire2.pck` 时传 `--main-pack`，否则使用 `assets/bootstrap.pck`。
-  - 暴露 `launchGameSettingsFromGame()`、`restartToSettingsFromGame()`、`getGodotDataDir()`、`getSelectedCompatPackDir()`、`getSelectedCompatOverlayPck()` 等静态桥给 C# 兼容层。
-  - 维护 `logs/godot.log` 与 `logs/android-launch.log`，并保留最近若干 Godot 日志。
+  - `getCommandLine()` 加 renderer/display/log 参数；有当前 launch profile payload 的 `SlayTheSpire2.pck` 时传 `--main-pack <files>/payloads/<payload_id>/game/SlayTheSpire2.pck`，否则使用 `assets/bootstrap.pck`。
+  - 暴露 `launchGameSettingsFromGame()`、`restartToSettingsFromGame()`、`getGodotDataDir()`、`getSelectedGameDir()`、`getSelectedAccountRootDir()`、`getSelectedModsDir()`、`getSelectedLaunchContextJson()`、`getSelectedCompatPackDir()`、`getSelectedCompatOverlayPck()` 等静态桥给 C# 兼容层。
+  - 维护当前 profile 的 `logs/godot.log` 与 `logs/android-launch.log`，并保留最近若干 Godot 日志。
 - 启动路径：
   1. `GameSettingsActivity.launchGame()` 检查 payload 是否 ready。
   2. 如果兼容包开关启用，尝试自动选择最佳匹配包；无包则阻止启动，版本不匹配则弹窗提示。
@@ -187,26 +189,31 @@ s2_re/
   - `data_sts2_windows_x86_64/sts2.dll`
   - `data_sts2_windows_x86_64/sts2.deps.json`
   - `data_sts2_windows_x86_64/sts2.runtimeconfig.json`
-- 导入流程：复制到私有临时文件并计算 sha256 → 安全解压到 staging → 校验 PCK magic 与必需文件 → 对私有 PCK copy 做 length-preserving Sentry metadata patch → 写 `.payload_manifest.json` → 原子替换 `<files>/game/`。
+- 导入流程：复制到私有临时文件并计算 sha256 → 安全解压到 staging → 校验 PCK magic 与必需文件 → 对私有 PCK copy 做 length-preserving Sentry metadata patch → 写 `.payload_manifest.json` → 按 version/commit/hash 生成 payload id → 原子安装到 `<files>/payloads/<payload_id>/game/`。
 - 安全措施：Zip Slip canonical path 防护、backup/rollback、取消控制、旧 scratch 清理。
 - 导入成功后会尝试：
-  - `GameBodyVersionManager.archiveActivePayload()`：归档当前激活 payload 到 `<files>/game-versions/<id>/game/`。
-  - `CompatPackManager.findBestMatch()`：按版本自动选择匹配兼容包。
+  - `LaunchProfileManager.createOrSelectDefaultProfileForPayload()`：创建/选择绑定该 payload 的启动配置；默认配置使用全局存档和全局 MOD，用户可在“版本”页新建隔离配置。
+  - `CompatPackManager.findBestMatch()`：按版本自动为当前 profile 选择匹配兼容包。
+  - 旧 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制。
 
 应用私有目录约定：
 
 ```text
-<files>/game/                              # 当前启用的游戏 payload
-<files>/game/.payload_manifest.json        # 导入 manifest，含 release_info / dll sha / pck patch 记录
-<files>/game-versions/<id>/game/            # 版本页归档的游戏本体
+<files>/payloads/<payload_id>/game/         # 不可变导入游戏 payload
+<files>/payloads/<payload_id>/game/.payload_manifest.json # 导入 manifest，含 release_info / dll sha / pck patch 记录
+<files>/instances/<profile_id>/instance.json # 启动配置，绑定 payload/compat/save/mod 模式
+<files>/instances/<profile_id>/default/<account>/settings.save # 隔离存档/设置目录
+<files>/instances/<profile_id>/mods/        # 隔离普通用户 MOD 目录
+<files>/instances/<profile_id>/logs/        # profile 日志目录
 <files>/compat-packs/<pack_id>/             # 已安装 Android 兼容包
-<files>/launcher/selected_game_version.json # 当前版本选择记录
+<files>/launcher/selected_instance.json     # 当前启动配置解析结果
+<files>/launcher/selected_game_version.json # legacy 兼容诊断记录，指向当前 payload
 <files>/launcher/selected_compat_pack.json  # 当前兼容包选择记录
-<files>/default/<account>/settings.save     # 附加设置 / 游戏设置，默认 account=1
-<files>/mods/                              # 普通用户 MOD 目录
+<files>/default/<account>/settings.save     # 全局存档/设置目录，默认 account=1
+<files>/mods/                              # 全局普通用户 MOD 目录
 <files>/.godot/mono/publish/arm64/          # Godot/Mono publish 目录
 <files>/port_compat.pck                    # 启动前 staging 的当前兼容包 overlay
-<files>/logs/                              # Godot/Android launcher 日志
+<files>/logs/                              # legacy/global 日志 fallback
 ```
 
 ## 8. 兼容包 / port-mod submodule
@@ -282,17 +289,17 @@ tools/android/stage-bundled-compat-packs.sh
 1. 复制 APK `dotnet_bcl` runtime 到 `<files>/.godot/mono/publish/arm64/`。
 2. 按选择的兼容包复制 `STS2Mobile.dll` 到 publish 目录；关闭兼容包开关时删除该 dll。
 3. 复制兼容包 `port_compat.pck` 到 `<files>/port_compat.pck`；无选择时使用 `android/assets/port_compat.pck` fallback。
-4. 复制 `<files>/game/data_*/*.dll` 到 publish 目录，但保护 BCL/System/GodotSharp 等 runtime DLL 不被 payload 覆盖。
+4. 复制当前 launch profile payload 目录 `<files>/payloads/<payload_id>/game/data_*/*` 到 publish 目录，但保护 BCL/System/GodotSharp 等 runtime DLL 不被 payload 覆盖；profile/payload 切换时会清理旧游戏 assembly 残留。
 5. patched Godot runtime 加载 `STS2Mobile.dll` / `STS2Mobile.ModEntry`，调用 `InitializeGodotSharp` 与 `Apply`。
-6. `ModEntry.Apply()` 以固定顺序应用 Harmony patches：诊断、BaseLib/RitsuLib、ModelDb/UnlockState、平台/release/settings/layout/input、shader、LAN、ModLoader 等。
-7. `ModLoaderPatches` 接管原版 `ModManager.Initialize()`，扫描 `<files>/mods`，跳过 Steam Workshop，并处理 `mod_manifest.json` → `<ModId>.json` manifest alias；**加载任何 MOD 之前先预注册仅原版模型占位**（`AbstractModelSubtypes.All`），避免 Android/Mono 下 MOD initializer Harmony patch 某个 getter（如 HextechRunes patch `UnlockState.Relics`）时提前触发 `UnlockState..cctor -> ACT.OVERGROWTH`、或 MOD 静态构造引用原版模型时崩溃；原版类型不带命名空间前缀，提前算 ID 不会污染 YuWanCard/BaseLib 的 `GetEntry` 前缀缓存。**不对 MOD 模型类型提前算 ID**，MOD 占位延迟到 phase 1。
+6. `ModEntry.Apply()` 以固定顺序应用 Harmony patches：诊断、BaseLib/RitsuLib、ModelDb/UnlockState、平台/release/save-path/settings/layout/input、shader、LAN、ModLoader 等；`AppPaths` 从 publish 目录或 Android 进程包名推导 `<files>` 并读取 `<files>/launcher/selected_instance.json`（避免兼容层早期初始化调用 Godot API/Java bridge），`SavePathPatches` 会把原版 `UserDataPathProvider` 重定向到当前 launch profile 的 account root，确保隔离存档/设置生效。
+7. `ModLoaderPatches` 接管原版 `ModManager.Initialize()`，扫描当前 launch profile 的 `AppPaths.ModsDir`（全局 `<files>/mods` 或隔离 `<files>/instances/<profile_id>/mods`），跳过 Steam Workshop，并处理 `mod_manifest.json` → `<ModId>.json` manifest alias；**加载任何 MOD 之前先预注册仅原版模型占位**（`AbstractModelSubtypes.All`），避免 Android/Mono 下 MOD initializer Harmony patch 某个 getter（如 HextechRunes patch `UnlockState.Relics`）时提前触发 `UnlockState..cctor -> ACT.OVERGROWTH`、或 MOD 静态构造引用原版模型时崩溃；原版类型不带命名空间前缀，提前算 ID 不会污染 YuWanCard/BaseLib 的 `GetEntry` 前缀缓存。**不对 MOD 模型类型提前算 ID**，MOD 占位延迟到 phase 1。
 8. `ModelDbInitPatch` 分三个阶段处理模型占位：
    - **早期原版占位**（加载 MOD 前，由 `ModLoaderPatches` 触发）：仅原版，解决 MOD patch getter / MOD 静态构造引用原版模型的早访问。
    - **phase 1**（`ExecuteEssential` 中、`ModelDb.Init()` 调用**之前**）：MOD patch 已全部应用，按最终 `ModelDb.GetId(Type)` 补齐全部模型（含 MOD 自定义类型）占位；解决 MOD 间静态构造引用（如 `wuwancients.HiddenSeaRecord..cctor -> RELIC.LONG_SNAKE_NECKLACE`），这些构造会在 MOD 的 `ModelDb.Init` prefix 期间被 Android/Mono 提前触发。
    - **phase 2**（`InitPrefix` 中，`Priority.Last`）：在占位上原地运行真实静态/实例构造器，并跳过原版 one-pass body。因部分 MOD 的 `ModelDb.Init` prefix 会自己返回 `false` 并让 Harmony 跳过后续 prefix，兼容层还安装 `Priority.First` postfix 与 `ExecuteEssential` 后置兜底，确保构造 phase 一定执行。自定义模型 ID（含 `ENCOUNTER.YUWANCARD-KILLER_ELITE` 等带前缀 ID）完全由原版 `ModelDb.Init` + MOD `GetEntry` patch 自然产生，不再人为迁移 key。用户 MOD 的 `ModelDb.Init` prefix/postfix 生命周期保留。
    - `UnlockStateCompatPatches` 在 `ModelDb` 初始化完成前让 `ModelDb.AllEncounters` 返回空列表，避免 Android/Mono 因 Harmony patch getter 提前运行 `UnlockState..cctor` 时枚举到尚未构造/注册完成的 MOD encounter；初始化完成后会修复可能提前创建的 static readonly `UnlockState.all`。
 
-详细流程见 `doc/runtime/compat-pack-loading-flow.md`。
+上述 MOD 初始化时序已同步到 `compat/v0.103.2` 与 `compat/v0.106.1-beta`，两条内置分支都应保持相同不变式。详细流程见 `doc/runtime/compat-pack-loading-flow.md`。
 
 ### 8.5 MOD 兼容性排查规范
 
@@ -370,7 +377,7 @@ tools/package/build_importer_apk.sh
 
 ### 9.4 直装版 APK
 
-直装版在构建时临时把本地 PC zip 复制到 `android/assets/payload/SlayTheSpire2.zip`，首次启动自动解压到 `<files>/game`。zip 复制有 trap 清理，不提交。
+直装版在构建时临时把本地 PC zip 复制到 `android/assets/payload/SlayTheSpire2.zip`，首次启动自动解压/安装到 payload store `<files>/payloads/<payload_id>/game/` 并创建 launch profile。zip 复制有 trap 清理，不提交。
 
 ```bash
 tools/package/build_direct_apk.sh "/path/to/SlayTheSpire2.zip"
@@ -442,8 +449,9 @@ tools/package/build_direct_apk.sh "/path/to/SlayTheSpire2.zip"
 adb install -r dist/sts2-re-importer.apk
 adb shell run-as com.megacrit.sts2re ls files
 adb shell run-as com.megacrit.sts2re ls files/compat-packs
-adb shell run-as com.megacrit.sts2re ls files/default/1
-adb shell run-as com.megacrit.sts2re ls files/game
+adb shell run-as com.megacrit.sts2re ls files/payloads
+adb shell run-as com.megacrit.sts2re ls files/instances
+adb shell run-as com.megacrit.sts2re cat files/launcher/selected_instance.json
 adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 ```
 
@@ -451,13 +459,13 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 
 1. 首次打开进入欢迎向导/附加设置，而不是直接进游戏。
 2. “版本”页能安装/显示内置兼容包，至少包含正式 `v0.103.2` 与 beta `v0.106.1` 对应包。
-3. 导入版选择 PC zip 后，`files/game/.payload_manifest.json` 存在，`files/game/SlayTheSpire2.pck` 存在，导入完成后自动归档到 `files/game-versions/`。
+3. 导入版选择 PC zip 后，`files/payloads/<payload_id>/game/.payload_manifest.json` 存在，`files/payloads/<payload_id>/game/SlayTheSpire2.pck` 存在，并创建/选择 `files/instances/<profile_id>/instance.json`；切换版本不应复制回 `files/game/`。
 4. 与 payload 版本匹配的兼容包会被自动选择；不匹配时启动前弹风险提示。
-5. 点击启动后 logcat / `files/logs/android-launch.log` 能看到 selected compatibility pack 和 `Loading imported game PCK`。
+5. 点击启动后 logcat / 当前 profile 的 `files/instances/<profile_id>/logs/android-launch.log` 能看到 selected compatibility pack 和 `Loading imported game PCK`。
 6. `files/.godot/mono/publish/arm64/STS2Mobile.dll` 来自当前选择的兼容包；`files/port_compat.pck` 已 staging。
-7. 修改图形/输入/MOD 设置后，`files/default/1/settings.save` 有对应字段。
+7. 修改图形/输入/MOD 设置后，当前 profile 解析出的 settings（全局 `files/default/1/settings.save` 或隔离 `files/instances/<profile_id>/default/1/settings.save`）有对应字段。
 8. 从游戏内打开附加设置、退出回设置、crash/log/file browser 页面不崩溃。
-9. MOD master switch / 单 MOD disable 能在启动日志或游戏内 MOD 状态中反映；普通 MOD 从 `files/mods` 扫描，不走 Steam Workshop。
+9. MOD master switch / 单 MOD disable 能在启动日志或游戏内 MOD 状态中反映；普通 MOD 从当前 profile 的 MOD 目录扫描（全局 `files/mods` 或隔离 `files/instances/<profile_id>/mods`），不走 Steam Workshop。
 10. Beta `v0.106.1` payload 应使用 `sts2-android-compat-v0.106.1-beta`，正式 `v0.103.2` payload 应使用 `sts2-android-compat-v0.103.2`。
 
 ## 12. 维护提醒
@@ -466,7 +474,7 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 - 实际打包推荐用 `tools/package/*.sh`，不要裸跑 Gradle，除非已同步 runtime、准备好环境并理解 compat pack staging。
 - `settings.save` 的 Android-only key 是 Java 附加设置与 Harmony patcher 的协议；改 key 要同步 `ExtraSettingsRepository`、页面 UI、`AndroidSettingsBridge`、相关 patches，并记录到 `doc/changelog/`。
 - `<files>/default/<account>` 的账号选择逻辑与旧移植版兼容但较脆弱，多账号/自定义 platform player id 改动要同时检查 Java 与兼容 MOD。
-- 当前普通 MOD 目录仍是全局 `<files>/mods`，不是按 game-version/instance 隔离；如未来做 instance/profile，需同时调整 Java 管理页、C# `AppPaths`、ModLoader patches 和迁移脚本。
+- 当前普通 MOD 目录由 launch profile 决定：`mods_mode=global` 使用 `<files>/mods`，`mods_mode=isolated` 使用 `<files>/instances/<profile_id>/mods`；新增路径相关功能必须同步 Java 管理页、C# `AppPaths`、ModLoader patches 和迁移/备份逻辑。
 - 多版本兼容包的长期方向是 manifest 化、可安装、可选择、可诊断；不要把某一游戏版本的兼容 patch 直接写死到 Android shell。
 - 对 beta 分支改动时务必用 `ReferenceFlavor=original-v0.106.1` 编译；对正式分支改动时务必用 `ReferenceFlavor=original` 编译。
 - 新增兼容分支时需要同时增加：submodule 分支、原版 refs/ReferenceFlavor、compat manifest、`tools/android/bundled-compat-packs.json` 条目、文档版本矩阵、至少一次 importer APK 构建验证。

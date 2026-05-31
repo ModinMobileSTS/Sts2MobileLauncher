@@ -31,9 +31,10 @@ import java.util.zip.ZipFile;
  * Imports a user-provided or bundled PC game zip into the app-private payload
  * directory used by the restructured Android launcher.
  *
- * <p>The imported game body lives under {@code getFilesDir()/game}; the APK and
- * compatibility launcher/MOD stay separate from the body and can be updated
- * without rewriting the original game archive.</p>
+ * <p>The imported game body lives under {@code getFilesDir()/payloads/<id>/game};
+ * launch profiles select one payload without copying it back to a fixed active
+ * directory.  The APK and compatibility launcher/MOD stay separate from the body
+ * and can be updated without rewriting the original game archive.</p>
  */
 public final class PayloadManager {
 	public interface ProgressListener {
@@ -82,7 +83,10 @@ public final class PayloadManager {
 	}
 
 	public Status getStatus() {
-		File gameDir = getGameDir();
+		return getStatusForGameDir(getGameDir());
+	}
+
+	private Status getStatusForGameDir(File gameDir) {
 		JSONObject manifest = readManifestQuietly(gameDir);
 		try {
 			if (!gameDir.isDirectory()) {
@@ -185,16 +189,20 @@ public final class PayloadManager {
 	}
 
 	public void clearPayload() {
-		deleteRecursively(getGameDir());
+		try {
+			new LaunchProfileManager(context).clearSelectedProfileAndUnusedPayload();
+		} catch (Exception exception) {
+			android.util.Log.w("Sts2Re", "Unable to clear selected launch profile payload safely.", exception);
+		}
 		deleteRecursively(getImportRootDir());
 	}
 
 	public File getGameDir() {
-		return new File(context.getFilesDir(), GAME_DIR_NAME);
+		return new LaunchProfileManager(context).getSelectedGameDir();
 	}
 
 	public File getManifestFile() {
-		return new File(getGameDir(), MANIFEST_FILE_NAME);
+		return new LaunchProfileManager(context).getSelectedManifestFile();
 	}
 
 	private Status installFromZip(File sourceZip, SourceInfo source, ProgressListener progressListener, ImportControl control) throws Exception {
@@ -204,9 +212,9 @@ public final class PayloadManager {
 		cleanupOldImportScratch(importRoot, sourceZip);
 
 		File staging = new File(importRoot, "staging-" + UUID.randomUUID());
-		File backup = new File(importRoot, "backup-" + UUID.randomUUID());
-		File gameDir = getGameDir();
-		boolean gameMovedToBackup = false;
+		File backup = new File(importRoot, "payload-backup-" + UUID.randomUUID());
+		File targetGameDir = null;
+		boolean targetMovedToBackup = false;
 		boolean installed = false;
 		try {
 			ensureDirectory(staging);
@@ -222,31 +230,39 @@ public final class PayloadManager {
 			writeManifest(staging, source, validation, patchResult);
 
 			reportProgress(progressListener, 96, "install");
-			File gameParent = gameDir.getParentFile();
-			if (gameParent != null) {
-				ensureDirectory(gameParent);
+			LaunchProfileManager launchProfiles = new LaunchProfileManager(context);
+			JSONObject manifest = new JSONObject(readTextFile(new File(staging, MANIFEST_FILE_NAME)));
+			String payloadId = launchProfiles.buildPayloadId(manifest);
+			targetGameDir = launchProfiles.getPayloadGameDir(payloadId);
+			File targetParent = targetGameDir.getParentFile();
+			if (targetParent != null) {
+				ensureDirectory(targetParent);
 			}
-			if (gameDir.exists()) {
-				if (!gameDir.renameTo(backup)) {
-					throw new IOException("Unable to move existing payload aside: " + gameDir.getAbsolutePath());
+			if (targetGameDir.exists()) {
+				if (!targetGameDir.renameTo(backup)) {
+					throw new IOException("Unable to move existing payload aside: " + targetGameDir.getAbsolutePath());
 				}
-				gameMovedToBackup = true;
+				targetMovedToBackup = true;
 			}
-			if (!staging.renameTo(gameDir)) {
-				if (gameMovedToBackup && backup.exists()) {
-					backup.renameTo(gameDir);
+			if (!staging.renameTo(targetGameDir)) {
+				if (targetMovedToBackup && backup.exists()) {
+					backup.renameTo(targetGameDir);
 				}
-				throw new IOException("Unable to install payload into: " + gameDir.getAbsolutePath());
+				throw new IOException("Unable to install payload into: " + targetGameDir.getAbsolutePath());
 			}
 			installed = true;
 			deleteRecursively(backup);
+			LaunchProfileManager.GamePayload payload = launchProfiles.readPayload(payloadId);
+			if (payload != null) {
+				launchProfiles.createOrSelectDefaultProfileForPayload(payload, true);
+			}
 			reportProgress(progressListener, 100, "done");
-			return getStatus();
+			return getStatusForGameDir(targetGameDir);
 		} finally {
 			if (!installed) {
 				deleteRecursively(staging);
-				if (gameMovedToBackup && backup.exists() && !gameDir.exists()) {
-					backup.renameTo(gameDir);
+				if (targetMovedToBackup && backup.exists() && targetGameDir != null && !targetGameDir.exists()) {
+					backup.renameTo(targetGameDir);
 				}
 			}
 			if (installed) {

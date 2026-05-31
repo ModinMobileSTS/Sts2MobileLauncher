@@ -11,7 +11,7 @@
    APK 默认启动附加设置页，负责导入本地 PC 游戏 zip、管理私有目录、启动 Godot Activity、查看日志/文件、备份存档和管理 MOD。
 
 2. **原版游戏 payload**
-   用户本地提供 `SlayTheSpire2.zip`，导入到应用私有目录 `<files>/game/`。构建直装版 APK 时也可以临时内置 zip，但不会提交到仓库。
+   用户本地提供 `SlayTheSpire2.zip`，导入到 payload store：`<files>/payloads/<payload_id>/game/`。版本页通过 launch profile 选择本体、兼容包、存档/MOD 隔离模式，切换时不复制 PCK。构建直装版 APK 时也可以临时内置 zip，但不会提交到仓库。
 
 3. **移动端兼容插件 / compatibility pack**
    `port-mod/` 是独立 git 仓库 `../sts2-android-compat` 的 submodule。插件按游戏版本使用 git 分支维护，可导出为独立 zip 兼容包（`compat_manifest.json` + `STS2Mobile.dll` + `port_compat.pck`），由启动器安装、选择并在启动 Godot 前 staging。
@@ -72,8 +72,9 @@ s2_re/
 
 启动器现在内置“版本”页，管理两类对象：
 
-- **游戏本体版本**：导入的 PC zip 仍会激活到 `<files>/game/`，同时可归档到 `<files>/game-versions/<id>/game/`，之后可在版本页切换。
-- **移动端兼容包**：安装到 `<files>/compat-packs/<pack_id>/`，每个包包含 manifest、`STS2Mobile.dll` 和 `port_compat.pck`。启动游戏前只按 payload manifest 中的游戏版本号自动匹配或检查当前选择的兼容包；不再因 `sts2.dll` SHA-256 不一致阻止启动。
+- **游戏本体版本 / payload**：导入的 PC zip 安装到 `<files>/payloads/<payload_id>/game/`。`payload_id` 由版本、commit 和 payload hash 派生，切换版本不再复制完整本体。
+- **启动配置 / launch profile**：保存到 `<files>/instances/<profile_id>/instance.json`，绑定一个 payload、一个可选兼容包，并指定存档/设置和 MOD 使用全局目录还是该 profile 的隔离目录。同一个 payload 可以创建多个 profile。
+- **移动端兼容包**：安装到 `<files>/compat-packs/<pack_id>/`，每个包包含 manifest、`STS2Mobile.dll` 和 `port_compat.pck`。启动游戏前按当前 profile payload manifest 中的游戏版本号自动匹配或检查当前选择的兼容包；不再因 `sts2.dll` SHA-256 不一致阻止启动。
 
 内置兼容包位于：
 
@@ -262,26 +263,31 @@ tools/android/make-port-overlay-pck.py
 应用私有目录中的关键路径：
 
 ```text
-<files>/game/                              # 当前启用的游戏 payload
-<files>/game/SlayTheSpire2.pck             # 主 PCK
-<files>/game/release_info.json             # 游戏 release 信息
-<files>/game/.payload_manifest.json        # 导入 manifest，含版本 / sts2.dll sha256 identity
-<files>/game-versions/<id>/game/            # 版本管理器归档的游戏本体
+<files>/payloads/<payload_id>/game/         # 导入游戏 payload
+<files>/payloads/<payload_id>/game/SlayTheSpire2.pck
+<files>/payloads/<payload_id>/game/release_info.json
+<files>/payloads/<payload_id>/game/.payload_manifest.json
+<files>/instances/<profile_id>/instance.json # 启动配置
+<files>/instances/<profile_id>/default/1/settings.save # 隔离存档/设置
+<files>/instances/<profile_id>/mods/        # 隔离 MOD 目录
+<files>/instances/<profile_id>/logs/        # profile 日志
 <files>/compat-packs/<pack_id>/             # 已安装移动端兼容包
+<files>/launcher/selected_instance.json     # 当前启动上下文
 <files>/launcher/selected_compat_pack.json  # 当前兼容包选择记录
-<files>/default/1/settings.save             # 附加设置 / 游戏设置
-<files>/mods/                              # 本地 MOD 目录
+<files>/default/1/settings.save             # 全局存档/设置
+<files>/mods/                              # 全局 MOD 目录
 <files>/.godot/mono/publish/arm64/          # Godot/Mono publish 目录
 ```
 
 关键流程：
 
 - `GameSettingsActivity` 是默认 launcher，负责首次向导和附加设置。
-- `PayloadManager` 负责 SAF 选择 zip、assets 内置 payload 解压、校验、staging、原子替换和 rollback。
+- `PayloadManager` 负责 SAF 选择 zip、assets 内置 payload 解压、校验、staging、安装到 payload store 和 rollback。
+- `LaunchProfileManager` 负责选择当前 payload/compat/save/mod/log 路径，并写入 `<files>/launcher/selected_instance.json`。
 - `GodotApp` 是真正的 Godot 游戏 Activity：
-  - 有 `<files>/game/SlayTheSpire2.pck` 时传入 `--main-pack`。
+  - 有当前 profile payload 的 `SlayTheSpire2.pck` 时传入 `--main-pack`。
   - 无 payload 时使用 `assets/bootstrap.pck`。
-  - 常规启动由 `GameSettingsActivity` 先在后台同步 APK assets 中的 `dotnet_bcl`、所选兼容包和导入 payload 中的 `data_*/*.dll` 到 Godot publish 目录，避免在 Activity 主线程做大文件复制。
+  - 常规启动由 `GameSettingsActivity` 先在后台同步 APK assets 中的 `dotnet_bcl`、所选兼容包和当前 payload 中的 `data_*/*` 到 Godot publish 目录，避免在 Activity 主线程做大文件复制。
 - `STS2Mobile.dll` / `STS2Mobile.ModEntry` 是 patched Godot runtime 期望加载的 Android 兼容 MOD 入口。
 
 ## 兼容插件概览
@@ -292,7 +298,7 @@ tools/android/make-port-overlay-pck.py
 - 从 Android 私有目录读取 `release_info.json`
 - 桥接附加设置中的 Android-only 配置
 - 调整显示、分辨率、FPS、UI scale、横屏方向等移动端选项
-- 将本地 MOD 路径重定向到 `<files>/mods`
+- 将本地 MOD 路径重定向到当前 launch profile 的 MOD 目录（全局 `<files>/mods` 或隔离 `<files>/instances/<profile_id>/mods`）
 - 跳过 Steam Workshop 枚举
 - 加载 `port_compat.pck` 中的 shader/resource overlay
 - 适配触摸输入、返回键、手柄 trigger axis、双指 inspect 等输入行为

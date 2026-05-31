@@ -85,6 +85,13 @@ public final class CompatPackManager {
 		if (!isCompatPackEnabled()) {
 			return "";
 		}
+		try {
+			String profilePackId = new LaunchProfileManager(context).getSelectedCompatPackId();
+			if (!TextUtils.isEmpty(profilePackId)) {
+				return profilePackId;
+			}
+		} catch (Exception ignored) {
+		}
 		return prefs().getString(KEY_SELECTED_COMPAT_PACK_ID, "");
 	}
 
@@ -99,6 +106,7 @@ public final class CompatPackManager {
 	public void selectPack(String packId) throws Exception {
 		if (TextUtils.isEmpty(packId)) {
 			prefs().edit().remove(KEY_SELECTED_COMPAT_PACK_ID).apply();
+			new LaunchProfileManager(context).setSelectedProfileCompatPack("");
 			writeSelectedCompatJson(null);
 			return;
 		}
@@ -107,6 +115,7 @@ public final class CompatPackManager {
 			throw new IOException("Compat pack is not installed or incomplete: " + packId);
 		}
 		prefs().edit().putString(KEY_SELECTED_COMPAT_PACK_ID, pack.packId).apply();
+		new LaunchProfileManager(context).setSelectedProfileCompatPack(pack.packId);
 		writeSelectedCompatJson(pack);
 	}
 

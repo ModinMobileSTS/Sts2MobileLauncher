@@ -10,19 +10,23 @@
    - 负责 patch 平台、路径、设置、输入、shader、LAN、普通 MOD loader。
    - 不放在 `<files>/mods`，不由原版 `ModManager` 作为普通 MOD 加载。
 2. **普通用户 MOD**
-   - 用户安装到 `<files>/mods/`。
+   - 用户安装到当前 launch profile 解析出的 MOD 目录：全局模式为 `<files>/mods/`，隔离模式为 `<files>/instances/<profile_id>/mods/`。
    - 由被 compat pack patch 后的原版 `ModManager` 扫描、排序和加载。
-   - 是否启用由 `settings.save` 中的 MOD 设置/附加设置页控制。
+   - 是否启用由当前 profile 的 `settings.save` 中的 MOD 设置/附加设置页控制。
 
 ## 2. 普通 MOD 目录和 manifest
 
-当前普通 MOD 根目录：
+当前普通 MOD 根目录由“版本”页选中的 launch profile 决定：
 
 ```text
+# mods_mode=global
 <files>/mods
+
+# mods_mode=isolated
+<files>/instances/<profile_id>/mods
 ```
 
-`ModLoaderPatches` 会递归扫描该目录。为兼容当前 PC `ModManager` 的 manifest 规则，会把：
+`ModLoaderPatches` 会通过 `AppPaths.ModsDir` 递归扫描该目录。为兼容当前 PC `ModManager` 的 manifest 规则，会把：
 
 ```text
 mod_manifest.json
@@ -43,18 +47,22 @@ mod_manifest.json
 - 用户必须手动输入并保存自己的 NexusMods Personal API Key；获取教程入口指向 <https://www.nexusmods.com/settings/api-keys>，提示用户滑到页面底部并点击 “Request Personal API Key”。
 - API Key 存在 Android 私有 `SharedPreferences`（`sts2_nexus_mod_store`）中，不写入仓库、不导出到构建产物。
 - 默认游戏域名为 `slaythespire2`。官方 API 没有完整全站文本搜索接口，因此关键词搜索会聚合并筛选 trending/latest/updated feed；输入 Nexus MOD URL 或数字 MOD ID 会走精确查询。
-- 下载流程会获取 NexusMods 文件列表，选择文件后尝试生成下载链接并把下载到的 ZIP 交给 `ExtraSettingsRepository.importDownloadedModFile()`，最终进入 `<files>/mods/` 并启用 MOD 总开关。
+- 下载流程会获取 NexusMods 文件列表，选择文件后尝试生成下载链接并把下载到的 ZIP 交给 `ExtraSettingsRepository.importDownloadedModFile()`，最终进入当前 launch profile 的 MOD 目录并启用 MOD 总开关。
 - NexusMods 对非 Premium 用户可能要求先访问网页；此时界面会引导打开网页并支持粘贴 `nxm://...key=...&expires=...` 链接重试下载。
 
 ## 4. MOD 启用/禁用协议
 
-Java 附加设置页通过 `ExtraSettingsRepository` 写入：
+Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile 的 settings：
 
 ```text
+# save_mode=global
 <files>/default/1/settings.save
+
+# save_mode=isolated
+<files>/instances/<profile_id>/default/1/settings.save
 ```
 
-兼容层中的 `AndroidSettingsBridge` / `AndroidSettingsPatches` 会读取 companion JSON，将 Android-only 字段投影到当前游戏版本的 `ModSettings`：
+兼容层中的 `AppPaths` / `SavePathPatches` 会把原版 `UserDataPathProvider` 指向当前 profile 的 account root；`AndroidSettingsBridge` / `AndroidSettingsPatches` 通过 `AppPaths.SettingsPath` 读取 companion JSON，将 Android-only 字段投影到当前游戏版本的 `ModSettings`：
 
 - `mod_settings.mods_enabled`
 - `mod_list[]`
@@ -127,6 +135,7 @@ tools/package/build_importer_apk.sh
 - Android temp 目录必须尽早配置，否则 Harmony/MonoMod 可能尝试使用不可写 `/tmp`。
 - Shader/resource overlay 资源应放入 `port-mod/overlay/`，重新打包 `port_compat.pck` 后才能生效。
 - 普通 MOD loader 的目标是尽量复用游戏原本的 scanner、dependency sort 和 TryLoadMod，减少与 PC 行为分叉。
+- `v0.103.2` 与 `v0.106.1` beta 分支应保持同一套 Android/Mono MOD 初始化不变式：加载任何 MOD 前只允许预注册原版模型占位；MOD 自定义模型占位必须等到所有 MOD Harmony patch 应用后、`ModelDb.Init()` 前再按最终 ID 注册。
 
 ## 8. MOD 兼容性排查规范
 
@@ -174,10 +183,10 @@ tools/package/build_importer_apk.sh
 
 1. 先确认无普通 MOD 时游戏可启动。
 2. 安装 BaseLib/RitsuLib 等基础库 MOD，查看 log 中 BaseLib/RitsuLib compatibility patch 是否正常。
-3. 安装目标普通 MOD 到 `<files>/mods/`。
+3. 安装目标普通 MOD 到当前 launch profile 的 MOD 目录（全局 `<files>/mods/` 或隔离 `<files>/instances/<profile_id>/mods/`）。
 4. 在附加设置中开启 MOD 总开关并确认单 MOD 未禁用。
 5. 启动后查看日志：
    - `[Mods] Android mod initialization loaded ...`
    - dependency sort / TryLoadMod 相关日志；
    - 是否出现 assembly resolve 失败。
-6. 若某 MOD 只支持特定游戏版本，优先在版本页切到匹配 payload 和 compat pack。
+6. 若某 MOD 只支持特定游戏版本，优先在版本页切到匹配 payload 和 compat pack；需要同一本体多套 MOD/存档时，在版本页为同一个 game body 新建多个隔离 launch profile。

@@ -39,10 +39,12 @@ public final class GameLaunchPreparationManager {
 
 	private final Context context;
 	private final AssetManager assets;
+	private final LaunchProfileManager launchProfiles;
 
 	public GameLaunchPreparationManager(Context context) {
 		this.context = context.getApplicationContext();
 		this.assets = this.context.getAssets();
+		this.launchProfiles = new LaunchProfileManager(this.context);
 	}
 
 	public void prepareForLaunch() throws Exception {
@@ -244,7 +246,7 @@ public final class GameLaunchPreparationManager {
 	}
 
 	private void patchPayloadIfNeeded() {
-		File manifestFile = new PayloadManager(context).getManifestFile();
+		File manifestFile = launchProfiles.getSelectedManifestFile();
 		if (isPckPatchRecorded(manifestFile)) {
 			return;
 		}
@@ -293,11 +295,12 @@ public final class GameLaunchPreparationManager {
 	}
 
 	private String buildTextureCachePayloadStamp() {
-		File pck = new File(context.getFilesDir(), PayloadManager.GAME_DIR_NAME + "/" + PayloadManager.PCK_FILE_NAME);
+		File pck = new File(launchProfiles.getSelectedGameDir(), PayloadManager.PCK_FILE_NAME);
 		if (!pck.isFile()) {
 			return "no-payload";
 		}
-		return pck.length() + ":" + pck.lastModified();
+		String profileId = launchProfiles.getSelectedProfileId();
+		return profileId + ":" + pck.getAbsolutePath() + ":" + pck.length() + ":" + pck.lastModified();
 	}
 
 	private int clearTextureCacheDirs() throws IOException {
@@ -424,6 +427,20 @@ public final class GameLaunchPreparationManager {
 		if (files == null) {
 			return false;
 		}
+		Set<String> sourceNames = new HashSet<>();
+		for (File src : files) {
+			if (!src.isFile() || src.getName().endsWith(".so")) {
+				continue;
+			}
+			String name = src.getName();
+			if (protectedBclNames.contains(name) || isProtectedBclAssembly(name)) {
+				continue;
+			}
+			sourceNames.add(name);
+		}
+		if (forceCopy) {
+			deleteStaleGameAssemblies(destDir, protectedBclNames, sourceNames);
+		}
 		for (File src : files) {
 			if (!src.isFile() || src.getName().endsWith(".so")) {
 				continue;
@@ -442,8 +459,25 @@ public final class GameLaunchPreparationManager {
 		return true;
 	}
 
+	private void deleteStaleGameAssemblies(File destDir, Set<String> protectedBclNames, Set<String> sourceNames) throws IOException {
+		File[] existingFiles = destDir.listFiles();
+		if (existingFiles == null) {
+			return;
+		}
+		for (File file : existingFiles) {
+			String name = file.getName();
+			if (!file.isFile() || sourceNames.contains(name) || protectedBclNames.contains(name) || isProtectedBclAssembly(name) || "STS2Mobile.dll".equals(name)) {
+				continue;
+			}
+			String lower = name.toLowerCase(Locale.ROOT);
+			if (lower.endsWith(".dll") || lower.endsWith(".json")) {
+				deleteFileIfExists(file);
+			}
+		}
+	}
+
 	private String buildPayloadStamp() {
-		File manifestFile = new PayloadManager(context).getManifestFile();
+		File manifestFile = launchProfiles.getSelectedManifestFile();
 		if (manifestFile == null || !manifestFile.isFile()) {
 			return "no-payload";
 		}
@@ -457,14 +491,14 @@ public final class GameLaunchPreparationManager {
 			if (dllSize <= 0L && game != null) {
 				dllSize = game.optLong("dll_size", 0L);
 			}
-			return manifestFile.lastModified() + ":" + version + ":" + commit + ":" + dllSize;
+			return launchProfiles.getSelectedProfileId() + ":" + manifestFile.getAbsolutePath() + ":" + manifestFile.lastModified() + ":" + version + ":" + commit + ":" + dllSize;
 		} catch (Exception exception) {
-			return manifestFile.lastModified() + ":" + manifestFile.length();
+			return launchProfiles.getSelectedProfileId() + ":" + manifestFile.getAbsolutePath() + ":" + manifestFile.lastModified() + ":" + manifestFile.length();
 		}
 	}
 
 	private File findAssembliesDir() {
-		File root = new File(context.getFilesDir(), PayloadManager.GAME_DIR_NAME);
+		File root = launchProfiles.getSelectedGameDir();
 		File[] children = root.listFiles();
 		if (children != null) {
 			for (File child : children) {

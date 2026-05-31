@@ -127,7 +127,7 @@ public class GodotApp extends GodotActivity {
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		AndroidTempDirectory.configure(this, TAG);
-		gameDir = new File(getFilesDir(), PayloadManager.GAME_DIR_NAME);
+		gameDir = new LaunchProfileManager(this).getSelectedGameDir();
 		SplashScreen.installSplashScreen(this);
 		if (!ExtraSettingsPreferences.isFirstRunSetupCompleted(this)) {
 			// Even when redirecting away from the game activity, Android requires every
@@ -189,7 +189,7 @@ public class GodotApp extends GodotActivity {
 	}
 
 	private void appendGodotLogFileCommandLineArgs(List<String> commandLine) {
-		File logsDir = new File(getFilesDir(), "logs");
+		File logsDir = new LaunchProfileManager(this).getSelectedLogsRootDir();
 		File godotLogFile = new File(logsDir, "godot.log");
 		try {
 			ensureDirectory(logsDir);
@@ -243,7 +243,7 @@ public class GodotApp extends GodotActivity {
 
 	private void appendAndroidLaunchLog(String message) {
 		try {
-			File logsDir = new File(getFilesDir(), "logs");
+			File logsDir = new LaunchProfileManager(this).getSelectedLogsRootDir();
 			ensureDirectory(logsDir);
 			File launchLog = new File(logsDir, "android-launch.log");
 			String line = new java.util.Date() + "  " + message + "\n";
@@ -279,7 +279,7 @@ public class GodotApp extends GodotActivity {
 
 	private File getGameDir() {
 		if (gameDir == null) {
-			gameDir = new File(getFilesDir(), PayloadManager.GAME_DIR_NAME);
+			gameDir = new LaunchProfileManager(this).getSelectedGameDir();
 		}
 		return gameDir;
 	}
@@ -448,14 +448,7 @@ public class GodotApp extends GodotActivity {
 	}
 
 	private File getAccountRootDir() {
-		File defaultDirectory = new File(getFilesDir(), "default");
-		File[] accountDirectories = defaultDirectory.listFiles(File::isDirectory);
-		if (accountDirectories != null && accountDirectories.length > 0) {
-			List<File> directories = new ArrayList<>(Arrays.asList(accountDirectories));
-			directories.sort(Comparator.comparing(File::getName, String::compareToIgnoreCase));
-			return directories.get(0);
-		}
-		return new File(defaultDirectory, "1");
+		return new LaunchProfileManager(this).getSelectedAccountRootDir();
 	}
 
 	private String readTextFile(File file) throws Exception {
@@ -508,6 +501,31 @@ public class GodotApp extends GodotActivity {
 	public static String getGodotDataDir() {
 		GodotApp activity = currentInstance;
 		return activity == null ? "" : activity.getFilesDir().getAbsolutePath();
+	}
+
+	public static String getSelectedGameDir() {
+		GodotApp activity = currentInstance;
+		return activity == null ? "" : new LaunchProfileManager(activity).getSelectedGameDir().getAbsolutePath();
+	}
+
+	public static String getSelectedAccountRootDir() {
+		GodotApp activity = currentInstance;
+		return activity == null ? "" : new LaunchProfileManager(activity).getSelectedAccountRootDir().getAbsolutePath();
+	}
+
+	public static String getSelectedModsDir() {
+		GodotApp activity = currentInstance;
+		return activity == null ? "" : new LaunchProfileManager(activity).getSelectedModsRootDir().getAbsolutePath();
+	}
+
+	public static String getSelectedLogsDir() {
+		GodotApp activity = currentInstance;
+		return activity == null ? "" : new LaunchProfileManager(activity).getSelectedLogsRootDir().getAbsolutePath();
+	}
+
+	public static String getSelectedLaunchContextJson() {
+		GodotApp activity = currentInstance;
+		return activity == null ? "{}" : new LaunchProfileManager(activity).buildSelectedLaunchContextJson();
 	}
 
 	public static boolean isAndroidCompatPackEnabled() {

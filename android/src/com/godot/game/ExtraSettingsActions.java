@@ -15,6 +15,11 @@ public interface ExtraSettingsActions {
 	void requestArchiveActiveGameVersion();
 	void requestSelectGameVersion(String versionId);
 	void requestDeleteGameVersion(String versionId);
+	void requestCreateLaunchProfile(String payloadId);
+	void requestEditLaunchProfile(String profileId);
+	void requestSelectLaunchProfile(String profileId);
+	void requestDeleteLaunchProfile(String profileId);
+	void requestDeleteGamePayload(String payloadId);
 	void requestExportFullDataBackup();
 	void requestImportFullDataBackup();
 	void requestImportMod();

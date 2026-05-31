@@ -33,7 +33,10 @@ apply_build_info_patch() {
   local rel
   for rel in \
     "STS2AndroidPortCompat/Patches/CompatBuildInfo.cs" \
-    "STS2AndroidPortCompat/Directory.Build.targets"; do
+    "STS2AndroidPortCompat/Directory.Build.targets" \
+    "STS2AndroidPortCompat/Android/AppPaths.cs" \
+    "STS2AndroidPortCompat/Patches/SavePathPatches.cs" \
+    "STS2AndroidPortCompat/Patches/LifecycleAndPerformancePatches.cs"; do
     if [[ -f "$source_root/$rel" ]]; then
       mkdir -p "$(dirname "$target_root/$rel")"
       if [[ "$source_root/$rel" != "$target_root/$rel" ]]; then
@@ -58,6 +61,9 @@ if mod_entry.is_file():
     init_line = '        PatchHelper.Log("Initializing STS2Mobile Android port compatibility.");\n'
     if "CompatBuildInfo.Log();" not in text and init_line in text:
         text = text.replace(init_line, init_line + "        CompatBuildInfo.Log();\n", 1)
+    release_info_line = '            ReleaseInfoPatches.Apply(_harmony);\n'
+    if "SavePathPatches.Apply(_harmony);" not in text and release_info_line in text:
+        text = text.replace(release_info_line, release_info_line + "            SavePathPatches.Apply(_harmony);\n", 1)
     if text != original:
         mod_entry.write_text(text, encoding="utf-8")
 
