@@ -128,7 +128,18 @@ tools/package/build_importer_apk.sh
 - Shader/resource overlay 资源应放入 `port-mod/overlay/`，重新打包 `port_compat.pck` 后才能生效。
 - 普通 MOD loader 的目标是尽量复用游戏原本的 scanner、dependency sort 和 TryLoadMod，减少与 PC 行为分叉。
 
-## 8. 兼容包 manifest 约定
+## 8. MOD 兼容性排查规范
+
+排查普通 MOD 在 Android 上无法加载、依赖缺失、初始化顺序异常或行为与 PC 不一致时，建议按以下方式收集参照信息：
+
+- 可以把常用前置/依赖 MOD 仓库 clone 到工作区外或 `.agent/reference-repos/` 等不提交的位置，并 checkout 到与目标游戏版本、目标 MOD 版本匹配的 tag/branch/commit 后对照排查；不要把这些第三方源码或构建产物提交到本仓库。
+- 优先参考对应版本 PC 原版/解包代码，尤其是 `ModManager`、依赖排序、manifest 解析、assembly resolve、资源加载和初始化回调的时序；重点确认 Android 兼容层是否漏掉某一步、提前/延后某一步，或改变了原版加载顺序导致 MOD 兼容问题。
+- 对没有公开源码的 MOD，可以通过反编译其程序集获取可参考信息，用于定位入口类、manifest、依赖声明、Harmony patch、资源路径和初始化假设；反编译结果只作为本地诊断依据，不要提交第三方反编译源码或违反其许可条款。
+- 常见前置/依赖仓库：
+  - RitsuLib: <https://github.com/BAKAOLC/STS2-RitsuLib>
+  - BaseLib-StS2: <https://github.com/Alchyr/BaseLib-StS2>
+
+## 9. 兼容包 manifest 约定
 
 典型 manifest：
 
@@ -159,7 +170,7 @@ tools/package/build_importer_apk.sh
 
 `CompatPackManager` 当前主要用 `target_game.version` 与 payload manifest 的 `version` 匹配。`sts2_dll_sha256` 记录用于诊断和未来更严格匹配。
 
-## 9. 用户 MOD 测试建议
+## 10. 用户 MOD 测试建议
 
 1. 先确认无普通 MOD 时游戏可启动。
 2. 安装 BaseLib/RitsuLib 等基础库 MOD，查看 log 中 BaseLib/RitsuLib compatibility patch 是否正常。
