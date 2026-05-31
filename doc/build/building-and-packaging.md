@@ -96,7 +96,7 @@ tools/android/bundled-compat-packs.json
 - `compat/v0.103.2` → `sts2-android-compat-v0.103.2.zip`
 - `compat/v0.106.1-beta` → `sts2-android-compat-v0.106.1-beta.zip`
 
-非当前分支使用 `.agent/worktrees/compat-packs/<id>/` 临时 worktree 构建；当前分支可直接使用 dirty worktree 方便测试。为了让所有内置分支都支持当前 launch profile / `selected_instance.json` 路径桥和安全 deferred preload 修正，staging 脚本会把当前 `STS2AndroidPortCompat/Android/AppPaths.cs`、`SavePathPatches.cs`、`LifecycleAndPerformancePatches.cs` 同步到临时 worktree 后再构建。输出到：
+非当前分支使用 `.agent/worktrees/compat-packs/<id>/` 临时 worktree 构建；当前分支可直接使用 dirty worktree 方便测试。为了让所有内置分支都支持当前 launch profile / `selected_instance.json` 路径桥、安全 deferred preload 修正，以及关闭预加载时的 transition material 防黑屏修正，staging 脚本会把当前 `STS2AndroidPortCompat/Android/AppPaths.cs`、`SavePathPatches.cs`、`LifecycleAndPerformancePatches.cs`、`TransitionMaterialPatches.cs` 同步到临时 worktree 后再构建。输出到：
 
 ```text
 android/assets/compat_packs/*.zip

@@ -150,7 +150,7 @@ STS2Mobile.ModEntry
    - `UnlockStateCompatPatches` 会在 `ModelDb` 初始化完成前让 `ModelDb.AllEncounters` 返回空列表，避免 Android/Mono 因 Harmony patch getter 提前运行 `UnlockState..cctor` 时枚举到尚未构造/注册完成的 MOD encounter；初始化完成后会修复可能提前创建的 static readonly `UnlockState.all`，恢复正常“全部 encounter 已见过”的语义。
 4. Platform、release info、save path、settings、display、font/UI scale；其中 `AppPaths` 从 Mono publish 目录或 Android 进程包名推导 `<files>` 后读取 `launcher/selected_instance.json`，`SavePathPatches` 将原版 `UserDataPathProvider` 重定向到当前 launch profile 的 account root。
 5. 移动端 layout/input、事件/商店/奖励/战斗背景等 UI 修正。
-6. Android UI safety、游戏内设置入口、shader overlay、Android back/touch/controller、奖励/商人二次确认、tap preview、hand layout。
+6. Android UI safety、游戏内设置入口、shader overlay、transition material 防黑屏、Android back/touch/controller、奖励/商人二次确认、tap preview、hand layout。
 7. intent animation、quick restart、lifecycle/performance。
 8. LAN bootstrap。
 9. `ModLoaderPatches`。
@@ -167,6 +167,8 @@ OS.GetDataDir()/port_compat.pck
 ```
 
 成功后通过 `ProjectSettings.LoadResourcePack()` 挂载资源，并在节点加入树时替换已知桌面 shader 为 `res://shaders/mobile_compat/*`。
+
+另外 `TransitionMaterialPatches` 会在 `NTransition._Ready` 后复制场景默认 `ShaderMaterial`，并在原版 `AssetCache.GetMaterial()` 返回 `fade_transition_mat.tres` / `fight_transition_mat.tres` 时返回缓存材质的副本。这样关闭预加载时，原版 `LoadCommonAndMainMenuAssets()` 触发的 missed-cache 清理即使 dispose 了缓存条目，也不会把正在执行主菜单 `FadeIn()` 的 transition 材质一并释放，避免 `ObjectDisposedException: Godot.ShaderMaterial` 后黑屏。
 
 是否启用由附加设置中的 `shader_compatibility_mode` 控制。
 

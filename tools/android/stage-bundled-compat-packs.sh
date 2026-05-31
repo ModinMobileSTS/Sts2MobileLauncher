@@ -36,7 +36,8 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Directory.Build.targets" \
     "STS2AndroidPortCompat/Android/AppPaths.cs" \
     "STS2AndroidPortCompat/Patches/SavePathPatches.cs" \
-    "STS2AndroidPortCompat/Patches/LifecycleAndPerformancePatches.cs"; do
+    "STS2AndroidPortCompat/Patches/LifecycleAndPerformancePatches.cs" \
+    "STS2AndroidPortCompat/Patches/TransitionMaterialPatches.cs"; do
     if [[ -f "$source_root/$rel" ]]; then
       mkdir -p "$(dirname "$target_root/$rel")"
       if [[ "$source_root/$rel" != "$target_root/$rel" ]]; then
@@ -64,6 +65,9 @@ if mod_entry.is_file():
     release_info_line = '            ReleaseInfoPatches.Apply(_harmony);\n'
     if "SavePathPatches.Apply(_harmony);" not in text and release_info_line in text:
         text = text.replace(release_info_line, release_info_line + "            SavePathPatches.Apply(_harmony);\n", 1)
+    shader_compat_line = '            ShaderCompatibilityPatches.Apply(_harmony);\n'
+    if "TransitionMaterialPatches.Apply(_harmony);" not in text and shader_compat_line in text:
+        text = text.replace(shader_compat_line, shader_compat_line + "            TransitionMaterialPatches.Apply(_harmony);\n", 1)
     if text != original:
         mod_entry.write_text(text, encoding="utf-8")
 
