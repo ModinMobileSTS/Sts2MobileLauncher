@@ -31,10 +31,13 @@ source tools/android/env-from-s2.sh
 - AGP：`8.6.1`
 - Gradle wrapper：`8.13`
 - Kotlin：`2.1.20`
+- Steam 子模块：`android/steam-protocol`、`android/steam-content`（Kotlin JVM + protobuf，用于 Steam 登录/SteamPipe 下载）
+- 新增主要依赖：JavaSteam `1.6.0`、OkHttp `5.3.2`、protobuf `4.31.1`、AndroidX Security Crypto、Android Prefab zstd（Steam VZstd chunk native 解压）、XZ；许可证速览见 `THIRD_PARTY_LICENSES.md`
 - compileSdk/targetSdk：`35`
 - minSdk：`24`
 - buildTools：`35.0.0`
 - NDK：`28.1.13356709`
+- CMake：`3.22.1`（用于 `libworkshop_zstd.so` JNI wrapper，Gradle 可按 SDK license 自动安装到 `../s2/.godot-home/Android/Sdk`）
 - Java source/target：`17`
 - flavor：`mono`
 - 默认 build type：`release`，脚本执行 `assembleMonoRelease`
@@ -153,7 +156,7 @@ dist/sts2-re-direct.apk
 ## 8. 只做局部检查
 
 ```bash
-# Java 编译检查
+# Java/Kotlin/Steam 子模块编译检查
 tools/android/gradle-with-s2-env.sh :compileMonoDebugJavaWithJavac
 
 # payload zip 校验
@@ -183,3 +186,11 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 - `Loading imported game PCK`；
 - `STS2Mobile` build info；
 - ordinary MOD scan from the current launch profile MOD root（全局 `<files>/mods` 或隔离 `<files>/instances/<profile_id>/mods`，如启用 MOD）。
+
+Steam 相关验证可额外检查：
+
+```bash
+adb shell run-as com.megacrit.sts2re ls files/steam
+adb shell run-as com.megacrit.sts2re ls files/steam/cloud
+adb shell run-as com.megacrit.sts2re find files/payloads -maxdepth 3 -name .payload_manifest.json
+```

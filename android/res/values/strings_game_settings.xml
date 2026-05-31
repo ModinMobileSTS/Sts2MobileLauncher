@@ -518,7 +518,7 @@
     <string name="friend_link_sts2_launcher_mod_manager_title">StS2 Launcher Mod Manager</string>
     <string name="friend_link_sts2_launcher_mod_manager_desc">Integrates with the Steam StS2 launcher, supports beta builds and cloud saves, and provided this project with a stable reference for MOD management ideas.</string>
     <string name="payload_card_title">Game payload</string>
-    <string name="payload_card_subtitle">Import a local PC game zip into the app-private game directory. SteamCMD/Steam download is not used.</string>
+    <string name="payload_card_subtitle">Import a local PC game zip or download your owned copy from Steam into the app-private payload store.</string>
     <string name="payload_status_ready_short">Game imported: %1$s</string>
     <string name="payload_status_missing_short">Game zip not imported</string>
     <string name="payload_status_ready">Ready: %1$s</string>
@@ -620,4 +620,79 @@
     <string name="delete_launch_profile_confirm_message">This removes only the launch profile. Shared game bodies are kept. Isolated save/MOD folders under the profile are deleted.</string>
     <string name="delete_game_payload_confirm_title">Delete game body?</string>
     <string name="delete_game_payload_confirm_message">This removes the imported payload and all launch profiles that use it. Global save and MOD folders are kept.</string>
+
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    <string name="unknown">Unknown</string>
+    <string name="steam_account_title">Steam</string>
+    <string name="steam_account_open">Steam account / download / cloud</string>
+    <string name="steam_account_status_title">Steam account</string>
+    <string name="steam_account_status_subtitle">Login is used only for your own Steam download and Steam Cloud saves.</string>
+    <string name="steam_not_logged_in">Not logged in</string>
+    <string name="steam_account_status_format">Account: %1$s
+SteamID64: %2$s
+Cloud mode: %3$s
+Last error: %4$s</string>
+    <string name="steam_login">Login</string>
+    <string name="steam_verify_login">Verify token</string>
+    <string name="steam_logout">Logout</string>
+    <string name="steam_logout_confirm_title">Remove Steam credentials?</string>
+    <string name="steam_logout_confirm_message">This removes the saved refresh token and Steam Guard data from this app. Local payloads and saves are kept.</string>
+    <string name="steam_logged_out">Steam account removed.</string>
+    <string name="steam_username_hint">Steam account name</string>
+    <string name="steam_password_hint">Steam password</string>
+    <string name="steam_login_message">Your password is used only for this login request and is not stored. The app stores only the Steam refresh token in encrypted preferences.</string>
+    <string name="steam_status_logging_in">Logging in to Steam…</string>
+    <string name="steam_status_verifying">Verifying Steam refresh token…</string>
+    <string name="steam_status_verified">Steam token verified. SteamID64: %1$s</string>
+    <string name="steam_login_done">Logged in as %1$s. SteamID64: %2$s</string>
+    <string name="steam_guard_title">Steam Guard</string>
+    <string name="steam_guard_code_hint">Steam Guard code</string>
+    <string name="steam_guard_device_code">Enter the current Steam mobile authenticator code.</string>
+    <string name="steam_guard_device_code_retry">The previous mobile authenticator code was rejected. Enter a new code.</string>
+    <string name="steam_guard_email_code">Enter the Steam Guard email code sent to %1$s.</string>
+    <string name="steam_guard_email_code_retry">The previous email code was rejected. Enter the new code sent to %1$s.</string>
+    <string name="steam_guard_confirmation_title">Mobile confirmation required</string>
+    <string name="steam_guard_confirmation_message">Approve the login in the Steam mobile app, then tap OK to continue polling.</string>
+    <string name="steam_payload_download_title">Steam game download</string>
+    <string name="steam_payload_download_subtitle">Download STS2 from SteamPipe and install it as an immutable payload.</string>
+    <string name="steam_payload_download_hint">Requires a Steam account that owns Slay the Spire 2. Downloaded files are installed under payloads/&lt;payload_id&gt;/game and then selected through a launch profile.</string>
+    <string name="steam_payload_download_button">Download game from Steam</string>
+    <string name="steam_payload_branch_message">Enter the Steam branch to download. Use public unless you know the exact beta branch name.</string>
+    <string name="steam_status_downloading_payload">Downloading STS2 payload from Steam…</string>
+    <string name="steam_operation_progress_title">Steam operation in progress</string>
+    <string name="steam_operation_progress_hint">Please keep this screen open until the operation finishes.</string>
+    <string name="steam_game_card_logged_in">Steam: logged in as %1$s</string>
+    <string name="steam_game_card_not_logged_in">Steam: not logged in</string>
+    <string name="steam_cloud_title">Steam Cloud saves</string>
+    <string name="steam_cloud_subtitle">Synchronize the current launch profile save root with Steam Cloud.</string>
+    <string name="steam_cloud_profile_status">Profile: %1$s · remote files: %2$d · baseline: %3$s</string>
+    <string name="steam_cloud_settings_status">Steam: %1$s · mode: %2$s · remote files: %3$d</string>
+    <string name="steam_cloud_mode_title">Cloud mode</string>
+    <string name="steam_cloud_mode_off">Off</string>
+    <string name="steam_cloud_mode_manual">Manual only</string>
+    <string name="steam_cloud_mode_pull_on_launch">Pull before launch</string>
+    <string name="steam_cloud_mode_full_auto">Pull before launch + push after clean exit</string>
+    <string name="steam_cloud_sync_settings_save">Also sync settings.save (experimental)</string>
+    <string name="steam_cloud_refresh">Refresh list</string>
+    <string name="steam_cloud_pull">Pull cloud to local</string>
+    <string name="steam_cloud_push">Upload local changes</string>
+    <string name="steam_cloud_force_push">Force upload</string>
+    <string name="steam_status_cloud_busy">Steam Cloud operation…</string>
+    <string name="steam_cloud_pull_confirm_title">Overwrite local saves from Steam Cloud?</string>
+    <string name="steam_cloud_pull_confirm_message">The current launch profile save root will be backed up privately first, then supported Steam Cloud files will replace local files with the same paths.</string>
+    <string name="steam_cloud_force_push_confirm_title">Force local saves to Steam Cloud?</string>
+    <string name="steam_cloud_force_push_confirm_message">This can overwrite newer Steam Cloud files. Remote deletions are not performed. Continue only if you are sure the local save root is the version you want.</string>
+    <string name="steam_cloud_conflict_title">Steam Cloud conflict</string>
+    <string name="steam_cloud_conflict_message">%1$d file(s) changed both locally and in Steam Cloud since the last sync.\n\nConflicts: %2$s\n\nWhich copy do you want to keep?</string>
+    <string name="steam_cloud_conflict_keep_local">Keep local (upload)</string>
+    <string name="steam_cloud_conflict_keep_cloud">Keep cloud (download)</string>
+    <string name="steam_cloud_auto_pull_busy">Pulling Steam Cloud saves before launch…</string>
+    <string name="steam_cloud_auto_push_busy">Uploading Steam Cloud saves after clean exit…</string>
+    <string name="steam_cloud_launch_sync_failed_title">Steam Cloud sync failed</string>
+    <string name="steam_cloud_launch_sync_failed_message">Steam Cloud pull before launch failed:
+%1$s
+
+You can open the Steam center, cancel launch, or launch anyway using local saves.</string>
+    <string name="steam_cloud_open_center">Steam center</string>
 </resources>

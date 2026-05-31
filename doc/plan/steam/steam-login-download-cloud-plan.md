@@ -1,7 +1,7 @@
 # Steam 登录、游戏下载与云存档接入计划
 
 > 目标读者：后续实现该功能的编码代理 / 维护者。  
-> 当前状态：设计计划，不包含代码实现。  
+> 当前状态：已按当前多版本 payload / launch profile 模型落地首版实现；本文保留为设计说明与后续维护 checklist。
 > 适用仓库：`/mnt/datas/agent_workspace/s2_re`。  
 > 参考工程：`../ref/SlayTheAmethystModded/`。  
 > 最后同步：2026-05-31。
@@ -11,21 +11,24 @@
 本启动器可以实现类似 `../ref/SlayTheAmethystModded/` 的三项 Steam 能力：
 
 1. **Steam 登录**：Android launcher 侧完成账号密码登录、Steam Guard、refresh token 持久化。
-2. **从 Steam 下载 STS2 游戏本体**：用用户自己的 Steam 账号通过 SteamPipe 下载 AppID `2868840` 对应 depot，并安装到现有 `<files>/game/` payload 模型。
-3. **Steam 云存档**：由 launcher 侧同步 Steam Cloud 文件到 `<files>/default/1/`，不要在 Android 游戏进程里恢复桌面 Steamworks。
+2. **从 Steam 下载 STS2 游戏本体**：用用户自己的 Steam 账号通过 SteamPipe 下载 AppID `2868840` 对应 depot，并安装到当前 payload store：`<files>/payloads/<payload_id>/game/`，随后创建/选择 launch profile。
+3. **Steam 云存档**：由 launcher 侧同步 Steam Cloud 文件到当前 launch profile 解析出的 account root（全局 `<files>/default/<account>/` 或隔离 `<files>/instances/<profile_id>/default/<account>/`），不要在 Android 游戏进程里恢复桌面 Steamworks。
 
 但这三项都不能直接照搬参考项目：参考项目是 STS1 / AppID `646570` / 单个 `desktop-1.0.jar` 下载；本项目是 STS2 / AppID `2868840` / Godot + Mono + 多文件 payload / 多版本 compat pack。
 
-推荐落地策略：
+当前落地策略已按“一次性首版”实现，不再把功能拆成用户可见阶段：
 
 ```text
-Phase 0  只读 spike：验证登录、appinfo/depot、云文件清单
-Phase 1  正式 Steam 登录与凭据管理
-Phase 2  SteamPipe 下载并安装 STS2 payload
-Phase 3  云存档手动拉取/备份/只读清单
-Phase 4  云存档手动上传、baseline、冲突处理
-Phase 5  启动前自动拉取、干净退出后自动上传
+Steam center Activity
+  -> 登录 / refresh token 验证 / 注销
+  -> SteamPipe 下载 STS2 payload 到 staging
+  -> PayloadManager.importPayloadDirectory(...) 安装到 payload store
+  -> LaunchProfileManager 创建/选择 profile 并匹配 compat pack
+  -> Steam Cloud 手动清单/拉取/上传/强制上传
+  -> 可选启动前拉取、干净退出 marker 后上传
 ```
+
+原计划中的 Phase 0~5 保留为设计来源和后续强化检查项，但本仓库当前实现已把登录、下载、手动云同步和自动挂点放入同一测试版本。
 
 ## 1. 范围与非目标
 
@@ -33,7 +36,7 @@ Phase 5  启动前自动拉取、干净退出后自动上传
 
 - 在 Android launcher 中提供 Steam 账号登录入口。
 - 保存 refresh token，后续自动连接 Steam CM，不在启动游戏关键路径上要求用户输入 2FA。
-- 支持从 Steam 下载用户账号拥有的 STS2 PC 游戏本体，并复用现有 payload 导入、校验、PCK patch、版本归档和 compat pack 匹配流程。
+- 支持从 Steam 下载用户账号拥有的 STS2 PC 游戏本体，并复用现有 payload 导入、校验、PCK patch、payload store 安装、launch profile 创建/选择和 compat pack 匹配流程。
 - 支持 Steam Cloud 存档同步：先手动，后自动；先保守拉取/上传，后再考虑镜像删除。
 - 保持现有合规边界：仓库、APK 默认构建产物、文档中都不包含商业游戏资源、用户 zip、解压 payload、账号凭据或私钥。
 
@@ -59,9 +62,9 @@ Phase 5  启动前自动拉取、干净退出后自动上传
 重要约束：
 
 - 当前 APK 默认进入 `GameSettingsActivity`。
-- 当前游戏本体由 `PayloadManager` 导入到 `<files>/game/`。
-- 当前版本页通过 `<files>/game-versions/<id>/game/` 归档游戏本体。
-- 当前 compat pack 按 payload manifest 的 `release_info.version` 匹配。
+- 当前游戏本体由 `PayloadManager` 导入到 `<files>/payloads/<payload_id>/game/`，不再复制到固定 `<files>/game/`。
+- 当前版本页管理 `<files>/instances/<profile_id>/instance.json` launch profile；同一 payload 可创建多个全局/隔离存档与 MOD 配置。旧 `<files>/game-versions/<id>/game/` 仅作为迁移来源。
+- 当前 compat pack 绑定在 launch profile 上，并按该 profile 绑定 payload manifest 的 `release_info.version` 匹配。
 - `port-mod` 兼容层明确跳过桌面 Steam 初始化与 Steam Workshop 枚举。
 - 普通 MOD 不在本计划内改成 Steam Workshop 下载；未来若做，应作为独立计划。
 
@@ -90,23 +93,25 @@ Phase 5  启动前自动拉取、干净退出后自动上传
 - `android/src/com/godot/game/PayloadManager.java`
   - 现有 zip 导入、校验、PCK patch、manifest 写入、原子替换逻辑。
   - Steam 下载完成后应复用这里，而不是另写一套安装逻辑。
+- `android/src/com/godot/game/LaunchProfileManager.java`
+  - Steam 下载/zip 导入成功后创建或选择绑定 payload 的 launch profile，并解析当前 profile 的 save/mod/log/compat 路径。
 - `android/src/com/godot/game/GameBodyVersionManager.java`
-  - 导入成功后归档游戏版本。
+  - legacy facade；当前版本选择委托给 `LaunchProfileManager`。
 - `android/src/com/godot/game/CompatPackManager.java`
   - 根据 payload manifest 匹配兼容包。
 - `android/src/com/godot/game/GameLaunchPreparationManager.java`
   - 启动前复制 runtime / payload assemblies / compat dll / overlay。
 - `android/src/com/godot/game/GodotApp.java`
   - 真正的 Godot Activity。
-  - `getCommandLine()` 使用 `<files>/game/SlayTheSpire2.pck`。
+  - `getCommandLine()` 使用当前 launch profile 绑定的 `<files>/payloads/<payload_id>/game/SlayTheSpire2.pck`。
   - 暴露 `getGodotDataDir()` 给 C# 兼容层。
 
 ### 3.3 存档与设置
 
 - `android/src/com/godot/game/ExtraSettingsRepository.java`
   - `exportSaveZip()` / `importSaveZip()`：当前本地存档导入导出。
-  - `getAccountRootDir()`：当前账号根，默认 `<files>/default/1/`。
-  - `getSettingsFile()`：`<files>/default/1/settings.save`。
+  - `getAccountRootDir()` / `LaunchProfileManager.getSelectedAccountRootDir()`：当前账号根；profile 为 global 时默认 `<files>/default/1/`，profile 为 isolated 时使用 `<files>/instances/<profile_id>/default/1/`。
+  - `getSettingsFile()`：当前账号根下的 `settings.save`。
   - `transferModSaveProfiles()`：普通存档与 `modded/` 存档互转，可作为云同步路径设计参考。
 - `port-mod/STS2AndroidPortCompat/Android/AppPaths.cs`
   - C# 侧解析 `DataDir`、`GameDir`、`AccountRoot`、`SettingsPath`、`ModsDir`。
@@ -265,7 +270,7 @@ Launcher orchestration layer
 
 Existing project integration layer
   - PayloadManager
-  - GameBodyVersionManager
+  - LaunchProfileManager / GameBodyVersionManager legacy facade
   - CompatPackManager
   - ExtraSettingsRepository
   - GameLaunchPreparationManager
@@ -542,7 +547,7 @@ v1 先只做直连 OkHttp：
   -> 校验文件完整性
   -> 调 PayloadManager.installFromDirectory(...)
   -> 写 .payload_manifest.json，source.kind=steam_depot
-  -> 归档到 game-versions
+  -> 安装到 payload store 并创建/选择 launch profile
   -> 自动匹配 compat pack
 ```
 
@@ -701,7 +706,7 @@ public Status importPayloadDirectory(
 - `validateGameDir(staging)`
 - `patchPayloadPck(staging)`
 - `writeManifest(staging, source, validation, patchResult)`
-- 原子替换 `<files>/game/`
+- 原子安装到 `<files>/payloads/<payload_id>/game/`，不覆盖其它 payload 或 profile
 - rollback / cleanup
 
 `SourceInfo` 建议扩展或新增 JSON extras：
@@ -739,10 +744,10 @@ Steam 多文件下载没有单个 source zip sha256，可在 manifest 中记录�
 
 下载完成后必须执行当前导入成功后的相同行为：
 
-1. `GameBodyVersionManager.archiveActivePayload()`
+1. `LaunchProfileManager.createOrSelectDefaultProfileForPayload(payload, true)`
 2. `CompatPackManager.findBestMatch(payload.manifest)`
-3. 自动选择匹配包
-4. 刷新版本页/首页
+3. 将匹配包写入当前 launch profile / selected compat 记录
+4. 刷新版本页/首页；切换版本只切换 profile 指针，不复制 PCK
 
 如果 Steam 下载到的版本不在当前支持矩阵：
 
@@ -774,13 +779,13 @@ profile1/saves/current_run.save  ...   ...        ...   ...
 
 ### 10.2 本地路径映射
 
-建议新增：
+已新增/建议维护：
 
 ```text
-android/src/com/godot/game/steam/cloud/Sts2SteamCloudPathMapper.kt
+android/src/com/godot/game/steam/cloud/Sts2SteamCloudPathMapper.java
 ```
 
-v1 支持本地相对路径：
+映射以当前 launch profile 的 account root 为本地根：`LaunchProfileManager.getSelectedAccountRootDir()`；`save_mode=global` 时是 `<files>/default/<account>/`，`save_mode=isolated` 时是 `<files>/instances/<profile_id>/default/<account>/`。v1 支持本地相对路径：
 
 ```text
 profile.save
@@ -859,7 +864,7 @@ Sts2SteamCloudPullCoordinator.pullAll(...)
 <files>/steam/cloud/diagnostics/*.txt
 ```
 
-不要放到 `<files>/default/1/` 下面，避免被游戏误扫或被云同步。
+不要放到当前 account root 下面，避免被游戏误扫或被云同步。
 
 ## 11. Phase 4：Steam Cloud 上传 / 冲突处理
 
@@ -998,9 +1003,9 @@ if Steam Cloud 模式启用 && 已登录:
 
 当前项目难点：`GameSettingsActivity.prepareAndStartGame()` 启动 `GodotApp` 后调用 `finish()`，没有像参考项目那样完整的 `LauncherReturnAction.ExpectedCleanShutdown` 分析链路。
 
-建议先实现手动上传；自动上传需要先补充“干净退出”标记。
+首版已实现手动上传，并补充“干净退出”标记用于可选自动上传。
 
-可行设计：
+当前设计：
 
 1. 新增 marker：
 
@@ -1114,8 +1119,8 @@ guard_data=***
 ### 14.2 文件安全
 
 - Steam depot 文件名必须做 Zip Slip 等价防护：禁止绝对路径、`..`、空 segment。
-- 下载 staging 不得直接覆盖 `<files>/game/`。
-- 云拉取 staging 不得直接覆盖 `<files>/default/1/`。
+- 下载 staging 不得直接覆盖 `<files>/payloads/<payload_id>/game/`；必须经 `PayloadManager.importPayloadDirectory(...)` 校验、patch 和原子安装。
+- 云拉取 staging 不得直接覆盖当前 launch profile account root。
 - 覆盖前必须备份。
 - 失败时 rollback。
 
@@ -1174,10 +1179,10 @@ adb shell run-as com.megacrit.sts2re cat files/steam/diagnostics/cloud-list.tsv
 完成后检查：
 
 ```bash
-adb shell run-as com.megacrit.sts2re ls files/game
-adb shell run-as com.megacrit.sts2re cat files/game/release_info.json
-adb shell run-as com.megacrit.sts2re cat files/game/.payload_manifest.json
-adb shell run-as com.megacrit.sts2re ls files/game-versions
+adb shell run-as com.megacrit.sts2re ls files/payloads
+adb shell run-as com.megacrit.sts2re find files/payloads -maxdepth 3 -name release_info.json
+adb shell run-as com.megacrit.sts2re find files/payloads -maxdepth 3 -name .payload_manifest.json
+adb shell run-as com.megacrit.sts2re ls files/instances
 adb shell run-as com.megacrit.sts2re cat files/launcher/selected_compat_pack.json
 ```
 
@@ -1289,6 +1294,6 @@ adb shell run-as com.megacrit.sts2re ls files/steam/cloud/backups
 
 ## 18. 最终建议
 
-优先做 **Phase 0 + Phase 1**。只有确认 Android 上能稳定登录、读取 STS2 depot manifest、列出 STS2 云端真实路径后，再进入下载和云同步正式实现。
+首版已按用户要求一次性接入登录、SteamPipe 下载、手动云同步与自动挂点。后续测试重点应放在真实 Steam 账号的 appinfo/depot 分支枚举、不同游戏版本 payload 的 compat pack 匹配、以及当前 launch profile（全局/隔离存档）与 Steam Cloud 路径映射是否完全符合 PC 端。
 
-Steam 下载应复用现有 payload 模型；Steam Cloud 应复用现有 `<files>/default/1/` 存档模型；二者都不应改变 `port-mod` 当前“禁用桌面 Steamworks”的基本不变式。
+Steam 下载必须继续复用 payload store + launch profile 模型；Steam Cloud 必须继续复用当前 launch profile 的 account root；二者都不应改变 `port-mod` 当前“禁用桌面 Steamworks”的基本不变式。

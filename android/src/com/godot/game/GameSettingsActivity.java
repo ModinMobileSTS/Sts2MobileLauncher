@@ -30,6 +30,11 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
 
+import com.godot.game.steam.auth.SteamAuthStore;
+import com.godot.game.steam.cloud.SteamCleanExitTracker;
+import com.godot.game.steam.cloud.Sts2SteamCloudSyncManager;
+import com.godot.game.steam.core.SteamSettings;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -55,6 +60,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	private boolean bundledPayloadAutoExtractRequested;
 	private boolean bundledCompatPackBootstrapFinished;
 	private boolean pendingLauncherDirectLaunch;
+	private boolean cleanExitSteamCloudPushChecked;
 	private int currentTabId = R.id.nav_game;
 
 	@Override
@@ -81,6 +87,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		super.onResume();
 		if (ExtraSettingsPreferences.isFirstRunSetupCompleted(this) && contentFrame != null) {
 			refreshCurrentScreen();
+			maybeRunCleanExitSteamCloudPush();
 		}
 	}
 
@@ -128,6 +135,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		openTab(savedTab);
 		maybeRunLaunchUpdateCheck();
 		maybeAutoExtractBundledPayload();
+		maybeRunCleanExitSteamCloudPush();
 	}
 
 	private void maybeRunLaunchUpdateCheck() {
@@ -227,7 +235,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 					return;
 				}
 			}
-			prepareAndStartGame();
+			prepareAndStartGameAfterOptionalSteamCloudPull();
 		} catch (Exception exception) {
 			showError(exception);
 		}
@@ -534,6 +542,15 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	}
 
 	@Override
+	public void openSteamAccount() {
+		try {
+			startActivity(new Intent(this, SteamAccountActivity.class));
+		} catch (Exception exception) {
+			showError(exception);
+		}
+	}
+
+	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 		super.onActivityResult(requestCode, resultCode, data);
 		if (resultCode != RESULT_OK || data == null) {
@@ -654,6 +671,168 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			.setNeutralButton(R.string.tab_versions, (dialog, which) -> openVersionsTab())
 			.setPositiveButton(R.string.launch_anyway, (dialog, which) -> prepareAndStartGame())
 			.show();
+	}
+
+	private void prepareAndStartGameAfterOptionalSteamCloudPull() {
+		if (!SteamSettings.shouldPullBeforeLaunch(this) || SteamAuthStore.readAuthMaterial(this) == null) {
+			prepareAndStartGame();
+			return;
+		}
+		if (busy) {
+			return;
+		}
+		busy = true;
+		SteamOperationProgressDialog progressDialog = new SteamOperationProgressDialog(this, getString(R.string.steam_operation_progress_title), getString(R.string.steam_cloud_auto_pull_busy));
+		progressDialog.show();
+		new Thread(() -> {
+			try {
+				String result = new Sts2SteamCloudSyncManager(this).pullAll((percent, message) -> runOnUiThread(() -> progressDialog.setProgress(percent, message)));
+				runOnUiThread(() -> {
+					busy = false;
+					progressDialog.dismiss();
+					showMessage(result);
+					prepareAndStartGame();
+				});
+			} catch (Exception exception) {
+				Sts2SteamCloudSyncManager.CloudConflictException conflict = findSteamCloudConflict(exception);
+				runOnUiThread(() -> {
+					busy = false;
+					progressDialog.dismiss();
+					if (conflict != null) {
+						showSteamCloudLaunchConflictDialog(conflict);
+					} else {
+						showSteamCloudLaunchFailureDialog(exception);
+					}
+				});
+			}
+		}, "sts2-steam-cloud-prelaunch").start();
+	}
+
+	private void showSteamCloudLaunchConflictDialog(Sts2SteamCloudSyncManager.CloudConflictException conflict) {
+		String message = getString(
+			R.string.steam_cloud_conflict_message,
+			conflict.getConflictCount(),
+			conflict.getConflictSummary(8)
+		);
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.steam_cloud_conflict_title)
+			.setMessage(message)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setNeutralButton(R.string.steam_cloud_conflict_keep_cloud, (dialog, which) -> runSteamCloudOperationThenLaunch(getString(R.string.steam_cloud_auto_pull_busy), (manager, progressListener) -> manager.pullAll(true, progressListener)))
+			.setPositiveButton(R.string.steam_cloud_conflict_keep_local, (dialog, which) -> runSteamCloudOperationThenLaunch(getString(R.string.steam_cloud_auto_push_busy), (manager, progressListener) -> manager.pushLocalChanges(true, progressListener)))
+			.show();
+	}
+
+	private void runSteamCloudOperationThenLaunch(String busyMessage, SteamCloudOperation operation) {
+		if (busy) {
+			return;
+		}
+		busy = true;
+		SteamOperationProgressDialog progressDialog = new SteamOperationProgressDialog(this, getString(R.string.steam_operation_progress_title), busyMessage);
+		progressDialog.show();
+		new Thread(() -> {
+			try {
+				String result = operation.run(new Sts2SteamCloudSyncManager(this), (percent, message) -> runOnUiThread(() -> progressDialog.setProgress(percent, message)));
+				runOnUiThread(() -> {
+					busy = false;
+					progressDialog.dismiss();
+					showMessage(result);
+					prepareAndStartGame();
+				});
+			} catch (Exception exception) {
+				runOnUiThread(() -> {
+					busy = false;
+					progressDialog.dismiss();
+					showSteamCloudLaunchFailureDialog(exception);
+				});
+			}
+		}, "sts2-steam-cloud-launch-resolution").start();
+	}
+
+	private void showSteamCloudLaunchFailureDialog(Exception exception) {
+		String message = getString(R.string.steam_cloud_launch_sync_failed_message, exception.getMessage() == null ? exception.toString() : exception.getMessage());
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.steam_cloud_launch_sync_failed_title)
+			.setMessage(message)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setNeutralButton(R.string.steam_cloud_open_center, (dialog, which) -> openSteamAccount())
+			.setPositiveButton(R.string.launch_anyway, (dialog, which) -> prepareAndStartGame())
+			.show();
+	}
+
+	private void maybeRunCleanExitSteamCloudPush() {
+		if (cleanExitSteamCloudPushChecked || busy || !SteamSettings.shouldPushAfterCleanExit(this) || SteamAuthStore.readAuthMaterial(this) == null) {
+			return;
+		}
+		if (!SteamCleanExitTracker.consumeIfRecent(this)) {
+			cleanExitSteamCloudPushChecked = true;
+			return;
+		}
+		cleanExitSteamCloudPushChecked = true;
+		runSteamCloudOperationWithDialog(getString(R.string.steam_cloud_auto_push_busy), false, (manager, progressListener) -> manager.pushLocalChanges(false, progressListener));
+	}
+
+	private void runSteamCloudOperationWithDialog(String busyMessage, boolean refreshAfterSuccess, SteamCloudOperation operation) {
+		if (busy) {
+			return;
+		}
+		busy = true;
+		SteamOperationProgressDialog progressDialog = new SteamOperationProgressDialog(this, getString(R.string.steam_operation_progress_title), busyMessage);
+		progressDialog.show();
+		new Thread(() -> {
+			try {
+				String result = operation.run(new Sts2SteamCloudSyncManager(this), (percent, message) -> runOnUiThread(() -> progressDialog.setProgress(percent, message)));
+				runOnUiThread(() -> {
+					busy = false;
+					progressDialog.dismiss();
+					if (refreshAfterSuccess) {
+						refreshCurrentScreen();
+					}
+					showMessage(result);
+				});
+			} catch (Exception exception) {
+				Sts2SteamCloudSyncManager.CloudConflictException conflict = findSteamCloudConflict(exception);
+				runOnUiThread(() -> {
+					busy = false;
+					progressDialog.dismiss();
+					if (conflict != null) {
+						showSteamCloudConflictDialog(conflict);
+					} else {
+						showError(exception);
+					}
+				});
+			}
+		}, "sts2-steam-cloud-operation").start();
+	}
+
+	private void showSteamCloudConflictDialog(Sts2SteamCloudSyncManager.CloudConflictException conflict) {
+		String message = getString(
+			R.string.steam_cloud_conflict_message,
+			conflict.getConflictCount(),
+			conflict.getConflictSummary(8)
+		);
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.steam_cloud_conflict_title)
+			.setMessage(message)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setNeutralButton(R.string.steam_cloud_conflict_keep_cloud, (dialog, which) -> runSteamCloudOperationWithDialog(getString(R.string.steam_status_cloud_busy), true, (manager, progressListener) -> manager.pullAll(true, progressListener)))
+			.setPositiveButton(R.string.steam_cloud_conflict_keep_local, (dialog, which) -> runSteamCloudOperationWithDialog(getString(R.string.steam_status_cloud_busy), true, (manager, progressListener) -> manager.pushLocalChanges(true, progressListener)))
+			.show();
+	}
+
+	private Sts2SteamCloudSyncManager.CloudConflictException findSteamCloudConflict(Throwable exception) {
+		Throwable current = exception;
+		while (current != null) {
+			if (current instanceof Sts2SteamCloudSyncManager.CloudConflictException) {
+				return (Sts2SteamCloudSyncManager.CloudConflictException) current;
+			}
+			Throwable next = current.getCause();
+			if (next == current) {
+				break;
+			}
+			current = next;
+		}
+		return null;
 	}
 
 	private void prepareAndStartGame() {
@@ -985,6 +1164,10 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				});
 			}
 		}).start();
+	}
+
+	private interface SteamCloudOperation {
+		String run(Sts2SteamCloudSyncManager manager, Sts2SteamCloudSyncManager.ProgressListener progressListener) throws Exception;
 	}
 
 	private boolean isSilentSettingsSavedMessage(String message) {

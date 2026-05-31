@@ -1,0 +1,421 @@
+syntax = "proto2";
+
+package steam.messages;
+
+option java_package = "top.apricityx.workshop.steam.proto";
+option java_multiple_files = true;
+
+message CMsgProtoBufHeader {
+  optional fixed64 steamid = 1;
+  optional int32 client_sessionid = 2;
+  optional fixed64 jobid_source = 10 [default = 18446744073709551615];
+  optional fixed64 jobid_target = 11 [default = 18446744073709551615];
+  optional string target_job_name = 12;
+  optional int32 eresult = 13 [default = 2];
+  optional string error_message = 14;
+  optional int32 seq_num = 24;
+}
+
+message CMsgClientHeartBeat {
+  optional bool send_reply = 1;
+}
+
+message CMsgClientHello {
+  optional uint32 protocol_version = 1;
+}
+
+message CMsgIPAddress {
+  optional uint32 v4 = 1;
+}
+
+message CMsgClientLogon {
+  optional uint32 protocol_version = 1;
+  optional uint32 deprecated_obfustucated_private_ip = 2;
+  optional uint32 cell_id = 3;
+  optional uint32 client_package_version = 5;
+  optional string client_language = 6;
+  optional uint32 client_os_type = 7;
+  optional bool should_remember_password = 8;
+  optional CMsgIPAddress obfuscated_private_ip = 11;
+  optional fixed64 client_supplied_steam_id = 22;
+  optional bytes machine_id = 30;
+  optional string account_name = 50;
+  optional string password = 51;
+  optional string auth_code = 84;
+  optional string machine_name = 96;
+  optional string two_factor_code = 101;
+  optional bool supports_rate_limit_response = 102;
+  optional string access_token = 108;
+}
+
+message CMsgClientLogonResponse {
+  optional int32 eresult = 1 [default = 2];
+  optional int32 legacy_out_of_game_heartbeat_seconds = 2;
+  optional int32 heartbeat_seconds = 3;
+  optional uint32 cell_id = 7;
+  optional string user_country = 16;
+  optional fixed64 client_supplied_steamid = 20;
+  optional string ip_country_code = 21;
+}
+
+message CMsgClientLoggedOff {
+  optional int32 eresult = 1 [default = 2];
+}
+
+message CMsgClientGetDepotDecryptionKey {
+  optional uint32 depot_id = 1;
+  optional uint32 app_id = 2;
+}
+
+message CMsgClientGetDepotDecryptionKeyResponse {
+  optional int32 eresult = 1 [default = 2];
+  optional uint32 depot_id = 2;
+  optional bytes depot_encryption_key = 3;
+}
+
+message CMsgMulti {
+  optional uint32 size_unzipped = 1;
+  optional bytes message_body = 2;
+}
+
+message CContentServerDirectory_GetServersForSteamPipe_Request {
+  optional uint32 cell_id = 1;
+  optional uint32 max_servers = 2 [default = 20];
+}
+
+message CContentServerDirectory_ServerInfo {
+  optional string type = 1;
+  optional int32 source_id = 2;
+  optional int32 cell_id = 3;
+  optional int32 load = 4;
+  optional float weighted_load = 5;
+  optional int32 num_entries_in_client_list = 6;
+  optional bool steam_china_only = 7;
+  optional string host = 8;
+  optional string vhost = 9;
+  optional bool use_as_proxy = 10;
+  optional string proxy_request_path_template = 11;
+  optional string https_support = 12;
+  repeated uint32 allowed_app_ids = 13;
+  optional uint32 priority_class = 15;
+  repeated string bypass_proxies_of_type = 16;
+}
+
+message CContentServerDirectory_GetServersForSteamPipe_Response {
+  repeated CContentServerDirectory_ServerInfo servers = 1;
+  optional bool no_change = 2;
+}
+
+message CContentServerDirectory_GetManifestRequestCode_Request {
+  optional uint32 app_id = 1;
+  optional uint32 depot_id = 2;
+  optional uint64 manifest_id = 3;
+  optional string app_branch = 4;
+  optional string branch_password_hash = 5;
+}
+
+message CContentServerDirectory_GetManifestRequestCode_Response {
+  optional uint64 manifest_request_code = 1;
+}
+
+message CContentServerDirectory_GetCDNAuthToken_Request {
+  optional uint32 depot_id = 1;
+  optional string host_name = 2;
+  optional uint32 app_id = 3;
+}
+
+message CContentServerDirectory_GetCDNAuthToken_Response {
+  optional string token = 1;
+  optional uint32 expiration_time = 2;
+}
+
+enum EAuthTokenPlatformType {
+  k_EAuthTokenPlatformType_Unknown = 0;
+  k_EAuthTokenPlatformType_SteamClient = 1;
+  k_EAuthTokenPlatformType_WebBrowser = 2;
+  k_EAuthTokenPlatformType_MobileApp = 3;
+}
+
+enum EAuthTokenAppType {
+  k_EAuthTokenAppType_Unknown = 0;
+  k_EAuthTokenAppType_Mobile_SteamApp = 1;
+  k_EAuthTokenAppType_Mobile_ChatApp = 2;
+}
+
+enum EAuthSessionGuardType {
+  k_EAuthSessionGuardType_Unknown = 0;
+  k_EAuthSessionGuardType_None = 1;
+  k_EAuthSessionGuardType_EmailCode = 2;
+  k_EAuthSessionGuardType_DeviceCode = 3;
+  k_EAuthSessionGuardType_DeviceConfirmation = 4;
+  k_EAuthSessionGuardType_EmailConfirmation = 5;
+  k_EAuthSessionGuardType_MachineToken = 6;
+  k_EAuthSessionGuardType_LegacyMachineAuth = 7;
+}
+
+enum ESessionPersistence {
+  k_ESessionPersistence_Invalid = 0;
+  k_ESessionPersistence_Persistent = 1;
+  k_ESessionPersistence_Ephemeral = 2;
+}
+
+enum ETokenRenewalType {
+  k_ETokenRenewalType_None = 0;
+  k_ETokenRenewalType_Allow = 1;
+}
+
+enum EAuthTokenRevokeAction {
+  k_EAuthTokenRevokeLogout = 0;
+  k_EAuthTokenRevokePermanent = 1;
+  k_EAuthTokenRevokeReplaced = 2;
+  k_EAuthTokenRevokeSupport = 3;
+  k_EAuthTokenRevokeConsume = 4;
+  k_EAuthTokenRevokeNonRememberedLogout = 5;
+  k_EAuthTokenRevokeNonRememberedPermanent = 6;
+  k_EAuthTokenRevokeAutomatic = 7;
+}
+
+message CAuthentication_GetPasswordRSAPublicKey_Request {
+  optional string account_name = 1;
+}
+
+message CAuthentication_GetPasswordRSAPublicKey_Response {
+  optional string publickey_mod = 1;
+  optional string publickey_exp = 2;
+  optional uint64 timestamp = 3;
+}
+
+message CAuthentication_DeviceDetails {
+  optional string device_friendly_name = 1;
+  optional EAuthTokenPlatformType platform_type = 2 [default = k_EAuthTokenPlatformType_Unknown];
+  optional int32 os_type = 3;
+  optional uint32 gaming_device_type = 4;
+  optional uint32 client_count = 5;
+  optional bytes machine_id = 6;
+  optional EAuthTokenAppType app_type = 7 [default = k_EAuthTokenAppType_Unknown];
+}
+
+message CAuthentication_AllowedConfirmation {
+  optional EAuthSessionGuardType confirmation_type = 1 [default = k_EAuthSessionGuardType_Unknown];
+  optional string associated_message = 2;
+}
+
+message CAuthentication_BeginAuthSessionViaCredentials_Request {
+  optional string device_friendly_name = 1;
+  optional string account_name = 2;
+  optional string encrypted_password = 3;
+  optional uint64 encryption_timestamp = 4;
+  optional bool remember_login = 5;
+  optional EAuthTokenPlatformType platform_type = 6 [default = k_EAuthTokenPlatformType_Unknown];
+  optional ESessionPersistence persistence = 7 [default = k_ESessionPersistence_Persistent];
+  optional string website_id = 8 [default = "Unknown"];
+  optional CAuthentication_DeviceDetails device_details = 9;
+  optional string guard_data = 10;
+  optional uint32 language = 11;
+  optional int32 qos_level = 12 [default = 2];
+}
+
+message CAuthentication_BeginAuthSessionViaCredentials_Response {
+  optional uint64 client_id = 1;
+  optional bytes request_id = 2;
+  optional float interval = 3;
+  repeated CAuthentication_AllowedConfirmation allowed_confirmations = 4;
+  optional uint64 steamid = 5;
+  optional string weak_token = 6;
+  optional string agreement_session_url = 7;
+  optional string extended_error_message = 8;
+}
+
+message CAuthentication_PollAuthSessionStatus_Request {
+  optional uint64 client_id = 1;
+  optional bytes request_id = 2;
+  optional fixed64 token_to_revoke = 3;
+}
+
+message CAuthentication_PollAuthSessionStatus_Response {
+  optional uint64 new_client_id = 1;
+  optional string new_challenge_url = 2;
+  optional string refresh_token = 3;
+  optional string access_token = 4;
+  optional bool had_remote_interaction = 5;
+  optional string account_name = 6;
+  optional string new_guard_data = 7;
+  optional string agreement_session_url = 8;
+}
+
+message CAuthentication_UpdateAuthSessionWithSteamGuardCode_Request {
+  optional uint64 client_id = 1;
+  optional fixed64 steamid = 2;
+  optional string code = 3;
+  optional EAuthSessionGuardType code_type = 4 [default = k_EAuthSessionGuardType_Unknown];
+}
+
+message CAuthentication_UpdateAuthSessionWithSteamGuardCode_Response {
+  optional string agreement_session_url = 7;
+}
+
+message CAuthentication_AccessToken_GenerateForApp_Request {
+  optional string refresh_token = 1;
+  optional fixed64 steamid = 2;
+  optional ETokenRenewalType renewal_type = 3 [default = k_ETokenRenewalType_None];
+}
+
+message CAuthentication_AccessToken_GenerateForApp_Response {
+  optional string access_token = 1;
+  optional string refresh_token = 2;
+}
+
+message PublishedFileDetails {
+  message VoteData {
+    optional float score = 1;
+    optional uint32 votes_up = 2;
+    optional uint32 votes_down = 3;
+    optional float trusted_score = 4;
+    optional uint32 trusted_votes_up = 5;
+    optional uint32 trusted_votes_down = 6;
+  }
+
+  optional uint32 result = 1;
+  optional uint64 publishedfileid = 2;
+  optional fixed64 creator = 3;
+  optional uint32 creator_appid = 4;
+  optional uint32 consumer_appid = 5;
+  optional uint64 file_size = 8;
+  optional string preview_url = 11;
+  optional string title = 16;
+  optional string file_description = 17;
+  optional string short_description = 18;
+  optional uint32 time_created = 19;
+  optional uint32 time_updated = 20;
+  optional uint32 visibility = 21;
+  optional uint32 file_type = 34;
+  optional uint32 subscriptions = 36;
+  optional uint32 lifetime_subscriptions = 39;
+  optional uint32 views = 42;
+  optional VoteData vote_data = 55;
+  optional bool maybe_inappropriate_sex = 65;
+  optional bool maybe_inappropriate_violence = 66;
+}
+
+message CPublishedFile_QueryFiles_Request {
+  optional uint32 query_type = 1;
+  optional uint32 page = 2;
+  optional uint32 numperpage = 3 [default = 1];
+  optional uint32 creator_appid = 4;
+  optional uint32 appid = 5;
+  repeated string requiredtags = 6;
+  repeated string excludedtags = 7;
+  optional bool match_all_tags = 8 [default = true];
+  optional string search_text = 11;
+  optional uint32 filetype = 12;
+  optional fixed64 child_publishedfileid = 13;
+  optional uint32 days = 14;
+  optional bool include_recent_votes_only = 15;
+  optional bool totalonly = 16;
+  optional bool return_vote_data = 17;
+  optional bool return_tags = 18;
+  optional bool return_kv_tags = 19;
+  optional bool return_previews = 20;
+  optional bool return_children = 21;
+  optional bool return_short_description = 22;
+  optional uint32 cache_max_age_seconds = 31 [default = 0];
+  optional bool return_metadata = 32 [default = false];
+  optional int32 language = 33 [default = 0];
+  optional bool ids_only = 35;
+  optional bool return_details = 37;
+  optional bool strip_description_bbcode = 38;
+  optional string cursor = 39;
+}
+
+message CPublishedFile_QueryFiles_Response {
+  optional uint32 total = 1;
+  repeated PublishedFileDetails publishedfiledetails = 2;
+  optional string next_cursor = 3;
+}
+
+message CPublishedFile_GetUserFiles_Request {
+  optional fixed64 steamid = 1;
+  optional uint32 appid = 2;
+  optional uint32 page = 4 [default = 1];
+  optional uint32 numperpage = 5 [default = 1];
+  optional string type = 6 [default = "myfiles"];
+  optional string sortmethod = 7 [default = "lastupdated"];
+  optional uint32 creator_appid = 15;
+  optional int32 language = 29 [default = 0];
+  optional bool ids_only = 18;
+  optional bool return_vote_data = 19 [default = true];
+  optional bool return_tags = 20;
+  optional bool return_kv_tags = 21 [default = true];
+  optional bool return_previews = 22;
+  optional bool return_children = 23;
+  optional bool return_short_description = 24 [default = true];
+  optional bool return_metadata = 28 [default = false];
+  optional bool strip_description_bbcode = 32;
+}
+
+message CPublishedFile_GetUserFiles_Response {
+  optional uint32 total = 1;
+  optional uint32 startindex = 2;
+  repeated PublishedFileDetails publishedfiledetails = 3;
+}
+
+message CAuthentication_RefreshToken_Revoke_Request {
+  optional fixed64 token_id = 1;
+  optional fixed64 steamid = 2;
+  optional EAuthTokenRevokeAction revoke_action = 3 [default = k_EAuthTokenRevokePermanent];
+  optional bytes signature = 4;
+}
+
+message CAuthentication_RefreshToken_Revoke_Response {
+}
+
+message CMsgClientPICSProductInfoRequest {
+  message AppInfo {
+    optional uint32 appid = 1;
+    optional uint64 access_token = 2;
+    optional bool only_public_obsolete = 3;
+  }
+
+  message PackageInfo {
+    optional uint32 packageid = 1;
+    optional uint64 access_token = 2;
+  }
+
+  repeated PackageInfo packages = 1;
+  repeated AppInfo apps = 2;
+  optional bool meta_data_only = 3;
+  optional uint32 num_prev_failed = 4;
+  optional uint32 OBSOLETE_supports_package_tokens = 5;
+  optional uint32 sequence_number = 6;
+  optional bool single_response = 7;
+}
+
+message CMsgClientPICSProductInfoResponse {
+  message AppInfo {
+    optional uint32 appid = 1;
+    optional uint32 change_number = 2;
+    optional bool missing_token = 3;
+    optional bytes sha = 4;
+    optional bytes buffer = 5;
+    optional bool only_public = 6;
+    optional uint32 size = 7;
+  }
+
+  message PackageInfo {
+    optional uint32 packageid = 1;
+    optional uint32 change_number = 2;
+    optional bool missing_token = 3;
+    optional bytes sha = 4;
+    optional bytes buffer = 5;
+    optional uint32 size = 6;
+  }
+
+  repeated AppInfo apps = 1;
+  repeated uint32 unknown_appids = 2;
+  repeated PackageInfo packages = 3;
+  repeated uint32 unknown_packageids = 4;
+  optional bool meta_data_only = 5;
+  optional bool response_pending = 6;
+  optional uint32 http_min_size = 7;
+  optional string http_host = 8;
+}

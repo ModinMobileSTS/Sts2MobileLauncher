@@ -28,8 +28,9 @@ s2_re/
 ## 3. Android shell 主要组件
 
 - `GameSettingsActivity`：默认 launcher，承载欢迎向导、设置页、版本页、MOD 页，负责启动前检查；桌面图标默认打开附加设置，也可在设置页切换为完成向导后自动直接启动游戏。
-- `GodotApp`：真正的 Godot Activity，拼接 Godot 命令行，加载 imported PCK 或 bootstrap PCK，暴露 Java bridge 给 C#。
-- `PayloadManager`：导入 PC zip、校验必需文件、patch 私有 PCK copy、写 `.payload_manifest.json` 并安装到 payload store。
+- `SteamAccountActivity`：Steam 中心，负责 Steam 登录/Guard/refresh token 验证、SteamPipe 下载 STS2 payload，以及当前 launch profile account root 的 Steam Cloud 手动/自动同步。
+- `GodotApp`：真正的 Godot Activity，拼接 Godot 命令行，加载 imported PCK 或 bootstrap PCK，暴露 Java bridge 给 C#；干净退出回设置时写入 Steam Cloud 自动上传 marker。
+- `PayloadManager`：导入 PC zip 或 SteamPipe 下载目录、校验必需文件、patch 私有 PCK copy、写 `.payload_manifest.json` 并安装到 payload store。
 - `LaunchProfileManager`：维护 payload store 与 launch profile，支持同一游戏本体多套全局/隔离存档和 MOD 配置，切换时不复制 PCK。
 - `GameBodyVersionManager`：legacy facade，版本选择委托给 `LaunchProfileManager`。
 - `CompatPackManager`：安装/选择/删除兼容包，从 APK assets 安装内置包，按 payload version 匹配。
@@ -56,6 +57,13 @@ android/assets/dotnet_bcl/                   # 同步的大型 runtime，gitigno
 android/assets/payload/SlayTheSpire2.zip     # 直装版临时 payload，gitignore
 ```
 
+Android Gradle 子模块：
+
+```text
+android/steam-protocol/                       # Steam CM/auth/content protobuf 协议子模块
+android/steam-content/                        # SteamPipe depot manifest/chunk 下载子模块
+```
+
 应用私有目录：
 
 ```text
@@ -65,6 +73,8 @@ android/assets/payload/SlayTheSpire2.zip     # 直装版临时 payload，gitigno
 <files>/instances/<profile_id>/default/1/settings.save # 隔离存档/设置模式使用
 <files>/instances/<profile_id>/mods/        # 隔离 MOD 模式使用
 <files>/instances/<profile_id>/logs/        # 当前配置日志
+<files>/steam/downloads/                    # SteamPipe 下载 staging / 任务诊断
+<files>/steam/cloud/<profile_id>/           # Steam Cloud manifest、baseline、备份与诊断
 <files>/compat-packs/<pack_id>/             # 已安装兼容包
 <files>/launcher/selected_instance.json     # 当前启动配置与解析后的运行路径
 <files>/launcher/selected_game_version.json # legacy 兼容诊断记录，指向当前 payload
@@ -80,7 +90,7 @@ android/assets/payload/SlayTheSpire2.zip     # 直装版临时 payload，gitigno
 
 当前实现是“payload store + launch profile”的完整多实例模型：
 
-- 导入 PC zip 后，payload 安装到 `<files>/payloads/<payload_id>/game/`，`payload_id` 由版本、commit 与 payload hash 派生；同一 payload 不再复制到固定 active 目录。
+- 导入 PC zip 或 SteamPipe 下载完成后，payload 安装到 `<files>/payloads/<payload_id>/game/`，`payload_id` 由版本、commit 与 payload hash 派生；同一 payload 不再复制到固定 active 目录。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot` 与 `source.steam.*` 中记录 app/depot/manifest/branch 诊断信息。
 - 版本页维护 `<files>/instances/<profile_id>/instance.json` 启动配置。一个 profile 绑定一个 payload、一个可选 compat pack，并分别记录 save/settings 与 MOD 使用 `global` 还是 `isolated`。
 - 切换游戏版本/配置只更新 `<files>/launcher/selected_instance.json` 与 SharedPreferences，不复制 `SlayTheSpire2.pck` 或解压目录。
 - 同一个 payload 可以创建多个 profile：例如同一 beta 本体分别使用全局 MOD、独立 MOD、独立存档等。

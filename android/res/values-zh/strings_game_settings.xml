@@ -516,7 +516,7 @@
     <string name="friend_link_sts2_launcher_mod_manager_title">StS2 启动器 MOD 管理器</string>
     <string name="friend_link_sts2_launcher_mod_manager_desc">接入Steam的塔2启动器，支持beta版和云存档，为本项目提供了稳定的MOD思路参考</string>
     <string name="payload_card_title">游戏本体</string>
-    <string name="payload_card_subtitle">从本地 PC 游戏压缩包导入到应用私有 game 目录，不使用 SteamCMD/Steam 下载。</string>
+    <string name="payload_card_subtitle">可从本地 PC 游戏压缩包导入，或用你自己的 Steam 账号下载到应用私有本体仓库。</string>
     <string name="payload_status_ready_short">游戏已导入：%1$s</string>
     <string name="payload_status_missing_short">尚未导入游戏压缩包</string>
     <string name="payload_status_ready">准备就绪：%1$s</string>
@@ -616,4 +616,79 @@
     <string name="delete_launch_profile_confirm_message">只会移除此启动配置。共享游戏本体会保留；配置下的独立存档/MOD 文件夹会被删除。</string>
     <string name="delete_game_payload_confirm_title">删除游戏本体？</string>
     <string name="delete_game_payload_confirm_message">会移除此导入本体以及所有使用它的启动配置。全局存档和 MOD 文件夹会保留。</string>
+
+    <string name="yes">是</string>
+    <string name="no">否</string>
+    <string name="unknown">未知</string>
+    <string name="steam_account_title">Steam</string>
+    <string name="steam_account_open">Steam 账号 / 下载 / 云存档</string>
+    <string name="steam_account_status_title">Steam 账号</string>
+    <string name="steam_account_status_subtitle">登录只用于你自己的 Steam 游戏下载和 Steam 云存档同步。</string>
+    <string name="steam_not_logged_in">未登录</string>
+    <string name="steam_account_status_format">账号：%1$s
+SteamID64：%2$s
+云存档模式：%3$s
+最近错误：%4$s</string>
+    <string name="steam_login">登录</string>
+    <string name="steam_verify_login">验证令牌</string>
+    <string name="steam_logout">退出登录</string>
+    <string name="steam_logout_confirm_title">移除 Steam 凭据？</string>
+    <string name="steam_logout_confirm_message">会从本应用删除已保存的 refresh token 和 Steam Guard 数据。本地游戏本体和存档会保留。</string>
+    <string name="steam_logged_out">Steam 账号已移除。</string>
+    <string name="steam_username_hint">Steam 账号名</string>
+    <string name="steam_password_hint">Steam 密码</string>
+    <string name="steam_login_message">密码只用于本次登录请求，不会保存。本应用只会把 Steam refresh token 加密保存到私有偏好。</string>
+    <string name="steam_status_logging_in">正在登录 Steam…</string>
+    <string name="steam_status_verifying">正在验证 Steam refresh token…</string>
+    <string name="steam_status_verified">Steam 令牌验证成功。SteamID64：%1$s</string>
+    <string name="steam_login_done">已登录：%1$s。SteamID64：%2$s</string>
+    <string name="steam_guard_title">Steam Guard</string>
+    <string name="steam_guard_code_hint">Steam Guard 验证码</string>
+    <string name="steam_guard_device_code">请输入当前 Steam 手机令牌动态码。</string>
+    <string name="steam_guard_device_code_retry">上一个手机令牌动态码被拒绝，请输入新的动态码。</string>
+    <string name="steam_guard_email_code">请输入发送到 %1$s 的 Steam Guard 邮箱验证码。</string>
+    <string name="steam_guard_email_code_retry">上一个邮箱验证码被拒绝，请输入发送到 %1$s 的新验证码。</string>
+    <string name="steam_guard_confirmation_title">需要手机确认</string>
+    <string name="steam_guard_confirmation_message">请在 Steam 手机 App 中批准本次登录，然后点击确定继续轮询。</string>
+    <string name="steam_payload_download_title">Steam 游戏下载</string>
+    <string name="steam_payload_download_subtitle">通过 SteamPipe 下载 STS2，并安装为不可变游戏本体。</string>
+    <string name="steam_payload_download_hint">需要拥有 Slay the Spire 2 的 Steam 账号。下载文件会安装到 payloads/&lt;payload_id&gt;/game，并通过启动配置选择。</string>
+    <string name="steam_payload_download_button">从 Steam 下载游戏</string>
+    <string name="steam_payload_branch_message">请输入要下载的 Steam 分支。除非知道准确 beta 分支名，否则使用 public。</string>
+    <string name="steam_status_downloading_payload">正在从 Steam 下载 STS2 本体…</string>
+    <string name="steam_operation_progress_title">Steam 操作进行中</string>
+    <string name="steam_operation_progress_hint">操作完成前请保持此页面打开。</string>
+    <string name="steam_game_card_logged_in">Steam：已登录 %1$s</string>
+    <string name="steam_game_card_not_logged_in">Steam：未登录</string>
+    <string name="steam_cloud_title">Steam 云存档</string>
+    <string name="steam_cloud_subtitle">将当前启动配置的存档根目录与 Steam Cloud 同步。</string>
+    <string name="steam_cloud_profile_status">配置：%1$s · 远端文件：%2$d · baseline：%3$s</string>
+    <string name="steam_cloud_settings_status">Steam：%1$s · 模式：%2$s · 远端文件：%3$d</string>
+    <string name="steam_cloud_mode_title">云存档模式</string>
+    <string name="steam_cloud_mode_off">关闭</string>
+    <string name="steam_cloud_mode_manual">仅手动</string>
+    <string name="steam_cloud_mode_pull_on_launch">启动前拉取</string>
+    <string name="steam_cloud_mode_full_auto">启动前拉取 + 干净退出后上传</string>
+    <string name="steam_cloud_sync_settings_save">同时同步 settings.save（实验性）</string>
+    <string name="steam_cloud_refresh">刷新清单</string>
+    <string name="steam_cloud_pull">云端拉取到本地</string>
+    <string name="steam_cloud_push">上传本地变化</string>
+    <string name="steam_cloud_force_push">强制上传</string>
+    <string name="steam_status_cloud_busy">正在执行 Steam Cloud 操作…</string>
+    <string name="steam_cloud_pull_confirm_title">用 Steam Cloud 覆盖本地存档？</string>
+    <string name="steam_cloud_pull_confirm_message">会先在私有目录备份当前启动配置的存档根，然后用支持的 Steam Cloud 文件覆盖同路径本地文件。</string>
+    <string name="steam_cloud_force_push_confirm_title">强制把本地存档上传到 Steam Cloud？</string>
+    <string name="steam_cloud_force_push_confirm_message">这可能覆盖较新的 Steam Cloud 文件；不会执行远端删除。请确认本地存档根就是你想保留的版本。</string>
+    <string name="steam_cloud_conflict_title">Steam Cloud 冲突</string>
+    <string name="steam_cloud_conflict_message">有 %1$d 个文件自上次同步后在本地和 Steam Cloud 都发生了变化。\n\n冲突：%2$s\n\n你想保留哪一份？</string>
+    <string name="steam_cloud_conflict_keep_local">保留本地（上传）</string>
+    <string name="steam_cloud_conflict_keep_cloud">保留云端（下载）</string>
+    <string name="steam_cloud_auto_pull_busy">启动前正在拉取 Steam Cloud 存档…</string>
+    <string name="steam_cloud_auto_push_busy">干净退出后正在上传 Steam Cloud 存档…</string>
+    <string name="steam_cloud_launch_sync_failed_title">Steam Cloud 同步失败</string>
+    <string name="steam_cloud_launch_sync_failed_message">启动前拉取 Steam Cloud 失败：
+%1$s
+
+可以打开 Steam 中心处理、取消启动，或使用本地存档继续启动。</string>
+    <string name="steam_cloud_open_center">Steam 中心</string>
 </resources>

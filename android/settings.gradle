@@ -5,6 +5,9 @@ pluginManagement {
     plugins {
         id 'com.android.application' version versions.androidGradlePlugin
         id 'org.jetbrains.kotlin.android' version versions.kotlinVersion
+        id 'org.jetbrains.kotlin.jvm' version versions.kotlinVersion
+        id 'org.jetbrains.kotlin.plugin.serialization' version versions.kotlinVersion
+        id 'com.google.protobuf' version '0.9.4'
     }
     repositories {
         google()
@@ -16,3 +19,5 @@ pluginManagement {
 }
 
 include ':assetPackInstallTime'
+include ':steam-protocol'
+include ':steam-content'

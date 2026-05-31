@@ -55,9 +55,9 @@ port-mod branch
 
 ## 4. Payload 导入与版本匹配
 
-1. 用户在设置页选择 `SlayTheSpire2.zip`，或直装版从 APK assets `payload/SlayTheSpire2.zip` 解压。
-2. `PayloadManager` 复制 zip 到私有临时文件并计算 sha256。
-3. 安全解压到 staging，校验：
+1. 用户在设置页选择 `SlayTheSpire2.zip`，直装版从 APK assets `payload/SlayTheSpire2.zip` 解压，或在 Steam 中心使用自己拥有 STS2 的 Steam 账号通过 SteamPipe 下载。
+2. zip 路径由 `PayloadManager` 复制 zip 到私有临时文件并计算 sha256；Steam 路径由 `Sts2SteamPayloadDownloader` 下载 depot 文件到 `<files>/steam/downloads/staging-*` 后调用 `PayloadManager.importPayloadDirectory(...)`。
+3. staging 目录统一校验：
    - `SlayTheSpire2.pck`
    - `release_info.json`
    - `data_sts2_windows_x86_64/sts2.dll`
@@ -66,7 +66,7 @@ port-mod branch
 4. `PckPatcher` 只修改私有 PCK copy，禁用 Sentry autoload/gdextension 元数据，避免 Android 缺少桌面 Sentry 扩展导致启动前解析错误。
 5. 写入 staging 中的 `.payload_manifest.json`，包含 `release_info`、`version`、`commit`、`sts2_dll_sha256`、PCK patch 结果等。
 6. 按 manifest 身份生成 `payload_id`，原子安装到 `<files>/payloads/<payload_id>/game/`；同一 payload 已存在时只替换 payload store 中的该目录，不再复制到 `<files>/game/`。
-7. 导入完成后创建或选择一个 launch profile，profile 会绑定该 payload，并按 payload manifest 中的 `version` 自动选择最佳 compat pack。
+7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload，并按 payload manifest 中的 `version` 自动选择最佳 compat pack；Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot` 与 `source.steam.depots[]` 中记录。
 8. 旧安装中的 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制。
 
 ## 5. 启动前检查
@@ -79,8 +79,9 @@ port-mod branch
    - 找到匹配包且当前 profile 未绑定匹配包时自动选择。
    - 若无选中包，阻止启动。
    - 若选中包 target version 与 payload version 不一致，弹出风险对话框，用户可取消、去版本页或强制启动。
-3. 启动后台线程执行 `GameLaunchPreparationManager.prepareForLaunch()`。
-4. 准备完成后启动 `GodotApp` 并附加 `launch_prepared=true`。
+3. 若 Steam Cloud 模式配置为“启动前拉取”或“完整自动”，且已保存 Steam refresh token，则先由 launcher 侧拉取当前 launch profile account root 的 Steam Cloud 文件；失败时弹窗允许取消、打开 Steam 中心或跳过同步继续启动。
+4. 启动后台线程执行 `GameLaunchPreparationManager.prepareForLaunch()`。
+5. 准备完成后启动 `GodotApp` 并附加 `launch_prepared=true`。
 
 ## 6. Launch preparation
 
@@ -104,7 +105,7 @@ port-mod branch
    - 复制当前 profile payload 目录中 `data_*/*` 的游戏 assemblies，跳过 `.so`，并保护 BCL/System/GodotSharp 等 runtime DLL。
    - 使用 SharedPreferences stamp 避免不必要的大文件重复复制；payload/profile 变化时强制刷新游戏 assemblies，并清理 publish 目录里旧 payload 遗留的游戏 DLL/JSON。
 
-`GodotApp` 仍保留 fallback：如果不是从设置页 prepared 启动，会自己调用同一准备流程。
+`GodotApp` 仍保留 fallback：如果不是从设置页 prepared 启动，会自己调用同一准备流程。游戏通过 Android 兼容层的退出回设置路径触发 `GodotApp.restartToSettingsFromGame()` 时，会写入 `<files>/launcher/expected_clean_game_exit.json`；下次设置页启动时，如 Steam Cloud 模式为完整自动，会尝试上传当前 launch profile account root 的本地变化。
 
 ## 7. Godot 启动与 runtime 入口
 
@@ -192,7 +193,7 @@ OS.GetDataDir()/port_compat.pck
 <files>/instances/<profile_id>/mods
 ```
 
-- 跳过 `ReadSteamMods()`，不枚举 Steam Workshop。
+- 跳过 `ReadSteamMods()`，不枚举 Steam Workshop。Steam 登录、游戏 depot 下载和 Steam Cloud 存档同步均在 Android launcher 侧完成，不恢复桌面 Steamworks 到游戏进程内。
 - 递归读取本地 MOD manifest，调用游戏原本的私有 scanner、dependency sort、TryLoadMod。
 - 对 `mod_manifest.json` 自动生成 `<ModId>.json` alias，以兼容当前 PC scanner 期望。
 - 将 companion settings 中的启用/禁用状态投影回运行时 `ModSettings`。

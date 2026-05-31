@@ -24,6 +24,7 @@ public interface ExtraSettingsActions {
 	void requestImportFullDataBackup();
 	void requestImportMod();
 	void openModStore();
+	void openSteamAccount();
 	void openLogViewer();
 	void openFileBrowser();
 	void openUrl(String url);

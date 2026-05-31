@@ -50,6 +50,8 @@ import org.json.JSONObject;
 import androidx.activity.EdgeToEdge;
 import androidx.core.splashscreen.SplashScreen;
 
+import com.godot.game.steam.cloud.SteamCleanExitTracker;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -608,7 +610,17 @@ public class GodotApp extends GodotActivity {
 			Log.e("GODOT", "Unable to hard-restart to GameSettingsActivity because current GodotApp instance is null.");
 			return false;
 		}
+		markExpectedCleanGameExit("restart_to_settings");
 		activity.runOnUiThread(activity::restartToSettingsAndExitProcess);
+		return true;
+	}
+
+	public static boolean markExpectedCleanGameExit(String source) {
+		GodotApp activity = currentInstance;
+		if (activity == null) {
+			return false;
+		}
+		SteamCleanExitTracker.mark(activity, source);
 		return true;
 	}
 

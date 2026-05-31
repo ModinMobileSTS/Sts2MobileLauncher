@@ -52,7 +52,7 @@ public final class PayloadManager {
 			return cancelled;
 		}
 
-		void throwIfCancelled() throws IOException {
+		public void throwIfCancelled() throws IOException {
 			if (cancelled || Thread.currentThread().isInterrupted()) {
 				throw new IOException("Import cancelled.");
 			}
@@ -205,6 +205,14 @@ public final class PayloadManager {
 		return new LaunchProfileManager(context).getSelectedManifestFile();
 	}
 
+	public Status importPayloadDirectory(File sourceDirectory, SourceInfo source, ProgressListener progressListener, ImportControl control) throws Exception {
+		checkCancelled(control);
+		if (sourceDirectory == null || !sourceDirectory.isDirectory()) {
+			throw new IOException("Downloaded payload directory is missing.");
+		}
+		return installPreparedDirectory(sourceDirectory, source, progressListener, control, true);
+	}
+
 	private Status installFromZip(File sourceZip, SourceInfo source, ProgressListener progressListener, ImportControl control) throws Exception {
 		checkCancelled(control);
 		File importRoot = getImportRootDir();
@@ -212,14 +220,23 @@ public final class PayloadManager {
 		cleanupOldImportScratch(importRoot, sourceZip);
 
 		File staging = new File(importRoot, "staging-" + UUID.randomUUID());
-		File backup = new File(importRoot, "payload-backup-" + UUID.randomUUID());
-		File targetGameDir = null;
-		boolean targetMovedToBackup = false;
-		boolean installed = false;
 		try {
 			ensureDirectory(staging);
 			reportProgress(progressListener, 36, "extract");
 			extractZipSafely(sourceZip, staging, progressListener, control);
+			return installPreparedDirectory(staging, source, progressListener, control, true);
+		} finally {
+			deleteIfExists(sourceZip);
+		}
+	}
+
+	private Status installPreparedDirectory(File staging, SourceInfo source, ProgressListener progressListener, ImportControl control, boolean deleteStagingOnFailure) throws Exception {
+		ensureDirectory(getImportRootDir());
+		File backup = new File(getImportRootDir(), "payload-backup-" + UUID.randomUUID());
+		File targetGameDir = null;
+		boolean targetMovedToBackup = false;
+		boolean installed = false;
+		try {
 			checkCancelled(control);
 			reportProgress(progressListener, 86, "validate");
 			Validation validation = validateGameDir(staging);
@@ -260,7 +277,9 @@ public final class PayloadManager {
 			return getStatusForGameDir(targetGameDir);
 		} finally {
 			if (!installed) {
-				deleteRecursively(staging);
+				if (deleteStagingOnFailure) {
+					deleteRecursively(staging);
+				}
 				if (targetMovedToBackup && backup.exists() && targetGameDir != null && !targetGameDir.exists()) {
 					backup.renameTo(targetGameDir);
 				}
@@ -268,7 +287,6 @@ public final class PayloadManager {
 			if (installed) {
 				deleteRecursively(backup);
 			}
-			deleteIfExists(sourceZip);
 		}
 	}
 
@@ -409,6 +427,12 @@ public final class PayloadManager {
 		sourceJson.put("display_name", source.displayName);
 		sourceJson.put("size", source.size);
 		sourceJson.put("sha256", source.sha256);
+		if (source.extras != null) {
+			for (java.util.Iterator<String> keys = source.extras.keys(); keys.hasNext(); ) {
+				String key = keys.next();
+				sourceJson.put(key, source.extras.opt(key));
+			}
+		}
 		root.put("source", sourceJson);
 
 		JSONObject identityJson = new JSONObject();
@@ -777,17 +801,23 @@ public final class PayloadManager {
 		}
 	}
 
-	private static final class SourceInfo {
+	public static final class SourceInfo {
 		final String kind;
 		final String displayName;
 		final long size;
 		final String sha256;
+		final JSONObject extras;
 
-		SourceInfo(String kind, String displayName, long size, String sha256) {
-			this.kind = kind;
-			this.displayName = displayName;
+		public SourceInfo(String kind, String displayName, long size, String sha256) {
+			this(kind, displayName, size, sha256, null);
+		}
+
+		public SourceInfo(String kind, String displayName, long size, String sha256, JSONObject extras) {
+			this.kind = kind == null ? "" : kind;
+			this.displayName = displayName == null ? "" : displayName;
 			this.size = size;
-			this.sha256 = sha256;
+			this.sha256 = sha256 == null ? "" : sha256;
+			this.extras = extras;
 		}
 	}
 

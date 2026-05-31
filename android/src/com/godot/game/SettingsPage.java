@@ -23,6 +23,10 @@ import androidx.appcompat.app.AlertDialog;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.materialswitch.MaterialSwitch;
 
+import com.godot.game.steam.auth.SteamAuthStore;
+import com.godot.game.steam.cloud.Sts2SteamCloudSyncManager;
+import com.godot.game.steam.core.SteamSettings;
+
 import org.json.JSONObject;
 
 import java.util.ArrayList;
@@ -83,6 +87,7 @@ public final class SettingsPage {
 			ExtraSettingsUi.addCardSpacing(root, buildPresetCard(settings));
 			ExtraSettingsUi.addCardSpacing(root, buildGraphicsAdvancedCard(settings));
 			ExtraSettingsUi.addCardSpacing(root, buildSaveCard());
+			ExtraSettingsUi.addCardSpacing(root, buildSteamCloudCard());
 			ExtraSettingsUi.addCardSpacing(root, buildInputCard(settings));
 			ExtraSettingsUi.addCardSpacing(root, buildSystemCard(settings));
 			ExtraSettingsUi.addCardSpacing(root, buildLogCard(settings));
@@ -204,6 +209,21 @@ public final class SettingsPage {
 		toNormal.setOnClickListener(v -> confirmModSaveTransfer(true));
 		ExtraSettingsUi.addSmallSpacing(content, toModded);
 		ExtraSettingsUi.addSmallSpacing(content, toNormal);
+		return card;
+	}
+
+	private View buildSteamCloudCard() {
+		MaterialCardView card = ExtraSettingsUi.card(context);
+		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
+		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_save_24, R.string.steam_cloud_title, R.string.steam_cloud_subtitle, null));
+		SteamAuthStore.AuthSnapshot auth = SteamAuthStore.readSnapshot(context);
+		Sts2SteamCloudSyncManager.Status status = new Sts2SteamCloudSyncManager(context).getStatus();
+		String account = auth.refreshTokenConfigured ? auth.accountName : context.getString(R.string.steam_not_logged_in);
+		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_badge_24, context.getString(R.string.steam_cloud_settings_status, account, SteamSettings.getCloudMode(context), status.remoteFileCount)));
+		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(context, status.accountRoot.getAbsolutePath()));
+		MaterialButton open = ExtraSettingsUi.tonalButton(context, R.string.steam_account_open, R.drawable.ic_download_24);
+		open.setOnClickListener(v -> actions.openSteamAccount());
+		ExtraSettingsUi.addSmallSpacing(content, open);
 		return card;
 	}
 

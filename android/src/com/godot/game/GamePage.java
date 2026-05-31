@@ -12,6 +12,8 @@ import android.widget.ScrollView;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 
+import com.godot.game.steam.auth.SteamAuthStore;
+
 import org.json.JSONObject;
 
 import java.util.List;
@@ -133,6 +135,15 @@ public final class GamePage {
 		row.addView(importZip, left);
 		row.addView(clear, right);
 		ExtraSettingsUi.addSmallSpacing(content, row);
+
+		SteamAuthStore.AuthSnapshot steam = SteamAuthStore.readSnapshot(context);
+		String steamStatus = steam.refreshTokenConfigured
+			? context.getString(R.string.steam_game_card_logged_in, steam.accountName)
+			: context.getString(R.string.steam_game_card_not_logged_in);
+		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_badge_24, steamStatus));
+		MaterialButton steamButton = ExtraSettingsUi.outlineButton(context, R.string.steam_account_open, R.drawable.ic_download_24);
+		steamButton.setOnClickListener(v -> actions.openSteamAccount());
+		ExtraSettingsUi.addSmallSpacing(content, steamButton);
 
 		if (payloadManager.hasBundledPayload()) {
 			MaterialButton bundled = ExtraSettingsUi.outlineButton(context, R.string.extract_bundled_payload, R.drawable.ic_download_24);

@@ -21,10 +21,10 @@ Android 侧拆成三层维护：
 
 1. **Android shell / launcher / 附加设置**
    - APK 默认进入 `GameSettingsActivity`，不是直接进入游戏。
-   - 负责首次向导、本地 PC 游戏 zip 导入、私有目录管理、游戏版本/兼容包管理、启动 Godot Activity、日志/文件浏览、存档备份、MOD 管理。
+   - 负责首次向导、本地 PC 游戏 zip 导入、Steam 登录/游戏下载/云存档、私有目录管理、游戏版本/兼容包管理、启动 Godot Activity、日志/文件浏览、存档备份、MOD 管理。
 2. **原版游戏 payload**
-   - 用户本地提供 `SlayTheSpire2.zip`。
-   - 导入后安装到 `<files>/payloads/<payload_id>/game/`；版本/配置切换只切换 launch profile 指针，不再复制完整 PCK/解压目录。
+   - 用户本地提供 `SlayTheSpire2.zip`，或使用自己拥有 STS2 的 Steam 账号从 SteamPipe 下载。
+   - 导入/下载后安装到 `<files>/payloads/<payload_id>/game/`；版本/配置切换只切换 launch profile 指针，不再复制完整 PCK/解压目录。
    - “版本”页可为同一个 payload 创建多个 `<files>/instances/<profile_id>/instance.json` 启动配置，并分别选择存档/设置、MOD 使用全局目录或隔离目录。
    - 直装版构建时可临时内置 zip 到 APK assets，但构建脚本退出会清理，不能提交。
 3. **Android 兼容包 / Harmony patcher**
@@ -87,7 +87,9 @@ s2_re/
     gradle.properties              # applicationId、ABI、签名、构建类型等本地属性
     settings.gradle                # pluginManagement + install-time asset pack
     assetPackInstallTime/          # install-time asset pack 占位
-    src/com/godot/game/            # Java shell、附加设置、payload/版本/兼容包管理、GodotApp 桥
+    src/com/godot/game/            # Java/Kotlin shell、附加设置、payload/版本/兼容包管理、Steam 中心、GodotApp 桥
+    steam-protocol/                # Steam CM/auth/content protobuf 协议子模块
+    steam-content/                 # SteamPipe depot manifest/chunk 下载子模块
     res/                           # 附加设置/崩溃页/文件浏览器/图标/shortcut/theme 等 Android 资源
     assets/
       bootstrap.pck                # 无游戏 payload 时的最小 Godot bootstrap pack
@@ -161,7 +163,8 @@ s2_re/
   - `WelcomeSetupPage`：首次向导。
   - `GamePage` / `SettingsPage` / `ModsPage` / `GameVersionManagerPage`：主页、设置、MOD、版本/兼容包管理。
   - `NexusModsStoreActivity`：从 `ModsPage` 的“导入 MOD”下方进入 NexusMods 商店；用户手动保存 Personal API Key 后可浏览热门/最新/近期更新结果、按 URL/数字 ID 精确查询、下载 ZIP 并导入到当前 launch profile 的 MOD 目录（全局 `<files>/mods/` 或隔离 `<files>/instances/<id>/mods/`）。非 Premium 下载若被 NexusMods API 拒绝，可引导用户打开网页并粘贴 NXM 链接中的 `key/expires`。
-  - `PayloadManager`：导入/校验/安装 PC 游戏 zip 到 payload store。
+  - `SteamAccountActivity`：Steam 中心；完成账号密码登录、Steam Guard、refresh token 加密保存、SteamPipe 下载 STS2 payload 到 payload store，以及当前 launch profile account root 的 Steam Cloud 手动拉取/上传和可选自动同步设置。
+  - `PayloadManager`：导入/校验/安装 PC 游戏 zip 或 SteamPipe 下载目录到 payload store。
   - `LaunchProfileManager`：维护 `<files>/payloads/<payload_id>/game/` 与 `<files>/instances/<profile_id>/instance.json`，支持同一游戏本体创建多个全局/隔离存档和 MOD 的启动配置；切换配置不复制 PCK。
   - `GameBodyVersionManager`：legacy facade，版本选择委托给 `LaunchProfileManager`，不再执行 active/归档目录复制。
   - `CompatPackManager`：安装、选择、删除兼容包；从 APK assets 安装内置兼容包；按 payload manifest 匹配目标版本。
@@ -205,6 +208,8 @@ s2_re/
 <files>/instances/<profile_id>/default/<account>/settings.save # 隔离存档/设置目录
 <files>/instances/<profile_id>/mods/        # 隔离普通用户 MOD 目录
 <files>/instances/<profile_id>/logs/        # profile 日志目录
+<files>/steam/downloads/                    # SteamPipe 下载 staging / 任务诊断
+<files>/steam/cloud/<profile_id>/           # Steam Cloud manifest、baseline、备份与诊断
 <files>/compat-packs/<pack_id>/             # 已安装 Android 兼容包
 <files>/launcher/selected_instance.json     # 当前启动配置解析结果
 <files>/launcher/selected_game_version.json # legacy 兼容诊断记录，指向当前 payload
@@ -322,10 +327,12 @@ tools/android/stage-bundled-compat-packs.sh
 - Android Gradle Plugin：`8.6.1`
 - Gradle wrapper：`8.13`
 - Kotlin plugin：`2.1.20`
+- Steam 相关 Gradle 子模块：`android/steam-protocol`、`android/steam-content`；主要依赖 JavaSteam `1.6.0`、OkHttp `5.3.2`、protobuf `4.31.1`、AndroidX Security Crypto、Android Prefab zstd（Steam VZstd chunk native 解压）、XZ。
 - compileSdk / targetSdk：`35`
 - minSdk：`24`
 - buildTools：`35.0.0`
 - NDK：`28.1.13356709`
+- CMake：`3.22.1`（用于 `libworkshop_zstd.so` JNI wrapper；Gradle 可按 SDK license 自动安装到 `../s2/.godot-home/Android/Sdk`）
 - Java source/target：`17`
 - flavor：`mono`
 - 默认 build type：`release`（脚本执行 `assembleMonoRelease`）
@@ -461,7 +468,7 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 
 1. 首次打开进入欢迎向导/附加设置，而不是直接进游戏。
 2. “版本”页能安装/显示内置兼容包，至少包含正式 `v0.103.2` 与 beta `v0.106.1` 对应包。
-3. 导入版选择 PC zip 后，`files/payloads/<payload_id>/game/.payload_manifest.json` 存在，`files/payloads/<payload_id>/game/SlayTheSpire2.pck` 存在，并创建/选择 `files/instances/<profile_id>/instance.json`；切换版本不应复制回 `files/game/`。
+3. 导入版选择 PC zip 或 Steam 下载后，`files/payloads/<payload_id>/game/.payload_manifest.json` 存在，`files/payloads/<payload_id>/game/SlayTheSpire2.pck` 存在，并创建/选择 `files/instances/<profile_id>/instance.json`；切换版本不应复制回 `files/game/`。Steam 下载来源应在 manifest 中记录 `source.kind=steam_depot`。
 4. 与 payload 版本匹配的兼容包会被自动选择；不匹配时启动前弹风险提示。
 5. 点击启动后 logcat / 当前 profile 的 `files/instances/<profile_id>/logs/android-launch.log` 能看到 selected compatibility pack 和 `Loading imported game PCK`。
 6. `files/.godot/mono/publish/arm64/STS2Mobile.dll` 来自当前选择的兼容包；`files/port_compat.pck` 已 staging。
@@ -469,6 +476,7 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 8. 从游戏内打开附加设置、退出回设置、crash/log/file browser 页面不崩溃。
 9. MOD master switch / 单 MOD disable 能在启动日志或游戏内 MOD 状态中反映；普通 MOD 从当前 profile 的 MOD 目录扫描（全局 `files/mods` 或隔离 `files/instances/<profile_id>/mods`），不走 Steam Workshop。
 10. Beta `v0.106.1` payload 应使用 `sts2-android-compat-v0.106.1-beta`，正式 `v0.103.2` payload 应使用 `sts2-android-compat-v0.103.2`。
+11. Steam 中心可登录/验证 refresh token；Steam Cloud 手动刷新/拉取/上传使用当前 launch profile 的 account root，拉取前在 `files/steam/cloud/<profile_id>/backups/` 创建备份。
 
 ## 12. 维护提醒
 
@@ -477,6 +485,7 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 - `settings.save` 的 Android-only key 是 Java 附加设置与 Harmony patcher/Java 启动参数的协议；改 key 要同步 `ExtraSettingsRepository`、页面 UI、`AndroidSettingsBridge` 或 `GodotApp.getCommandLine()` 等消费者、相关 patches，并记录到 `doc/changelog/`。`log_level` 额外同步到 SharedPreferences，避免原版游戏保存 settings 时丢失该 Android 字段。
 - `<files>/default/<account>` 的账号选择逻辑与旧移植版兼容但较脆弱，多账号/自定义 platform player id 改动要同时检查 Java 与兼容 MOD。
 - 当前普通 MOD 目录由 launch profile 决定：`mods_mode=global` 使用 `<files>/mods`，`mods_mode=isolated` 使用 `<files>/instances/<profile_id>/mods`；新增路径相关功能必须同步 Java 管理页、C# `AppPaths`、ModLoader patches 和迁移/备份逻辑。
+- Steam Cloud 同步必须使用当前 launch profile 的 account root：`save_mode=global` 使用 `<files>/default/<account>`，`save_mode=isolated` 使用 `<files>/instances/<profile_id>/default/<account>`；不要把云存档固定写死到全局 `<files>/default/1`。
 - 多版本兼容包的长期方向是 manifest 化、可安装、可选择、可诊断；不要把某一游戏版本的兼容 patch 直接写死到 Android shell。
 - 对 beta 分支改动时务必用 `ReferenceFlavor=original-v0.106.1` 编译；对正式分支改动时务必用 `ReferenceFlavor=original` 编译。
 - 新增兼容分支时需要同时增加：submodule 分支、原版 refs/ReferenceFlavor、compat manifest、`tools/android/bundled-compat-packs.json` 条目、文档版本矩阵、至少一次 importer APK 构建验证。
