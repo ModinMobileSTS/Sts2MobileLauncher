@@ -628,6 +628,11 @@
     <string name="steam_account_open">Steam account / download / cloud</string>
     <string name="steam_account_status_title">Steam account</string>
     <string name="steam_account_status_subtitle">Login is used only for your own Steam download and Steam Cloud saves.</string>
+    <string name="steam_account_safety_notice_title">Steam account safety notice</string>
+    <string name="steam_account_safety_notice_message">• This app &lt;b&gt;does not upload any Steam account information&lt;/b&gt;; it only saves the &lt;i&gt;refresh token&lt;/i&gt; locally.&lt;br/&gt;&lt;br/&gt;• Enter Steam account information only in this app when it was downloaded from a &lt;u&gt;trusted source&lt;/u&gt; to protect your account.&lt;br/&gt;&lt;br/&gt;• After installing &lt;i&gt;unknown MODs&lt;/i&gt;, we recommend logging out to avoid the potential risk of a malicious MOD reading the local RT and stealing the account.&lt;br/&gt;&lt;br/&gt;• Before using &lt;b&gt;Steam Cloud saves&lt;/b&gt;, please &lt;u&gt;make a backup first&lt;/u&gt; to avoid save loss caused by unexpected failures.&lt;br/&gt;&lt;br/&gt;• In mainland China, using Steam related services may require a &lt;i&gt;network accelerator&lt;/i&gt;.</string>
+    <string name="steam_account_safety_notice_wait_button">Close(%1$ds)</string>
+    <string name="steam_account_safety_notice_ack_button">Close</string>
+    <string name="steam_account_safety_notice_open">Safety notice</string>
     <string name="steam_not_logged_in">Not logged in</string>
     <string name="steam_account_status_format">Account: %1$s
 SteamID64: %2$s

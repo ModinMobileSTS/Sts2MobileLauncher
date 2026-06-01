@@ -624,6 +624,11 @@
     <string name="steam_account_open">Steam 账号 / 下载 / 云存档</string>
     <string name="steam_account_status_title">Steam 账号</string>
     <string name="steam_account_status_subtitle">登录只用于你自己的 Steam 游戏下载和 Steam 云存档同步。</string>
+    <string name="steam_account_safety_notice_title">Steam 账号安全提示</string>
+    <string name="steam_account_safety_notice_message">• 本应用&lt;b&gt;不会上传任何 Steam 账号信息&lt;/b&gt;，仅在本地保存&lt;i&gt;refresh token&lt;/i&gt;。&lt;br/&gt;&lt;br/&gt;• 请只在从&lt;u&gt;可信来源&lt;/u&gt;下载的本应用中输入 Steam 账号信息，确保账号安全。&lt;br/&gt;&lt;br/&gt;• 安装&lt;i&gt;未知 MOD&lt;/i&gt; 后，建议退出登录，避免潜在的恶意 MOD 读取本地 RT 并盗取账号的风险。&lt;br/&gt;&lt;br/&gt;• 使用&lt;b&gt;云存档&lt;/b&gt;时，建议&lt;u&gt;先进行备份&lt;/u&gt;，避免因为意外故障导致存档丢失。&lt;br/&gt;&lt;br/&gt;• 国内使用 Steam 相关服务可能需要开启&lt;i&gt;加速器&lt;/i&gt;。</string>
+    <string name="steam_account_safety_notice_wait_button">关闭(%1$d秒)</string>
+    <string name="steam_account_safety_notice_ack_button">关闭</string>
+    <string name="steam_account_safety_notice_open">安全说明</string>
     <string name="steam_not_logged_in">未登录</string>
     <string name="steam_account_status_format">账号：%1$s
 SteamID64：%2$s

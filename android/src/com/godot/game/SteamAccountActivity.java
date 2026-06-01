@@ -1,6 +1,10 @@
 package com.godot.game;
 
+import android.content.DialogInterface;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.Html;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.view.View;
@@ -14,6 +18,7 @@ import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.godot.game.steam.auth.SteamAuthStore;
@@ -33,6 +38,9 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 public class SteamAccountActivity extends AppCompatActivity {
+	private static final int SAFETY_NOTICE_COUNTDOWN_SECONDS = 5;
+	private static final long SAFETY_NOTICE_COUNTDOWN_INTERVAL_MS = 1000L;
+
 	private TextView statusText;
 	private TextView progressText;
 	private ProgressBar progressBar;
@@ -45,6 +53,64 @@ public class SteamAccountActivity extends AppCompatActivity {
 		super.onCreate(savedInstanceState);
 		buildUi();
 		refreshStatus();
+		showFirstOpenSafetyNoticeIfNeeded();
+	}
+
+	private void showFirstOpenSafetyNoticeIfNeeded() {
+		if (!SteamSettings.hasSeenAccountSafetyNotice(this)) {
+			showSafetyNoticeDialog(true);
+		}
+	}
+
+	private void showSafetyNoticeDialog(boolean requireCountdown) {
+		Handler countdownHandler = new Handler(Looper.getMainLooper());
+		final Runnable[] countdownTick = new Runnable[1];
+		MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.steam_account_safety_notice_title)
+			.setMessage(Html.fromHtml(getString(R.string.steam_account_safety_notice_message), Html.FROM_HTML_MODE_LEGACY))
+			.setCancelable(!requireCountdown);
+		if (requireCountdown) {
+			builder.setPositiveButton(getString(R.string.steam_account_safety_notice_wait_button, SAFETY_NOTICE_COUNTDOWN_SECONDS), null);
+		} else {
+			builder.setPositiveButton(R.string.steam_account_safety_notice_ack_button, null);
+		}
+		AlertDialog dialog = builder.create();
+		dialog.setOnShowListener(shown -> {
+			if (!requireCountdown) {
+				return;
+			}
+			dialog.setCanceledOnTouchOutside(false);
+			dialog.getButton(DialogInterface.BUTTON_POSITIVE).setEnabled(false);
+			dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> {
+				SteamSettings.markAccountSafetyNoticeSeen(this);
+				dialog.dismiss();
+			});
+			countdownTick[0] = new Runnable() {
+				private int remainingSeconds = SAFETY_NOTICE_COUNTDOWN_SECONDS;
+
+				@Override
+				public void run() {
+					if (isFinishing() || isDestroyed() || !dialog.isShowing()) {
+						return;
+					}
+					remainingSeconds--;
+					if (remainingSeconds <= 0) {
+						dialog.getButton(DialogInterface.BUTTON_POSITIVE).setText(R.string.steam_account_safety_notice_ack_button);
+						dialog.getButton(DialogInterface.BUTTON_POSITIVE).setEnabled(true);
+						return;
+					}
+					dialog.getButton(DialogInterface.BUTTON_POSITIVE).setText(getString(R.string.steam_account_safety_notice_wait_button, remainingSeconds));
+					countdownHandler.postDelayed(this, SAFETY_NOTICE_COUNTDOWN_INTERVAL_MS);
+				}
+			};
+			countdownHandler.postDelayed(countdownTick[0], SAFETY_NOTICE_COUNTDOWN_INTERVAL_MS);
+		});
+		dialog.setOnDismissListener(dismissed -> {
+			if (countdownTick[0] != null) {
+				countdownHandler.removeCallbacks(countdownTick[0]);
+			}
+		});
+		dialog.show();
 	}
 
 	private void buildUi() {
@@ -65,6 +131,9 @@ public class SteamAccountActivity extends AppCompatActivity {
 		ExtraSettingsUi.addCardSpacing(root, buildStatusCard());
 		ExtraSettingsUi.addCardSpacing(root, buildDownloadCard());
 		ExtraSettingsUi.addCardSpacing(root, buildCloudCard());
+		MaterialButton safetyNotice = ExtraSettingsUi.outlineButton(this, R.string.steam_account_safety_notice_open, R.drawable.ic_info_24);
+		safetyNotice.setOnClickListener(v -> showSafetyNoticeDialog(false));
+		ExtraSettingsUi.addCardSpacing(root, safetyNotice);
 	}
 
 	private View buildStatusCard() {

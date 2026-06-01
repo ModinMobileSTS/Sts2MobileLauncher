@@ -289,7 +289,7 @@ tools/android/make-port-overlay-pck.py
 关键流程：
 
 - `GameSettingsActivity` 是默认 launcher，负责首次向导和附加设置。
-- `SteamAccountActivity` 提供 Steam 登录、refresh token 验证、SteamPipe 下载游戏本体，以及当前 launch profile account root 的 Steam Cloud 手动/自动同步入口。
+- `SteamAccountActivity` 提供 Steam 登录、refresh token 验证、SteamPipe 下载游戏本体，以及当前 launch profile account root 的 Steam Cloud 手动/自动同步入口；首次打开会显示带动态倒计时、5 秒后才能关闭的账号安全提示，提醒本地 refresh token、可信来源、未知 MOD 风险、云存档备份和国内网络加速器需求，页面底部也常驻“安全说明”按钮可再次查看。
 - `PayloadManager` 负责 SAF 选择 zip、assets 内置 payload 解压、校验、staging、安装到 payload store 和 rollback。
 - `LaunchProfileManager` 负责选择当前 payload/compat/save/mod/log 路径，并写入 `<files>/launcher/selected_instance.json`。
 - `GodotApp` 是真正的 Godot 游戏 Activity：
