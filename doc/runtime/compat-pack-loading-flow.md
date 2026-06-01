@@ -152,7 +152,16 @@ STS2Mobile.ModEntry
 4. Platform、release info、save path、settings、display、font/UI scale；其中 `AppPaths` 从 Mono publish 目录或 Android 进程包名推导 `<files>` 后读取 `launcher/selected_instance.json`，`SavePathPatches` 将原版 `UserDataPathProvider` 重定向到当前 launch profile 的 account root。
 5. 移动端 layout/input、事件/商店/奖励/战斗背景等 UI 修正。
 6. Android UI safety、游戏内设置入口、shader overlay、transition material 防黑屏、Android back/touch/controller、奖励/商人二次确认、tap preview、hand layout。
-7. intent animation、quick restart、lifecycle/performance。
+7. intent animation、quick restart、lifecycle/performance。`LifecycleAndPerformancePatches` 在 `NMainMenu._Ready` 后启动安全 deferred preload，并在需要细分或额外 warmup 时接管原版 `LoadCommonAndMainMenuAssets()`：
+   - `preload_enabled`：总开关，默认 `true`。
+   - `preload_startup_common_enabled`：主菜单后加载 `AssetSets.CommonAssets`，默认 `true`。
+   - `preload_startup_main_menu_enabled`：主菜单后加载 `AssetSets.MainMenuSet`，默认 `true`。
+   - `preload_runtime_enabled`：保留 run/act/room 资源预加载，默认 `true`。
+   - `preload_menu_hotspots_enabled`：额外实例化单人/多人常用子菜单，默认 `false`。
+   - `preload_vfx_mode`：`off` / `hot` / `full`，默认 `off`；`hot` 仅实例化高频战斗 VFX，`full` 递归 `res://scenes/vfx/**/*.tscn`。
+   - `preload_combat_code_enabled`：额外预热攻击/伤害/VFX 托管方法，默认 `false`。
+   - `preload_shader_mode`：`off` / `load_resources`，默认 `off`；仅加载已知 shader 资源，不保证 GPU pipeline 已完成编译。
+   Android 附加设置页只在系统卡片中显示 `preload_enabled` 总开关；右侧箭头打开预加载详细管理 BottomSheet，默认不会自动展开。总开关开/关只写入自身，不改写上述细分项目；BottomSheet 的“恢复默认”只重置细分项目，不修改 `preload_enabled`。默认组合保持本次改动前的预加载行为，不额外启用 VFX/菜单/shader/code warmup。
 8. LAN bootstrap。
 9. `ModLoaderPatches`。
 10. save diagnostic。

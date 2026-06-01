@@ -125,6 +125,13 @@ public final class ExtraSettingsRepository {
 		putVector(settings, "window_size", 1920, 1080);
 		putVector(settings, "fullscreen_render_size", 0, 0);
 		settings.put("preload_enabled", true);
+		settings.put("preload_startup_common_enabled", true);
+		settings.put("preload_startup_main_menu_enabled", true);
+		settings.put("preload_menu_hotspots_enabled", false);
+		settings.put("preload_vfx_mode", "off");
+		settings.put("preload_combat_code_enabled", false);
+		settings.put("preload_shader_mode", "off");
+		settings.put("preload_runtime_enabled", true);
 		settings.put(KEY_ANDROID_COMPAT_PACK_ENABLED, true);
 		settings.put("global_scale", 1.0f);
 		settings.put("ui_font_scale_percent", 100);
@@ -161,6 +168,13 @@ public final class ExtraSettingsRepository {
 		changed |= putIfMissing(settings, "aspect_ratio", "auto");
 		changed |= putIfMissing(settings, "shader_compatibility_mode", false);
 		changed |= putIfMissing(settings, "preload_enabled", true);
+		changed |= putIfMissing(settings, "preload_startup_common_enabled", true);
+		changed |= putIfMissing(settings, "preload_startup_main_menu_enabled", true);
+		changed |= putIfMissing(settings, "preload_menu_hotspots_enabled", false);
+		changed |= putIfMissing(settings, "preload_vfx_mode", "off");
+		changed |= putIfMissing(settings, "preload_combat_code_enabled", false);
+		changed |= putIfMissing(settings, "preload_shader_mode", "off");
+		changed |= putIfMissing(settings, "preload_runtime_enabled", true);
 		changed |= putIfMissing(settings, KEY_ANDROID_COMPAT_PACK_ENABLED, true);
 		changed |= putIfMissing(settings, "fullscreen_render_size", vector(0, 0));
 		changed |= putIfMissing(settings, "global_scale", 1.0f);
@@ -259,6 +273,18 @@ public final class ExtraSettingsRepository {
 		applyAspectRatio("auto");
 		applyDisplayPreset(DISPLAY_PRESET_ORIGINAL);
 		applyOperationPreset(OPERATION_PRESET_TOUCH);
+	}
+
+	public void resetPreloadAdvancedDefaults() throws Exception {
+		saveSetting(settings -> {
+			settings.put("preload_startup_common_enabled", true);
+			settings.put("preload_startup_main_menu_enabled", true);
+			settings.put("preload_menu_hotspots_enabled", false);
+			settings.put("preload_vfx_mode", "off");
+			settings.put("preload_combat_code_enabled", false);
+			settings.put("preload_shader_mode", "off");
+			settings.put("preload_runtime_enabled", true);
+		});
 	}
 
 	public void applyGraphicsPreset(String preset) throws Exception {

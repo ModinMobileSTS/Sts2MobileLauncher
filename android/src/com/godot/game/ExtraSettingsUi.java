@@ -246,7 +246,9 @@ public final class ExtraSettingsUi {
 	public static MaterialButton tonalButton(Context context, int textRes, int iconRes) {
 		MaterialButton button = filledButton(context, textRes, iconRes);
 		button.setTextColor(COLOR_ON_PRIMARY_CONTAINER);
-		button.setIconTint(ColorStateList.valueOf(COLOR_ON_PRIMARY_CONTAINER));
+		if (iconRes != 0) {
+			button.setIconTint(ColorStateList.valueOf(COLOR_ON_PRIMARY_CONTAINER));
+		}
 		button.setBackgroundTintList(ColorStateList.valueOf(COLOR_PRIMARY_CONTAINER));
 		return button;
 	}

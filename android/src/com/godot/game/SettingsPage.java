@@ -7,6 +7,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.view.inputmethod.EditorInfo;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -16,6 +17,7 @@ import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 
+import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 import androidx.appcompat.app.AlertDialog;
@@ -59,6 +61,8 @@ public final class SettingsPage {
 	private static final String[] RENDERER_VALUES = new String[] { RendererPreference.RENDERER_OPENGL_ES3, RendererPreference.RENDERER_VULKAN };
 	private static final String[] LOG_LEVEL_VALUES = new String[] { ExtraSettingsRepository.LOG_LEVEL_INFO, ExtraSettingsRepository.LOG_LEVEL_DEBUG, ExtraSettingsRepository.LOG_LEVEL_VERY_DEBUG };
 	private static final String[] LAUNCHER_STARTUP_VALUES = new String[] { ExtraSettingsPreferences.LAUNCHER_STARTUP_SETTINGS, ExtraSettingsPreferences.LAUNCHER_STARTUP_GAME };
+	private static final String[] VFX_PRELOAD_VALUES = new String[] { "off", "hot", "full" };
+	private static final String[] SHADER_PRELOAD_VALUES = new String[] { "off", "load_resources" };
 
 	private final Context context;
 	private final ExtraSettingsRepository repository;
@@ -303,7 +307,7 @@ public final class SettingsPage {
 		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
 		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_dashboard_24, R.string.settings_system_title, R.string.settings_system_subtitle, null));
 		addSpinnerRow(content, R.drawable.ic_rocket_launch_24, R.string.launcher_startup_behavior_title, buildLauncherStartupBehaviorLabels(), findStringIndex(LAUNCHER_STARTUP_VALUES, ExtraSettingsPreferences.getLauncherStartupBehavior(context)), position -> ExtraSettingsPreferences.setLauncherStartupBehavior(context, LAUNCHER_STARTUP_VALUES[position]));
-		addSwitchRow(content, R.drawable.ic_bolt_24, R.string.preload_switch, R.string.preload_hint, settings.optBoolean("preload_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_enabled", checked)));
+		addSwitchDetailsRow(content, R.drawable.ic_bolt_24, R.string.preload_switch, R.string.preload_hint, settings.optBoolean("preload_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_enabled", checked)), this::showPreloadAdvancedBottomSheet);
 		addSwitchRow(content, R.drawable.ic_extension_24, R.string.android_compat_pack_enabled_switch, R.string.android_compat_pack_enabled_hint, settings.optBoolean(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, true), checked -> repository.saveSetting(root -> root.put(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, checked)));
 		MaterialButton clearTextureCache = ExtraSettingsUi.outlineButton(context, R.string.clear_texture_cache, R.drawable.ic_layers_24);
 		clearTextureCache.setOnClickListener(v -> actions.requestClearTextureCache());
@@ -407,6 +411,37 @@ public final class SettingsPage {
 			}
 		});
 		row.addView(switchView);
+		rowContent.addView(row);
+		rowCard.setOnClickListener(v -> switchView.setChecked(!switchView.isChecked()));
+		ExtraSettingsUi.addSmallSpacing(parent, rowCard);
+	}
+
+	private void addSwitchDetailsRow(LinearLayout parent, int iconRes, int titleRes, int hintRes, boolean checked, BoolSettingOperation operation, View.OnClickListener detailsClickListener) {
+		MaterialCardView rowCard = ExtraSettingsUi.clickableCard(context);
+		LinearLayout rowContent = ExtraSettingsUi.cardContent(context, rowCard);
+		LinearLayout row = ExtraSettingsUi.horizontal(context);
+		row.addView(ExtraSettingsUi.icon(context, iconRes, ExtraSettingsUi.COLOR_PRIMARY, 22));
+		LinearLayout textColumn = ExtraSettingsUi.vertical(context);
+		row.addView(textColumn, labelParams());
+		textColumn.addView(ExtraSettingsUi.label(context, titleRes));
+		if (hintRes != 0) {
+			textColumn.addView(ExtraSettingsUi.caption(context, context.getString(hintRes)));
+		}
+		MaterialSwitch switchView = new MaterialSwitch(context);
+		switchView.setChecked(checked);
+		switchView.setOnCheckedChangeListener((buttonView, isChecked) -> {
+			try {
+				operation.apply(isChecked);
+				actions.showMessage(context.getString(R.string.status_settings_saved));
+			} catch (Exception exception) {
+				actions.showError(exception);
+			}
+		});
+		MaterialButton details = ExtraSettingsUi.iconButton(context, R.drawable.ic_chevron_right_24);
+		details.setContentDescription(context.getString(R.string.preload_advanced_title));
+		details.setOnClickListener(detailsClickListener);
+		row.addView(switchView);
+		row.addView(details);
 		rowContent.addView(row);
 		rowCard.setOnClickListener(v -> switchView.setChecked(!switchView.isChecked()));
 		ExtraSettingsUi.addSmallSpacing(parent, rowCard);
@@ -521,6 +556,58 @@ public final class SettingsPage {
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (dialog, which) -> actions.runAsyncOperation(context.getString(R.string.status_busy_mod_save_transfer), () -> repository.transferModSaveProfiles(sourceIsModded)))
 			.show();
+	}
+
+	private void showPreloadAdvancedBottomSheet(View anchor) {
+		try {
+			BottomSheetDialog dialog = new BottomSheetDialog(context);
+			dialog.setContentView(buildPreloadAdvancedSheetContent(dialog, repository.loadSettingsJson()));
+			dialog.setOnShowListener(unused -> {
+				Window window = dialog.getWindow();
+				if (window != null) {
+					window.setDimAmount(0.48f);
+				}
+			});
+			dialog.show();
+		} catch (Exception exception) {
+			actions.showError(exception);
+		}
+	}
+
+	private View buildPreloadAdvancedSheetContent(BottomSheetDialog dialog, JSONObject settings) {
+		ScrollView scrollView = new ScrollView(context);
+		scrollView.setFillViewport(false);
+		scrollView.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
+		LinearLayout content = ExtraSettingsUi.vertical(context);
+		int horizontalPadding = ExtraSettingsUi.dp(context, 20);
+		content.setPadding(horizontalPadding, ExtraSettingsUi.dp(context, 18), horizontalPadding, ExtraSettingsUi.dp(context, 28));
+		scrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_bolt_24, R.string.preload_advanced_title, R.string.preload_advanced_subtitle, null));
+		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.body(context, R.string.preload_advanced_master_note));
+		addSwitchRow(content, R.drawable.ic_layers_24, R.string.preload_startup_common_switch, R.string.preload_startup_common_hint, settings.optBoolean("preload_startup_common_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_startup_common_enabled", checked)));
+		addSwitchRow(content, R.drawable.ic_dashboard_24, R.string.preload_startup_main_menu_switch, R.string.preload_startup_main_menu_hint, settings.optBoolean("preload_startup_main_menu_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_startup_main_menu_enabled", checked)));
+		addSwitchRow(content, R.drawable.ic_rocket_launch_24, R.string.preload_menu_hotspots_switch, R.string.preload_menu_hotspots_hint, settings.optBoolean("preload_menu_hotspots_enabled", false), checked -> repository.saveSetting(root -> root.put("preload_menu_hotspots_enabled", checked)));
+		addSpinnerRow(content, R.drawable.ic_auto_awesome_24, R.string.preload_vfx_mode_title, buildVfxPreloadLabels(), findStringIndex(VFX_PRELOAD_VALUES, settings.optString("preload_vfx_mode", "off")), position -> repository.saveSetting(root -> root.put("preload_vfx_mode", VFX_PRELOAD_VALUES[position])));
+		addSwitchRow(content, R.drawable.ic_speed_24, R.string.preload_combat_code_switch, R.string.preload_combat_code_hint, settings.optBoolean("preload_combat_code_enabled", false), checked -> repository.saveSetting(root -> root.put("preload_combat_code_enabled", checked)));
+		addSpinnerRow(content, R.drawable.ic_build_24, R.string.preload_shader_mode_title, buildShaderPreloadLabels(), findStringIndex(SHADER_PRELOAD_VALUES, settings.optString("preload_shader_mode", "off")), position -> repository.saveSetting(root -> root.put("preload_shader_mode", SHADER_PRELOAD_VALUES[position])));
+		addSwitchRow(content, R.drawable.ic_sync_24, R.string.preload_runtime_switch, R.string.preload_runtime_hint, settings.optBoolean("preload_runtime_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_runtime_enabled", checked)));
+		LinearLayout buttons = ExtraSettingsUi.horizontal(context);
+		MaterialButton reset = ExtraSettingsUi.outlineButton(context, R.string.preload_restore_defaults, R.drawable.ic_restart_alt_24);
+		MaterialButton close = ExtraSettingsUi.tonalButton(context, android.R.string.ok, 0);
+		reset.setOnClickListener(v -> {
+			try {
+				repository.resetPreloadAdvancedDefaults();
+				actions.showMessage(context.getString(R.string.preload_defaults_restored));
+				dialog.dismiss();
+			} catch (Exception exception) {
+				actions.showError(exception);
+			}
+		});
+		close.setOnClickListener(v -> dialog.dismiss());
+		buttons.addView(reset, weighted(0));
+		buttons.addView(close, weighted(10));
+		ExtraSettingsUi.addSmallSpacing(content, buttons);
+		return scrollView;
 	}
 
 	private void showCustomScaleDialog() {
@@ -708,6 +795,21 @@ public final class SettingsPage {
 		return Arrays.asList(
 			context.getString(R.string.launcher_startup_behavior_settings_option),
 			context.getString(R.string.launcher_startup_behavior_game_option)
+		);
+	}
+
+	private List<String> buildVfxPreloadLabels() {
+		return Arrays.asList(
+			context.getString(R.string.preload_vfx_mode_off),
+			context.getString(R.string.preload_vfx_mode_hot),
+			context.getString(R.string.preload_vfx_mode_full)
+		);
+	}
+
+	private List<String> buildShaderPreloadLabels() {
+		return Arrays.asList(
+			context.getString(R.string.preload_shader_mode_off),
+			context.getString(R.string.preload_shader_mode_load_resources)
 		);
 	}
 
