@@ -41,7 +41,8 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/AndroidSettingsMerge.cs" \
     "STS2AndroidPortCompat/Patches/AndroidInGameSettingsPatches.cs" \
     "STS2AndroidPortCompat/Patches/DisplaySettingsPatches.cs" \
-    "STS2AndroidPortCompat/Patches/TransitionMaterialPatches.cs"; do
+    "STS2AndroidPortCompat/Patches/TransitionMaterialPatches.cs" \
+    "STS2AndroidPortCompat/Patches/QuickRestartPatches.cs"; do
     if [[ -f "$source_root/$rel" ]]; then
       mkdir -p "$(dirname "$target_root/$rel")"
       if [[ "$source_root/$rel" != "$target_root/$rel" ]]; then

@@ -298,15 +298,16 @@ tools/android/stage-bundled-compat-packs.sh
 5. patched Godot runtime 加载 `STS2Mobile.dll` / `STS2Mobile.ModEntry`，调用 `InitializeGodotSharp` 与 `Apply`。
 6. `ModEntry.Apply()` 以固定顺序应用 Harmony patches：诊断、BaseLib/RitsuLib、ModelDb/UnlockState、平台/release/save-path/settings/layout/input、shader、LAN、ModLoader 等；`AppPaths` 从 publish 目录或 Android 进程包名推导 `<files>` 并读取 `<files>/launcher/selected_instance.json`（避免兼容层早期初始化调用 Godot API/Java bridge），`SavePathPatches` 会把原版 `UserDataPathProvider` 重定向到当前 launch profile 的 account root，确保隔离存档/设置生效。
 7. `ModLoaderPatches` 接管原版 `ModManager.Initialize()`，扫描当前 launch profile 的 `AppPaths.ModsDir`（全局 `<files>/mods` 或隔离 `<files>/instances/<profile_id>/mods`），跳过 Steam Workshop，并处理 `mod_manifest.json` → `<ModId>.json` manifest alias；**加载任何 MOD 之前先预注册仅原版模型占位**（`AbstractModelSubtypes.All`），避免 Android/Mono 下 MOD initializer Harmony patch 某个 getter（如 HextechRunes patch `UnlockState.Relics`）时提前触发 `UnlockState..cctor -> ACT.OVERGROWTH`、或 MOD 静态构造引用原版模型时崩溃；原版类型不带命名空间前缀，提前算 ID 不会污染 YuWanCard/BaseLib 的 `GetEntry` 前缀缓存。**不对 MOD 模型类型提前算 ID**，MOD 占位延迟到 phase 1。
-8. `LifecycleAndPerformancePatches` 会在 `NMainMenu._Ready` 后启动安全 deferred preload，并在需要细分或额外 warmup 时接管原版 `LoadCommonAndMainMenuAssets()`：总开关 `preload_enabled` 默认开启；Android 附加设置页中它只作为总开关显示，右侧箭头打开预加载详细管理 BottomSheet，总开关开/关不改写细分项目；`preload_startup_common_enabled=true`、`preload_startup_main_menu_enabled=true`、`preload_runtime_enabled=true` 保持旧版默认资源加载；`preload_menu_hotspots_enabled=false`、`preload_vfx_mode=off`、`preload_combat_code_enabled=false`、`preload_shader_mode=off` 默认为关闭，避免默认行为比旧版更重。高级开关可分别控制 CommonAssets、MainMenuSet、常用菜单实例化、VFX 场景 warmup、战斗代码 warmup、已知 shader 资源加载与 run/act/room 预加载，BottomSheet 的“恢复默认”只重置这些细分项目，不修改 `preload_enabled`。
-9. `TransitionMaterialPatches` 会复制 `NTransition` 使用的 fade/fight `ShaderMaterial`，避免关闭预加载时原版 missed-cache 清理 dispose 掉仍在 `FadeIn()` 中使用的共享 transition 材质，从而黑屏。
-10. `ModelDbInitPatch` 分三个阶段处理模型占位：
+8. `QuickRestartPatches` 在 pause menu 提供 Android 内置“重打/Retry”按钮；快速重开会先等待当前 run save 任务，淡出后执行原版 `RunManager.SetUpSavedSinglePlayer()`（返回 `Task` 的版本会等待完成）以完整初始化新 run 的 `NetService` / `MapSelectionSynchronizer` 等同步器后再调用 `NGame.LoadRun()`，并在淡出后失败时尝试 `FadeIn()` 恢复可见画面，避免关闭/跳过运行时预加载时因 async 时序竞态卡黑屏。
+9. `LifecycleAndPerformancePatches` 会在 `NMainMenu._Ready` 后启动安全 deferred preload，并在需要细分或额外 warmup 时接管原版 `LoadCommonAndMainMenuAssets()`：总开关 `preload_enabled` 默认开启；Android 附加设置页中它只作为总开关显示，右侧箭头打开预加载详细管理 BottomSheet，总开关开/关不改写细分项目；`preload_startup_common_enabled=true`、`preload_startup_main_menu_enabled=true`、`preload_runtime_enabled=true` 保持旧版默认资源加载；`preload_menu_hotspots_enabled=false`、`preload_vfx_mode=off`、`preload_combat_code_enabled=false`、`preload_shader_mode=off` 默认为关闭，避免默认行为比旧版更重。高级开关可分别控制 CommonAssets、MainMenuSet、常用菜单实例化、VFX 场景 warmup、战斗代码 warmup、已知 shader 资源加载与 run/act/room 预加载，BottomSheet 的“恢复默认”只重置这些细分项目，不修改 `preload_enabled`。
+10. `TransitionMaterialPatches` 会复制 `NTransition` 使用的 fade/fight `ShaderMaterial`，避免关闭预加载时原版 missed-cache 清理 dispose 掉仍在 `FadeIn()` 中使用的共享 transition 材质，从而黑屏。
+11. `ModelDbInitPatch` 分三个阶段处理模型占位：
    - **早期原版占位**（加载 MOD 前，由 `ModLoaderPatches` 触发）：仅原版，解决 MOD patch getter / MOD 静态构造引用原版模型的早访问。
    - **phase 1**（`ExecuteEssential` 中、`ModelDb.Init()` 调用**之前**）：MOD patch 已全部应用，按最终 `ModelDb.GetId(Type)` 补齐全部模型（含 MOD 自定义类型）占位；解决 MOD 间静态构造引用（如 `wuwancients.HiddenSeaRecord..cctor -> RELIC.LONG_SNAKE_NECKLACE`），这些构造会在 MOD 的 `ModelDb.Init` prefix 期间被 Android/Mono 提前触发。
    - **phase 2**（`InitPrefix` 中，`Priority.Last`）：在占位上原地运行真实静态/实例构造器，并跳过原版 one-pass body。因部分 MOD 的 `ModelDb.Init` prefix 会自己返回 `false` 并让 Harmony 跳过后续 prefix，兼容层还安装 `Priority.First` postfix 与 `ExecuteEssential` 后置兜底，确保构造 phase 一定执行。自定义模型 ID（含 `ENCOUNTER.YUWANCARD-KILLER_ELITE` 等带前缀 ID）完全由原版 `ModelDb.Init` + MOD `GetEntry` patch 自然产生，不再人为迁移 key。用户 MOD 的 `ModelDb.Init` prefix/postfix 生命周期保留。
    - `UnlockStateCompatPatches` 在 `ModelDb` 初始化完成前让 `ModelDb.AllEncounters` 返回空列表，避免 Android/Mono 因 Harmony patch getter 提前运行 `UnlockState..cctor` 时枚举到尚未构造/注册完成的 MOD encounter；初始化完成后会修复可能提前创建的 static readonly `UnlockState.all`。
 
-上述 MOD 初始化时序与预加载设置协议已同步到 `compat/v0.103.2` 与 `compat/v0.106.1-beta`，两条内置分支都应保持相同不变式。详细流程见 `doc/runtime/compat-pack-loading-flow.md`。
+上述 MOD 初始化时序、预加载设置协议与快速重开 async 时序修复已同步到 `compat/v0.103.2` 与 `compat/v0.106.1-beta`，两条内置分支都应保持相同不变式。详细流程见 `doc/runtime/compat-pack-loading-flow.md`。
 
 ### 8.5 MOD 兼容性排查规范
 
@@ -430,7 +431,7 @@ tools/android/stage-bundled-compat-packs.sh
 - 修改 `port-mod/overlay` 后需要重新生成 `port_compat.pck`，并重新导出/复制内置兼容包。
 - 修改 `tools/android/make-bootstrap-pck.py` 后需要重新生成 `android/assets/bootstrap.pck`。
 - 修改 Java bridge 包名/类名要谨慎：C# helper 和 patched runtime 默认找 `com.godot.game.GodotApp`。
-- 修改所有内置分支都必须带上的兼容层热修（例如 `AppPaths.cs`、`SavePathPatches.cs`、`LifecycleAndPerformancePatches.cs`、`TransitionMaterialPatches.cs`）时，同步更新 `tools/android/stage-bundled-compat-packs.sh` 的 worktree 注入列表，确保 `v0.103.2` 与 `v0.106.1` 内置包都得到同一修复。
+- 修改所有内置分支都必须带上的兼容层热修（例如 `AppPaths.cs`、`SavePathPatches.cs`、`LifecycleAndPerformancePatches.cs`、`TransitionMaterialPatches.cs`、`QuickRestartPatches.cs`）时，同步更新 `tools/android/stage-bundled-compat-packs.sh` 的 worktree 注入列表，确保 `v0.103.2` 与 `v0.106.1` 内置包都得到同一修复。
 - 改 `applicationId` 时同步 shortcuts、FileProvider、manifest、Gradle 配置与所有 hard-coded target package。
 
 仓库 / 子模块 HEAD 巡检：
