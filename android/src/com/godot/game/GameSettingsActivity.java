@@ -3,6 +3,8 @@ package com.godot.game;
 import android.animation.ObjectAnimator;
 import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.TextUtils;
@@ -26,6 +28,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
@@ -401,20 +404,53 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	private void showLaunchProfileDialog(String profileId, String payloadId) {
 		try {
 			LaunchProfileManager.LaunchProfile profile = TextUtils.isEmpty(profileId) ? null : launchProfileManager.readProfile(profileId);
-			LaunchProfileManager.GamePayload payload = profile != null ? profile.payload : launchProfileManager.readPayload(payloadId);
-			if (payload == null || !payload.ready) {
+			final LaunchProfileManager.GamePayload[] selectedPayload = new LaunchProfileManager.GamePayload[] { profile != null ? profile.payload : launchProfileManager.readPayload(payloadId) };
+			if (selectedPayload[0] == null || !selectedPayload[0].ready) {
 				showMessage(getString(R.string.launch_profile_payload_missing));
 				return;
 			}
+
+			BottomSheetDialog dialog = new BottomSheetDialog(this);
 			LinearLayout content = ExtraSettingsUi.vertical(this);
-			int padding = ExtraSettingsUi.dp(this, 8);
-			content.setPadding(padding, padding, padding, 0);
+			content.setPadding(ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 12), ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 32));
+			GradientDrawable background = new GradientDrawable();
+			background.setColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
+			float radius = ExtraSettingsUi.dp(this, 28);
+			background.setCornerRadii(new float[] { radius, radius, radius, radius, 0, 0, 0, 0 });
+			content.setBackground(background);
+
+			View handle = new View(this);
+			GradientDrawable handleBackground = new GradientDrawable();
+			handleBackground.setColor(Color.argb(104, 202, 196, 208));
+			handleBackground.setCornerRadius(ExtraSettingsUi.dp(this, 2));
+			handle.setBackground(handleBackground);
+			LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 32), ExtraSettingsUi.dp(this, 4));
+			handleParams.gravity = Gravity.CENTER_HORIZONTAL;
+			handleParams.bottomMargin = ExtraSettingsUi.dp(this, 24);
+			content.addView(handle, handleParams);
+
+			content.addView(ExtraSettingsUi.text(this, profile == null ? R.string.create_launch_profile_title : R.string.edit_launch_profile_title, 22, ExtraSettingsUi.COLOR_ON_SURFACE, android.graphics.Typeface.BOLD));
 
 			EditText nameInput = new EditText(this);
 			nameInput.setSingleLine(true);
 			nameInput.setHint(R.string.launch_profile_name_hint);
-			nameInput.setText(profile == null ? payload.label : profile.displayName);
-			content.addView(nameInput, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+			nameInput.setText(profile == null ? selectedPayload[0].label : profile.displayName);
+			nameInput.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+			nameInput.setHintTextColor(ExtraSettingsUi.COLOR_MUTED);
+			ExtraSettingsUi.addSmallSpacing(content, nameInput);
+
+			MaterialButton selectPayload = ExtraSettingsUi.outlineButton(this, R.string.launch_profile_select_payload_title, R.drawable.ic_folder_24);
+			selectPayload.setText(getString(R.string.launch_profile_select_payload_button, selectedPayload[0].label));
+			selectPayload.setEnabled(profile == null);
+			selectPayload.setOnClickListener(v -> showLaunchProfilePayloadPicker(selectedPayload[0], picked -> {
+				selectedPayload[0] = picked;
+				selectPayload.setText(getString(R.string.launch_profile_select_payload_button, picked.label));
+				String currentName = nameInput.getText() == null ? "" : nameInput.getText().toString().trim();
+				if (currentName.isEmpty()) {
+					nameInput.setText(picked.label);
+				}
+			}));
+			ExtraSettingsUi.addSmallSpacing(content, selectPayload);
 
 			TextView saveLabel = ExtraSettingsUi.sectionTitle(this, getString(R.string.launch_profile_save_mode_title));
 			ExtraSettingsUi.addSmallSpacing(content, saveLabel);
@@ -422,9 +458,13 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			saveGroup.setOrientation(RadioGroup.VERTICAL);
 			RadioButton saveGlobal = new RadioButton(this);
 			saveGlobal.setText(R.string.launch_profile_save_mode_global);
+			saveGlobal.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+			saveGlobal.setButtonTintList(ColorStateList.valueOf(ExtraSettingsUi.COLOR_PRIMARY));
 			saveGlobal.setId(View.generateViewId());
 			RadioButton saveIsolated = new RadioButton(this);
 			saveIsolated.setText(R.string.launch_profile_save_mode_isolated);
+			saveIsolated.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+			saveIsolated.setButtonTintList(ColorStateList.valueOf(ExtraSettingsUi.COLOR_PRIMARY));
 			saveIsolated.setId(View.generateViewId());
 			saveGroup.addView(saveGlobal);
 			saveGroup.addView(saveIsolated);
@@ -437,9 +477,13 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			modsGroup.setOrientation(RadioGroup.VERTICAL);
 			RadioButton modsGlobal = new RadioButton(this);
 			modsGlobal.setText(R.string.launch_profile_mods_mode_global);
+			modsGlobal.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+			modsGlobal.setButtonTintList(ColorStateList.valueOf(ExtraSettingsUi.COLOR_PRIMARY));
 			modsGlobal.setId(View.generateViewId());
 			RadioButton modsIsolated = new RadioButton(this);
 			modsIsolated.setText(R.string.launch_profile_mods_mode_isolated);
+			modsIsolated.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+			modsIsolated.setButtonTintList(ColorStateList.valueOf(ExtraSettingsUi.COLOR_PRIMARY));
 			modsIsolated.setId(View.generateViewId());
 			modsGroup.addView(modsGlobal);
 			modsGroup.addView(modsIsolated);
@@ -448,29 +492,77 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 			ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(this, getString(R.string.launch_profile_mode_hint)));
 
-			new MaterialAlertDialogBuilder(this)
-				.setTitle(profile == null ? R.string.create_launch_profile_title : R.string.edit_launch_profile_title)
-				.setView(content)
-				.setNegativeButton(android.R.string.cancel, null)
-				.setPositiveButton(android.R.string.ok, (dialog, which) -> {
-					String name = nameInput.getText() == null ? "" : nameInput.getText().toString().trim();
-					String saveMode = saveGroup.getCheckedRadioButtonId() == saveIsolated.getId() ? LaunchProfileManager.SAVE_MODE_ISOLATED : LaunchProfileManager.SAVE_MODE_GLOBAL;
-					String modsMode = modsGroup.getCheckedRadioButtonId() == modsIsolated.getId() ? LaunchProfileManager.MODS_MODE_ISOLATED : LaunchProfileManager.MODS_MODE_GLOBAL;
-					runAsyncOperation(getString(R.string.status_busy_save_launch_profile), () -> {
-						if (profile == null) {
-							launchProfileManager.createProfile(payload.id, name, saveMode, modsMode, true);
-							repository.ensureAppDirectories();
-							return getString(R.string.status_create_launch_profile_done);
-						}
-						launchProfileManager.updateProfile(profile.id, name, saveMode, modsMode, profile.compatPackId);
+			LinearLayout buttons = ExtraSettingsUi.horizontal(this);
+			buttons.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+			MaterialButton cancel = ExtraSettingsUi.outlineButton(this, android.R.string.cancel, 0);
+			MaterialButton ok = ExtraSettingsUi.tonalButton(this, android.R.string.ok, 0);
+			cancel.setOnClickListener(v -> dialog.dismiss());
+			ok.setOnClickListener(v -> {
+				String name = nameInput.getText() == null ? "" : nameInput.getText().toString().trim();
+				String saveMode = saveGroup.getCheckedRadioButtonId() == saveIsolated.getId() ? LaunchProfileManager.SAVE_MODE_ISOLATED : LaunchProfileManager.SAVE_MODE_GLOBAL;
+				String modsMode = modsGroup.getCheckedRadioButtonId() == modsIsolated.getId() ? LaunchProfileManager.MODS_MODE_ISOLATED : LaunchProfileManager.MODS_MODE_GLOBAL;
+				dialog.dismiss();
+				runAsyncOperation(getString(R.string.status_busy_save_launch_profile), () -> {
+					if (profile == null) {
+						launchProfileManager.createProfile(selectedPayload[0].id, name, saveMode, modsMode, true);
 						repository.ensureAppDirectories();
-						return getString(R.string.status_update_launch_profile_done);
-					});
+						return getString(R.string.status_create_launch_profile_done);
+					}
+					launchProfileManager.updateProfile(profile.id, name, saveMode, modsMode, profile.compatPackId);
+					repository.ensureAppDirectories();
+					return getString(R.string.status_update_launch_profile_done);
+				});
+			});
+			buttons.addView(cancel);
+			LinearLayout.LayoutParams okParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			okParams.setMarginStart(ExtraSettingsUi.dp(this, 10));
+			buttons.addView(ok, okParams);
+			ExtraSettingsUi.addSmallSpacing(content, buttons);
+
+			dialog.setContentView(content);
+			dialog.show();
+		} catch (Exception exception) {
+			showError(exception);
+		}
+	}
+
+	private void showLaunchProfilePayloadPicker(LaunchProfileManager.GamePayload currentPayload, LaunchProfilePayloadPickerCallback callback) {
+		try {
+			List<LaunchProfileManager.GamePayload> payloads = launchProfileManager.listPayloads();
+			List<LaunchProfileManager.GamePayload> readyPayloads = new ArrayList<>();
+			for (LaunchProfileManager.GamePayload payload : payloads) {
+				if (payload != null && payload.ready) {
+					readyPayloads.add(payload);
+				}
+			}
+			if (readyPayloads.isEmpty()) {
+				showMessage(getString(R.string.version_manager_no_archived_games));
+				return;
+			}
+			String[] labels = new String[readyPayloads.size()];
+			int checked = 0;
+			for (int i = 0; i < readyPayloads.size(); i++) {
+				LaunchProfileManager.GamePayload payload = readyPayloads.get(i);
+				labels[i] = payload.label;
+				if (currentPayload != null && payload.id.equals(currentPayload.id)) {
+					checked = i;
+				}
+			}
+			new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.launch_profile_select_payload_title)
+				.setSingleChoiceItems(labels, checked, (dialog, which) -> {
+					callback.onPayloadPicked(readyPayloads.get(which));
+					dialog.dismiss();
 				})
+				.setNegativeButton(android.R.string.cancel, null)
 				.show();
 		} catch (Exception exception) {
 			showError(exception);
 		}
+	}
+
+	private interface LaunchProfilePayloadPickerCallback {
+		void onPayloadPicked(LaunchProfileManager.GamePayload payload);
 	}
 
 	@Override

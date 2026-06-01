@@ -91,6 +91,7 @@ android/steam-content/                        # SteamPipe depot manifest/chunk �
 当前实现是“payload store + launch profile”的完整多实例模型：
 
 - 导入 PC zip 或 SteamPipe 下载完成后，payload 安装到 `<files>/payloads/<payload_id>/game/`，`payload_id` 由版本、commit 与 payload hash 派生；同一 payload 不再复制到固定 active 目录。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot` 与 `source.steam.*` 中记录 app/depot/manifest/branch 诊断信息。
+- 版本页以 Material 3 分段页呈现三类对象：`启动配置`、`游戏本体`、`兼容包`。列表项点击后从底部抽屉查看路径、版本、文件统计等详情，并在抽屉中执行选择、新建配置、编辑或删除等操作；顶部本体页保留本地 zip 导入、Steam 中心和预留的网盘分享入口。
 - 版本页维护 `<files>/instances/<profile_id>/instance.json` 启动配置。一个 profile 绑定一个 payload、一个可选 compat pack，并分别记录 save/settings 与 MOD 使用 `global` 还是 `isolated`。
 - 切换游戏版本/配置只更新 `<files>/launcher/selected_instance.json` 与 SharedPreferences，不复制 `SlayTheSpire2.pck` 或解压目录。
 - 同一个 payload 可以创建多个 profile：例如同一 beta 本体分别使用全局 MOD、独立 MOD、独立存档等。
