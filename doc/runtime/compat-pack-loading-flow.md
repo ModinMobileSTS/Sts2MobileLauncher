@@ -43,7 +43,7 @@ port-mod branch
 
 ## 3. 安装 / 首次进入设置页
 
-1. Android 默认启动 `GameSettingsActivity`。桌面图标名称/图标使用主应用资源；“设置 → 系统 → 桌面图标启动后”默认打开附加设置，也可切换为向导完成后自动走 `GameSettingsActivity.launchGame()` 直接启动游戏。设置页快捷方式和游戏内返回设置不触发自动直启。
+1. Android 默认启动 `GameSettingsActivity`。设置页内部使用“画面 / 操作 / 存档 / 系统”顶部 Segmented Button 分区，较长的单选设置（如渲染器、分辨率、日志等级、桌面图标启动后）通过 Bottom Sheet 单选列表修改。桌面图标名称/图标使用主应用资源；“设置 → 系统 → 桌面图标启动后”默认打开附加设置，也可切换为向导完成后自动走 `GameSettingsActivity.launchGame()` 直接启动游戏。设置页快捷方式和游戏内返回设置不触发自动直启。
 2. 设置页可在后台调用 `CompatPackManager.installBundledCompatPacks()`：
    - 枚举 APK assets `compat_packs/*.zip`。
    - 复制到私有临时目录。
@@ -161,7 +161,7 @@ STS2Mobile.ModEntry
    - `preload_vfx_mode`：`off` / `hot` / `full`，默认 `off`；`hot` 仅实例化高频战斗 VFX，`full` 递归 `res://scenes/vfx/**/*.tscn`。
    - `preload_combat_code_enabled`：额外预热攻击/伤害/VFX 托管方法，默认 `false`。
    - `preload_shader_mode`：`off` / `load_resources`，默认 `off`；仅加载已知 shader 资源，不保证 GPU pipeline 已完成编译。
-   Android 附加设置页只在系统卡片中显示 `preload_enabled` 总开关；右侧箭头打开预加载详细管理 BottomSheet，默认不会自动展开。总开关开/关只写入自身，不改写上述细分项目；BottomSheet 的“恢复默认”只重置细分项目，不修改 `preload_enabled`。默认组合保持本次改动前的预加载行为，不额外启用 VFX/菜单/shader/code warmup。
+   Android 附加设置页在顶部“系统”分区的系统卡片中显示 `preload_enabled` 总开关；右侧箭头打开预加载详细管理 BottomSheet，默认不会自动展开。总开关开/关只写入自身，不改写上述细分项目；BottomSheet 的“恢复默认”只重置细分项目，不修改 `preload_enabled`。默认组合保持本次改动前的预加载行为，不额外启用 VFX/菜单/shader/code warmup。
 8. LAN bootstrap。
 9. `ModLoaderPatches`。
 10. save diagnostic。

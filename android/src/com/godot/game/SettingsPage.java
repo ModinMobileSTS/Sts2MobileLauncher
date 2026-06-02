@@ -1,6 +1,11 @@
 package com.godot.game;
 
 import android.content.Context;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -9,16 +14,16 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.inputmethod.EditorInfo;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
 import android.widget.ScrollView;
-import android.widget.Spinner;
 import android.widget.TextView;
 
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.card.MaterialCardView;
 import androidx.appcompat.app.AlertDialog;
 
@@ -64,6 +69,9 @@ public final class SettingsPage {
 	private static final String[] VFX_PRELOAD_VALUES = new String[] { "off", "hot", "full" };
 	private static final String[] SHADER_PRELOAD_VALUES = new String[] { "off", "load_resources" };
 
+	private enum SettingsSegment { GRAPHICS, INPUT, SAVE, SYSTEM }
+	private static SettingsSegment lastSelectedSegment = SettingsSegment.GRAPHICS;
+
 	private final Context context;
 	private final ExtraSettingsRepository repository;
 	private final ExtraSettingsActions actions;
@@ -77,30 +85,127 @@ public final class SettingsPage {
 	}
 
 	public View build() {
+		LinearLayout shell = ExtraSettingsUi.vertical(context);
+		shell.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
+		int padding = ExtraSettingsUi.dp(context, 20);
+		shell.setPadding(padding, ExtraSettingsUi.dp(context, 18), padding, 0);
+		shell.addView(ExtraSettingsUi.title(context, R.string.tab_settings));
+
+		LinearLayout tabContent = ExtraSettingsUi.vertical(context);
+		View tabs = buildSettingsSegmentedTabs(tabContent);
+		LinearLayout.LayoutParams tabsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		tabsParams.topMargin = ExtraSettingsUi.dp(context, 12);
+		shell.addView(tabs, tabsParams);
+
 		ScrollView scrollView = new ScrollView(context);
 		scrollView.setFillViewport(false);
 		scrollView.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
-		LinearLayout root = ExtraSettingsUi.vertical(context);
-		int padding = ExtraSettingsUi.dp(context, 20);
-		root.setPadding(padding, ExtraSettingsUi.dp(context, 24), padding, ExtraSettingsUi.dp(context, 32));
-		scrollView.addView(root, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-		root.addView(ExtraSettingsUi.title(context, R.string.tab_settings));
+		tabContent.setPadding(0, ExtraSettingsUi.dp(context, 8), 0, ExtraSettingsUi.dp(context, 32));
+		scrollView.addView(tabContent, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		shell.addView(scrollView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+		if (tabContent.getChildCount() == 0) {
+			showSettingsSegment(lastSelectedSegment, tabContent);
+		}
+		return shell;
+	}
 
+	private View buildSettingsSegmentedTabs(LinearLayout tabContent) {
+		MaterialButtonToggleGroup group = new MaterialButtonToggleGroup(context);
+		group.setSingleSelection(true);
+		group.setSelectionRequired(true);
+		group.setBackgroundColor(Color.TRANSPARENT);
+
+		MaterialButton graphics = segmentedButton(R.string.settings_segment_graphics);
+		MaterialButton input = segmentedButton(R.string.settings_segment_input);
+		MaterialButton save = segmentedButton(R.string.settings_segment_save);
+		MaterialButton system = segmentedButton(R.string.settings_segment_system);
+		graphics.setId(View.generateViewId());
+		input.setId(View.generateViewId());
+		save.setId(View.generateViewId());
+		system.setId(View.generateViewId());
+
+		group.addView(graphics, segmentedButtonParams());
+		group.addView(input, segmentedButtonParams());
+		group.addView(save, segmentedButtonParams());
+		group.addView(system, segmentedButtonParams());
+		group.addOnButtonCheckedListener((buttonGroup, checkedId, isChecked) -> {
+			if (!isChecked) {
+				return;
+			}
+			if (checkedId == graphics.getId()) {
+				showSettingsSegment(SettingsSegment.GRAPHICS, tabContent);
+			} else if (checkedId == input.getId()) {
+				showSettingsSegment(SettingsSegment.INPUT, tabContent);
+			} else if (checkedId == save.getId()) {
+				showSettingsSegment(SettingsSegment.SAVE, tabContent);
+			} else if (checkedId == system.getId()) {
+				showSettingsSegment(SettingsSegment.SYSTEM, tabContent);
+			}
+		});
+		if (lastSelectedSegment == SettingsSegment.INPUT) {
+			group.check(input.getId());
+		} else if (lastSelectedSegment == SettingsSegment.SAVE) {
+			group.check(save.getId());
+		} else if (lastSelectedSegment == SettingsSegment.SYSTEM) {
+			group.check(system.getId());
+		} else {
+			group.check(graphics.getId());
+		}
+		return group;
+	}
+
+	private MaterialButton segmentedButton(int textRes) {
+		MaterialButton button = new MaterialButton(context, null, com.google.android.material.R.attr.materialButtonOutlinedStyle);
+		button.setText(textRes);
+		button.setTextSize(14);
+		button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+		button.setGravity(Gravity.CENTER);
+		button.setCheckable(true);
+		button.setMinHeight(ExtraSettingsUi.dp(context, 44));
+		button.setInsetTop(0);
+		button.setInsetBottom(0);
+		button.setPadding(ExtraSettingsUi.dp(context, 6), 0, ExtraSettingsUi.dp(context, 6), 0);
+		button.setTextColor(new ColorStateList(
+			new int[][] { new int[] { android.R.attr.state_checked }, new int[] {} },
+			new int[] { ExtraSettingsUi.COLOR_PRIMARY, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT }
+		));
+		button.setBackgroundTintList(new ColorStateList(
+			new int[][] { new int[] { android.R.attr.state_checked }, new int[] {} },
+			new int[] { ExtraSettingsUi.COLOR_SURFACE_VARIANT, Color.TRANSPARENT }
+		));
+		button.setStrokeColor(ColorStateList.valueOf(ExtraSettingsUi.COLOR_OUTLINE));
+		button.setStrokeWidth(ExtraSettingsUi.dp(context, 1));
+		button.setCornerRadius(ExtraSettingsUi.dp(context, 22));
+		return button;
+	}
+
+	private LinearLayout.LayoutParams segmentedButtonParams() {
+		return new LinearLayout.LayoutParams(0, ExtraSettingsUi.dp(context, 46), 1f);
+	}
+
+	private void showSettingsSegment(SettingsSegment segment, LinearLayout root) {
+		lastSelectedSegment = segment;
+		root.removeAllViews();
 		try {
 			JSONObject settings = repository.loadSettingsJson();
-			ExtraSettingsUi.addCardSpacing(root, buildPresetCard(settings));
-			ExtraSettingsUi.addCardSpacing(root, buildGraphicsAdvancedCard(settings));
-			ExtraSettingsUi.addCardSpacing(root, buildSaveCard());
-			ExtraSettingsUi.addCardSpacing(root, buildSteamCloudCard());
-			ExtraSettingsUi.addCardSpacing(root, buildInputCard(settings));
-			ExtraSettingsUi.addCardSpacing(root, buildSystemCard(settings));
-			ExtraSettingsUi.addCardSpacing(root, buildLogCard(settings));
-			ExtraSettingsUi.addCardSpacing(root, buildLanCard(settings));
-			ExtraSettingsUi.addCardSpacing(root, buildFullDataBackupCard());
+			if (segment == SettingsSegment.INPUT) {
+				ExtraSettingsUi.addCardSpacing(root, buildInputPresetCard(settings));
+				ExtraSettingsUi.addCardSpacing(root, buildInputDetailsCard(settings));
+			} else if (segment == SettingsSegment.SAVE) {
+				ExtraSettingsUi.addCardSpacing(root, buildSaveCard());
+				ExtraSettingsUi.addCardSpacing(root, buildSteamCloudCard());
+				ExtraSettingsUi.addCardSpacing(root, buildFullDataBackupCard());
+			} else if (segment == SettingsSegment.SYSTEM) {
+				ExtraSettingsUi.addCardSpacing(root, buildSystemCard(settings));
+				ExtraSettingsUi.addCardSpacing(root, buildLanCard(settings));
+				ExtraSettingsUi.addCardSpacing(root, buildLogCard(settings));
+			} else {
+				ExtraSettingsUi.addCardSpacing(root, buildPresetCard(settings));
+				ExtraSettingsUi.addCardSpacing(root, buildGraphicsAdvancedCard(settings));
+			}
 		} catch (Exception exception) {
 			ExtraSettingsUi.addCardSpacing(root, errorCard(exception));
 		}
-		return scrollView;
 	}
 
 	private View buildPresetCard(JSONObject settings) {
@@ -109,11 +214,12 @@ public final class SettingsPage {
 		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_auto_awesome_24, R.string.settings_presets_title, R.string.settings_presets_subtitle, null));
 		String graphicsPreset = detectGraphicsPreset(settings);
 		String displayPreset = detectDisplayPreset(settings);
-		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.label(context, R.string.preset_render_group_title));
-		MaterialCardView recommended = ExtraSettingsUi.choiceCard(context, R.drawable.ic_auto_awesome_24, R.string.graphics_preset_recommended, R.string.graphics_preset_recommended_desc, ExtraSettingsRepository.GRAPHICS_PRESET_RECOMMENDED.equals(graphicsPreset));
-		MaterialCardView quality = ExtraSettingsUi.choiceCard(context, R.drawable.ic_high_quality_24, R.string.graphics_preset_quality, R.string.graphics_preset_quality_desc, ExtraSettingsRepository.GRAPHICS_PRESET_QUALITY.equals(graphicsPreset));
-		MaterialCardView compatibility = ExtraSettingsUi.choiceCard(context, R.drawable.ic_build_24, R.string.graphics_preset_compatibility, R.string.graphics_preset_compatibility_desc, ExtraSettingsRepository.GRAPHICS_PRESET_COMPATIBILITY.equals(graphicsPreset));
-		MaterialCardView graphicsCustom = ExtraSettingsUi.choiceCard(context, R.drawable.ic_tune_24, R.string.preset_custom, R.string.preset_custom_desc, ExtraSettingsRepository.GRAPHICS_PRESET_CUSTOM.equals(graphicsPreset));
+
+		ExtraSettingsUi.addSmallSpacing(content, presetGroupTitle(R.string.preset_render_group_title));
+		MaterialCardView recommended = miniPresetCard(R.drawable.ic_auto_awesome_24, R.string.graphics_preset_recommended, R.string.graphics_preset_recommended_desc, ExtraSettingsRepository.GRAPHICS_PRESET_RECOMMENDED.equals(graphicsPreset));
+		MaterialCardView quality = miniPresetCard(R.drawable.ic_high_quality_24, R.string.graphics_preset_quality, R.string.graphics_preset_quality_desc, ExtraSettingsRepository.GRAPHICS_PRESET_QUALITY.equals(graphicsPreset));
+		MaterialCardView compatibility = miniPresetCard(R.drawable.ic_build_24, R.string.graphics_preset_compatibility, R.string.graphics_preset_compatibility_desc, ExtraSettingsRepository.GRAPHICS_PRESET_COMPATIBILITY.equals(graphicsPreset));
+		MaterialCardView graphicsCustom = miniPresetCard(R.drawable.ic_tune_24, R.string.preset_custom, R.string.preset_custom_desc, ExtraSettingsRepository.GRAPHICS_PRESET_CUSTOM.equals(graphicsPreset));
 		recommended.setOnClickListener(v -> {
 			setGraphicsPresetCards(recommended, quality, compatibility, graphicsCustom, ExtraSettingsRepository.GRAPHICS_PRESET_RECOMMENDED);
 			applyGraphicsPreset(ExtraSettingsRepository.GRAPHICS_PRESET_RECOMMENDED);
@@ -130,12 +236,12 @@ public final class SettingsPage {
 			setGraphicsPresetCards(recommended, quality, compatibility, graphicsCustom, ExtraSettingsRepository.GRAPHICS_PRESET_CUSTOM);
 			applyGraphicsPreset(ExtraSettingsRepository.GRAPHICS_PRESET_CUSTOM);
 		});
-		ExtraSettingsUi.addWeightedCardsRow(context, content, recommended, quality);
-		ExtraSettingsUi.addWeightedCardsRow(context, content, compatibility, graphicsCustom);
-		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.label(context, R.string.preset_display_group_title));
-		MaterialCardView original = ExtraSettingsUi.choiceCard(context, R.drawable.ic_desktop_windows_24, R.string.display_preset_original, R.string.display_preset_original_desc, ExtraSettingsRepository.DISPLAY_PRESET_ORIGINAL.equals(displayPreset));
-		MaterialCardView mobile = ExtraSettingsUi.choiceCard(context, R.drawable.ic_phone_android_24, R.string.display_preset_mobile, R.string.display_preset_mobile_desc, ExtraSettingsRepository.DISPLAY_PRESET_MOBILE.equals(displayPreset));
-		MaterialCardView displayCustom = ExtraSettingsUi.choiceCard(context, R.drawable.ic_tune_24, R.string.preset_custom, R.string.preset_custom_desc, ExtraSettingsRepository.DISPLAY_PRESET_CUSTOM.equals(displayPreset));
+		addMiniPresetRow(content, recommended, quality, compatibility, graphicsCustom);
+
+		ExtraSettingsUi.addSmallSpacing(content, presetGroupTitle(R.string.preset_display_group_title));
+		MaterialCardView original = miniPresetCard(R.drawable.ic_desktop_windows_24, R.string.display_preset_original, R.string.display_preset_original_desc, ExtraSettingsRepository.DISPLAY_PRESET_ORIGINAL.equals(displayPreset));
+		MaterialCardView mobile = miniPresetCard(R.drawable.ic_phone_android_24, R.string.display_preset_mobile, R.string.display_preset_mobile_short_desc, ExtraSettingsRepository.DISPLAY_PRESET_MOBILE.equals(displayPreset));
+		MaterialCardView displayCustom = miniPresetCard(R.drawable.ic_tune_24, R.string.preset_custom, R.string.preset_custom_desc, ExtraSettingsRepository.DISPLAY_PRESET_CUSTOM.equals(displayPreset));
 		original.setOnClickListener(v -> {
 			setDisplayPresetCards(original, mobile, displayCustom, ExtraSettingsRepository.DISPLAY_PRESET_ORIGINAL);
 			applyDisplayPreset(ExtraSettingsRepository.DISPLAY_PRESET_ORIGINAL);
@@ -148,22 +254,98 @@ public final class SettingsPage {
 			setDisplayPresetCards(original, mobile, displayCustom, ExtraSettingsRepository.DISPLAY_PRESET_CUSTOM);
 			applyDisplayPreset(ExtraSettingsRepository.DISPLAY_PRESET_CUSTOM);
 		});
-		ExtraSettingsUi.addWeightedCardsRow(context, content, mobile);
-		ExtraSettingsUi.addWeightedCardsRow(context, content, original, displayCustom);
+		addMiniPresetRow(content, original, mobile, displayCustom);
 		return card;
 	}
 
+	private TextView presetGroupTitle(int titleRes) {
+		return ExtraSettingsUi.text(context, titleRes, 14, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, Typeface.BOLD);
+	}
+
+	private MaterialCardView miniPresetCard(int iconRes, int titleRes, int subtitleRes, boolean selected) {
+		MaterialCardView card = ExtraSettingsUi.clickableCard(context);
+		card.setCheckable(true);
+		card.setRadius(ExtraSettingsUi.dp(context, 12));
+		card.setMinimumHeight(ExtraSettingsUi.dp(context, 74));
+		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
+		content.setGravity(Gravity.CENTER_HORIZONTAL);
+		content.setPadding(ExtraSettingsUi.dp(context, 6), ExtraSettingsUi.dp(context, 8), ExtraSettingsUi.dp(context, 6), ExtraSettingsUi.dp(context, 8));
+
+		ImageView icon = ExtraSettingsUi.icon(context, iconRes, selected ? ExtraSettingsUi.COLOR_PRIMARY : ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, 20);
+		icon.setTag("mini_preset_icon");
+		content.addView(icon);
+
+		TextView title = ExtraSettingsUi.text(context, titleRes, 13, selected ? ExtraSettingsUi.COLOR_PRIMARY : ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
+		title.setSingleLine(true);
+		title.setEllipsize(TextUtils.TruncateAt.END);
+		title.setGravity(Gravity.CENTER);
+		title.setTag("mini_preset_title");
+		LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		titleParams.topMargin = ExtraSettingsUi.dp(context, 4);
+		content.addView(title, titleParams);
+
+		TextView subtitle = ExtraSettingsUi.text(context, subtitleRes, 10, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, Typeface.NORMAL);
+		subtitle.setSingleLine(true);
+		subtitle.setEllipsize(TextUtils.TruncateAt.END);
+		subtitle.setGravity(Gravity.CENTER);
+		subtitle.setTag("mini_preset_subtitle");
+		LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		subtitleParams.topMargin = ExtraSettingsUi.dp(context, 2);
+		content.addView(subtitle, subtitleParams);
+
+		setMiniPresetSelected(card, selected);
+		return card;
+	}
+
+	private void addMiniPresetRow(LinearLayout parent, MaterialCardView... cards) {
+		LinearLayout row = ExtraSettingsUi.horizontal(context);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		for (int i = 0; i < cards.length; i++) {
+			LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+			if (i > 0) {
+				params.setMarginStart(ExtraSettingsUi.dp(context, 8));
+			}
+			row.addView(cards[i], params);
+		}
+		ExtraSettingsUi.addSmallSpacing(parent, row);
+	}
+
 	private void setGraphicsPresetCards(MaterialCardView recommended, MaterialCardView quality, MaterialCardView compatibility, MaterialCardView custom, String preset) {
-		ExtraSettingsUi.setChoiceSelected(recommended, ExtraSettingsRepository.GRAPHICS_PRESET_RECOMMENDED.equals(preset));
-		ExtraSettingsUi.setChoiceSelected(quality, ExtraSettingsRepository.GRAPHICS_PRESET_QUALITY.equals(preset));
-		ExtraSettingsUi.setChoiceSelected(compatibility, ExtraSettingsRepository.GRAPHICS_PRESET_COMPATIBILITY.equals(preset));
-		ExtraSettingsUi.setChoiceSelected(custom, ExtraSettingsRepository.GRAPHICS_PRESET_CUSTOM.equals(preset));
+		setMiniPresetSelected(recommended, ExtraSettingsRepository.GRAPHICS_PRESET_RECOMMENDED.equals(preset));
+		setMiniPresetSelected(quality, ExtraSettingsRepository.GRAPHICS_PRESET_QUALITY.equals(preset));
+		setMiniPresetSelected(compatibility, ExtraSettingsRepository.GRAPHICS_PRESET_COMPATIBILITY.equals(preset));
+		setMiniPresetSelected(custom, ExtraSettingsRepository.GRAPHICS_PRESET_CUSTOM.equals(preset));
 	}
 
 	private void setDisplayPresetCards(MaterialCardView original, MaterialCardView mobile, MaterialCardView custom, String preset) {
-		ExtraSettingsUi.setChoiceSelected(original, ExtraSettingsRepository.DISPLAY_PRESET_ORIGINAL.equals(preset));
-		ExtraSettingsUi.setChoiceSelected(mobile, ExtraSettingsRepository.DISPLAY_PRESET_MOBILE.equals(preset));
-		ExtraSettingsUi.setChoiceSelected(custom, ExtraSettingsRepository.DISPLAY_PRESET_CUSTOM.equals(preset));
+		setMiniPresetSelected(original, ExtraSettingsRepository.DISPLAY_PRESET_ORIGINAL.equals(preset));
+		setMiniPresetSelected(mobile, ExtraSettingsRepository.DISPLAY_PRESET_MOBILE.equals(preset));
+		setMiniPresetSelected(custom, ExtraSettingsRepository.DISPLAY_PRESET_CUSTOM.equals(preset));
+	}
+
+	private void setMiniPresetSelected(MaterialCardView card, boolean selected) {
+		card.setChecked(selected);
+		card.setStrokeWidth(ExtraSettingsUi.dp(context, selected ? 2 : 1));
+		card.setStrokeColor(selected ? ExtraSettingsUi.COLOR_PRIMARY : ExtraSettingsUi.COLOR_SURFACE_VARIANT);
+		card.setCardBackgroundColor(selected ? Color.rgb(30, 50, 39) : ExtraSettingsUi.COLOR_SURFACE_VARIANT);
+		updateMiniPresetChildren(card, selected);
+	}
+
+	private void updateMiniPresetChildren(View view, boolean selected) {
+		Object tag = view.getTag();
+		if (view instanceof ImageView && "mini_preset_icon".equals(tag)) {
+			((ImageView) view).setColorFilter(selected ? ExtraSettingsUi.COLOR_PRIMARY : ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT);
+		} else if (view instanceof TextView && "mini_preset_title".equals(tag)) {
+			((TextView) view).setTextColor(selected ? ExtraSettingsUi.COLOR_PRIMARY : ExtraSettingsUi.COLOR_ON_SURFACE);
+		} else if (view instanceof TextView && "mini_preset_subtitle".equals(tag)) {
+			((TextView) view).setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT);
+		}
+		if (view instanceof ViewGroup) {
+			ViewGroup group = (ViewGroup) view;
+			for (int i = 0; i < group.getChildCount(); i++) {
+				updateMiniPresetChildren(group.getChildAt(i), selected);
+			}
+		}
 	}
 
 	private View buildGraphicsAdvancedCard(JSONObject settings) {
@@ -276,24 +458,31 @@ public final class SettingsPage {
 		}, "sts2-full-data-size").start();
 	}
 
-	private View buildInputCard(JSONObject settings) {
+	private View buildInputPresetCard(JSONObject settings) {
 		MaterialCardView card = ExtraSettingsUi.card(context);
 		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
 		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_touch_app_24, R.string.section_input, R.string.settings_input_subtitle, infoButton(R.string.section_input, R.string.settings_input_info)));
 		String operationPreset = detectOperationPreset(settings);
-		MaterialCardView touch = ExtraSettingsUi.choiceCard(context, R.drawable.ic_touch_app_24, R.string.operation_preset_touch, R.string.operation_preset_touch_desc, ExtraSettingsRepository.OPERATION_PRESET_TOUCH.equals(operationPreset));
-		MaterialCardView original = ExtraSettingsUi.choiceCard(context, R.drawable.ic_gamepad_24, R.string.operation_preset_original, R.string.operation_preset_original_desc, ExtraSettingsRepository.OPERATION_PRESET_ORIGINAL.equals(operationPreset));
+		MaterialCardView touch = miniPresetCard(R.drawable.ic_touch_app_24, R.string.operation_preset_touch, R.string.operation_preset_touch_desc, ExtraSettingsRepository.OPERATION_PRESET_TOUCH.equals(operationPreset));
+		MaterialCardView original = miniPresetCard(R.drawable.ic_gamepad_24, R.string.operation_preset_original, R.string.operation_preset_original_desc, ExtraSettingsRepository.OPERATION_PRESET_ORIGINAL.equals(operationPreset));
 		touch.setOnClickListener(v -> {
-			ExtraSettingsUi.setChoiceSelected(touch, true);
-			ExtraSettingsUi.setChoiceSelected(original, false);
+			setMiniPresetSelected(touch, true);
+			setMiniPresetSelected(original, false);
 			applyOperationPreset(ExtraSettingsRepository.OPERATION_PRESET_TOUCH);
 		});
 		original.setOnClickListener(v -> {
-			ExtraSettingsUi.setChoiceSelected(touch, false);
-			ExtraSettingsUi.setChoiceSelected(original, true);
+			setMiniPresetSelected(touch, false);
+			setMiniPresetSelected(original, true);
 			applyOperationPreset(ExtraSettingsRepository.OPERATION_PRESET_ORIGINAL);
 		});
-		ExtraSettingsUi.addWeightedCardsRow(context, content, touch, original);
+		addMiniPresetRow(content, touch, original);
+		return card;
+	}
+
+	private View buildInputDetailsCard(JSONObject settings) {
+		MaterialCardView card = ExtraSettingsUi.card(context);
+		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
+		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_settings_24, R.string.settings_input_details_title, R.string.settings_input_details_subtitle, null));
 		addSwitchRow(content, R.drawable.ic_check_circle_24, R.string.mobile_selection_confirmation_switch, R.string.mobile_selection_confirmation_hint, settings.optBoolean("mobile_selection_confirmation", true), checked -> repository.saveSetting(root -> root.put("mobile_selection_confirmation", checked)));
 		addSwitchRow(content, R.drawable.ic_text_fields_24, R.string.show_more_hand_card_text_switch, R.string.show_more_hand_card_text_hint, settings.optBoolean("show_more_hand_card_text", true), checked -> repository.saveSetting(root -> root.put("show_more_hand_card_text", checked)));
 		addSwitchRow(content, R.drawable.ic_touch_app_24, R.string.touch_lift_preview_switch, R.string.touch_lift_preview_hint, settings.optBoolean("touch_lift_preview", true), checked -> repository.saveSetting(root -> root.put("touch_lift_preview", checked)));
@@ -364,36 +553,203 @@ public final class SettingsPage {
 	}
 
 	private void addSpinnerRow(LinearLayout parent, int iconRes, int labelRes, List<String> labels, int selectedIndex, SettingOperation operation) {
+		if (labels == null || labels.isEmpty()) {
+			return;
+		}
+		int safeIndex = Math.max(0, Math.min(selectedIndex, labels.size() - 1));
+		final int[] currentIndex = new int[] { safeIndex };
+		MaterialCardView rowCard = ExtraSettingsUi.clickableCard(context);
+		rowCard.setCardBackgroundColor(ExtraSettingsUi.COLOR_SURFACE_VARIANT);
+		rowCard.setStrokeWidth(0);
+		rowCard.setRadius(ExtraSettingsUi.dp(context, 16));
+		LinearLayout rowContent = ExtraSettingsUi.cardContent(context, rowCard);
+		rowContent.setPadding(ExtraSettingsUi.dp(context, 14), ExtraSettingsUi.dp(context, 12), ExtraSettingsUi.dp(context, 14), ExtraSettingsUi.dp(context, 12));
 		LinearLayout row = ExtraSettingsUi.horizontal(context);
 		row.setGravity(Gravity.CENTER_VERTICAL);
-		row.addView(ExtraSettingsUi.icon(context, iconRes, ExtraSettingsUi.COLOR_PRIMARY, 22));
-		row.addView(ExtraSettingsUi.body(context, labelRes), labelParams());
-		Spinner spinner = new Spinner(context);
-		ArrayAdapter<String> adapter = new ArrayAdapter<>(context, android.R.layout.simple_spinner_item, labels);
-		adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-		spinner.setAdapter(adapter);
-		spinner.setSelection(Math.max(0, Math.min(selectedIndex, labels.size() - 1)), false);
-		spinner.post(() -> spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-			@Override
-			public void onItemSelected(AdapterView<?> parentView, View view, int position, long id) {
+		row.addView(ExtraSettingsUi.icon(context, iconRes, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, 22));
+		row.addView(ExtraSettingsUi.label(context, labelRes), labelParams());
+		TextView valueView = ExtraSettingsUi.text(context, labels.get(safeIndex), 14, ExtraSettingsUi.COLOR_PRIMARY, Typeface.BOLD);
+		valueView.setSingleLine(true);
+		valueView.setEllipsize(TextUtils.TruncateAt.END);
+		valueView.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+		row.addView(valueView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.85f));
+		ImageView chevron = ExtraSettingsUi.icon(context, R.drawable.ic_expand_more_24, ExtraSettingsUi.COLOR_PRIMARY, 20);
+		LinearLayout.LayoutParams chevronParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(context, 20), ExtraSettingsUi.dp(context, 20));
+		chevronParams.setMarginStart(ExtraSettingsUi.dp(context, 4));
+		row.addView(chevron, chevronParams);
+		rowContent.addView(row);
+		rowCard.setOnClickListener(v -> showChoiceBottomSheet(labelRes, buildChoiceOptions(labelRes, labels), currentIndex[0], position -> {
+			operation.apply(position);
+			currentIndex[0] = position;
+		}, valueView));
+		ExtraSettingsUi.addSmallSpacing(parent, rowCard);
+	}
+
+	private List<ChoiceOption> buildChoiceOptions(int labelRes, List<String> labels) {
+		if (labelRes == R.string.section_renderer && labels.size() >= 2) {
+			return Arrays.asList(
+				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_renderer_opengl_desc), R.drawable.ic_layers_24),
+				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_renderer_vulkan_desc), R.drawable.ic_speed_24)
+			);
+		}
+		if (labelRes == R.string.launcher_startup_behavior_title && labels.size() >= 2) {
+			return Arrays.asList(
+				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_launcher_settings_desc), R.drawable.ic_settings_24),
+				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_launcher_game_desc), R.drawable.ic_rocket_launch_24)
+			);
+		}
+		if (labelRes == R.string.log_level && labels.size() >= 3) {
+			return Arrays.asList(
+				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_log_info_desc), R.drawable.ic_article_24),
+				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_log_debug_desc), R.drawable.ic_tune_24),
+				new ChoiceOption(labels.get(2), context.getString(R.string.choice_sheet_log_very_debug_desc), R.drawable.ic_speed_24)
+			);
+		}
+		if (labelRes == R.string.preload_vfx_mode_title && labels.size() >= 3) {
+			return Arrays.asList(
+				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_preload_vfx_off_desc), R.drawable.ic_close_24),
+				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_preload_vfx_hot_desc), R.drawable.ic_auto_awesome_24),
+				new ChoiceOption(labels.get(2), context.getString(R.string.choice_sheet_preload_vfx_full_desc), R.drawable.ic_high_quality_24)
+			);
+		}
+		if (labelRes == R.string.preload_shader_mode_title && labels.size() >= 2) {
+			return Arrays.asList(
+				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_preload_shader_off_desc), R.drawable.ic_close_24),
+				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_preload_shader_load_desc), R.drawable.ic_build_24)
+			);
+		}
+		List<ChoiceOption> options = new ArrayList<>();
+		for (String label : labels) {
+			options.add(new ChoiceOption(label, null, 0));
+		}
+		return options;
+	}
+
+	private void showChoiceBottomSheet(int titleRes, List<ChoiceOption> options, int selectedIndex, SettingOperation operation, TextView valueView) {
+		BottomSheetDialog dialog = new BottomSheetDialog(context);
+		dialog.setContentView(buildChoiceSheetContent(dialog, titleRes, options, Math.max(0, Math.min(selectedIndex, options.size() - 1)), operation, valueView));
+		configureBottomSheetWindow(dialog);
+		dialog.show();
+	}
+
+	private View buildChoiceSheetContent(BottomSheetDialog dialog, int titleRes, List<ChoiceOption> options, int selectedIndex, SettingOperation operation, TextView valueView) {
+		ScrollView scrollView = bottomSheetScrollView();
+		LinearLayout content = ExtraSettingsUi.vertical(context);
+		int horizontalPadding = ExtraSettingsUi.dp(context, 12);
+		content.setPadding(horizontalPadding, ExtraSettingsUi.dp(context, 12), horizontalPadding, ExtraSettingsUi.dp(context, 24));
+		scrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		addBottomSheetHandle(content);
+		TextView title = ExtraSettingsUi.text(context, titleRes, 20, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
+		LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		titleParams.setMargins(ExtraSettingsUi.dp(context, 12), 0, ExtraSettingsUi.dp(context, 12), ExtraSettingsUi.dp(context, 8));
+		content.addView(title, titleParams);
+		for (int i = 0; i < options.size(); i++) {
+			ChoiceOption option = options.get(i);
+			View row = choiceSheetRow(option, i == selectedIndex, () -> {
 				try {
+					int position = options.indexOf(option);
 					operation.apply(position);
+					valueView.setText(option.title);
 					actions.showMessage(context.getString(R.string.status_settings_saved));
+					dialog.dismiss();
 				} catch (Exception exception) {
 					actions.showError(exception);
 				}
+			});
+			content.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		}
+		return scrollView;
+	}
+
+	private View choiceSheetRow(ChoiceOption option, boolean selected, Runnable onClick) {
+		LinearLayout row = ExtraSettingsUi.horizontal(context);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		row.setMinimumHeight(ExtraSettingsUi.dp(context, TextUtils.isEmpty(option.subtitle) ? 56 : 72));
+		row.setPadding(ExtraSettingsUi.dp(context, 12), ExtraSettingsUi.dp(context, 10), ExtraSettingsUi.dp(context, 12), ExtraSettingsUi.dp(context, 10));
+		GradientDrawable background = new GradientDrawable();
+		background.setColor(selected ? Color.argb(28, 166, 211, 183) : Color.TRANSPARENT);
+		background.setCornerRadius(ExtraSettingsUi.dp(context, 12));
+		row.setBackground(background);
+		ExtraSettingsUi.applyRipple(row);
+
+		RadioButton radio = new RadioButton(context);
+		radio.setChecked(selected);
+		radio.setClickable(false);
+		radio.setButtonTintList(new ColorStateList(
+			new int[][] { new int[] { android.R.attr.state_checked }, new int[] {} },
+			new int[] { ExtraSettingsUi.COLOR_PRIMARY, ExtraSettingsUi.COLOR_OUTLINE }
+		));
+		boolean simple = option.iconRes == 0 && TextUtils.isEmpty(option.subtitle);
+		if (simple) {
+			row.addView(radio);
+		} else if (option.iconRes != 0) {
+			ImageView icon = ExtraSettingsUi.icon(context, option.iconRes, selected ? ExtraSettingsUi.COLOR_PRIMARY : ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, 24);
+			LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(context, 24), ExtraSettingsUi.dp(context, 24));
+			iconParams.setMarginEnd(ExtraSettingsUi.dp(context, 16));
+			row.addView(icon, iconParams);
+		}
+
+		LinearLayout textColumn = ExtraSettingsUi.vertical(context);
+		LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		textParams.setMarginStart(simple ? ExtraSettingsUi.dp(context, 12) : 0);
+		row.addView(textColumn, textParams);
+		textColumn.addView(ExtraSettingsUi.text(context, option.title, 16, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.NORMAL));
+		if (!TextUtils.isEmpty(option.subtitle)) {
+			TextView subtitle = ExtraSettingsUi.text(context, option.subtitle, 12, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, Typeface.NORMAL);
+			subtitle.setLineSpacing(ExtraSettingsUi.dp(context, 2), 1.0f);
+			LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			subtitleParams.topMargin = ExtraSettingsUi.dp(context, 4);
+			textColumn.addView(subtitle, subtitleParams);
+		}
+		if (!simple) {
+			row.addView(radio);
+		}
+		row.setOnClickListener(v -> onClick.run());
+		return row;
+	}
+
+	private ScrollView bottomSheetScrollView() {
+		ScrollView scrollView = new ScrollView(context);
+		scrollView.setFillViewport(false);
+		GradientDrawable background = new GradientDrawable();
+		background.setColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
+		float radius = ExtraSettingsUi.dp(context, 28);
+		background.setCornerRadii(new float[] { radius, radius, radius, radius, 0, 0, 0, 0 });
+		scrollView.setBackground(background);
+		return scrollView;
+	}
+
+	private void addBottomSheetHandle(LinearLayout content) {
+		View handle = new View(context);
+		GradientDrawable handleBackground = new GradientDrawable();
+		handleBackground.setColor(ExtraSettingsUi.COLOR_OUTLINE);
+		handleBackground.setCornerRadius(ExtraSettingsUi.dp(context, 2));
+		handle.setBackground(handleBackground);
+		LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(context, 32), ExtraSettingsUi.dp(context, 4));
+		handleParams.gravity = Gravity.CENTER_HORIZONTAL;
+		handleParams.bottomMargin = ExtraSettingsUi.dp(context, 18);
+		content.addView(handle, handleParams);
+	}
+
+	private void configureBottomSheetWindow(BottomSheetDialog dialog) {
+		dialog.setOnShowListener(unused -> {
+			Window window = dialog.getWindow();
+			if (window != null) {
+				window.setDimAmount(0.48f);
+				window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
 			}
-			@Override public void onNothingSelected(AdapterView<?> parentView) {}
-		}));
-		row.addView(spinner, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.1f));
-		ExtraSettingsUi.addSmallSpacing(parent, row);
+		});
 	}
 
 	private void addSwitchRow(LinearLayout parent, int iconRes, int titleRes, int hintRes, boolean checked, BoolSettingOperation operation) {
 		MaterialCardView rowCard = ExtraSettingsUi.clickableCard(context);
+		rowCard.setCardBackgroundColor(ExtraSettingsUi.COLOR_SURFACE_VARIANT);
+		rowCard.setStrokeWidth(0);
+		rowCard.setRadius(ExtraSettingsUi.dp(context, 16));
 		LinearLayout rowContent = ExtraSettingsUi.cardContent(context, rowCard);
+		rowContent.setPadding(ExtraSettingsUi.dp(context, 14), ExtraSettingsUi.dp(context, 12), ExtraSettingsUi.dp(context, 14), ExtraSettingsUi.dp(context, 12));
 		LinearLayout row = ExtraSettingsUi.horizontal(context);
-		row.addView(ExtraSettingsUi.icon(context, iconRes, ExtraSettingsUi.COLOR_PRIMARY, 22));
+		row.addView(ExtraSettingsUi.icon(context, iconRes, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, 22));
 		LinearLayout textColumn = ExtraSettingsUi.vertical(context);
 		row.addView(textColumn, labelParams());
 		textColumn.addView(ExtraSettingsUi.label(context, titleRes));
@@ -418,9 +774,13 @@ public final class SettingsPage {
 
 	private void addSwitchDetailsRow(LinearLayout parent, int iconRes, int titleRes, int hintRes, boolean checked, BoolSettingOperation operation, View.OnClickListener detailsClickListener) {
 		MaterialCardView rowCard = ExtraSettingsUi.clickableCard(context);
+		rowCard.setCardBackgroundColor(ExtraSettingsUi.COLOR_SURFACE_VARIANT);
+		rowCard.setStrokeWidth(0);
+		rowCard.setRadius(ExtraSettingsUi.dp(context, 16));
 		LinearLayout rowContent = ExtraSettingsUi.cardContent(context, rowCard);
+		rowContent.setPadding(ExtraSettingsUi.dp(context, 14), ExtraSettingsUi.dp(context, 12), ExtraSettingsUi.dp(context, 14), ExtraSettingsUi.dp(context, 12));
 		LinearLayout row = ExtraSettingsUi.horizontal(context);
-		row.addView(ExtraSettingsUi.icon(context, iconRes, ExtraSettingsUi.COLOR_PRIMARY, 22));
+		row.addView(ExtraSettingsUi.icon(context, iconRes, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, 22));
 		LinearLayout textColumn = ExtraSettingsUi.vertical(context);
 		row.addView(textColumn, labelParams());
 		textColumn.addView(ExtraSettingsUi.label(context, titleRes));
@@ -562,12 +922,7 @@ public final class SettingsPage {
 		try {
 			BottomSheetDialog dialog = new BottomSheetDialog(context);
 			dialog.setContentView(buildPreloadAdvancedSheetContent(dialog, repository.loadSettingsJson()));
-			dialog.setOnShowListener(unused -> {
-				Window window = dialog.getWindow();
-				if (window != null) {
-					window.setDimAmount(0.48f);
-				}
-			});
+			configureBottomSheetWindow(dialog);
 			dialog.show();
 		} catch (Exception exception) {
 			actions.showError(exception);
@@ -575,13 +930,12 @@ public final class SettingsPage {
 	}
 
 	private View buildPreloadAdvancedSheetContent(BottomSheetDialog dialog, JSONObject settings) {
-		ScrollView scrollView = new ScrollView(context);
-		scrollView.setFillViewport(false);
-		scrollView.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
+		ScrollView scrollView = bottomSheetScrollView();
 		LinearLayout content = ExtraSettingsUi.vertical(context);
 		int horizontalPadding = ExtraSettingsUi.dp(context, 20);
-		content.setPadding(horizontalPadding, ExtraSettingsUi.dp(context, 18), horizontalPadding, ExtraSettingsUi.dp(context, 28));
+		content.setPadding(horizontalPadding, ExtraSettingsUi.dp(context, 12), horizontalPadding, ExtraSettingsUi.dp(context, 28));
 		scrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		addBottomSheetHandle(content);
 		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_bolt_24, R.string.preload_advanced_title, R.string.preload_advanced_subtitle, null));
 		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.body(context, R.string.preload_advanced_master_note));
 		addSwitchRow(content, R.drawable.ic_layers_24, R.string.preload_startup_common_switch, R.string.preload_startup_common_hint, settings.optBoolean("preload_startup_common_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_startup_common_enabled", checked)));
@@ -886,6 +1240,17 @@ public final class SettingsPage {
 	private interface SettingOperation { void apply(int position) throws Exception; }
 	private interface BoolSettingOperation { void apply(boolean checked) throws Exception; }
 	private interface ThrowingStringConsumer { void accept(String value) throws Exception; }
+
+	private static final class ChoiceOption {
+		final String title;
+		final String subtitle;
+		final int iconRes;
+		ChoiceOption(String title, String subtitle, int iconRes) {
+			this.title = title == null ? "" : title;
+			this.subtitle = subtitle;
+			this.iconRes = iconRes;
+		}
+	}
 
 	private static final class ResolutionOption {
 		final int width;

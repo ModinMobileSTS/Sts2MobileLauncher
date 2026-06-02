@@ -249,12 +249,17 @@ public final class GameVersionManagerPage {
 				pack.displayName,
 				selected ? context.getString(R.string.version_manager_selected_badge) : "",
 				subtitle,
-				v -> showCompatSheet(pack, selected)
+				v -> showCompatSheet(pack, selected),
+				TextUtils.TruncateAt.MIDDLE
 			));
 		}
 	}
 
 	private View listItem(int iconRes, String title, String badge, String subtitle, View.OnClickListener listener) {
+		return listItem(iconRes, title, badge, subtitle, listener, TextUtils.TruncateAt.END);
+	}
+
+	private View listItem(int iconRes, String title, String badge, String subtitle, View.OnClickListener listener, TextUtils.TruncateAt titleEllipsize) {
 		LinearLayout row = ExtraSettingsUi.horizontal(context);
 		row.setGravity(Gravity.CENTER_VERTICAL);
 		row.setPadding(0, ExtraSettingsUi.dp(context, 14), 0, ExtraSettingsUi.dp(context, 14));
@@ -273,7 +278,7 @@ public final class GameVersionManagerPage {
 		LinearLayout titleRow = ExtraSettingsUi.horizontal(context);
 		TextView titleView = ExtraSettingsUi.text(context, title == null ? "" : title, 16, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
 		titleView.setSingleLine(true);
-		titleView.setEllipsize(TextUtils.TruncateAt.END);
+		titleView.setEllipsize(titleEllipsize == null ? TextUtils.TruncateAt.END : titleEllipsize);
 		titleRow.addView(titleView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 		if (!TextUtils.isEmpty(badge)) {
 			TextView badgeView = badge(badge);
