@@ -461,9 +461,9 @@
     <string name="choice_sheet_preload_shader_off_desc">预热时不额外加载 Shader 资源。</string>
     <string name="choice_sheet_preload_shader_load_desc">提前加载已知 Shader 资源；不等同于完整 GPU 管线编译。</string>
     <string name="settings_presets_title">预设</string>
-    <string name="settings_presets_subtitle">快速切换画面与移动端 UI 缩放方案。</string>
+    <string name="settings_presets_subtitle">快速切换画面方案。</string>
     <string name="section_graphics_advanced">画面细项</string>
-    <string name="section_graphics_advanced_hint">细调渲染、缩放与帧率节奏。</string>
+    <string name="section_graphics_advanced_hint">详细渲染参数</string>
     <string name="section_graphics_advanced_info">大部分画面选项需要完全重启游戏生效。渲染器会在下次 Godot 启动时应用。</string>
     <string name="msaa">MSAA</string>
     <string name="vsync">垂直同步</string>
@@ -474,7 +474,7 @@
     <string name="shader_compatibility_hint">尽量使用更保守的移动端兼容着色器。</string>
     <string name="settings_save_subtitle">导入、导出、解锁与转移存档。</string>
     <string name="full_data_backup_title">完整应用数据备份</string>
-    <string name="full_data_backup_subtitle">压缩导出整个应用私有数据。</string>
+    <string name="full_data_backup_subtitle">导出完整数据。</string>
     <string name="full_data_backup_info">会备份整个应用私有数据目录，包括游戏存档、游戏选项、附加设置偏好、已导入 MOD、MOD 方案、日志和其它私有文件。恢复时会用备份内容替换当前私有数据；完成后建议完全重启游戏。</string>
     <string name="full_data_backup_size_format">私有数据：%1$s · MOD 清单：%2$d</string>
     <string name="full_data_backup_calculating">私有数据：计算中…</string>
@@ -533,7 +533,7 @@
     <string name="status_import_mod_done_count">已导入 %1$d 个 MOD 项。</string>
     <string name="about_page_subtitle">制作信息与友链。</string>
     <string name="author_wsdx233_title">Wsdx233</string>
-    <string name="author_wsdx233_desc">本手机移植版的主要作者，可以到B站动态查看更新。</string>
+    <string name="author_wsdx233_desc">此启动器作者，可以到B站我的动态查看更新，或者到Github查看此启动器源码</string>
     <string name="author_link_bilibili">哔哩哔哩</string>
     <string name="author_link_github">GitHub</string>
     <string name="steam_link_title">Steam页面</string>
@@ -541,7 +541,7 @@
     <string name="download_link_title">游戏下载</string>
     <string name="download_link_desc">打开夸克网盘游戏本体分享。</string>
     <string name="update_check_title">检查启动器更新</string>
-    <string name="update_check_desc">打开附加设置时自动检查 ModinMobileSTS/Sts2MobileLauncher 的 GitHub Releases。</string>
+    <string name="update_check_desc">启动时检查更新</string>
     <string name="update_check_manual">立即检查</string>
     <string name="update_check_auto">自动检查</string>
     <string name="update_check_current_version_format">当前启动器：%1$s</string>
@@ -551,15 +551,15 @@
     <string name="update_later">稍后</string>
     <string name="friend_links_title">友情链接</string>
     <string name="friend_link_amethyst_title">Slay The Amethyst Modded</string>
-    <string name="friend_link_amethyst_desc">杀戮尖塔（一代）的手机版启动器，支持添加MOD。</string>
+    <string name="friend_link_amethyst_desc">塔一 MOD启动器，也为本软件提供了设计和技术参考</string>
     <string name="friend_link_quick_restart_title">quickRestart2 MOD</string>
-    <string name="friend_link_quick_restart_desc">在暂停菜单中快速重开当前战斗，已内置到移植版中。</string>
+    <string name="friend_link_quick_restart_desc">在暂停菜单中快速重开当前战斗，已内置到移植版中</string>
     <string name="friend_link_ritsu_lib_title">STS2-RitsuLib</string>
     <string name="friend_link_ritsu_lib_desc">BAKAOLC 制作的 STS2 MOD 支持库。</string>
     <string name="friend_link_sts2_launcher_mod_manager_title">StS2 启动器 MOD 管理器</string>
     <string name="friend_link_sts2_launcher_mod_manager_desc">接入Steam的塔2启动器，支持beta版和云存档，为本项目提供了稳定的MOD思路参考</string>
     <string name="payload_card_title">游戏本体</string>
-    <string name="payload_card_subtitle">可从本地 PC 游戏压缩包导入，或用你自己的 Steam 账号下载到应用私有本体仓库。</string>
+    <string name="payload_card_subtitle">可从本地 PC 游戏压缩包导入，或用你自己的 Steam 账号下载到应用私有本体仓库</string>
     <string name="payload_status_ready_short">游戏已导入：%1$s</string>
     <string name="payload_status_missing_short">尚未导入游戏压缩包</string>
     <string name="payload_status_ready">准备就绪：%1$s</string>
@@ -567,8 +567,8 @@
     <string name="payload_stats_format">%1$d 个文件，总计 %2$s；PCK %3$s；sts2.dll %4$s</string>
     <string name="payload_stats_calculating">文件大小：计算中…</string>
     <string name="payload_source_format">来源：%1$s / %2$s / SHA-256 %3$s</string>
-    <string name="launch_requires_payload">请先导入游戏压缩包再启动。</string>
-    <string name="launch_requires_compat_pack">请先安装或选择对应的移动端兼容包再启动。</string>
+    <string name="launch_requires_payload">请先导入游戏压缩包再启动</string>
+    <string name="launch_requires_compat_pack">请先安装或选择对应的移动端兼容包再启动</string>
     <string name="launch_incompatible_compat_pack_dialog_title">兼容包版本不匹配</string>
     <string name="launch_incompatible_compat_pack_dialog_message">当前兼容包：%1$s\n兼容包目标：%2$s\n当前游戏：%3$s\n\n此检查只比较游戏版本号。你可以前往“版本”页切换兼容包，也可以选择继续启动。</string>
     <string name="launch_anyway">仍然启动</string>
@@ -587,7 +587,7 @@
     <string name="clear_game_payload_confirm_message">会删除当前启动配置；仅当没有其他配置使用同一游戏本体时才会删除该本体。存档、附加设置和 MOD 文件会保留。</string>
 
     <string name="version_manager_title">版本管理器</string>
-    <string name="version_manager_subtitle">管理游戏本体、启动配置和移动端兼容包。</string>
+    <string name="version_manager_subtitle">管理游戏本体、启动配置和移动端兼容包</string>
     <string name="version_manager_tab_profiles">启动配置</string>
     <string name="version_manager_tab_payloads">游戏本体</string>
     <string name="version_manager_tab_compat">兼容包</string>
@@ -709,8 +709,7 @@
     <string name="steam_not_logged_in">未登录</string>
     <string name="steam_account_status_format">账号：%1$s
 SteamID64：%2$s
-云存档模式：%3$s
-最近错误：%4$s</string>
+云存档模式：%3$s %4$s</string>
     <string name="steam_login">登录</string>
     <string name="steam_verify_login">验证令牌</string>
     <string name="steam_logout">退出登录</string>
