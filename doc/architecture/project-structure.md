@@ -12,8 +12,10 @@
 
 ```text
 s2_re/
-  AGENTS.md                        # agent/维护者总入口
-  README.md                        # 普通开发/测试入口
+  AGENTS.md                        # 编码代理/维护者专用操作约定，不是用户手册
+  README.md                        # 普通开发/测试入口与用户可见说明
+  LICENSE                          # 本仓库原创代码 MIT License
+  THIRD_PARTY_LICENSES.md          # 第三方来源与许可证摘要
   android/                         # Android shell + Godot Gradle 工程
   port-mod/                        # git submodule: 多分支 Android 兼容 patcher
   tools/android/                   # runtime 同步、Gradle 环境、compat pack staging
@@ -23,7 +25,7 @@ s2_re/
   doc/                             # 新规范化文档入口
   docs/                            # 历史 diff/validation 资料
   dist/                            # 本地构建输出，gitignore
-  .agent/                          # agent 临时计划/报告/工作树，gitignore
+  .agent/                          # agent 临时计划/报告/工作树/参考 clone，gitignore，不追踪
 ```
 
 ## 3. Android shell 主要组件
@@ -44,7 +46,7 @@ s2_re/
 | 正式/稳定 | `v0.103.2` | `.env` 的 `STS2_ORIGINAL_V103_REFERENCE_DIR` 或 `STS2_ORIGINAL_V103_ROOT` | `compat/v0.103.2` | `original` | `sts2-android-compat-v0.103.2` |
 | Beta | `v0.106.1` | `.env` 的 `STS2_ORIGINAL_V1061_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1061_ROOT` | `compat/v0.106.1-beta` | `original-v0.106.1` | `sts2-android-compat-v0.106.1-beta` |
 
-内置兼容包列表由 `tools/android/bundled-compat-packs.json` 控制。打包脚本会用 `stage-bundled-compat-packs.sh` 为列表中的每个分支构建 zip 并复制到 `android/assets/compat_packs/`；compile gate 引用目录由 `.env` 解析后通过 `CompatReferenceDir` 传给 MSBuild，不依赖提交到仓库的个人 symlink。
+内置兼容包列表由 `tools/android/bundled-compat-packs.json` 控制。打包脚本会用 `stage-bundled-compat-packs.sh` 为列表中的每个分支构建 zip 并复制到 `android/assets/compat_packs/`；这些 zip 是构建产物，随本地 APK 打包但不再由 git 跟踪。compile gate 引用目录由 `.env` 解析后通过 `CompatReferenceDir` 传给 MSBuild，不依赖提交到仓库的个人 symlink。
 
 ## 5. APK assets 与私有运行时目录
 
@@ -53,7 +55,7 @@ APK assets：
 ```text
 android/assets/bootstrap.pck                 # 无 payload 时的最小 bootstrap
 android/assets/port_compat.pck               # legacy fallback overlay
-android/assets/compat_packs/*.zip            # 内置可安装兼容包
+android/assets/compat_packs/*.zip            # 构建时生成的内置兼容包 assets，gitignore
 android/assets/dotnet_bcl/                   # 同步的大型 runtime，gitignore
 android/assets/payload/SlayTheSpire2.zip     # 直装版临时 payload，gitignore
 ```
@@ -106,8 +108,11 @@ android/steam-content/                        # SteamPipe depot manifest/chunk �
 - 用户 PC 游戏 zip、解压 payload、原版/参考 runtime DLL 或压缩包。
 - `android/assets/dotnet_bcl/`、`android/libs/`、`android/assets/payload/`。
 - keystore/jks/p12 等签名私钥。
+- `android/assets/compat_packs/*.zip`：脚本生成的兼容包 assets，构建时刷新，不入库。
+- `.agent/`：agent 草稿、计划、报告、临时 worktree 与外部参考 clone。
 - `dist/`、APK/AAB/APKS、.NET bin/obj。
 
-允许但需谨慎：
+允许提交但需区分用途：
 
-- `android/assets/compat_packs/*.zip`：这是脚本生成的兼容包 zip，不含游戏 payload；提交前确认 manifest、branch、hash 正确。
+- `AGENTS.md`：编码代理/维护者专用操作约定，帮助后续自动化维护；用户可见说明仍应沉淀到 `README.md` / `doc/`。
+- `doc/plan/`：长期设计计划或已落地方案的维护 checklist；一次性 agent 上下文/审查记录不要放入项目文档。

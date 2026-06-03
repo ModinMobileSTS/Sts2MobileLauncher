@@ -39,7 +39,7 @@ port-mod branch
 - `tools/android/stage-bundled-compat-packs.sh`
   - 按 `tools/android/bundled-compat-packs.json` 构建多个分支。
   - 非当前分支使用临时 git worktree。
-  - 输出到 `android/assets/compat_packs/*.zip`，随 APK 打包。
+  - 输出到 gitignored 的 `android/assets/compat_packs/*.zip`，随本地 APK 打包但不由 git 跟踪。
 
 ## 3. 安装 / 首次进入设置页
 

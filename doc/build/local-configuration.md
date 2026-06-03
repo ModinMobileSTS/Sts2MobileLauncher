@@ -1,6 +1,6 @@
 # 本地配置与可复现构建
 
-本仓库不再把开发者机器上的 `../s2`、`../s2_original`、`/home/...` 等路径写死在构建脚本里。构建所需的本机路径统一放在仓库根目录 `.env`；非环境变量的本地构建选项放在 `local.properties`。两个文件都被 `.gitignore` 排除。
+本仓库不再把开发者机器上的 `../s2`、`../s2_original`、`/home/...` 等路径写死在构建脚本里。构建所需的本机路径统一放在仓库根目录 `.env`；非环境变量的本地构建选项放在 `local.properties`。两个文件都被 `.gitignore` 排除。本地 agent/参考资料默认放在 `.agent/`，同样不进入版本控制。
 
 ## 1. 初始化
 
@@ -49,11 +49,11 @@ cp local.properties.example local.properties
 | `android.release_keystore_*` | debug keystore 兼容默认值 | 本地签名 fallback；更建议把密码类值放到 `.env` 或 CI secrets。 |
 | `compat.default_reference_flavor` | `original-v0.106.1` | 当前分支 fallback 的默认 compile gate。 |
 | `compat.bundled_packs_config` | `tools/android/bundled-compat-packs.json` | 内置兼容包列表。 |
-| `compat.asset_dir` | `android/assets/compat_packs` | 内置兼容包输出到 APK assets 的目录。 |
-| `compat.worktree_root` | `.agent/worktrees/compat-packs` | 多分支兼容包临时 worktree 根目录。 |
+| `compat.asset_dir` | `android/assets/compat_packs` | 内置兼容包输出到 APK assets 的目录；生成 zip 已 gitignore，不提交。 |
+| `compat.worktree_root` | `.agent/worktrees/compat-packs` | 多分支兼容包临时 worktree 根目录；位于 ignored `.agent/`。 |
 | `compat.pack_remote` | `origin` | stage 脚本解析远端分支时使用的 remote。 |
 | `deps.external_projects_config` | `tools/deps/external-github-projects.json` | GitHub 外部参考项目清单。 |
-| `deps.external_projects_root` | `.agent/reference-repos` | 自动 clone 外部参考项目的本地根目录。 |
+| `deps.external_projects_root` | `.agent/reference-repos` | 自动 clone 外部参考项目的本地根目录；位于 ignored `.agent/`。 |
 
 ## 4. 自动准备 GitHub 外部参考项目
 
@@ -71,7 +71,7 @@ tools/deps/prepare-external-projects.sh --group modding-reference
 tools/deps/prepare-external-projects.sh --all
 ```
 
-默认会处理 `port-mod` submodule，并 clone `clone_by_default=true` 的开源参考仓库到 `deps.external_projects_root`。脚本不会下载商业游戏 payload、原版 DLL、keystore 或准备好的 Godot/Mono runtime；这些仍需通过 `.env` 指向你本地合法拥有/自行构建的输入。
+默认会处理 `port-mod` submodule，并 clone `clone_by_default=true` 的开源参考仓库到 `deps.external_projects_root`。脚本不会下载商业游戏 payload、原版 DLL、keystore 或准备好的 Godot/Mono runtime；这些仍需通过 `.env` 指向你本地合法拥有/自行构建的输入。新增/变更参考仓库时同步 `THIRD_PARTY_LICENSES.md`。
 
 当前清单维护在 `tools/deps/external-github-projects.json`，主要包括：
 

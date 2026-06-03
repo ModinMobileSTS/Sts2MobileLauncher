@@ -1,14 +1,14 @@
 # AGENTS.md
 
 面向后续编码代理/维护者的项目速览与操作约定。当前目录为本仓库根目录。
-最后同步：2026-06-02。
+最后同步：2026-06-03。
 
 ## 0. 总原则
 
 - 本工程是 **Slay the Spire 2 Android 重构移植/启动器工程**，不是完整游戏源码仓库。
 - 仓库只维护 Android shell、导入/版本管理逻辑、兼容包构建脚本与 Android 兼容补丁源码；**不提交用户游戏 zip、解压后的完整游戏 payload、大型 Godot/Mono runtime、keystore**。
-- `port-mod/` 是独立仓库 `../sts2-android-compat` 的 **git submodule**，按游戏版本使用多个分支维护 Android 兼容补丁。
-- 新增或修改功能时必须同步文档：优先更新 `doc/`，并在 `doc/changelog/` 新增一条变更记录；历史 `docs/` 目录保留旧阶段差异/验证资料，不作为新文档入口。
+- `port-mod/` 是独立仓库 <https://github.com/ModinMobileSTS/sts2-android-compat> 的 **git submodule**，按游戏版本使用多个分支维护 Android 兼容补丁。
+- 新增或修改功能时必须同步文档：用户可见/长期维护说明优先更新 `README.md` / `doc/`，并在 `doc/changelog/` 新增一条项目 changelog；同时把同一条或 agent 视角摘要镜像到 `.agent/agent-docs/changelog/`，便于后续 agent 本地接力。历史 `docs/` 目录保留旧阶段差异/验证资料，不作为新文档入口。`AGENTS.md` 是 agent/维护者专用操作约定；本地 agent 草稿、报告、worktree、参考 clone 与 agent 文档放入 `.agent/`，该目录不追踪。
 - 完成用户要求的修改后，请用脚本构建一个 importer 版本 APK 便于测试：
 
 ```bash
@@ -44,7 +44,7 @@ Android 侧拆成三层维护：
 
 关键文件：
 
-- `.gitmodules`：`port-mod` submodule URL 与默认 branch。
+- `.gitmodules`：`port-mod` submodule GitHub URL 与默认 branch。
 - `tools/android/bundled-compat-packs.json`：内置兼容包列表，当前包含 `compat/v0.103.2` 与 `compat/v0.106.1-beta`。
 - `.env.example`：工具链、runtime 参考、original compile gate 引用、签名环境变量示例；复制为 `.env` 后编辑，本文件不入 git。
 - `local.properties.example`：非环境变量的本地构建选项示例；复制为 `local.properties` 后编辑，本文件不入 git。
@@ -79,8 +79,10 @@ cp local.properties.example local.properties
 
 ```text
 s2_re/
-  AGENTS.md                        # 本文件，给后续 agent/维护者的项目说明
+  AGENTS.md                        # 本文件，给后续 agent/维护者的操作约定；不是用户手册
   README.md                        # 面向普通开发者/测试者的入口说明
+  LICENSE                          # 本仓库原创代码 MIT License
+  THIRD_PARTY_LICENSES.md          # 第三方来源/许可证摘要与发布前合规检查
   android/                         # Android shell / Godot Android Gradle 工程根目录
     AndroidManifest.xml            # Activity/provider/权限；GameSettingsActivity 是默认 launcher
     build.gradle                   # Godot Android template 风格应用模块配置
@@ -95,11 +97,11 @@ s2_re/
     assets/
       bootstrap.pck                # 无游戏 payload 时的最小 Godot bootstrap pack
       port_compat.pck              # legacy fallback overlay pack，脚本生成
-      compat_packs/                # 内置兼容包 zip，stage-bundled-compat-packs.sh 生成/刷新
+      compat_packs/                # 构建时生成的内置兼容包 zip assets，gitignore
       dotnet_bcl/                  # 大型 .NET/Godot runtime DLL，同步生成，gitignore
       payload/                     # 直装版临时内置 zip，gitignore
     libs/                          # Godot/FMOD/template AAR，同步生成，gitignore
-  port-mod/                        # git submodule: ../sts2-android-compat，多分支兼容补丁仓库
+  port-mod/                        # git submodule: ModinMobileSTS/sts2-android-compat，多分支兼容补丁仓库
     compat_manifest.*.json         # 当前分支的兼容包 manifest
     STS2AndroidPortCompat/         # 兼容插件源码，输出 STS2Mobile.dll
       STS2Mobile.csproj            # runtime 期望的程序集名：STS2Mobile.dll
@@ -136,15 +138,17 @@ s2_re/
     modding/                       # 普通 MOD 与兼容包开发维护说明
   docs/                            # 历史阶段资料：旧 diff inventory / validation，待逐步迁移
   dist/                            # APK/兼容包输出副本，本地生成，gitignore
-  .agent/                          # agent 计划/报告/本地状态，gitignore
+  .agent/                          # agent 草稿/报告/临时 worktree/参考 clone/agent-docs，gitignore，不追踪
 ```
 
 ## 5. 文档规范
 
-新文档统一放入 `doc/`：
+长期项目文档统一放入 `doc/`，agent 本地接力文档放入 ignored 的 `.agent/agent-docs/`：
 
-- `doc/README.md`：文档索引、维护规则。
-- `doc/changelog/`：每次修改新增一条 `YYYY-MM-DD-简短主题.md`，记录背景、改动、验证、注意事项。
+- `doc/README.md`：项目文档索引、维护规则。
+- `doc/changelog/`：每次用户可见/长期维护修改新增一条 `YYYY-MM-DD-简短主题.md`，记录背景、改动、验证、注意事项；这是可提交的项目 changelog。
+- `.agent/agent-docs/README.md`：本地 agent 文档索引，不提交。
+- `.agent/agent-docs/changelog/`：镜像 `doc/changelog/` 的本次变更，或记录更偏 agent 视角的本地接力摘要；不提交，不能替代项目 changelog。
 - `doc/architecture/project-structure.md`：目录职责、运行时私有目录、版本/兼容包模型。
 - `doc/build/building-and-packaging.md`：构建环境、脚本流程、常用命令、产物位置。
 - `doc/runtime/compat-pack-loading-flow.md`：移动端兼容包与普通 MOD 的详细加载流程。
@@ -153,9 +157,11 @@ s2_re/
 维护要求：
 
 1. 改动构建脚本、目录结构、版本矩阵、兼容包流程时，必须同步 `AGENTS.md` 和对应 `doc/` 页面。
-2. 每次可见行为变化或维护规则变化都要新增 changelog；不要只改 `.agent/` 内部计划。
-3. `docs/` 旧目录仍可引用，但新说明和长期维护文档应写入 `doc/`。
-4. 文档中不要写入用户私有 zip hash/路径之外的敏感信息，不要复制商业游戏资源内容。
+2. 每次可见行为变化或维护规则变化都要新增 `doc/changelog/` 项目 changelog，并同步/镜像到 `.agent/agent-docs/changelog/`；不要只改 `.agent/` 内部计划，也不要只写 agent changelog 而漏掉项目 changelog。
+3. `README.md` / `doc/` 是项目文档；`AGENTS.md` 是编码代理/维护者专用操作约定；`.agent/agent-docs/` 是本地 agent 文档，`.agent/` 其余内容是本地 scratch，均不入库。一次性 context/review/scout 记录放 `.agent/`，长期计划才整理进 `doc/plan/`。
+4. `docs/` 旧目录仍可引用，但新说明和长期维护文档应写入 `doc/`。
+5. 文档中不要写入用户私有 zip hash/路径之外的敏感信息，不要复制商业游戏资源内容。
+6. 新增直接引用资源、改编/参考第三方仓库实现或新增依赖时，同步 `THIRD_PARTY_LICENSES.md`，并在 `README.md` 写明用户可见来源。
 
 ## 6. Android shell 关键点
 
@@ -271,7 +277,7 @@ cd port-mod
 tools/android/stage-bundled-compat-packs.sh
 ```
 
-该脚本读取 `tools/android/bundled-compat-packs.json`，为每个分支输出 `android/assets/compat_packs/*.zip`。APK 启动时 `CompatPackManager.installBundledCompatPacks()` 会把这些 zip 安装到 `<files>/compat-packs/`。
+该脚本读取 `tools/android/bundled-compat-packs.json`，为每个分支输出 gitignored 的 `android/assets/compat_packs/*.zip`。APK 启动时 `CompatPackManager.installBundledCompatPacks()` 会把打入 assets 的这些 zip 安装到 `<files>/compat-packs/`。
 
 ### 8.3 compile gate
 
@@ -426,14 +432,16 @@ tools/android/stage-bundled-compat-packs.sh
 - `.gitignore` 已排除：
   - `dist/`、`*.apk`、`*.aab`、`*.apks`
   - `.env`、`local.properties`
+  - `.agent/`、`.pi/`
   - `local-inputs/`、用户 `*.zip`、keystore/jks/p12
+  - `android/assets/compat_packs/*.zip`
   - `android/.gradle/`、`android/**/build/`
   - `android/assets/dotnet_bcl/`
   - `android/libs/`
   - `android/assets/payload/`
   - .NET `bin/` / `obj/`
-- `android/assets/compat_packs/*.zip` 是明确允许的内置兼容包产物；提交前确认这些 zip 来自当前受控分支/脚本构建，且不含游戏 payload。
-- 不要提交用户 payload zip、original/reference DLL、完整 runtime、keystore 或任何商业游戏资源；本机路径只写入 `.env` / `local.properties`。
+- `android/assets/compat_packs/*.zip` 是脚本生成的内置兼容包 assets，随 APK 打包但不再由 git 跟踪；需要刷新时运行 `tools/android/stage-bundled-compat-packs.sh` 或完整打包脚本，提交前不要 `git add -f`。
+- 不要提交用户 payload zip、original/reference DLL、完整 runtime、keystore、compat pack zip 或任何商业游戏资源；本机路径只写入 `.env` / `local.properties`。
 - 修改 `port-mod/overlay` 后需要重新生成 `port_compat.pck`，并重新导出/复制内置兼容包。
 - 修改 `tools/android/make-bootstrap-pck.py` 后需要重新生成 `android/assets/bootstrap.pck`。
 - 修改 Java bridge 包名/类名要谨慎：C# helper 和 patched runtime 默认找 `com.godot.game.GodotApp`。
@@ -491,7 +499,7 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 - 当前工程是“Android shell + payload/version manager + compat pack”的组合，不是传统 Android Studio `app/` 子模块结构；Gradle 根就在 `android/`。
 - 实际打包推荐用 `tools/package/*.sh`，不要裸跑 Gradle，除非已同步 runtime、准备好环境并理解 compat pack staging。
 - 可公开 clone 的 GitHub 参考项目用 `tools/deps/prepare-external-projects.sh` 准备；清单在 `tools/deps/external-github-projects.json`。该脚本不下载商业 payload、original DLL、keystore 或准备好的 Godot/Mono runtime。
-- `settings.save` 的 Android-only key 是 Java 附加设置与 Harmony patcher/Java 启动参数的协议；改 key 要同步 `ExtraSettingsRepository`、页面 UI、`AndroidSettingsBridge` 或 `GodotApp.getCommandLine()` 等消费者、相关 patches，并记录到 `doc/changelog/`。`log_level` 额外同步到 SharedPreferences，避免原版游戏保存 settings 时丢失该 Android 字段。
+- `settings.save` 的 Android-only key 是 Java 附加设置与 Harmony patcher/Java 启动参数的协议；改 key 要同步 `ExtraSettingsRepository`、页面 UI、`AndroidSettingsBridge` 或 `GodotApp.getCommandLine()` 等消费者、相关 patches，并记录到 `doc/changelog/`，同时镜像/摘要到 `.agent/agent-docs/changelog/`。`log_level` 额外同步到 SharedPreferences，避免原版游戏保存 settings 时丢失该 Android 字段。
 - `<files>/default/<account>` 的账号选择逻辑与旧移植版兼容但较脆弱，多账号/自定义 platform player id 改动要同时检查 Java 与兼容 MOD。
 - 当前普通 MOD 目录由 launch profile 决定：`mods_mode=global` 使用 `<files>/mods`，`mods_mode=isolated` 使用 `<files>/instances/<profile_id>/mods`；新增路径相关功能必须同步 Java 管理页、C# `AppPaths`、ModLoader patches 和迁移/备份逻辑。
 - Steam Cloud 同步必须使用当前 launch profile 的 account root：`save_mode=global` 使用 `<files>/default/<account>`，`save_mode=isolated` 使用 `<files>/instances/<profile_id>/default/<account>`；不要把云存档固定写死到全局 `<files>/default/1`。

@@ -3,8 +3,9 @@ build/
 !doc/build/
 !doc/build/**
 
-# Local coding agent state
-.agent/
+# Local coding agent state and scratch notes (do not commit .agent contents)
+/.agent/
+/.agent/**
 .pi/
 dist/
 out/
@@ -17,10 +18,10 @@ out/
 .env
 local.properties
 
-# Local/private inputs and large payloads
+# Local/private inputs and generated payloads/compat packs
 local-inputs/
 *.zip
-!android/assets/compat_packs/*.zip
+android/assets/compat_packs/*.zip
 *.7z
 *.rar
 *.keystore

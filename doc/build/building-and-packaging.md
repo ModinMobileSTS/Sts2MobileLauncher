@@ -20,7 +20,7 @@ cp local.properties.example local.properties
 tools/deps/prepare-external-projects.sh
 ```
 
-它会初始化 `port-mod` submodule，并把默认参考仓库 clone 到 `.agent/reference-repos/`（或 `local.properties` 的 `deps.external_projects_root`）。商业游戏 payload、original DLL、keystore 和准备好的 Godot/Mono runtime 仍需你在 `.env` 中配置本地路径。
+它会初始化 `port-mod` submodule，并把默认参考仓库 clone 到 `.agent/reference-repos/`（或 `local.properties` 的 `deps.external_projects_root`）。`.agent/` 是本地 agent/参考资料目录，已 gitignore，不应提交。商业游戏 payload、original DLL、keystore 和准备好的 Godot/Mono runtime 仍需你在 `.env` 中配置本地路径。
 
 ## 2. 必需工具与本地输入
 
@@ -59,7 +59,7 @@ STS2_ORIGINAL_V1061_REFERENCE_DIR=/path/to/v0.106.1/bin/Debug
 - Gradle wrapper：`8.13`
 - Kotlin：`2.1.20`
 - Steam 子模块：`android/steam-protocol`、`android/steam-content`（Kotlin JVM + protobuf，用于 Steam 登录/SteamPipe 下载）
-- 主要依赖：JavaSteam `1.6.0`、OkHttp `5.3.2`、protobuf `4.31.1`、AndroidX Security Crypto、Android Prefab zstd、XZ；许可证速览见 `THIRD_PARTY_LICENSES.md`
+- 主要依赖：JavaSteam `1.6.0`、OkHttp `5.3.2`、protobuf `4.31.1`、AndroidX Security Crypto、Android Prefab zstd、XZ；许可证速览、直接参考仓库与发布前合规检查见 `THIRD_PARTY_LICENSES.md`
 - compileSdk/targetSdk：`35`
 - minSdk：`24`
 - buildTools：`35.0.0`
@@ -128,6 +128,8 @@ tools/android/stage-bundled-compat-packs.sh
 android/assets/compat_packs/*.zip
 ```
 
+该目录下的 zip 是构建产物，已 gitignore，不再由 git 跟踪；提交前不要 `git add -f` 这些 zip。
+
 ## 7. 构建导入版 APK
 
 导入版不内置游戏 zip：
@@ -140,7 +142,7 @@ tools/package/build_importer_apk.sh
 
 1. 同步 runtime。
 2. 构建当前 compat fallback。
-3. 构建/刷新全部内置 compat pack zip。
+3. 构建/刷新全部内置 compat pack zip 到 gitignored 的 `android/assets/compat_packs/`。
 4. 执行 `local.properties` 中的 `android.gradle.task`（默认 `assembleMonoRelease`）。
 5. 复制 APK 到 `android.importer.dist`（默认 `dist/sts2-re-importer.apk`）。
 
@@ -163,7 +165,7 @@ tools/package/build_direct_apk.sh
 1. `validate_payload_zip.py` 校验 zip。
 2. 同步 runtime。
 3. 构建当前 compat fallback。
-4. 构建/刷新全部内置 compat pack zip。
+4. 构建/刷新全部内置 compat pack zip 到 gitignored 的 `android/assets/compat_packs/`。
 5. 临时复制 zip 到 `android/assets/payload/SlayTheSpire2.zip`。
 6. 执行 Gradle task。
 7. 复制 APK 到 `android.direct.dist`（默认 `dist/sts2-re-direct.apk`），脚本退出时删除临时 zip。

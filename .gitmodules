@@ -1,4 +1,4 @@
 [submodule "port-mod"]
 	path = port-mod
-	url = ../sts2-android-compat
+	url = https://github.com/ModinMobileSTS/sts2-android-compat.git
 	branch = compat/v0.106.1-beta

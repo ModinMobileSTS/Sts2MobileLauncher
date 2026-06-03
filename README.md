@@ -14,7 +14,7 @@
    用户本地提供 `SlayTheSpire2.zip`，或使用自己拥有 STS2 的 Steam 账号从 SteamPipe 下载，导入到 payload store：`<files>/payloads/<payload_id>/game/`。版本页通过 launch profile 选择本体、兼容包、存档/MOD 隔离模式，切换时不复制 PCK。构建直装版 APK 时也可以临时内置 zip，但不会提交到仓库。
 
 3. **移动端兼容插件 / compatibility pack**
-   `port-mod/` 是独立 git 仓库 `../sts2-android-compat` 的 submodule。插件按游戏版本使用 git 分支维护，可导出为独立 zip 兼容包（`compat_manifest.json` + `STS2Mobile.dll` + `port_compat.pck`），由启动器安装、选择并在启动 Godot 前 staging。
+   `port-mod/` 是独立 git 仓库 <https://github.com/ModinMobileSTS/sts2-android-compat> 的 submodule。插件按游戏版本使用 git 分支维护，可导出为独立 zip 兼容包（`compat_manifest.json` + `STS2Mobile.dll` + `port_compat.pck`），由启动器安装、选择并在启动 Godot 前 staging。
 
 核心目标不是维护一份完整重编译的游戏源码，而是让 Android 壳、用户本地游戏资源和移动端兼容补丁分离，便于后续多游戏版本、多兼容包维护、验证与更新。
 
@@ -37,6 +37,10 @@
 
 ```text
 s2_re/
+  README.md                        # 普通开发者/测试者入口
+  LICENSE                          # 本仓库原创代码 MIT License
+  THIRD_PARTY_LICENSES.md          # 第三方来源与许可证摘要
+  AGENTS.md                        # 编码代理/维护者专用操作约定
   android/                         # Android shell / Godot Android Gradle 工程
     AndroidManifest.xml            # Activity、provider、权限；默认 launcher 为 GameSettingsActivity
     build.gradle                   # Godot Android template 风格应用模块配置
@@ -49,12 +53,12 @@ s2_re/
     assets/
       bootstrap.pck                # 无游戏 payload 时的最小 Godot bootstrap pack
       port_compat.pck              # legacy fallback overlay pack，脚本生成
-      compat_packs/                # 内置兼容包 zip；当前包含正式/稳定与 beta 包
+      compat_packs/                # 构建时生成的兼容包 zip assets，gitignore
       dotnet_bcl/                  # 大型 .NET/Godot runtime DLL，生成/同步产物，gitignore
       payload/                     # 直装版临时内置 zip，gitignore
     libs/                          # Godot/FMOD/template AAR，生成/同步产物，gitignore
 
-  port-mod/                        # git submodule: ../sts2-android-compat，多分支兼容补丁仓库
+  port-mod/                        # git submodule: ModinMobileSTS/sts2-android-compat，多分支兼容补丁仓库
     STS2AndroidPortCompat/         # 兼容插件源码，输出 STS2Mobile.dll
     overlay/                       # 打包进 port_compat.pck 的 shader/resource overlay
     refs/                          # 本地 original compile gate 引用说明/symlink
@@ -65,8 +69,9 @@ s2_re/
     package/                       # APK 打包、payload zip 校验脚本
     diff/                          # 差异清单工具
 
-  doc/                             # 新规范化文档入口：changelog、结构、构建、运行时加载流程
+  doc/                             # 新规范化项目文档入口：changelog、结构、构建、运行时加载流程
   docs/                            # 历史差异、验证、迁移文档
+  .agent/                          # 本地 agent 草稿/报告/worktree/参考 clone，gitignore
   dist/                            # APK 输出副本，gitignore
 ```
 
@@ -78,13 +83,13 @@ s2_re/
 - **启动配置 / launch profile**：保存到 `<files>/instances/<profile_id>/instance.json`，绑定一个 payload、一个可选兼容包，并指定存档/设置和 MOD 使用全局目录还是该 profile 的隔离目录。同一个 payload 可以创建多个 profile。
 - **移动端兼容包**：安装到 `<files>/compat-packs/<pack_id>/`，每个包包含 manifest、`STS2Mobile.dll` 和 `port_compat.pck`。启动游戏前按当前 profile payload manifest 中的游戏版本号自动匹配或检查当前选择的兼容包；不再因 `sts2.dll` SHA-256 不一致阻止启动。
 
-内置兼容包位于：
+APK 打包前，脚本会把内置兼容包生成到：
 
 ```text
 android/assets/compat_packs/*.zip
 ```
 
-当前内置包列表由 `tools/android/bundled-compat-packs.json` 控制，包含正式/稳定 `v0.103.2`（`compat/v0.103.2`，compile gate `original`）和 beta `v0.106.1`（`compat/v0.106.1-beta`，compile gate `original-v0.106.1`）。对应原版 DLL 引用目录通过 `.env` 中的 `STS2_ORIGINAL_V103_REFERENCE_DIR` / `STS2_ORIGINAL_V1061_REFERENCE_DIR` 配置。
+这些 zip 是可复现的构建产物，**不再由 git 跟踪**；需要刷新时运行 `tools/android/stage-bundled-compat-packs.sh` 或完整打包脚本。当前内置包列表由 `tools/android/bundled-compat-packs.json` 控制，包含正式/稳定 `v0.103.2`（`compat/v0.103.2`，compile gate `original`）和 beta `v0.106.1`（`compat/v0.106.1-beta`，compile gate `original-v0.106.1`）。对应原版 DLL 引用目录通过 `.env` 中的 `STS2_ORIGINAL_V103_REFERENCE_DIR` / `STS2_ORIGINAL_V1061_REFERENCE_DIR` 配置。
 
 ## 不提交的内容
 
@@ -95,9 +100,11 @@ android/assets/compat_packs/*.zip
 - `android/assets/dotnet_bcl/`
 - `android/libs/`
 - `android/assets/payload/`
+- `android/assets/compat_packs/*.zip`（构建时生成的兼容包 assets）
 - `dist/`、`*.apk`、`*.aab`、`*.apks`
 - keystore / jks / p12 等签名密钥
 - .NET `bin/` / `obj/`
+- `.agent/` 本地 agent 计划、报告、临时 worktree 与外部参考 clone
 
 ## 构建前准备
 
@@ -227,7 +234,7 @@ tools/android/sync-runtime-from-references.sh
 tools/android/build-port-mod.sh
 ```
 
-构建并复制内置兼容包 zip 到 `android/assets/compat_packs/`：
+构建/刷新内置兼容包 zip 到 gitignored 的 `android/assets/compat_packs/`：
 
 ```bash
 tools/android/stage-bundled-compat-packs.sh
@@ -378,11 +385,28 @@ tools/android/build-port-mod.sh
 - 改包名时需要同步 shortcuts、FileProvider、manifest、Gradle 配置和所有 hard-coded target package。
 - 正式发布前应重新配置签名、版本号、release build type、安全策略和版权合规流程。
 
+## 授权、第三方来源与文档边界
+
+本仓库原创代码建议/采用 MIT License，见 [`LICENSE`](LICENSE)。该授权不覆盖第三方源码/模板/二进制 runtime、FMOD、Steam/NexusMods 服务 API、用户游戏文件或其他本仓库无权再授权的内容。
+
+直接引用资源和参考代码实现的第三方仓库已集中记录在 [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)，重点包括：
+
+- [`ModinMobileSTS/SlayTheAmethystModded`](https://github.com/ModinMobileSTS/SlayTheAmethystModded)：Steam 登录、SteamPipe 下载、Steam Cloud 相关实现与设计参考；`android/steam-protocol/`、`android/steam-content/` 的协议/下载代码从该项目思路与源码改编。其顶层标准许可证需继续确认，发布前应保留授权依据。
+- [`iunius612/StS2-Launcher_Mod_Manager`](https://github.com/iunius612/StS2-Launcher_Mod_Manager)：Android launcher/runtime、Godot/Mono publish 目录、兼容补丁加载顺序与构建脚本参考；上游 MIT。
+
+项目文档与 agent 专用资料区分如下：
+
+- 面向开发者/测试者的长期项目文档：本 `README.md` 与 [`doc/`](doc/)。
+- 历史阶段性资料：[`docs/`](docs/)，后续新增长期文档不要继续扩散到这里。
+- 面向编码代理/维护者的操作约定：[`AGENTS.md`](AGENTS.md)。它不是用户手册；用户可见说明应沉淀到 `README.md` / `doc/`。
+- 本地 agent 草稿、计划、报告、临时 worktree 和参考仓库 clone：`.agent/`，已 gitignore，不应提交。
+
 ## 相关文档
 
-- [`AGENTS.md`](AGENTS.md)：面向后续编码代理/维护者的完整项目速览
-- [`doc/`](doc/)：规范化文档入口（changelog、项目结构、构建、兼容包/MOD 加载流程）
+- [`doc/`](doc/)：规范化项目文档入口（changelog、项目结构、构建、兼容包/MOD 加载流程）
 - [`doc/runtime/compat-pack-loading-flow.md`](doc/runtime/compat-pack-loading-flow.md)：Android 兼容包与普通 MOD 详细加载流程
+- [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)：第三方来源、许可证与发布前合规检查
+- [`AGENTS.md`](AGENTS.md)：编码代理/维护者专用操作约定
 - [`port-mod/README.md`](port-mod/README.md)：Android 兼容插件 / compat pack 说明
 - [`docs/inventory/`](docs/inventory/)：旧移植版与 PC 原版差异清单
 - [`docs/validation/`](docs/validation/)：阶段性验证记录
