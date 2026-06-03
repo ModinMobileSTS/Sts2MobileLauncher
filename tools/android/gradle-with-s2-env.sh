@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
-# Run Gradle in android/ with the JDK/Android SDK from ../s2.
+# Run Gradle in android/ with paths loaded from `.env` (see `.env.example`).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-S2_REFERENCE_ROOT="$(cd "$ROOT/../s2" && pwd -P)"
-export JAVA_HOME="$S2_REFERENCE_ROOT/.cache/local-jdk/full/usr/lib/jvm/java-21-openjdk-amd64"
-export ANDROID_HOME="$S2_REFERENCE_ROOT/.godot-home/Android/Sdk"
-export ANDROID_SDK_ROOT="$ANDROID_HOME"
-export PATH="$JAVA_HOME/bin:${PATH:-}"
-export LD_LIBRARY_PATH="$JAVA_HOME/lib/server${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-if [[ ! -x "$JAVA_HOME/bin/javac" ]]; then
-  echo "Missing local javac at $JAVA_HOME/bin/javac" >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+source "$ROOT/tools/env/load-local-config.sh"
+sts2_init_env
+sts2_require_value "${JAVA_HOME:-}" "JAVA_HOME"
+sts2_require_value "${ANDROID_HOME:-}" "ANDROID_HOME"
+sts2_require_executable "${JAVA_HOME:-}/bin/javac" "javac"
+sts2_require_dir "${ANDROID_HOME:-}/platforms/android-35" "Android SDK platform android-35"
 cd "$ROOT/android"
 exec ./gradlew --no-daemon "$@"

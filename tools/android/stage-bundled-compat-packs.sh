@@ -4,11 +4,19 @@
 # git worktree, so version-specific patch logic does not leak across branches.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+# shellcheck disable=SC1091
+source "$ROOT/tools/env/load-local-config.sh"
+sts2_init_env
+
 COMPAT_ROOT="$ROOT/port-mod"
-CONFIG="${BUNDLED_COMPAT_PACKS_CONFIG:-$ROOT/tools/android/bundled-compat-packs.json}"
-ASSET_DIR="$ROOT/android/assets/compat_packs"
-WORKTREE_ROOT="$ROOT/.agent/worktrees/compat-packs"
-DOTNET_BIN="${DOTNET_BIN:-$ROOT/../s2/.local/dotnet/dotnet}"
+CONFIG="$(sts2_config_path BUNDLED_COMPAT_PACKS_CONFIG compat.bundled_packs_config "$ROOT/tools/android/bundled-compat-packs.json")"
+ASSET_DIR="$(sts2_config_path COMPAT_PACK_ASSET_DIR compat.asset_dir "$ROOT/android/assets/compat_packs")"
+WORKTREE_ROOT="$(sts2_config_path COMPAT_PACK_WORKTREE_ROOT compat.worktree_root "$ROOT/.agent/worktrees/compat-packs")"
+DOTNET_BIN="$(sts2_config_path DOTNET_BIN build.dotnet "${DOTNET_BIN:-}")"
+COMPAT_PACK_REMOTE="$(sts2_config_value COMPAT_PACK_REMOTE compat.pack_remote origin)"
+export COMPAT_PACK_REMOTE
+COMPAT_PACK_APPLY_BUILD_INFO_PATCHES="$(sts2_config_value COMPAT_PACK_APPLY_BUILD_INFO_PATCHES compat.apply_build_info_patches 1)"
+export COMPAT_PACK_APPLY_BUILD_INFO_PATCHES
 
 if [[ ! -d "$COMPAT_ROOT/.git" && ! -f "$COMPAT_ROOT/.git" ]]; then
   echo "Missing compat submodule checkout: $COMPAT_ROOT" >&2
@@ -18,10 +26,7 @@ if [[ ! -f "$CONFIG" ]]; then
   echo "Missing bundled compat pack config: $CONFIG" >&2
   exit 1
 fi
-if [[ ! -x "$DOTNET_BIN" ]]; then
-  echo "Missing dotnet: $DOTNET_BIN" >&2
-  exit 1
-fi
+sts2_require_executable "$DOTNET_BIN" "dotnet"
 
 apply_build_info_patch() {
   local target_root="$1"
@@ -76,6 +81,19 @@ if mod_entry.is_file():
     if text != original:
         mod_entry.write_text(text, encoding="utf-8")
 
+for manifest_path in root.glob("compat_manifest*.json"):
+    try:
+        import json
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        continue
+    target = data.get("target_game")
+    if isinstance(target, dict) and "source_dir" in target:
+        version = str(target.get("version") or "unknown").strip() or "unknown"
+        target.setdefault("source", "original_pc_reference_" + version.replace(" ", "_"))
+        target.pop("source_dir", None)
+        manifest_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
 build_script = root / "tools" / "build-compat-pack.sh"
 if build_script.is_file():
     text = build_script.read_text(encoding="utf-8")
@@ -101,10 +119,16 @@ BUILD_TIMESTAMP_UTC="${COMPAT_BUILD_TIMESTAMP_UTC:-$(date -u +%Y-%m-%dT%H:%M:%SZ
         end = text.find(end_marker, start)
         if end != -1:
             text = text[:start] + metadata + text[end:]
+    if "-p:CompatReferenceDir" not in text:
+        text = text.replace(
+            '"$DOTNET_BIN" build "$PROJECT" -p:ReferenceFlavor="$REFERENCE_FLAVOR"',
+            '"$DOTNET_BIN" build "$PROJECT" -p:ReferenceFlavor="$REFERENCE_FLAVOR" -p:CompatReferenceDir="${COMPAT_REFERENCE_DIR:-}"',
+            1,
+        )
     if "-p:_CompatGitBranch=\"$GIT_BRANCH\"" not in text:
         text = text.replace(
-            '"$DOTNET_BIN" build "$PROJECT" -p:ReferenceFlavor="$REFERENCE_FLAVOR" -v:q',
-            '"$DOTNET_BIN" build "$PROJECT" -p:ReferenceFlavor="$REFERENCE_FLAVOR" -p:_CompatGitBranch="$GIT_BRANCH" -p:_CompatGitCommit="$GIT_COMMIT" -p:_CompatGitCommitSubject="$GIT_SUBJECT" -p:_CompatGitDirty="$GIT_DIRTY" -p:_CompatBuildTimestampUtc="$BUILD_TIMESTAMP_UTC" -v:q',
+            '"$DOTNET_BIN" build "$PROJECT" -p:ReferenceFlavor="$REFERENCE_FLAVOR" -p:CompatReferenceDir="${COMPAT_REFERENCE_DIR:-}" -v:q',
+            '"$DOTNET_BIN" build "$PROJECT" -p:ReferenceFlavor="$REFERENCE_FLAVOR" -p:CompatReferenceDir="${COMPAT_REFERENCE_DIR:-}" -p:_CompatGitBranch="$GIT_BRANCH" -p:_CompatGitCommit="$GIT_COMMIT" -p:_CompatGitCommitSubject="$GIT_SUBJECT" -p:_CompatGitDirty="$GIT_DIRTY" -p:_CompatBuildTimestampUtc="$BUILD_TIMESTAMP_UTC" -v:q',
             1,
         )
     if "\"build_info\"" not in text:
@@ -133,6 +157,22 @@ PYMANIFEST
         build_script.chmod(build_script.stat().st_mode | 0o111)
 PY
   echo "Applied compat build-info patch source: $source_root"
+}
+
+
+_sts2_pack_reference_flavor() {
+  local branch="$1"
+  case "$branch" in
+    *v0.106.1*|*1061*)
+      printf '%s\n' "original-v0.106.1"
+      ;;
+    *v0.103.2*|*1032*)
+      printf '%s\n' "original"
+      ;;
+    *)
+      sts2_config_value '' compat.default_reference_flavor original-v0.106.1
+      ;;
+  esac
 }
 
 resolve_compat_ref() {
@@ -185,6 +225,10 @@ PY
   current_branch="$(git -C "$COMPAT_ROOT" branch --show-current 2>/dev/null || true)"
   if [[ "$branch" == "$current_branch" ]]; then
     echo "Building bundled compat pack '$pack_id' from current dirty worktree ($branch)"
+    pack_reference_flavor="$(_sts2_pack_reference_flavor "$branch")"
+    pack_reference_dir="$(sts2_compat_reference_dir_for_flavor "$pack_reference_flavor")"
+    sts2_require_value "$pack_reference_dir" "compat reference dir for $branch ($pack_reference_flavor)"
+    sts2_require_file "$pack_reference_dir/sts2.dll" "sts2.dll reference for $branch ($pack_reference_flavor)"
     if [[ ! -x "$COMPAT_ROOT/tools/build-compat-pack.sh" ]]; then
       echo "Missing compat build script in current worktree: tools/build-compat-pack.sh" >&2
       exit 1
@@ -193,6 +237,9 @@ PY
     (
       cd "$COMPAT_ROOT"
       DOTNET_BIN="$DOTNET_BIN" \
+      REFERENCE_FLAVOR="$pack_reference_flavor" \
+      COMPAT_REFERENCE_DIR="$pack_reference_dir" \
+      CompatReferenceDir="$pack_reference_dir" \
       COMPAT_BUILD_GIT_BRANCH="$branch" \
       ./tools/build-compat-pack.sh
     )
@@ -202,6 +249,10 @@ PY
 
   resolved_ref="$(resolve_compat_ref "$branch")"
   echo "Building bundled compat pack '$pack_id' from $resolved_ref (requested: $branch)"
+  pack_reference_flavor="$(_sts2_pack_reference_flavor "$branch")"
+  pack_reference_dir="$(sts2_compat_reference_dir_for_flavor "$pack_reference_flavor")"
+  sts2_require_value "$pack_reference_dir" "compat reference dir for $branch ($pack_reference_flavor)"
+  sts2_require_file "$pack_reference_dir/sts2.dll" "sts2.dll reference for $branch ($pack_reference_flavor)"
   git -C "$COMPAT_ROOT" worktree remove --force "$worktree" >/dev/null 2>&1 || true
   rm -rf "$worktree"
   git -C "$COMPAT_ROOT" worktree add --detach "$worktree" "$resolved_ref"
@@ -213,6 +264,9 @@ PY
   (
     cd "$worktree"
     DOTNET_BIN="$DOTNET_BIN" \
+    REFERENCE_FLAVOR="$pack_reference_flavor" \
+    COMPAT_REFERENCE_DIR="$pack_reference_dir" \
+    CompatReferenceDir="$pack_reference_dir" \
     COMPAT_BUILD_GIT_BRANCH="$branch" \
     ./tools/build-compat-pack.sh
   )

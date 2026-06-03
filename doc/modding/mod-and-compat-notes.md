@@ -79,10 +79,10 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 
 当前维护分支：
 
-| 游戏版本 | 分支 | 原版引用 | ReferenceFlavor |
+| 游戏版本 | 分支 | 原版引用配置 | ReferenceFlavor |
 | --- | --- | --- | --- |
-| `v0.103.2` | `compat/v0.103.2` | `../s2_original/s21032/` | `original` |
-| `v0.106.1` beta | `compat/v0.106.1-beta` | `../s2_original/s201061/` | `original-v0.106.1` |
+| `v0.103.2` | `compat/v0.103.2` | `.env`: `STS2_ORIGINAL_V103_REFERENCE_DIR` 或 `STS2_ORIGINAL_V103_ROOT` | `original` |
+| `v0.106.1` beta | `compat/v0.106.1-beta` | `.env`: `STS2_ORIGINAL_V1061_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1061_ROOT` | `original-v0.106.1` |
 
 开发步骤建议：
 
@@ -90,9 +90,8 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 # 1. 确认 submodule 分支
 git -C port-mod status --short --branch
 
-# 2. 编译对应 original gate
-../s2/.local/dotnet/dotnet build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj \
-  -p:ReferenceFlavor=original-v0.106.1 -v:q
+# 2. 编译对应 original gate（引用目录从 .env 解析）
+REFERENCE_FLAVOR=original-v0.106.1 tools/android/build-port-mod.sh
 
 # 3. 构建 fallback 或 compat pack
 tools/android/build-port-mod.sh
@@ -110,8 +109,8 @@ tools/package/build_importer_apk.sh
 
 新增一个目标游戏版本时，至少需要：
 
-1. 准备对应 PC 原版/解包目录，例如 `../s2_original/<version>/`。
-2. 在 `port-mod/refs/` 新增 original refs 说明/symlink，或在 `Directory.Build.props` 加入对应路径解析。
+1. 准备对应 PC 原版/解包目录或 DLL 引用目录，并在 `.env.example` / 文档中增加对应 `STS2_ORIGINAL_*_REFERENCE_DIR` 说明。
+2. 为新版本定义 `ReferenceFlavor` 到 `CompatReferenceDir` 的解析方式（脚本映射或显式环境变量），不要提交指向个人 workspace 的 symlink。
 3. 新建 `port-mod` 分支，例如 `compat/vX.Y.Z`。
 4. 新增/更新 `compat_manifest.*.json`：
    - `pack_id`
@@ -119,7 +118,7 @@ tools/package/build_importer_apk.sh
    - `compat_version`
    - `channel`
    - `target_game.version`
-   - `target_game.source_dir`
+   - `target_game.source`（描述性来源，不写个人本地路径）
    - `target_game.sts2_dll_sha256`
 5. 用对应 `ReferenceFlavor` 做 compile gate。
 6. 更新 `tools/android/bundled-compat-packs.json`。
@@ -161,7 +160,7 @@ tools/package/build_importer_apk.sh
   "channel": "beta",
   "target_game": {
     "version": "v0.106.1",
-    "source_dir": "../s2_original/s201061",
+    "source": "original_pc_reference_v0.106.1",
     "sts2_dll_sha256": "...",
     "match": "exact-preferred"
   },

@@ -13,6 +13,10 @@ out/
 *.apks
 *.idsig
 
+# Local reproducible-build configuration
+.env
+local.properties
+
 # Local/private inputs and large payloads
 local-inputs/
 *.zip

@@ -1,0 +1,36 @@
+# STS2 Android local build options.
+#
+# Copy this file to `local.properties` and edit non-secret local options. The file is ignored
+# by git. Environment variables still take precedence where a script supports both.
+
+# Gradle task used by package scripts.
+android.gradle.task=assembleMonoRelease
+
+# APK output copied by package scripts after Gradle finishes.
+android.apk.output=android/build/outputs/apk/mono/release/sts2-re.apk
+# Stable distribution copies produced by package scripts.
+android.importer.dist=dist/sts2-re-importer.apk
+android.direct.dist=dist/sts2-re-direct.apk
+
+# Android signing defaults used by package scripts for local release builds. Prefer the
+# environment variables RELEASE_KEYSTORE_FILE / RELEASE_KEYSTORE_PASSWORD /
+# RELEASE_KEYSTORE_ALIAS for secrets or CI.
+android.release_keystore_file=${HOME}/.android/debug.keystore
+android.release_keystore_password=android
+android.release_keystore_alias=androiddebugkey
+
+# Compatibility build defaults.
+compat.default_reference_flavor=original-v0.106.1
+compat.bundled_packs_config=tools/android/bundled-compat-packs.json
+compat.asset_dir=android/assets/compat_packs
+compat.worktree_root=.agent/worktrees/compat-packs
+compat.pack_remote=origin
+compat.apply_build_info_patches=1
+
+# External GitHub reference project preparation.
+deps.external_projects_config=tools/deps/external-github-projects.json
+deps.external_projects_root=.agent/reference-repos
+
+# If `tools/package/build_direct_apk.sh` is called without an argument, it will use
+# STS2_PAYLOAD_ZIP from .env. This option is documented here as a reminder that payloads
+# are local/private inputs, not repository state.

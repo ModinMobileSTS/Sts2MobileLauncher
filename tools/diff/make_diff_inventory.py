@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Generate a source-oriented diff inventory for the Android port.
 
-Default inputs match this workspace's restructure plan:
-  old/mobile port: ../s2
-  PC original:     ../s2_original/s21032
+Inputs can be passed explicitly or configured locally:
+
+  --mobile / --original
+  STS2_DIFF_MOBILE_ROOT / STS2_DIFF_ORIGINAL_ROOT in .env
 
 The script intentionally ignores generated caches/build outputs and classifies
 paths into runtime, extra-settings, port-mod, resource-overlay, project-config,
@@ -56,6 +57,31 @@ TEXT_EXTENSIONS = {
     ".md",
     ".txt",
 }
+
+
+def load_dotenv(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.is_file():
+        return values
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            values[key] = os.path.expandvars(os.path.expanduser(value))
+    return values
+
+
+def resolve_config_path(value: str | None, root: Path) -> Path | None:
+    if not value:
+        return None
+    path = Path(os.path.expandvars(os.path.expanduser(value)))
+    if not path.is_absolute():
+        path = root / path
+    return path.resolve(strict=False)
 
 
 @dataclass(frozen=True)
@@ -186,11 +212,7 @@ def write_classified(rows: list[dict[str, str]], path: Path, mobile: Path, origi
         mod = counts.get((owner, "MOD"), 0)
         dele = counts.get((owner, "DEL"), 0)
         lines.append(f"| {owner} | {add} | {mod} | {dele} | {add + mod + dele} |")
-    lines.extend([
-        "",
-        "## Notable paths by owner",
-        "",
-    ])
+    lines.extend(["", "## Notable paths by owner", ""])
     for owner in owners:
         owner_rows = [row for row in rows if row["owner"] == owner]
         lines.append(f"### {owner}")
@@ -219,16 +241,22 @@ def write_candidates(rows: list[dict[str, str]], path: Path) -> None:
 
 
 def main() -> int:
+    repo_root = Path(__file__).resolve().parents[2]
+    dotenv = load_dotenv(repo_root / ".env")
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mobile", default="../s2", type=Path)
-    parser.add_argument("--original", default="../s2_original/s21032", type=Path)
+    parser.add_argument("--mobile", default=os.environ.get("STS2_DIFF_MOBILE_ROOT") or dotenv.get("STS2_DIFF_MOBILE_ROOT"), type=Path)
+    parser.add_argument("--original", default=os.environ.get("STS2_DIFF_ORIGINAL_ROOT") or dotenv.get("STS2_DIFF_ORIGINAL_ROOT"), type=Path)
     parser.add_argument("--csv", default="docs/inventory/port-diff-full.csv", type=Path)
     parser.add_argument("--classified", default="docs/inventory/port-diff-classified.md", type=Path)
     parser.add_argument("--candidates", default="docs/inventory/port-mod-candidate-list.md", type=Path)
     args = parser.parse_args()
 
-    mobile = args.mobile.resolve()
-    original = args.original.resolve()
+    mobile = resolve_config_path(str(args.mobile) if args.mobile else None, repo_root)
+    original = resolve_config_path(str(args.original) if args.original else None, repo_root)
+    if mobile is None:
+        raise SystemExit("Missing mobile port dir. Pass --mobile or set STS2_DIFF_MOBILE_ROOT in .env.")
+    if original is None:
+        raise SystemExit("Missing original dir. Pass --original or set STS2_DIFF_ORIGINAL_ROOT in .env.")
     if not mobile.is_dir():
         raise SystemExit(f"Missing mobile port dir: {mobile}")
     if not original.is_dir():

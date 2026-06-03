@@ -4,31 +4,31 @@
 # dependencies, not source code or user-provided game payloads.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-S2_REFERENCE_ROOT="$(cd "$ROOT/../s2" && pwd -P)"
-LAUNCHER_REFERENCE_ROOT="$S2_REFERENCE_ROOT/.cache/StS2-Launcher_Mod_Manager"
-ANDROID_SRC="$LAUNCHER_REFERENCE_ROOT/android"
+# shellcheck disable=SC1091
+source "$ROOT/tools/env/load-local-config.sh"
+sts2_init_env
+
+ANDROID_SRC="$(sts2_config_path STS2_ANDROID_RUNTIME_REFERENCE_ROOT runtime.android_reference_root "${STS2_ANDROID_RUNTIME_REFERENCE_ROOT:-}")"
 ANDROID_DST="$ROOT/android"
-
-require_dir() {
-  [[ -d "$1" ]] || { echo "Missing directory: $1" >&2; exit 1; }
-}
-require_file() {
-  [[ -f "$1" ]] || { echo "Missing file: $1" >&2; exit 1; }
-}
-
-require_dir "$ANDROID_SRC/libs"
-require_dir "$ANDROID_SRC/assets/dotnet_bcl"
-require_file "$ANDROID_SRC/gradle/wrapper/gradle-wrapper.jar"
-CRYPTO_JAR="$LAUNCHER_REFERENCE_ROOT/vendor/godot/modules/mono/thirdparty/libSystem.Security.Cryptography.Native.Android.jar"
-FMOD_PLUGIN_AAR="$S2_REFERENCE_ROOT/addons/fmod/libs/android/fmod-release.aar"
+CRYPTO_JAR="$(sts2_config_path STS2_CRYPTO_NATIVE_JAR runtime.crypto_native_jar "${STS2_CRYPTO_NATIVE_JAR:-}")"
+FMOD_PLUGIN_AAR="$(sts2_config_path STS2_FMOD_PLUGIN_AAR runtime.fmod_plugin_aar "${STS2_FMOD_PLUGIN_AAR:-}")"
 FMOD_SHIM_SRC="$ROOT/tools/android/fmod-shim/org/fmod/FMOD.java"
-LOCAL_JAVAC="$S2_REFERENCE_ROOT/.cache/local-jdk/full/usr/lib/jvm/java-21-openjdk-amd64/bin/javac"
-ANDROID_JAR="$S2_REFERENCE_ROOT/.godot-home/Android/Sdk/platforms/android-35/android.jar"
-require_file "$CRYPTO_JAR"
-require_file "$FMOD_PLUGIN_AAR"
-require_file "$FMOD_SHIM_SRC"
-require_file "$LOCAL_JAVAC"
-require_file "$ANDROID_JAR"
+LOCAL_JAVAC="${JAVA_HOME:-}/bin/javac"
+ANDROID_JAR="${ANDROID_HOME:-}/platforms/android-35/android.jar"
+
+sts2_require_value "$ANDROID_SRC" "runtime.android_reference_root / STS2_ANDROID_RUNTIME_REFERENCE_ROOT"
+sts2_require_value "$CRYPTO_JAR" "runtime.crypto_native_jar / STS2_CRYPTO_NATIVE_JAR"
+sts2_require_value "$FMOD_PLUGIN_AAR" "runtime.fmod_plugin_aar / STS2_FMOD_PLUGIN_AAR"
+sts2_require_value "${JAVA_HOME:-}" "JAVA_HOME"
+sts2_require_value "${ANDROID_HOME:-}" "ANDROID_HOME"
+sts2_require_dir "$ANDROID_SRC/libs" "reference Android libs directory"
+sts2_require_dir "$ANDROID_SRC/assets/dotnet_bcl" "reference dotnet_bcl directory"
+sts2_require_file "$ANDROID_SRC/gradle/wrapper/gradle-wrapper.jar" "reference Gradle wrapper jar"
+sts2_require_file "$CRYPTO_JAR" "crypto native jar"
+sts2_require_file "$FMOD_PLUGIN_AAR" "FMOD plugin AAR"
+sts2_require_file "$FMOD_SHIM_SRC" "FMOD shim source"
+sts2_require_executable "$LOCAL_JAVAC" "javac"
+sts2_require_file "$ANDROID_JAR" "Android platform jar"
 
 mkdir -p "$ANDROID_DST/libs" "$ANDROID_DST/assets" "$ANDROID_DST/gradle/wrapper"
 rsync -a --delete "$ANDROID_SRC/libs/" "$ANDROID_DST/libs/"

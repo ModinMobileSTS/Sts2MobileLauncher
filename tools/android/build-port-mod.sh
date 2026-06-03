@@ -3,16 +3,21 @@
 # shell's dotnet_bcl assets under the assembly name expected by the patched Godot runtime.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-S2_REFERENCE_ROOT="$(cd "$ROOT/../s2" && pwd -P)"
-DOTNET_BIN="$S2_REFERENCE_ROOT/.local/dotnet/dotnet"
+# shellcheck disable=SC1091
+source "$ROOT/tools/env/load-local-config.sh"
+sts2_init_env
+
+DOTNET_BIN="$(sts2_config_path DOTNET_BIN build.dotnet "${DOTNET_BIN:-}")"
+REFERENCE_FLAVOR="${REFERENCE_FLAVOR:-$(sts2_config_value '' compat.default_reference_flavor original-v0.106.1)}"
+COMPAT_REFERENCE_DIR="$(sts2_compat_reference_dir_for_flavor "$REFERENCE_FLAVOR")"
 PROJECT="$ROOT/port-mod/STS2AndroidPortCompat/STS2Mobile.csproj"
-REFERENCE_FLAVOR="${REFERENCE_FLAVOR:-original-v0.106.1}"
 OUTPUT="$ROOT/port-mod/STS2AndroidPortCompat/bin/Debug/net9.0/STS2Mobile.dll"
 TARGET="$ROOT/android/assets/dotnet_bcl/STS2Mobile.dll"
-if [[ ! -x "$DOTNET_BIN" ]]; then
-  echo "Missing reference dotnet: $DOTNET_BIN" >&2
-  exit 1
-fi
+
+sts2_require_executable "$DOTNET_BIN" "dotnet"
+sts2_require_value "$COMPAT_REFERENCE_DIR" "compat reference dir for ReferenceFlavor=$REFERENCE_FLAVOR"
+sts2_require_file "$COMPAT_REFERENCE_DIR/sts2.dll" "sts2.dll reference for ReferenceFlavor=$REFERENCE_FLAVOR"
+
 GIT_BRANCH="$(git -C "$ROOT/port-mod" branch --show-current 2>/dev/null || true)"
 if [[ -z "$GIT_BRANCH" ]]; then
   GIT_BRANCH="$(git -C "$ROOT/port-mod" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
@@ -24,7 +29,15 @@ if ! git -C "$ROOT/port-mod" diff --quiet --ignore-submodules -- 2>/dev/null || 
   GIT_DIRTY="true"
 fi
 BUILD_TIMESTAMP_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-"$DOTNET_BIN" build "$PROJECT" -p:ReferenceFlavor="$REFERENCE_FLAVOR" -p:_CompatGitBranch="$GIT_BRANCH" -p:_CompatGitCommit="$GIT_COMMIT" -p:_CompatGitCommitSubject="$GIT_SUBJECT" -p:_CompatGitDirty="$GIT_DIRTY" -p:_CompatBuildTimestampUtc="$BUILD_TIMESTAMP_UTC" -v:q
+"$DOTNET_BIN" build "$PROJECT" \
+  -p:ReferenceFlavor="$REFERENCE_FLAVOR" \
+  -p:CompatReferenceDir="$COMPAT_REFERENCE_DIR" \
+  -p:_CompatGitBranch="$GIT_BRANCH" \
+  -p:_CompatGitCommit="$GIT_COMMIT" \
+  -p:_CompatGitCommitSubject="$GIT_SUBJECT" \
+  -p:_CompatGitDirty="$GIT_DIRTY" \
+  -p:_CompatBuildTimestampUtc="$BUILD_TIMESTAMP_UTC" \
+  -v:q
 if [[ ! -f "$OUTPUT" ]]; then
   echo "Expected build output missing: $OUTPUT" >&2
   exit 1

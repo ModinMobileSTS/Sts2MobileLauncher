@@ -84,7 +84,7 @@ s2_re/
 android/assets/compat_packs/*.zip
 ```
 
-当前内置包列表由 `tools/android/bundled-compat-packs.json` 控制，包含正式/稳定 `v0.103.2`（`compat/v0.103.2`，参考目录 `../s2_original/s21032/`）和 beta `v0.106.1`（`compat/v0.106.1-beta`，参考目录 `../s2_original/s201061/`）。
+当前内置包列表由 `tools/android/bundled-compat-packs.json` 控制，包含正式/稳定 `v0.103.2`（`compat/v0.103.2`，compile gate `original`）和 beta `v0.106.1`（`compat/v0.106.1-beta`，compile gate `original-v0.106.1`）。对应原版 DLL 引用目录通过 `.env` 中的 `STS2_ORIGINAL_V103_REFERENCE_DIR` / `STS2_ORIGINAL_V1061_REFERENCE_DIR` 配置。
 
 ## 不提交的内容
 
@@ -101,38 +101,38 @@ android/assets/compat_packs/*.zip
 
 ## 构建前准备
 
-当前脚本默认复用相邻参考工程中的本机环境和运行时产物。期望目录大致如下：
+本仓库不再在脚本中写死个人机器上的相对路径。首次构建前复制示例配置：
 
-```text
-../s2/                                      # 旧 Android 移植版/参考工程
-../s2_original/s21032/                      # v0.103.2 正式/稳定 PC 原版/解包基线
-../s2_original/s201061/                     # v0.106.1 beta PC 原版/解包基线
-../s2_pc/Slay the Spire 2.zip               # 本地测试用 PC 游戏 zip，可替换为你自己的路径
+```bash
+cp .env.example .env
+cp local.properties.example local.properties
 ```
 
-脚本会读取的关键本地工具/资源包括：
+然后编辑 `.env`：
 
-```text
-../s2/.cache/local-jdk/full/usr/lib/jvm/java-21-openjdk-amd64
-../s2/.godot-home/Android/Sdk
-../s2/.local/dotnet/dotnet
-../s2/addons/fmod/libs/android/fmod-release.aar
-../s2/.cache/StS2-Launcher_Mod_Manager/
+- `JAVA_HOME`：完整 JDK，必须包含 `bin/javac`。
+- `ANDROID_HOME` / `ANDROID_SDK_ROOT`：Android SDK 根目录。
+- `DOTNET_BIN`：.NET SDK 可执行文件。
+- `STS2_ANDROID_RUNTIME_REFERENCE_ROOT`：参考 Android runtime/template 目录，需包含 `libs/`、`assets/dotnet_bcl/`、`gradle/wrapper/gradle-wrapper.jar`。
+- `STS2_FMOD_PLUGIN_AAR`、`STS2_CRYPTO_NATIVE_JAR`：同步 runtime 时需要的 AAR/JAR。
+- `STS2_ORIGINAL_V103_REFERENCE_DIR`、`STS2_ORIGINAL_V1061_REFERENCE_DIR`（或对应 `*_ROOT`）：兼容层 original compile gate 引用目录，需包含 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll`。
+- `RELEASE_KEYSTORE_*`：本地签名配置；测试可使用 Android debug keystore，正式发布请改为私有 release keystore。
+
+非 secret 的本地选项（Gradle task、输出路径、compat pack staging 目录等）放在 `local.properties`。两个文件都已加入 `.gitignore`。完整说明见 [`doc/build/local-configuration.md`](doc/build/local-configuration.md)。
+
+可公开 clone 的 GitHub 参考项目可用脚本准备：
+
+```bash
+tools/deps/prepare-external-projects.sh
+# 查看清单
+tools/deps/prepare-external-projects.sh --list
 ```
 
-如果你的本地目录不同，请先调整 `tools/android/env-from-s2.sh`、`tools/android/sync-runtime-from-references.sh` 等脚本中的参考路径。
+该脚本不会下载商业游戏 payload、原版 DLL、keystore 或准备好的 Godot/Mono runtime。
 
-常用依赖：
+常用依赖：Bash、Python 3、rsync、Android SDK/NDK/CMake、JDK、.NET SDK，以及用于验证的 arm64 Android 设备或模拟器。
 
-- Bash
-- Python 3
-- rsync
-- Android SDK / NDK
-- JDK
-- .NET SDK
-- arm64 Android 设备或模拟器
-
-建议始终通过项目脚本构建，不要直接使用系统 Java/Gradle；本仓库的脚本会使用参考工程提供的 JDK、Android SDK 和 .NET SDK。
+建议始终通过项目脚本构建，不要直接裸跑系统 Java/Gradle。
 
 ## 快速开始
 
@@ -239,22 +239,32 @@ tools/android/stage-bundled-compat-packs.sh
 tools/android/gradle-with-s2-env.sh :compileMonoDebugJavaWithJavac
 ```
 
-只构建兼容 MOD：
+只构建兼容 MOD / compile gate：
 
 ```bash
-../s2/.local/dotnet/dotnet build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj -v:q
+# 默认 ReferenceFlavor 来自 local.properties 的 compat.default_reference_flavor
+tools/android/build-port-mod.sh
+
+# 0.106.1 beta original gate
+REFERENCE_FLAVOR=original-v0.106.1 tools/android/build-port-mod.sh
+
+# 0.103.2 original gate
+REFERENCE_FLAVOR=original tools/android/build-port-mod.sh
 ```
 
-使用 PC 原版程序集做 compile gate，检查是否误依赖旧移植版专属 API。0.106.1 beta 目标使用：
+如需裸跑 `dotnet build`，请显式传入 `.env` 中配置的引用目录：
 
 ```bash
-../s2/.local/dotnet/dotnet build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj -p:ReferenceFlavor=original-v0.106.1 -v:q
+"$DOTNET_BIN" build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj \
+  -p:ReferenceFlavor=original-v0.106.1 \
+  -p:CompatReferenceDir="$STS2_ORIGINAL_V1061_REFERENCE_DIR" -v:q
 ```
 
-旧 0.103.2 基线可使用：
+准备/查看 GitHub 外部参考项目：
 
 ```bash
-../s2/.local/dotnet/dotnet build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj -p:ReferenceFlavor=original -v:q
+tools/deps/prepare-external-projects.sh --list
+tools/deps/prepare-external-projects.sh --group modding-reference
 ```
 
 重新生成 Android 适配 overlay pack：

@@ -1,30 +1,57 @@
 # 构建与打包流程
 
-## 1. 本地环境
+## 1. 本地配置入口
 
-构建脚本默认复用相邻参考工程 `../s2/` 的本机工具链：
-
-```text
-../s2/.cache/local-jdk/full/usr/lib/jvm/java-21-openjdk-amd64
-../s2/.godot-home/Android/Sdk
-../s2/.local/dotnet/dotnet
-../s2/addons/fmod/libs/android/fmod-release.aar
-../s2/.cache/StS2-Launcher_Mod_Manager/
-```
-
-不要裸用系统 Java/Gradle。使用：
+构建脚本通过仓库根目录的两个本地文件读取机器相关配置：
 
 ```bash
-tools/android/gradle-with-s2-env.sh <gradle-task>
+cp .env.example .env
+cp local.properties.example local.properties
 ```
 
-或：
+- `.env`：工具链路径、外部参考 runtime/original DLL、私有 payload zip、签名环境变量等；已加入 `.gitignore`。
+- `local.properties`：非 secret 的本地构建选项，例如 Gradle task、输出 APK 路径、compat pack staging 目录；已加入 `.gitignore`。
+
+详细字段说明见 [`local-configuration.md`](local-configuration.md)。路径可以是绝对路径，也可以是相对仓库根目录的相对路径。
+
+如需自动准备可公开 clone 的 GitHub 参考项目，可运行：
 
 ```bash
-source tools/android/env-from-s2.sh
+tools/deps/prepare-external-projects.sh
 ```
 
-## 2. Gradle/Android 配置
+它会初始化 `port-mod` submodule，并把默认参考仓库 clone 到 `.agent/reference-repos/`（或 `local.properties` 的 `deps.external_projects_root`）。商业游戏 payload、original DLL、keystore 和准备好的 Godot/Mono runtime 仍需你在 `.env` 中配置本地路径。
+
+## 2. 必需工具与本地输入
+
+常用依赖：
+
+- Bash
+- Python 3
+- rsync
+- JDK（必须有 `javac`，Java 17+；本地常用 JDK 21）
+- Android SDK / NDK / CMake
+- .NET SDK
+- arm64 Android 设备或模拟器（运行验证用）
+
+`.env` 中至少需要配置：
+
+```bash
+JAVA_HOME=/path/to/jdk
+ANDROID_HOME=/path/to/android-sdk
+DOTNET_BIN=/path/to/dotnet
+STS2_ANDROID_RUNTIME_REFERENCE_ROOT=/path/to/reference/android-template
+STS2_FMOD_PLUGIN_AAR=/path/to/fmod-release.aar
+STS2_CRYPTO_NATIVE_JAR=/path/to/libSystem.Security.Cryptography.Native.Android.jar
+STS2_ORIGINAL_V103_REFERENCE_DIR=/path/to/v0.103.2/bin/Debug
+STS2_ORIGINAL_V1061_REFERENCE_DIR=/path/to/v0.106.1/bin/Debug
+```
+
+`STS2_ORIGINAL_*_REFERENCE_DIR` 目录需包含 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll`。这些是 compile gate 引用，不提交到仓库。
+
+如果你有统一的参考工程根目录，也可以设置 `STS2_REFERENCE_ROOT` / `STS2_LAUNCHER_REFERENCE_ROOT`，让脚本派生默认子路径；详见 `.env.example`。
+
+## 3. Gradle/Android 配置
 
 当前配置：
 
@@ -32,12 +59,12 @@ source tools/android/env-from-s2.sh
 - Gradle wrapper：`8.13`
 - Kotlin：`2.1.20`
 - Steam 子模块：`android/steam-protocol`、`android/steam-content`（Kotlin JVM + protobuf，用于 Steam 登录/SteamPipe 下载）
-- 新增主要依赖：JavaSteam `1.6.0`、OkHttp `5.3.2`、protobuf `4.31.1`、AndroidX Security Crypto、Android Prefab zstd（Steam VZstd chunk native 解压）、XZ；许可证速览见 `THIRD_PARTY_LICENSES.md`
+- 主要依赖：JavaSteam `1.6.0`、OkHttp `5.3.2`、protobuf `4.31.1`、AndroidX Security Crypto、Android Prefab zstd、XZ；许可证速览见 `THIRD_PARTY_LICENSES.md`
 - compileSdk/targetSdk：`35`
 - minSdk：`24`
 - buildTools：`35.0.0`
 - NDK：`28.1.13356709`
-- CMake：`3.22.1`（用于 `libworkshop_zstd.so` JNI wrapper，Gradle 可按 SDK license 自动安装到 `../s2/.godot-home/Android/Sdk`）
+- CMake：`3.22.1`（用于 `libworkshop_zstd.so` JNI wrapper）
 - Java source/target：`17`
 - flavor：`mono`
 - 默认 build type：`release`，脚本执行 `assembleMonoRelease`
@@ -45,9 +72,9 @@ source tools/android/env-from-s2.sh
 - applicationId：`com.megacrit.sts2re`
 - versionName/versionCode：`0.1.0` / `1`
 
-`release` build type 当前保留 `debuggable true`，并在脚本中默认使用 debug keystore 参数给 release APK 签名，便于本地 sideload 和 `run-as` 验证。正式发布前必须重新配置签名和安全策略。
+`release` build type 当前保留 `debuggable true`，便于本地 sideload 和 `run-as` 验证。package 脚本默认使用 `RELEASE_KEYSTORE_*` 或 `local.properties` 中的签名配置；本地测试可使用 Android debug keystore，正式发布前必须重新配置签名和安全策略。
 
-## 3. 同步大型 runtime
+## 4. 同步大型 runtime
 
 ```bash
 tools/android/sync-runtime-from-references.sh
@@ -61,9 +88,9 @@ tools/android/sync-runtime-from-references.sh
 - FMOD AAR，并应用 `tools/android/fmod-shim/` 中的 Java shim
 - Gradle wrapper jar
 
-这些产物位于 `android/assets/dotnet_bcl/`、`android/libs/` 等 gitignored 路径，不手工维护。
+这些产物位于 `android/assets/dotnet_bcl/`、`android/libs/` 等 gitignored 路径，不手工维护。长期源码化状态和剩余阻塞见 [`source-dependencies.md`](source-dependencies.md)。
 
-## 4. 构建当前 compat fallback
+## 5. 构建当前 compat fallback
 
 ```bash
 tools/android/build-port-mod.sh
@@ -76,36 +103,32 @@ android/assets/dotnet_bcl/STS2Mobile.dll
 android/assets/port_compat.pck
 ```
 
-默认 `REFERENCE_FLAVOR=original-v0.106.1`，适合当前 `compat/v0.106.1-beta` 分支。正式/稳定分支可显式：
+默认 `ReferenceFlavor` 来自 `local.properties` 的 `compat.default_reference_flavor`（示例为 `original-v0.106.1`）。可临时覆盖：
 
 ```bash
 REFERENCE_FLAVOR=original tools/android/build-port-mod.sh
 ```
 
-## 5. 构建内置兼容包
+脚本会从 `.env` 解析对应的 `STS2_ORIGINAL_*_REFERENCE_DIR`，并通过 MSBuild 属性 `CompatReferenceDir` 传入，不依赖 `port-mod/refs` 中的个人 symlink。
+
+## 6. 构建内置兼容包
 
 ```bash
 tools/android/stage-bundled-compat-packs.sh
 ```
 
-脚本读取：
-
-```text
-tools/android/bundled-compat-packs.json
-```
-
-当前会构建：
+脚本读取 `tools/android/bundled-compat-packs.json`（或 `local.properties` 的 `compat.bundled_packs_config`）。当前会构建：
 
 - `compat/v0.103.2` → `sts2-android-compat-v0.103.2.zip`
 - `compat/v0.106.1-beta` → `sts2-android-compat-v0.106.1-beta.zip`
 
-非当前分支使用 `.agent/worktrees/compat-packs/<id>/` 临时 worktree 构建；当前分支可直接使用 dirty worktree 方便测试。为了让所有内置分支都支持当前 launch profile / `selected_instance.json` 路径桥、安全 deferred preload 修正、关闭预加载时的 transition material 防黑屏修正，以及内置快速重开 async 时序修正，staging 脚本会把当前 `STS2AndroidPortCompat/Android/AppPaths.cs`、`SavePathPatches.cs`、`LifecycleAndPerformancePatches.cs`、`TransitionMaterialPatches.cs`、`QuickRestartPatches.cs` 同步到临时 worktree 后再构建。输出到：
+非当前分支使用 `compat.worktree_root`（默认 `.agent/worktrees/compat-packs/`）临时 worktree 构建；当前分支可直接使用 dirty worktree 方便测试。输出到：
 
 ```text
 android/assets/compat_packs/*.zip
 ```
 
-## 6. 构建导入版 APK
+## 7. 构建导入版 APK
 
 导入版不内置游戏 zip：
 
@@ -118,22 +141,21 @@ tools/package/build_importer_apk.sh
 1. 同步 runtime。
 2. 构建当前 compat fallback。
 3. 构建/刷新全部内置 compat pack zip。
-4. 执行 `assembleMonoRelease`。
-5. 复制 APK。
+4. 执行 `local.properties` 中的 `android.gradle.task`（默认 `assembleMonoRelease`）。
+5. 复制 APK 到 `android.importer.dist`（默认 `dist/sts2-re-importer.apk`）。
 
-输出：
-
-```text
-android/build/outputs/apk/mono/release/sts2-re.apk
-dist/sts2-re-importer.apk
-```
-
-## 7. 构建直装版 APK
+## 8. 构建直装版 APK
 
 直装版临时内置本地 PC zip：
 
 ```bash
 tools/package/build_direct_apk.sh "/path/to/SlayTheSpire2.zip"
+```
+
+也可以在 `.env` 设置 `STS2_PAYLOAD_ZIP` 后无参数调用：
+
+```bash
+tools/package/build_direct_apk.sh
 ```
 
 流程：
@@ -143,17 +165,10 @@ tools/package/build_direct_apk.sh "/path/to/SlayTheSpire2.zip"
 3. 构建当前 compat fallback。
 4. 构建/刷新全部内置 compat pack zip。
 5. 临时复制 zip 到 `android/assets/payload/SlayTheSpire2.zip`。
-6. 执行 `assembleMonoRelease`。
-7. 复制 APK，脚本退出时删除临时 zip。
+6. 执行 Gradle task。
+7. 复制 APK 到 `android.direct.dist`（默认 `dist/sts2-re-direct.apk`），脚本退出时删除临时 zip。
 
-输出：
-
-```text
-android/build/outputs/apk/mono/release/sts2-re.apk
-dist/sts2-re-direct.apk
-```
-
-## 8. 只做局部检查
+## 9. 局部检查
 
 ```bash
 # Java/Kotlin/Steam 子模块编译检查
@@ -162,16 +177,23 @@ tools/android/gradle-with-s2-env.sh :compileMonoDebugJavaWithJavac
 # payload zip 校验
 tools/package/validate_payload_zip.py "/path/to/SlayTheSpire2.zip"
 
-# beta compile gate
-../s2/.local/dotnet/dotnet build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj \
-  -p:ReferenceFlavor=original-v0.106.1 -v:q
+# beta compile gate（通过脚本自动传 CompatReferenceDir）
+REFERENCE_FLAVOR=original-v0.106.1 tools/android/build-port-mod.sh
 
 # v0.103.2 compile gate
-../s2/.local/dotnet/dotnet build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj \
-  -p:ReferenceFlavor=original -v:q
+REFERENCE_FLAVOR=original tools/android/build-port-mod.sh
+
+# 查看/准备 GitHub 外部参考项目
+tools/deps/prepare-external-projects.sh --list
+tools/deps/prepare-external-projects.sh --group modding-reference
+
+# standalone dotnet 编译也可显式传入 CompatReferenceDir
+"$DOTNET_BIN" build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj \
+  -p:ReferenceFlavor=original-v0.106.1 \
+  -p:CompatReferenceDir="$STS2_ORIGINAL_V1061_REFERENCE_DIR" -v:q
 ```
 
-## 9. 构建后基本验证
+## 10. 构建后基本验证
 
 ```bash
 adb install -r dist/sts2-re-importer.apk

@@ -13,4 +13,4 @@ This repository does not include Slay the Spire 2 game assets.  The Steam integr
 | Android Prefab zstd (`com.fpliu.ndk.pkg.prefab.android.21:zstd`) | Native Steam VZstd depot chunk decompression on Android | BSD-3-Clause upstream zstd notice / package metadata |
 | XZ for Java | Steam VZip/LZMA chunk decompression | Public domain / 0BSD-style upstream notice |
 
-The Steam protocol/downloader source under `android/steam-protocol/` and `android/steam-content/` was adapted for this launcher from the local reference project `../ref/SlayTheAmethystModded/`; keep future updates source-only and do not commit downloaded Steam depot contents, cloud saves, tokens, passwords, or other user-private data.
+The Steam protocol/downloader source under `android/steam-protocol/` and `android/steam-content/` was adapted for this launcher from the open source reference project <https://github.com/ModinMobileSTS/SlayTheAmethystModded>. Use `tools/deps/prepare-external-projects.sh` to clone local reference copies when needed; keep future updates source-only and do not commit downloaded Steam depot contents, cloud saves, tokens, passwords, or other user-private data.

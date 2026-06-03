@@ -18,6 +18,7 @@ s2_re/
   port-mod/                        # git submodule: 多分支 Android 兼容 patcher
   tools/android/                   # runtime 同步、Gradle 环境、compat pack staging
   tools/package/                   # importer/direct APK 打包、payload zip 校验
+  tools/deps/                      # GitHub 外部参考项目清单与自动准备脚本
   tools/git/                       # 父仓库/submodule HEAD 巡检
   doc/                             # 新规范化文档入口
   docs/                            # 历史 diff/validation 资料
@@ -38,12 +39,12 @@ s2_re/
 
 ## 4. 版本矩阵
 
-| 通道 | 游戏版本 | 原版目录 | port-mod 分支 | ReferenceFlavor | 兼容包 id |
+| 通道 | 游戏版本 | 原版引用配置 | port-mod 分支 | ReferenceFlavor | 兼容包 id |
 | --- | --- | --- | --- | --- | --- |
-| 正式/稳定 | `v0.103.2` | `../s2_original/s21032/` | `compat/v0.103.2` | `original` | `sts2-android-compat-v0.103.2` |
-| Beta | `v0.106.1` | `../s2_original/s201061/` | `compat/v0.106.1-beta` | `original-v0.106.1` | `sts2-android-compat-v0.106.1-beta` |
+| 正式/稳定 | `v0.103.2` | `.env` 的 `STS2_ORIGINAL_V103_REFERENCE_DIR` 或 `STS2_ORIGINAL_V103_ROOT` | `compat/v0.103.2` | `original` | `sts2-android-compat-v0.103.2` |
+| Beta | `v0.106.1` | `.env` 的 `STS2_ORIGINAL_V1061_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1061_ROOT` | `compat/v0.106.1-beta` | `original-v0.106.1` | `sts2-android-compat-v0.106.1-beta` |
 
-内置兼容包列表由 `tools/android/bundled-compat-packs.json` 控制。打包脚本会用 `stage-bundled-compat-packs.sh` 为列表中的每个分支构建 zip 并复制到 `android/assets/compat_packs/`。
+内置兼容包列表由 `tools/android/bundled-compat-packs.json` 控制。打包脚本会用 `stage-bundled-compat-packs.sh` 为列表中的每个分支构建 zip 并复制到 `android/assets/compat_packs/`；compile gate 引用目录由 `.env` 解析后通过 `CompatReferenceDir` 传给 MSBuild，不依赖提交到仓库的个人 symlink。
 
 ## 5. APK assets 与私有运行时目录
 
@@ -102,7 +103,7 @@ android/steam-content/                        # SteamPipe depot manifest/chunk �
 
 禁止提交：
 
-- 用户 PC 游戏 zip、解压 payload、`../s2_original/*.zip`。
+- 用户 PC 游戏 zip、解压 payload、原版/参考 runtime DLL 或压缩包。
 - `android/assets/dotnet_bcl/`、`android/libs/`、`android/assets/payload/`。
 - keystore/jks/p12 等签名私钥。
 - `dist/`、APK/AAB/APKS、.NET bin/obj。

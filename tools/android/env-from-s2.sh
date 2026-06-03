@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Source this file before running Gradle/Android commands in s2_re.
-# It reuses the local JDK and Android SDK prepared by ../s2/tools/local_build_android_workflow.sh.
+#
+# The script now loads tool paths from `.env` (see `.env.example`). It keeps the
+# historical filename for compatibility with older documentation/scripts.
 set -euo pipefail
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
@@ -9,22 +11,17 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
 fi
 
 S2_RE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-S2_REFERENCE_ROOT="$(cd "$S2_RE_ROOT/../s2" && pwd -P)"
+# shellcheck disable=SC1091
+source "$S2_RE_ROOT/tools/env/load-local-config.sh"
+sts2_init_env || return 1
 
-export JAVA_HOME="$S2_REFERENCE_ROOT/.cache/local-jdk/full/usr/lib/jvm/java-21-openjdk-amd64"
-export ANDROID_HOME="$S2_REFERENCE_ROOT/.godot-home/Android/Sdk"
-export ANDROID_SDK_ROOT="$ANDROID_HOME"
-export PATH="$JAVA_HOME/bin:${PATH:-}"
-export LD_LIBRARY_PATH="$JAVA_HOME/lib/server${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+sts2_require_value "${JAVA_HOME:-}" "JAVA_HOME" || return 1
+sts2_require_value "${ANDROID_HOME:-}" "ANDROID_HOME" || return 1
+sts2_require_executable "${JAVA_HOME:-}/bin/javac" "javac" || return 1
+sts2_require_dir "${ANDROID_HOME:-}/platforms/android-35" "Android SDK platform android-35" || return 1
 
-if [[ ! -x "$JAVA_HOME/bin/javac" ]]; then
-  echo "Missing local javac at $JAVA_HOME/bin/javac" >&2
-  return 1
+if [[ -n "${DOTNET_BIN:-}" ]]; then
+  echo "DOTNET_BIN=$DOTNET_BIN"
 fi
-if [[ ! -d "$ANDROID_HOME/platforms/android-35" ]]; then
-  echo "Missing Android SDK android-35 under $ANDROID_HOME" >&2
-  return 1
-fi
-
 echo "JAVA_HOME=$JAVA_HOME"
 echo "ANDROID_HOME=$ANDROID_HOME"

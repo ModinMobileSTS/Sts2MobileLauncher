@@ -1,7 +1,7 @@
 # AGENTS.md
 
-面向后续编码代理/维护者的项目速览与操作约定。当前目录：`/mnt/datas/agent_workspace/s2_re`。  
-最后同步：2026-05-30。
+面向后续编码代理/维护者的项目速览与操作约定。当前目录为本仓库根目录。
+最后同步：2026-06-02。
 
 ## 0. 总原则
 
@@ -37,42 +37,43 @@ Android 侧拆成三层维护：
 
 `port-mod` 当前按分支维护不同游戏版本的兼容补丁。父仓库 `.gitmodules` 默认跟踪 beta 分支，但打包脚本会通过临时 worktree 同时构建多个内置兼容包。
 
-| 通道 | 游戏版本 | 原版/解包源码目录 | submodule 分支 | compile gate `ReferenceFlavor` | 兼容包 id |
+| 通道 | 游戏版本 | 原版/解包引用配置 | submodule 分支 | compile gate `ReferenceFlavor` | 兼容包 id |
 | --- | --- | --- | --- | --- | --- |
-| 正式/稳定 | `v0.103.2` | `../s2_original/s21032/` | `compat/v0.103.2` | `original` | `sts2-android-compat-v0.103.2` |
-| Beta 测试 | `v0.106.1` | `../s2_original/s201061/` | `compat/v0.106.1-beta` | `original-v0.106.1` | `sts2-android-compat-v0.106.1-beta` |
+| 正式/稳定 | `v0.103.2` | `.env`: `STS2_ORIGINAL_V103_REFERENCE_DIR` 或 `STS2_ORIGINAL_V103_ROOT` | `compat/v0.103.2` | `original` | `sts2-android-compat-v0.103.2` |
+| Beta 测试 | `v0.106.1` | `.env`: `STS2_ORIGINAL_V1061_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1061_ROOT` | `compat/v0.106.1-beta` | `original-v0.106.1` | `sts2-android-compat-v0.106.1-beta` |
 
 关键文件：
 
 - `.gitmodules`：`port-mod` submodule URL 与默认 branch。
 - `tools/android/bundled-compat-packs.json`：内置兼容包列表，当前包含 `compat/v0.103.2` 与 `compat/v0.106.1-beta`。
-- `port-mod/refs/original/`：指向 `../s2_original/s21032/.godot/mono/temp/bin/Debug/` 的本地 symlink，用于 `v0.103.2` original compile gate。
-- `port-mod/refs/original-v0.106.1/`：指向 `../s2_original/s201061/.godot/mono/temp/bin/Debug/` 的本地 symlink，用于 beta compile gate。
+- `.env.example`：工具链、runtime 参考、original compile gate 引用、签名环境变量示例；复制为 `.env` 后编辑，本文件不入 git。
+- `local.properties.example`：非环境变量的本地构建选项示例；复制为 `local.properties` 后编辑，本文件不入 git。
+- `tools/env/load-local-config.sh`：所有 bash 构建脚本共用的 `.env` / `local.properties` loader。
+- `port-mod/refs/original*/`：仅保留 README 占位；构建脚本不再依赖提交到仓库的个人 symlink。
 - `port-mod/compat_manifest.v0.106.1-beta.json`：当前 checkout 分支的 beta 兼容包 manifest；`v0.103.2` manifest 位于对应分支。
 
 注意：启动器按 payload manifest 的 `release_info.version` 自动匹配已安装兼容包；若当前选择的兼容包与 payload 版本不一致，会弹出风险提示并允许用户取消、去版本页或强制启动。当前不会仅因 `sts2.dll` SHA-256 不一致硬阻止启动，但 manifest 中仍记录 SHA 供诊断和精确匹配升级使用。
 
-## 3. 参考项目 / 本地输入
+## 3. 本地配置 / 参考输入
 
-主要参考输入均在 workspace 相邻目录：
+构建脚本不再写死某个 workspace 的相邻目录。首次配置：
 
-- `../s2/`
-  - 旧 Android 移植版/参考工程。
-  - 复用其中的附加设置资源、Godot Android build template 配置、FMOD 资源、本机 JDK/Android SDK/.NET SDK。
-  - 构建脚本会读取：
-    - `../s2/.cache/local-jdk/full/usr/lib/jvm/java-21-openjdk-amd64`
-    - `../s2/.godot-home/Android/Sdk`
-    - `../s2/.local/dotnet/dotnet`
-    - `../s2/addons/fmod/libs/android/fmod-release.aar`
-- `../s2/.cache/StS2-Launcher_Mod_Manager/`
-  - 旧 Launcher/Mod Manager runtime 参考。
-  - `tools/android/sync-runtime-from-references.sh` 会从中同步 Godot template AAR、`dotnet_bcl`、Gradle wrapper jar、crypto native jar 等大型运行时产物。
-- `../s2_original/s21032/`
-  - 正式/稳定 `v0.103.2` PC 原版/解包基线。
-- `../s2_original/s201061/`
-  - Beta `v0.106.1` PC 原版/解包基线。
-- `../s2_pc/Slay the Spire 2.zip`
-  - 本地测试用 PC 游戏 zip 样例，不提交。可替换为用户合法拥有的其他路径。
+```bash
+cp .env.example .env
+cp local.properties.example local.properties
+```
+
+`.env` 统一保存机器相关环境变量：
+
+- `JAVA_HOME`、`ANDROID_HOME`/`ANDROID_SDK_ROOT`、`DOTNET_BIN`。
+- `STS2_ANDROID_RUNTIME_REFERENCE_ROOT`：参考 Android template/runtime，包含 `libs/`、`assets/dotnet_bcl/`、Gradle wrapper jar。
+- `STS2_FMOD_PLUGIN_AAR`、`STS2_CRYPTO_NATIVE_JAR`。
+- `STS2_ORIGINAL_V103_REFERENCE_DIR` / `STS2_ORIGINAL_V1061_REFERENCE_DIR`（或对应 `*_ROOT`）：original compile gate 引用目录，需包含 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll`。
+- `RELEASE_KEYSTORE_*`、可选 `STS2_PAYLOAD_ZIP`、可选 `STS2_EXTERNAL_PROJECTS_ROOT`。
+
+`local.properties` 保存非 secret 的本地构建选项，例如 Gradle task、dist 输出路径、compat pack staging 目录、默认 `ReferenceFlavor`、外部 GitHub 参考项目 clone 目录。完整说明见 `doc/build/local-configuration.md`。
+
+不要提交用户游戏 zip、original/reference DLL、完整 runtime、keystore 或 `.env` / `local.properties`。
 
 ## 4. 当前目录结构
 
@@ -106,11 +107,11 @@ s2_re/
       Patches/                     # 平台、设置、输入、MOD、LAN、shader、生命周期等 Harmony patch
       Android/                     # Android settings/path bridge
     overlay/                       # 打包进 port_compat.pck 的 shader/resource overlay
-    refs/                          # 本地 original compile gate symlink/说明
+    refs/                          # 可选本地 original compile gate 占位说明；脚本优先用 .env 的引用目录
     tools/build-compat-pack.sh     # 导出独立可安装 compat pack zip
   tools/
     android/
-      env-from-s2.sh               # source 后使用 ../s2 的 JDK/Android SDK
+      env-from-s2.sh               # 兼容旧名称：source 后加载 .env 中的 JDK/Android SDK
       gradle-with-s2-env.sh        # 在 android/ 下带本机环境执行 Gradle
       sync-runtime-from-references.sh # 同步 Godot/FMOD/dotnet_bcl 等大型运行时产物
       build-port-mod.sh            # 编译当前 submodule 分支并 stage legacy fallback dll/pck
@@ -124,6 +125,7 @@ s2_re/
       build_importer_apk.sh        # 构建不内置游戏 zip 的导入版 APK
       build_direct_apk.sh          # 构建临时内置游戏 zip 的直装版 APK
     diff/                          # 差异清单工具
+    deps/                          # GitHub 外部参考项目清单与自动准备脚本
     git/report-heads.sh            # 输出父仓库与 submodule HEAD/branch/upstream 状态
   doc/                             # 新规范化文档入口；新增/修改功能时同步维护
     README.md                      # 文档索引与维护规则
@@ -251,7 +253,7 @@ tools/android/build-port-mod.sh
 
 默认 `REFERENCE_FLAVOR=original-v0.106.1`，适合当前 `compat/v0.106.1-beta` 分支。脚本会：
 
-1. 使用 `../s2/.local/dotnet/dotnet` 编译 `port-mod/STS2AndroidPortCompat/STS2Mobile.csproj`。
+1. 使用 `.env` 中的 `DOTNET_BIN` 编译 `port-mod/STS2AndroidPortCompat/STS2Mobile.csproj`，并按 `ReferenceFlavor` 传入对应 `CompatReferenceDir`。
 2. 写入 build metadata（branch/commit/dirty/timestamp）。
 3. 复制输出到 `android/assets/dotnet_bcl/STS2Mobile.dll` 作为 fallback。
 4. 运行 `tools/android/make-port-overlay-pck.py` 生成 `android/assets/port_compat.pck`。
@@ -277,12 +279,15 @@ tools/android/stage-bundled-compat-packs.sh
 
 ```bash
 # v0.103.2 正式/稳定
-../s2/.local/dotnet/dotnet build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj \
-  -p:ReferenceFlavor=original -v:q
+REFERENCE_FLAVOR=original tools/android/build-port-mod.sh
 
 # v0.106.1 beta
-../s2/.local/dotnet/dotnet build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj \
-  -p:ReferenceFlavor=original-v0.106.1 -v:q
+REFERENCE_FLAVOR=original-v0.106.1 tools/android/build-port-mod.sh
+
+# 或裸跑 dotnet 时显式传入 .env 中配置的引用目录
+"$DOTNET_BIN" build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj \
+  -p:ReferenceFlavor=original-v0.106.1 \
+  -p:CompatReferenceDir="$STS2_ORIGINAL_V1061_REFERENCE_DIR" -v:q
 ```
 
 `ReferenceFlavor=runtime`（默认 MSBuild 属性）引用旧 launcher runtime，适合快速编译；正式兼容分支应通过对应 original gate。
@@ -334,18 +339,18 @@ tools/android/stage-bundled-compat-packs.sh
 - minSdk：`24`
 - buildTools：`35.0.0`
 - NDK：`28.1.13356709`
-- CMake：`3.22.1`（用于 `libworkshop_zstd.so` JNI wrapper；Gradle 可按 SDK license 自动安装到 `../s2/.godot-home/Android/Sdk`）
+- CMake：`3.22.1`（用于 `libworkshop_zstd.so` JNI wrapper；Gradle 可按 SDK license 自动安装到 `.env` 配置的 Android SDK）
 - Java source/target：`17`
 - flavor：`mono`
 - 默认 build type：`release`（脚本执行 `assembleMonoRelease`）
 - ABI：`arm64-v8a`
 - applicationId：`com.megacrit.sts2re`
 - versionName/versionCode：`0.1.0` / `1`
-- 默认测试签名：`/home/wsdx233/.android/debug.keystore`
+- 默认测试签名：由 `.env` 的 `RELEASE_KEYSTORE_*` 或 `local.properties` 的 `android.release_keystore_*` 提供；示例使用 `${HOME}/.android/debug.keystore`。
 
 注意：`release` build type 当前仍保留 `debuggable true`，便于 sideload 后使用 `run-as` 验证；正式发布前必须重新审视签名、debuggable、混淆、资源优化、FileProvider 暴露范围。
 
-本仓库构建复用 `../s2` 中准备好的 JDK/Android SDK。容器系统 `/usr/lib/jvm/java-21-openjdk-amd64` 可能只是 JRE，不能直接编译 Java；请使用：
+本仓库构建使用 `.env` 中配置的 JDK/Android SDK。容器系统自带 Java 可能只是 JRE，不能直接编译 Java；请使用：
 
 ```bash
 tools/android/gradle-with-s2-env.sh <gradle-task>
@@ -420,6 +425,7 @@ tools/android/stage-bundled-compat-packs.sh
 
 - `.gitignore` 已排除：
   - `dist/`、`*.apk`、`*.aab`、`*.apks`
+  - `.env`、`local.properties`
   - `local-inputs/`、用户 `*.zip`、keystore/jks/p12
   - `android/.gradle/`、`android/**/build/`
   - `android/assets/dotnet_bcl/`
@@ -427,7 +433,7 @@ tools/android/stage-bundled-compat-packs.sh
   - `android/assets/payload/`
   - .NET `bin/` / `obj/`
 - `android/assets/compat_packs/*.zip` 是明确允许的内置兼容包产物；提交前确认这些 zip 来自当前受控分支/脚本构建，且不含游戏 payload。
-- 不要提交 `../s2_pc`、`../s2_original/*.zip` 或任何商业游戏资源。
+- 不要提交用户 payload zip、original/reference DLL、完整 runtime、keystore 或任何商业游戏资源；本机路径只写入 `.env` / `local.properties`。
 - 修改 `port-mod/overlay` 后需要重新生成 `port_compat.pck`，并重新导出/复制内置兼容包。
 - 修改 `tools/android/make-bootstrap-pck.py` 后需要重新生成 `android/assets/bootstrap.pck`。
 - 修改 Java bridge 包名/类名要谨慎：C# helper 和 patched runtime 默认找 `com.godot.game.GodotApp`。
@@ -484,13 +490,14 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 
 - 当前工程是“Android shell + payload/version manager + compat pack”的组合，不是传统 Android Studio `app/` 子模块结构；Gradle 根就在 `android/`。
 - 实际打包推荐用 `tools/package/*.sh`，不要裸跑 Gradle，除非已同步 runtime、准备好环境并理解 compat pack staging。
+- 可公开 clone 的 GitHub 参考项目用 `tools/deps/prepare-external-projects.sh` 准备；清单在 `tools/deps/external-github-projects.json`。该脚本不下载商业 payload、original DLL、keystore 或准备好的 Godot/Mono runtime。
 - `settings.save` 的 Android-only key 是 Java 附加设置与 Harmony patcher/Java 启动参数的协议；改 key 要同步 `ExtraSettingsRepository`、页面 UI、`AndroidSettingsBridge` 或 `GodotApp.getCommandLine()` 等消费者、相关 patches，并记录到 `doc/changelog/`。`log_level` 额外同步到 SharedPreferences，避免原版游戏保存 settings 时丢失该 Android 字段。
 - `<files>/default/<account>` 的账号选择逻辑与旧移植版兼容但较脆弱，多账号/自定义 platform player id 改动要同时检查 Java 与兼容 MOD。
 - 当前普通 MOD 目录由 launch profile 决定：`mods_mode=global` 使用 `<files>/mods`，`mods_mode=isolated` 使用 `<files>/instances/<profile_id>/mods`；新增路径相关功能必须同步 Java 管理页、C# `AppPaths`、ModLoader patches 和迁移/备份逻辑。
 - Steam Cloud 同步必须使用当前 launch profile 的 account root：`save_mode=global` 使用 `<files>/default/<account>`，`save_mode=isolated` 使用 `<files>/instances/<profile_id>/default/<account>`；不要把云存档固定写死到全局 `<files>/default/1`。
 - 多版本兼容包的长期方向是 manifest 化、可安装、可选择、可诊断；不要把某一游戏版本的兼容 patch 直接写死到 Android shell。
 - 对 beta 分支改动时务必用 `ReferenceFlavor=original-v0.106.1` 编译；对正式分支改动时务必用 `ReferenceFlavor=original` 编译。
-- 新增兼容分支时需要同时增加：submodule 分支、原版 refs/ReferenceFlavor、compat manifest、`tools/android/bundled-compat-packs.json` 条目、文档版本矩阵、至少一次 importer APK 构建验证。
+- 新增兼容分支时需要同时增加：submodule 分支、`.env.example` 中的 original reference 配置说明或 `ReferenceFlavor` 映射、compat manifest、`tools/android/bundled-compat-packs.json` 条目、文档版本矩阵、至少一次 importer APK 构建验证。
 
 ## 修改说明
 

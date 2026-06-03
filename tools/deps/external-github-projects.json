@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "projects": [
+    {
+      "id": "slay-the-amethyst-modded",
+      "name": "SlayTheAmethystModded",
+      "url": "https://github.com/ModinMobileSTS/SlayTheAmethystModded.git",
+      "web_url": "https://github.com/ModinMobileSTS/SlayTheAmethystModded",
+      "groups": ["source-reference", "steam"],
+      "clone_by_default": true,
+      "required_for_build": false,
+      "purpose": "Steam protocol/downloader source reference; android/steam-protocol and android/steam-content were adapted from this project."
+    },
+    {
+      "id": "sts2-launcher-mod-manager",
+      "name": "StS2-Launcher_Mod_Manager",
+      "url": "https://github.com/iunius612/StS2-Launcher_Mod_Manager.git",
+      "web_url": "https://github.com/iunius612/StS2-Launcher_Mod_Manager",
+      "groups": ["source-reference", "runtime-reference"],
+      "clone_by_default": true,
+      "required_for_build": false,
+      "purpose": "Reference launcher/runtime source. Build scripts still need prepared runtime artifacts configured in .env."
+    },
+    {
+      "id": "sts2-ritsu-lib",
+      "name": "STS2-RitsuLib",
+      "url": "https://github.com/BAKAOLC/STS2-RitsuLib.git",
+      "web_url": "https://github.com/BAKAOLC/STS2-RitsuLib",
+      "groups": ["modding-reference", "optional"],
+      "clone_by_default": false,
+      "required_for_build": false,
+      "purpose": "Optional common MOD dependency source used for Android MOD compatibility troubleshooting."
+    },
+    {
+      "id": "baselib-sts2",
+      "name": "BaseLib-StS2",
+      "url": "https://github.com/Alchyr/BaseLib-StS2.git",
+      "web_url": "https://github.com/Alchyr/BaseLib-StS2",
+      "groups": ["modding-reference", "optional"],
+      "clone_by_default": false,
+      "required_for_build": false,
+      "purpose": "Optional common MOD dependency source used for Android MOD compatibility troubleshooting."
+    },
+    {
+      "id": "sts2-quick-restart",
+      "name": "sts2-quickRestart",
+      "url": "https://github.com/freude916/sts2-quickRestart.git",
+      "web_url": "https://github.com/freude916/sts2-quickRestart",
+      "groups": ["modding-reference", "optional"],
+      "clone_by_default": false,
+      "required_for_build": false,
+      "purpose": "Optional Quick Restart UI MOD reference for compatibility checks."
+    },
+    {
+      "id": "sts2-mobile-launcher",
+      "name": "Sts2MobileLauncher",
+      "url": "https://github.com/ModinMobileSTS/Sts2MobileLauncher.git",
+      "web_url": "https://github.com/ModinMobileSTS/Sts2MobileLauncher",
+      "groups": ["launcher-release", "optional"],
+      "clone_by_default": false,
+      "required_for_build": false,
+      "purpose": "Launcher release repository used by the in-app update checker URL; not needed for local builds."
+    },
+    {
+      "id": "mt-data-files-provider",
+      "name": "MTDataFilesProvider",
+      "url": "https://github.com/L-JINBIN/MTDataFilesProvider.git",
+      "web_url": "https://github.com/L-JINBIN/MTDataFilesProvider",
+      "groups": ["gradle-jitpack", "debug-tooling"],
+      "clone_by_default": false,
+      "managed_by": "Gradle/JitPack dependency com.github.L-JINBIN:MTDataFilesProvider:v1.0.0",
+      "required_for_build": true,
+      "purpose": "Resolved by Gradle through JitPack; the prepare script lists it but does not need to clone it."
+    }
+  ]
+}
