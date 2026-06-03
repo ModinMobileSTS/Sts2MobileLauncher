@@ -3,10 +3,14 @@ build/
 !doc/build/
 !doc/build/**
 
-# Local coding agent state and scratch notes (do not commit .agent contents)
+# Local coding agent state/docs, private changelog, and historical backups
 /.agent/
 /.agent/**
 .pi/
+
+# Agent-only changelog and retired historical docs are kept under .agent/
+doc/changelog/
+docs/
 dist/
 out/
 *.apk

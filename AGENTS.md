@@ -8,7 +8,7 @@
 - 本工程是 **Slay the Spire 2 Android 重构移植/启动器工程**，不是完整游戏源码仓库。
 - 仓库只维护 Android shell、导入/版本管理逻辑、兼容包构建脚本与 Android 兼容补丁源码；**不提交用户游戏 zip、解压后的完整游戏 payload、大型 Godot/Mono runtime、keystore**。
 - `port-mod/` 是独立仓库 <https://github.com/ModinMobileSTS/sts2-android-compat> 的 **git submodule**，按游戏版本使用多个分支维护 Android 兼容补丁。
-- 新增或修改功能时必须同步文档：用户可见/长期维护说明优先更新 `README.md` / `doc/`，并在 `doc/changelog/` 新增一条项目 changelog；同时把同一条或 agent 视角摘要镜像到 `.agent/agent-docs/changelog/`，便于后续 agent 本地接力。历史 `docs/` 目录保留旧阶段差异/验证资料，不作为新文档入口。`AGENTS.md` 是 agent/维护者专用操作约定；本地 agent 草稿、报告、worktree、参考 clone 与 agent 文档放入 `.agent/`，该目录不追踪。
+- 新增或修改功能时必须同步文档：用户可见/长期维护说明优先更新 `README.md` / `doc/`；变更流水/changelog 只写入 `.agent/agent-docs/changelog/`（不提交），因为它主要服务 agent 接力，不作为公开仓库文档。历史 `docs/` 已移到 `.agent/historical-backup/docs/` 本地备份，不再作为公开文档入口。`AGENTS.md` 是 agent/维护者专用操作约定；本地 agent 草稿、报告、worktree、参考 clone、历史备份与 agent 文档放入 `.agent/`，该目录不追踪。
 - 完成用户要求的修改后，请用脚本构建一个 importer 版本 APK 便于测试：
 
 ```bash
@@ -129,26 +129,27 @@ s2_re/
     diff/                          # 差异清单工具
     deps/                          # GitHub 外部参考项目清单与自动准备脚本
     git/report-heads.sh            # 输出父仓库与 submodule HEAD/branch/upstream 状态
-  doc/                             # 新规范化文档入口；新增/修改功能时同步维护
+  doc/                             # 公开项目文档入口；新增/修改用户可见说明时同步维护
     README.md                      # 文档索引与维护规则
-    changelog/                     # 每次用户可见/维护相关修改的记录
     architecture/                  # 项目结构、目录职责、版本模型
     build/                         # 构建/打包/发布流程
     runtime/                       # 启动、兼容包、MOD 加载流程
     modding/                       # 普通 MOD 与兼容包开发维护说明
-  docs/                            # 历史阶段资料：旧 diff inventory / validation，待逐步迁移
+    plan/                          # 长期设计计划或已落地方案 checklist
   dist/                            # APK/兼容包输出副本，本地生成，gitignore
-  .agent/                          # agent 草稿/报告/临时 worktree/参考 clone/agent-docs，gitignore，不追踪
+  .agent/                          # agent 草稿/报告/临时 worktree/参考 clone/agent-docs/历史备份，gitignore，不追踪
+    agent-docs/changelog/          # agent-only changelog，本地接力用，不提交
+    historical-backup/docs/        # 旧 docs/ 历史 diff/validation 本地备份，不提交
 ```
 
 ## 5. 文档规范
 
-长期项目文档统一放入 `doc/`，agent 本地接力文档放入 ignored 的 `.agent/agent-docs/`：
+长期公开项目文档统一放入 `doc/`，agent 本地接力文档放入 ignored 的 `.agent/agent-docs/`：
 
 - `doc/README.md`：项目文档索引、维护规则。
-- `doc/changelog/`：每次用户可见/长期维护修改新增一条 `YYYY-MM-DD-简短主题.md`，记录背景、改动、验证、注意事项；这是可提交的项目 changelog。
 - `.agent/agent-docs/README.md`：本地 agent 文档索引，不提交。
-- `.agent/agent-docs/changelog/`：镜像 `doc/changelog/` 的本次变更，或记录更偏 agent 视角的本地接力摘要；不提交，不能替代项目 changelog。
+- `.agent/agent-docs/changelog/`：每次修改新增一条 `YYYY-MM-DD-简短主题.md`，记录背景、改动、验证、注意事项；这是 agent-only changelog，不提交到公开仓库。
+- `.agent/historical-backup/docs/`：旧 `docs/` 历史 diff/validation 资料本地备份，不提交。
 - `doc/architecture/project-structure.md`：目录职责、运行时私有目录、版本/兼容包模型。
 - `doc/build/building-and-packaging.md`：构建环境、脚本流程、常用命令、产物位置。
 - `doc/runtime/compat-pack-loading-flow.md`：移动端兼容包与普通 MOD 的详细加载流程。
@@ -157,9 +158,9 @@ s2_re/
 维护要求：
 
 1. 改动构建脚本、目录结构、版本矩阵、兼容包流程时，必须同步 `AGENTS.md` 和对应 `doc/` 页面。
-2. 每次可见行为变化或维护规则变化都要新增 `doc/changelog/` 项目 changelog，并同步/镜像到 `.agent/agent-docs/changelog/`；不要只改 `.agent/` 内部计划，也不要只写 agent changelog 而漏掉项目 changelog。
-3. `README.md` / `doc/` 是项目文档；`AGENTS.md` 是编码代理/维护者专用操作约定；`.agent/agent-docs/` 是本地 agent 文档，`.agent/` 其余内容是本地 scratch，均不入库。一次性 context/review/scout 记录放 `.agent/`，长期计划才整理进 `doc/plan/`。
-4. `docs/` 旧目录仍可引用，但新说明和长期维护文档应写入 `doc/`。
+2. 每次可见行为变化或维护规则变化都要新增 `.agent/agent-docs/changelog/` agent changelog；不要再新增 `doc/changelog/`，也不要把 changelog 提交到公开仓库。
+3. `README.md` / `doc/` 是公开项目文档；`AGENTS.md` 是编码代理/维护者专用操作约定；`.agent/agent-docs/` 是本地 agent 文档，`.agent/` 其余内容是本地 scratch/历史备份，均不入库。一次性 context/review/scout 记录放 `.agent/`，长期计划才整理进 `doc/plan/`。
+4. 旧 `docs/` 目录已搬到 `.agent/historical-backup/docs/`，不再公开追踪；需要公开沉淀的历史资料应整理成 `doc/` 下的长期文档。
 5. 文档中不要写入用户私有 zip hash/路径之外的敏感信息，不要复制商业游戏资源内容。
 6. 新增直接引用资源、改编/参考第三方仓库实现或新增依赖时，同步 `THIRD_PARTY_LICENSES.md`，并在 `README.md` 写明用户可见来源。
 
@@ -499,7 +500,7 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 - 当前工程是“Android shell + payload/version manager + compat pack”的组合，不是传统 Android Studio `app/` 子模块结构；Gradle 根就在 `android/`。
 - 实际打包推荐用 `tools/package/*.sh`，不要裸跑 Gradle，除非已同步 runtime、准备好环境并理解 compat pack staging。
 - 可公开 clone 的 GitHub 参考项目用 `tools/deps/prepare-external-projects.sh` 准备；清单在 `tools/deps/external-github-projects.json`。该脚本不下载商业 payload、original DLL、keystore 或准备好的 Godot/Mono runtime。
-- `settings.save` 的 Android-only key 是 Java 附加设置与 Harmony patcher/Java 启动参数的协议；改 key 要同步 `ExtraSettingsRepository`、页面 UI、`AndroidSettingsBridge` 或 `GodotApp.getCommandLine()` 等消费者、相关 patches，并记录到 `doc/changelog/`，同时镜像/摘要到 `.agent/agent-docs/changelog/`。`log_level` 额外同步到 SharedPreferences，避免原版游戏保存 settings 时丢失该 Android 字段。
+- `settings.save` 的 Android-only key 是 Java 附加设置与 Harmony patcher/Java 启动参数的协议；改 key 要同步 `ExtraSettingsRepository`、页面 UI、`AndroidSettingsBridge` 或 `GodotApp.getCommandLine()` 等消费者、相关 patches，并记录到 `.agent/agent-docs/changelog/`。`log_level` 额外同步到 SharedPreferences，避免原版游戏保存 settings 时丢失该 Android 字段。
 - `<files>/default/<account>` 的账号选择逻辑与旧移植版兼容但较脆弱，多账号/自定义 platform player id 改动要同时检查 Java 与兼容 MOD。
 - 当前普通 MOD 目录由 launch profile 决定：`mods_mode=global` 使用 `<files>/mods`，`mods_mode=isolated` 使用 `<files>/instances/<profile_id>/mods`；新增路径相关功能必须同步 Java 管理页、C# `AppPaths`、ModLoader patches 和迁移/备份逻辑。
 - Steam Cloud 同步必须使用当前 launch profile 的 account root：`save_mode=global` 使用 `<files>/default/<account>`，`save_mode=isolated` 使用 `<files>/instances/<profile_id>/default/<account>`；不要把云存档固定写死到全局 `<files>/default/1`。

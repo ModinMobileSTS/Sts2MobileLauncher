@@ -73,7 +73,7 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 - Java repository / UI；
 - `port-mod/STS2AndroidPortCompat/Android/AndroidSettingsBridge.cs`；
 - 相关 `Patches/*Settings*.cs`；
-- `doc/changelog/`。
+- `.agent/agent-docs/changelog/`（agent-only，不提交）。
 
 ## 5. compat pack 分支维护
 
@@ -123,7 +123,7 @@ tools/package/build_importer_apk.sh
 5. 用对应 `ReferenceFlavor` 做 compile gate。
 6. 更新 `tools/android/bundled-compat-packs.json`。
 7. 运行 `tools/android/stage-bundled-compat-packs.sh`。
-8. 更新 `AGENTS.md`、`doc/architecture/project-structure.md`、本文件和 changelog。
+8. 更新 `AGENTS.md`、`doc/architecture/project-structure.md`、本文件，并在 `.agent/agent-docs/changelog/` 写 agent changelog。
 9. 构建 `tools/package/build_importer_apk.sh` 并做至少一次导入/启动 smoke test。
 
 ## 7. patch 开发注意事项

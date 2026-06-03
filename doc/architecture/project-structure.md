@@ -22,10 +22,11 @@ s2_re/
   tools/package/                   # importer/direct APK 打包、payload zip 校验
   tools/deps/                      # GitHub 外部参考项目清单与自动准备脚本
   tools/git/                       # 父仓库/submodule HEAD 巡检
-  doc/                             # 新规范化文档入口
-  docs/                            # 历史 diff/validation 资料
+  doc/                             # 公开项目文档入口
   dist/                            # 本地构建输出，gitignore
-  .agent/                          # agent 临时计划/报告/工作树/参考 clone，gitignore，不追踪
+  .agent/                          # agent 临时计划/报告/工作树/参考 clone/changelog/历史备份，gitignore，不追踪
+    agent-docs/changelog/          # agent-only changelog，不提交
+    historical-backup/docs/        # 旧 docs/ 历史 diff/validation 本地备份，不提交
 ```
 
 ## 3. Android shell 主要组件
@@ -109,10 +110,11 @@ android/steam-content/                        # SteamPipe depot manifest/chunk �
 - `android/assets/dotnet_bcl/`、`android/libs/`、`android/assets/payload/`。
 - keystore/jks/p12 等签名私钥。
 - `android/assets/compat_packs/*.zip`：脚本生成的兼容包 assets，构建时刷新，不入库。
-- `.agent/`：agent 草稿、计划、报告、临时 worktree 与外部参考 clone。
+- `.agent/`：agent 草稿、计划、报告、临时 worktree、agent-only changelog、历史备份与外部参考 clone。
 - `dist/`、APK/AAB/APKS、.NET bin/obj。
 
 允许提交但需区分用途：
 
 - `AGENTS.md`：编码代理/维护者专用操作约定，帮助后续自动化维护；用户可见说明仍应沉淀到 `README.md` / `doc/`。
 - `doc/plan/`：长期设计计划或已落地方案的维护 checklist；一次性 agent 上下文/审查记录不要放入项目文档。
+- `.agent/agent-docs/changelog/`：agent 修改流水与验证记录，仅本地保存，不提交。

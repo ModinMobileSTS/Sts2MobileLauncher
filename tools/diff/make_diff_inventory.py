@@ -246,9 +246,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mobile", default=os.environ.get("STS2_DIFF_MOBILE_ROOT") or dotenv.get("STS2_DIFF_MOBILE_ROOT"), type=Path)
     parser.add_argument("--original", default=os.environ.get("STS2_DIFF_ORIGINAL_ROOT") or dotenv.get("STS2_DIFF_ORIGINAL_ROOT"), type=Path)
-    parser.add_argument("--csv", default="docs/inventory/port-diff-full.csv", type=Path)
-    parser.add_argument("--classified", default="docs/inventory/port-diff-classified.md", type=Path)
-    parser.add_argument("--candidates", default="docs/inventory/port-mod-candidate-list.md", type=Path)
+    parser.add_argument("--csv", default=".agent/historical-backup/docs/inventory/port-diff-full.csv", type=Path)
+    parser.add_argument("--classified", default=".agent/historical-backup/docs/inventory/port-diff-classified.md", type=Path)
+    parser.add_argument("--candidates", default=".agent/historical-backup/docs/inventory/port-mod-candidate-list.md", type=Path)
     args = parser.parse_args()
 
     mobile = resolve_config_path(str(args.mobile) if args.mobile else None, repo_root)

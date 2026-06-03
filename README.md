@@ -69,9 +69,8 @@ s2_re/
     package/                       # APK 打包、payload zip 校验脚本
     diff/                          # 差异清单工具
 
-  doc/                             # 新规范化项目文档入口：changelog、结构、构建、运行时加载流程
-  docs/                            # 历史差异、验证、迁移文档
-  .agent/                          # 本地 agent 草稿/报告/worktree/参考 clone，gitignore
+  doc/                             # 公开项目文档入口：结构、构建、运行时加载流程等
+  .agent/                          # 本地 agent 草稿/报告/worktree/参考 clone/changelog/历史备份，gitignore
   dist/                            # APK 输出副本，gitignore
 ```
 
@@ -396,20 +395,19 @@ tools/android/build-port-mod.sh
 
 项目文档与 agent 专用资料区分如下：
 
-- 面向开发者/测试者的长期项目文档：本 `README.md` 与 [`doc/`](doc/)。
-- 历史阶段性资料：[`docs/`](docs/)，后续新增长期文档不要继续扩散到这里。
+- 面向开发者/测试者的长期公开项目文档：本 `README.md` 与 [`doc/`](doc/)。
 - 面向编码代理/维护者的操作约定：[`AGENTS.md`](AGENTS.md)。它不是用户手册；用户可见说明应沉淀到 `README.md` / `doc/`。
-- 本地 agent 草稿、计划、报告、临时 worktree 和参考仓库 clone：`.agent/`，已 gitignore，不应提交。
+- changelog 主要记录 agent 的修改过程与验证流水，已从公开 `doc/` 移到本地 ignored 的 `.agent/agent-docs/changelog/`。
+- 旧 `docs/` 历史 diff/validation 资料已移到本地 ignored 的 `.agent/historical-backup/docs/`，不再公开追踪。
+- 本地 agent 草稿、计划、报告、临时 worktree、changelog、历史备份和参考仓库 clone：`.agent/`，已 gitignore，不应提交。
 
 ## 相关文档
 
-- [`doc/`](doc/)：规范化项目文档入口（changelog、项目结构、构建、兼容包/MOD 加载流程）
+- [`doc/`](doc/)：规范化公开项目文档入口（项目结构、构建、兼容包/MOD 加载流程）
 - [`doc/runtime/compat-pack-loading-flow.md`](doc/runtime/compat-pack-loading-flow.md)：Android 兼容包与普通 MOD 详细加载流程
 - [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)：第三方来源、许可证与发布前合规检查
 - [`AGENTS.md`](AGENTS.md)：编码代理/维护者专用操作约定
 - [`port-mod/README.md`](port-mod/README.md)：Android 兼容插件 / compat pack 说明
-- [`docs/inventory/`](docs/inventory/)：旧移植版与 PC 原版差异清单
-- [`docs/validation/`](docs/validation/)：阶段性验证记录
 
 ## 免责声明
 
