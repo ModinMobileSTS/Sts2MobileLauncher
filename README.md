@@ -160,9 +160,22 @@ data_sts2_windows_x86_64/sts2.runtimeconfig.json
 
 脚本还会检查 `SlayTheSpire2.pck` 的 PCK magic，并输出 zip 的 sha256 与 `release_info.json` 信息。
 
-### 2. 构建导入版 APK
+### 2. 可选：生成 Android 优化本体 zip
 
-导入版 APK 不内置游戏资源。用户安装后，在附加设置页选择本地 `SlayTheSpire2.zip` 导入。
+如果你有某个版本的 PC 原版 zip 和匹配的 Godot 源码/反导出工程，可以先生成移动端优化本体 zip，再在导入版 APK 中导入：
+
+```bash
+tools/package/build_android_body_zip.sh \
+  --pc-zip "/path/to/SlayTheSpire2.zip" \
+  --source-dir "/path/to/sts2-godot-source" \
+  --out "dist/payload/sts2-vX.Y.Z-android-body.zip"
+```
+
+脚本会保留 PC zip 里的原版 `sts2.dll` / deps / runtimeconfig，避免重新编译改变 IL；资源 PCK 则通过 Godot Android `--export-pack` 重新导入为 ETC2/ASTC，并过滤 PC 纹理格式和桌面 runtime。生成的 zip 仍可用 `tools/package/validate_payload_zip.py` 校验并由当前 launcher 导入。
+
+### 3. 构建导入版 APK
+
+导入版 APK 不内置游戏资源。用户安装后，在附加设置页选择本地 `SlayTheSpire2.zip` 或上述 Android 优化本体 zip 导入。
 
 ```bash
 tools/package/build_importer_apk.sh
@@ -175,7 +188,7 @@ android/build/outputs/apk/mono/release/sts2-re.apk
 dist/sts2-re-importer.apk
 ```
 
-### 3. 构建直装版 APK
+### 4. 构建直装版 APK
 
 直装版会在构建时临时把本地 zip 复制到 `android/assets/payload/SlayTheSpire2.zip`，首次启动时自动解压到应用私有目录。该 zip 会在脚本退出时自动删除，不应提交。
 
@@ -190,7 +203,7 @@ android/build/outputs/apk/mono/release/sts2-re.apk
 dist/sts2-re-direct.apk
 ```
 
-### 4. 安装和验证
+### 5. 安装和验证
 
 ```bash
 adb install -r dist/sts2-re-importer.apk

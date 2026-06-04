@@ -124,6 +124,8 @@ s2_re/
       fmod-shim/                   # 替换 FMOD Java class 的 shim 源码
     package/
       validate_payload_zip.py      # 校验 PC 游戏 zip 必需文件/PCK magic/hash
+      build_android_body_zip.py    # 用匹配源码重新导入 Android 资源 PCK，并保留 PC 原版 DLL 组装优化本体 zip
+      build_android_body_zip.sh    # 上述 Python 工具的环境加载 wrapper
       build_importer_apk.sh        # 构建不内置游戏 zip 的导入版 APK
       build_direct_apk.sh          # 构建临时内置游戏 zip 的直装版 APK
     diff/                          # 差异清单工具
@@ -419,6 +421,12 @@ dist/sts2-re-direct.apk
 ```bash
 # payload zip 校验
 tools/package/validate_payload_zip.py "/path/to/SlayTheSpire2.zip"
+
+# 可选：用匹配 Godot 源码/反导出工程重新导入 Android 资源 PCK，生成优化本体 zip（DLL 仍来自 PC zip 原版）
+tools/package/build_android_body_zip.sh \
+  --pc-zip "/path/to/SlayTheSpire2.zip" \
+  --source-dir "/path/to/sts2-godot-source" \
+  --out "dist/payload/sts2-vX.Y.Z-android-body.zip"
 
 # 只编译 Java/Gradle 检查
 tools/android/gradle-with-s2-env.sh :compileMonoDebugJavaWithJavac

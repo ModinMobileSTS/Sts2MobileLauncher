@@ -32,6 +32,7 @@ tools/deps/prepare-external-projects.sh
 - JDK（必须有 `javac`，Java 17+；本地常用 JDK 21）
 - Android SDK / NDK / CMake
 - .NET SDK
+- Godot 4.5.1 Mono 与 export templates（仅在需要重新导入资源、生成 Android 优化本体包时使用）
 - arm64 Android 设备或模拟器（运行验证用）
 
 `.env` 中至少需要配置：
@@ -170,7 +171,43 @@ tools/package/build_direct_apk.sh
 6. 执行 Gradle task。
 7. 复制 APK 到 `android.direct.dist`（默认 `dist/sts2-re-direct.apk`），脚本退出时删除临时 zip。
 
-## 9. 局部检查
+## 9. 生成 Android 优化本体 zip（可选）
+
+如果同时拥有某个版本的 PC 原版 zip 与匹配的 Godot 源码/反导出工程，可以重新用 Android export preset 导入资源，生成更适合移动端导入的本体 zip：
+
+```bash
+tools/package/build_android_body_zip.sh \
+  --pc-zip "/path/to/SlayTheSpire2.zip" \
+  --source-dir "/path/to/sts2-godot-source" \
+  --out "dist/payload/sts2-vX.Y.Z-android-body.zip"
+```
+
+该脚本的原则：
+
+- `data_sts2_windows_x86_64/sts2.dll`、`sts2.deps.json`、`sts2.runtimeconfig.json` 来自 PC zip 原版，不用重新编译出的 DLL，避免 IL 变化影响 MOD。
+- `SlayTheSpire2.pck` 由临时 Godot 工程通过 Android `--export-pack` 重新生成，启用 ETC2/ASTC 导入，并过滤 PC 用的 BPTC/S3TC 纹理、`.godot/mono` publish、桌面 native runtime 等。
+- 字体 import 会在临时工程中关闭 MSDF 大 fontdata 设置，以接近移植版体积；Sentry autoload/GDExtension 在临时工程中禁用。
+- 产物仍满足 `validate_payload_zip.py` 与当前 launcher 导入格式，可在导入版 APK 中当普通 payload zip 导入。
+
+常用本地示例：
+
+```bash
+# v0.103.2：PC zip + 对应源码/反导出工程
+tools/package/build_android_body_zip.sh \
+  --pc-zip "/path/to/v0.103.2/SlayTheSpire2.zip" \
+  --source-dir "/path/to/s21032" \
+  --out "dist/payload/sts2-v0.103.2-android-body.zip"
+
+# v0.106.1 beta：PC zip + 对应源码/反导出工程
+tools/package/build_android_body_zip.sh \
+  --pc-zip "/path/to/sts2-v0.106.1.zip" \
+  --source-dir "/path/to/s201061" \
+  --out "dist/payload/sts2-v0.106.1-android-body.zip"
+```
+
+临时工程和 Godot 日志默认写入 `.agent/tmp/android-body-build/`，该目录不入库；生成的 zip 应留在 `dist/` 或其他本地输出目录，不要提交。
+
+## 10. 局部检查
 
 ```bash
 # Java/Kotlin/Steam 子模块编译检查
@@ -195,7 +232,7 @@ tools/deps/prepare-external-projects.sh --group modding-reference
   -p:CompatReferenceDir="$STS2_ORIGINAL_V1061_REFERENCE_DIR" -v:q
 ```
 
-## 10. 构建后基本验证
+## 11. 构建后基本验证
 
 ```bash
 adb install -r dist/sts2-re-importer.apk
