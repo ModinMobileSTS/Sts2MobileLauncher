@@ -497,6 +497,13 @@
     <string name="show_more_hand_card_text_hint">抬高手牌显示位置，让更多文字可读。</string>
     <string name="touch_lift_preview_switch">抬起触摸时预览</string>
     <string name="touch_lift_preview_hint">战斗中抬起触摸时显示卡牌预览。</string>
+    <string name="mobile_tooltip_mode_title">Tooltip 显示</string>
+    <string name="mobile_tooltip_mode_immediate">立即显示</string>
+    <string name="mobile_tooltip_mode_long_press">长按 1 秒</string>
+    <string name="mobile_tooltip_mode_hidden">隐藏</string>
+    <string name="choice_sheet_mobile_tooltip_immediate_desc">保持 PC 原版行为：鼠标/触摸悬停到物品时立即显示 tooltip。</string>
+    <string name="choice_sheet_mobile_tooltip_long_press_desc">普通点击时保持画面整洁；按住同一目标 1 秒后显示 tooltip，松手后隐藏。</string>
+    <string name="choice_sheet_mobile_tooltip_hidden_desc">在移动端隐藏悬停 tooltip；查看详情页面等显式信息入口仍可使用。</string>
     <string name="settings_system_title">系统</string>
     <string name="settings_system_subtitle">启动、声音、联机与诊断。</string>
     <string name="launcher_startup_behavior_title">桌面图标启动后</string>

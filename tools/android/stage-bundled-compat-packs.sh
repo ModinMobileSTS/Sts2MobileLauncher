@@ -47,6 +47,7 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/AndroidStartupLoadingScreen.cs" \
     "STS2AndroidPortCompat/Patches/AndroidSettingsMerge.cs" \
     "STS2AndroidPortCompat/Patches/AndroidInGameSettingsPatches.cs" \
+    "STS2AndroidPortCompat/Patches/MobileTooltipPatches.cs" \
     "STS2AndroidPortCompat/Patches/DisplaySettingsPatches.cs" \
     "STS2AndroidPortCompat/Patches/TransitionMaterialPatches.cs" \
     "STS2AndroidPortCompat/Patches/QuickRestartPatches.cs"; do
@@ -80,6 +81,9 @@ if mod_entry.is_file():
     shader_compat_line = '            ShaderCompatibilityPatches.Apply(_harmony);\n'
     if "TransitionMaterialPatches.Apply(_harmony);" not in text and shader_compat_line in text:
         text = text.replace(shader_compat_line, shader_compat_line + "            TransitionMaterialPatches.Apply(_harmony);\n", 1)
+    merchant_confirm_line = '            MerchantSelectionConfirmationPatches.Apply(_harmony);\n'
+    if "MobileTooltipPatches.Apply(_harmony);" not in text and merchant_confirm_line in text:
+        text = text.replace(merchant_confirm_line, merchant_confirm_line + "            MobileTooltipPatches.Apply(_harmony);\n", 1)
     if text != original:
         mod_entry.write_text(text, encoding="utf-8")
 

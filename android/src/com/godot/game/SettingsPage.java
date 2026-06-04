@@ -68,6 +68,7 @@ public final class SettingsPage {
 	private static final String[] LAUNCHER_STARTUP_VALUES = new String[] { ExtraSettingsPreferences.LAUNCHER_STARTUP_SETTINGS, ExtraSettingsPreferences.LAUNCHER_STARTUP_GAME };
 	private static final String[] VFX_PRELOAD_VALUES = new String[] { "off", "hot", "full" };
 	private static final String[] SHADER_PRELOAD_VALUES = new String[] { "off", "load_resources" };
+	private static final String[] TOOLTIP_MODE_VALUES = new String[] { ExtraSettingsRepository.TOOLTIP_MODE_IMMEDIATE, ExtraSettingsRepository.TOOLTIP_MODE_LONG_PRESS, ExtraSettingsRepository.TOOLTIP_MODE_HIDDEN };
 
 	private enum SettingsSegment { GRAPHICS, INPUT, SAVE, SYSTEM }
 	private static SettingsSegment lastSelectedSegment = SettingsSegment.GRAPHICS;
@@ -486,6 +487,12 @@ public final class SettingsPage {
 		addSwitchRow(content, R.drawable.ic_check_circle_24, R.string.mobile_selection_confirmation_switch, R.string.mobile_selection_confirmation_hint, settings.optBoolean("mobile_selection_confirmation", true), checked -> repository.saveSetting(root -> root.put("mobile_selection_confirmation", checked)));
 		addSwitchRow(content, R.drawable.ic_text_fields_24, R.string.show_more_hand_card_text_switch, R.string.show_more_hand_card_text_hint, settings.optBoolean("show_more_hand_card_text", true), checked -> repository.saveSetting(root -> root.put("show_more_hand_card_text", checked)));
 		addSwitchRow(content, R.drawable.ic_touch_app_24, R.string.touch_lift_preview_switch, R.string.touch_lift_preview_hint, settings.optBoolean("touch_lift_preview", true), checked -> repository.saveSetting(root -> root.put("touch_lift_preview", checked)));
+		addSpinnerRow(content, R.drawable.ic_info_24, R.string.mobile_tooltip_mode_title, buildTooltipModeLabels(), findStringIndex(TOOLTIP_MODE_VALUES, settings.optString("mobile_tooltip_mode", ExtraSettingsRepository.TOOLTIP_MODE_IMMEDIATE)), position -> {
+			repository.saveSetting(root -> {
+				root.put("mobile_tooltip_mode", TOOLTIP_MODE_VALUES[position]);
+				root.put("mobile_tooltip_long_press_ms", 1000);
+			});
+		});
 		addSwitchRow(content, R.drawable.ic_gesture_24, R.string.mobile_two_finger_inspect_switch, R.string.mobile_two_finger_inspect_hint, settings.optBoolean("mobile_two_finger_inspect", true), checked -> repository.saveSetting(root -> root.put("mobile_two_finger_inspect", checked)));
 		addSwitchRow(content, R.drawable.ic_keyboard_24, R.string.volume_up_soft_keyboard_switch, R.string.volume_up_soft_keyboard_hint, settings.optBoolean("android_volume_up_soft_keyboard", false), checked -> repository.saveSetting(root -> root.put("android_volume_up_soft_keyboard", checked)));
 		return card;
@@ -603,6 +610,13 @@ public final class SettingsPage {
 				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_log_info_desc), R.drawable.ic_article_24),
 				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_log_debug_desc), R.drawable.ic_tune_24),
 				new ChoiceOption(labels.get(2), context.getString(R.string.choice_sheet_log_very_debug_desc), R.drawable.ic_speed_24)
+			);
+		}
+		if (labelRes == R.string.mobile_tooltip_mode_title && labels.size() >= 3) {
+			return Arrays.asList(
+				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_mobile_tooltip_immediate_desc), R.drawable.ic_info_24),
+				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_mobile_tooltip_long_press_desc), R.drawable.ic_touch_app_24),
+				new ChoiceOption(labels.get(2), context.getString(R.string.choice_sheet_mobile_tooltip_hidden_desc), R.drawable.ic_close_24)
 			);
 		}
 		if (labelRes == R.string.preload_vfx_mode_title && labels.size() >= 3) {
@@ -1142,6 +1156,14 @@ public final class SettingsPage {
 			context.getString(R.string.log_level_info_option),
 			context.getString(R.string.log_level_debug_option),
 			context.getString(R.string.log_level_very_debug_option)
+		);
+	}
+
+	private List<String> buildTooltipModeLabels() {
+		return Arrays.asList(
+			context.getString(R.string.mobile_tooltip_mode_immediate),
+			context.getString(R.string.mobile_tooltip_mode_long_press),
+			context.getString(R.string.mobile_tooltip_mode_hidden)
 		);
 	}
 

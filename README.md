@@ -325,7 +325,7 @@ tools/android/make-port-overlay-pck.py
 - 将本地 MOD 路径重定向到当前 launch profile 的 MOD 目录（全局 `<files>/mods` 或隔离 `<files>/instances/<profile_id>/mods`）
 - 跳过 Steam Workshop 枚举
 - 加载 `port_compat.pck` 中的 shader/resource overlay
-- 适配触摸输入、返回键、手柄 trigger axis、双指 inspect 等输入行为
+- 适配触摸输入、返回键、手柄 trigger axis、双指 inspect 等输入行为；附加设置“设置 → 操作 → Tooltip 显示”默认保持 PC 端立即显示，也可切换为长按 1 秒显示或隐藏，减少触屏短按时 tooltip 遮挡屏幕
 - 增加游戏内打开附加设置、退出回设置页、快速重开等入口
 - 桥接 LAN / ENet 多人相关设置
 

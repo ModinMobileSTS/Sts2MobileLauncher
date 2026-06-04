@@ -497,6 +497,13 @@
     <string name="show_more_hand_card_text_hint">Lift hand cards higher so more text remains readable.</string>
     <string name="touch_lift_preview_switch">Preview when touch lifts</string>
     <string name="touch_lift_preview_hint">Show card preview when lifting a touch in combat.</string>
+    <string name="mobile_tooltip_mode_title">Tooltip display</string>
+    <string name="mobile_tooltip_mode_immediate">Immediate</string>
+    <string name="mobile_tooltip_mode_long_press">Long press 1s</string>
+    <string name="mobile_tooltip_mode_hidden">Hidden</string>
+    <string name="choice_sheet_mobile_tooltip_immediate_desc">Keep the original PC behavior: show tooltips as soon as an item is hovered or touched.</string>
+    <string name="choice_sheet_mobile_tooltip_long_press_desc">Keep the screen clean while tapping. Hold the same target for 1 second to reveal its tooltip until you release.</string>
+    <string name="choice_sheet_mobile_tooltip_hidden_desc">Hide hover tooltips on mobile. Inspect screens and other explicit detail pages still work.</string>
     <string name="settings_system_title">System</string>
     <string name="settings_system_subtitle">Startup, audio, multiplayer and diagnostics.</string>
     <string name="launcher_startup_behavior_title">Launcher startup</string>

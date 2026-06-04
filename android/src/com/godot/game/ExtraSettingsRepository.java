@@ -44,6 +44,9 @@ public final class ExtraSettingsRepository {
 	public static final String LOG_LEVEL_INFO = "info";
 	public static final String LOG_LEVEL_DEBUG = "debug";
 	public static final String LOG_LEVEL_VERY_DEBUG = "very_debug";
+	public static final String TOOLTIP_MODE_IMMEDIATE = "immediate";
+	public static final String TOOLTIP_MODE_LONG_PRESS = "long_press";
+	public static final String TOOLTIP_MODE_HIDDEN = "hidden";
 
 	private static final String MOD_SOURCE_MODS_DIRECTORY = "mods_directory";
 	private static final String SETTINGS_FILE_NAME = "settings.save";
@@ -141,6 +144,8 @@ public final class ExtraSettingsRepository {
 		settings.put("touch_lift_retap_action", "put_down");
 		settings.put("mobile_selection_confirmation", true);
 		settings.put("mobile_two_finger_inspect", true);
+		settings.put("mobile_tooltip_mode", TOOLTIP_MODE_IMMEDIATE);
+		settings.put("mobile_tooltip_long_press_ms", 1000);
 		settings.put("show_mobile_emoji_button", true);
 		settings.put("lan_multiplayer_enabled", true);
 		settings.put("lan_compatibility_mod_names", new JSONArray());
@@ -185,6 +190,9 @@ public final class ExtraSettingsRepository {
 		changed |= putIfMissing(settings, "touch_lift_retap_action", "put_down");
 		changed |= putIfMissing(settings, "mobile_selection_confirmation", true);
 		changed |= putIfMissing(settings, "mobile_two_finger_inspect", true);
+		changed |= putIfMissing(settings, "mobile_tooltip_mode", TOOLTIP_MODE_IMMEDIATE);
+		changed |= putIfMissing(settings, "mobile_tooltip_long_press_ms", 1000);
+		changed |= normalizeExistingTooltipLongPressDelay(settings);
 		changed |= putIfMissing(settings, "show_mobile_emoji_button", true);
 		changed |= putIfMissing(settings, "lan_multiplayer_enabled", true);
 		changed |= putIfMissing(settings, "lan_compatibility_mod_names", new JSONArray());
@@ -202,6 +210,17 @@ public final class ExtraSettingsRepository {
 		changed |= putIfMissing(settings, "max_multiplayer_enabled", true);
 		changed |= putIfMissing(settings, "quick_sl_enabled", true);
 		return changed;
+	}
+
+	private boolean normalizeExistingTooltipLongPressDelay(JSONObject settings) throws JSONException {
+		int delayMs = settings.optInt("mobile_tooltip_long_press_ms", 1000);
+		// Earlier preview builds used 3000 ms. There is no public custom-delay UI,
+		// so migrate that old default to the current mobile-friendly 1 second.
+		if (delayMs == 3000 || delayMs <= 0) {
+			settings.put("mobile_tooltip_long_press_ms", 1000);
+			return true;
+		}
+		return false;
 	}
 
 	private boolean putIfMissing(JSONObject object, String key, Object value) throws JSONException {
