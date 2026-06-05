@@ -30,6 +30,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
 
@@ -682,22 +683,143 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			});
 		} else if (requestCode == REQUEST_IMPORT_MOD) {
 			List<Uri> uris = extractDocumentUris(data);
-			if (uris.isEmpty()) {
-				return;
+			if (!uris.isEmpty()) {
+				prepareModImportsWithConflictDialogs(uris);
 			}
-			runAsyncOperation(getString(R.string.status_busy_import_mod), () -> {
-				int imported = 0;
-				String lastName = "";
-				for (Uri uri : uris) {
-					lastName = repository.importMod(uri);
-					imported++;
-				}
-				if (imported == 1 && lastName != null && !lastName.isEmpty()) {
-					return getString(R.string.status_import_mod_done) + " " + lastName;
-				}
-				return getString(R.string.status_import_mod_done_count, imported);
-			});
 		}
+	}
+
+	private void prepareModImportsWithConflictDialogs(List<Uri> uris) {
+		if (busy || uris == null || uris.isEmpty()) {
+			return;
+		}
+		busy = true;
+		showMessage(getString(R.string.status_busy_import_mod));
+		new Thread(() -> {
+			List<ExtraSettingsRepository.PreparedModImport> preparedImports = new ArrayList<>();
+			try {
+				for (Uri uri : uris) {
+					preparedImports.add(repository.prepareModImport(uri));
+				}
+				runOnUiThread(() -> {
+					busy = false;
+					handlePreparedModImports(preparedImports, 0, 0, "");
+				});
+			} catch (Exception exception) {
+				for (ExtraSettingsRepository.PreparedModImport preparedImport : preparedImports) {
+					repository.discardPreparedModImport(preparedImport);
+				}
+				runOnUiThread(() -> {
+					busy = false;
+					showError(exception);
+				});
+			}
+		}, "sts2-mod-import-prepare").start();
+	}
+
+	private void handlePreparedModImports(List<ExtraSettingsRepository.PreparedModImport> imports, int index, int importedCount, String lastName) {
+		if (index >= imports.size()) {
+			refreshCurrentScreen();
+			if (importedCount == 1 && lastName != null && !lastName.isEmpty()) {
+				showMessage(getString(R.string.status_import_mod_done) + " " + lastName);
+			} else if (importedCount > 0) {
+				showMessage(getString(R.string.status_import_mod_done_count, importedCount));
+			} else {
+				showMessage(getString(R.string.status_import_mod_cancelled));
+			}
+			return;
+		}
+		ExtraSettingsRepository.PreparedModImport preparedImport = imports.get(index);
+		List<ExtraSettingsRepository.ModImportConflict> currentConflicts = repository.findCurrentImportConflicts(preparedImport);
+		if (currentConflicts.isEmpty()) {
+			commitPreparedModImport(imports, index, importedCount, lastName, false);
+			return;
+		}
+		showModImportConflictDialog(preparedImport, currentConflicts,
+			() -> {
+				repository.discardPreparedModImport(preparedImport);
+				handlePreparedModImports(imports, index + 1, importedCount, lastName);
+			},
+			() -> commitPreparedModImport(imports, index, importedCount, lastName, true),
+			() -> {
+				repository.discardPreparedModImport(preparedImport);
+				handlePreparedModImports(imports, index + 1, importedCount, lastName);
+			});
+	}
+
+	private void commitPreparedModImport(List<ExtraSettingsRepository.PreparedModImport> imports, int index, int importedCount, String lastName, boolean replaceExistingConflicts) {
+		if (busy) {
+			return;
+		}
+		ExtraSettingsRepository.PreparedModImport preparedImport = imports.get(index);
+		busy = true;
+		showMessage(getString(R.string.status_busy_import_mod));
+		new Thread(() -> {
+			try {
+				String importedName = repository.commitPreparedModImport(preparedImport, replaceExistingConflicts);
+				runOnUiThread(() -> {
+					busy = false;
+					handlePreparedModImports(imports, index + 1, importedCount + 1, importedName);
+				});
+			} catch (Exception exception) {
+				runOnUiThread(() -> {
+					busy = false;
+					showError(exception);
+				});
+			}
+		}, "sts2-mod-import-commit").start();
+	}
+
+	private void showModImportConflictDialog(ExtraSettingsRepository.PreparedModImport preparedImport, List<ExtraSettingsRepository.ModImportConflict> conflicts, Runnable keepOriginal, Runnable useNew, Runnable cancelImport) {
+		LinearLayout content = new LinearLayout(this);
+		content.setOrientation(LinearLayout.VERTICAL);
+		content.setPadding(ExtraSettingsUi.dp(this, 4), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 4), 0);
+		TextView message = ExtraSettingsUi.body(this, getString(R.string.mod_import_conflict_message));
+		content.addView(message);
+		for (ExtraSettingsRepository.ModImportConflict conflict : conflicts) {
+			TextView conflictTitle = ExtraSettingsUi.text(this, getString(R.string.mod_import_conflict_id_format, conflict.modId), 15, ExtraSettingsUi.COLOR_ON_SURFACE, android.graphics.Typeface.BOLD);
+			LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			titleParams.topMargin = ExtraSettingsUi.dp(this, 12);
+			content.addView(conflictTitle, titleParams);
+			if (!conflict.existingEntries.isEmpty()) {
+				content.addView(buildImportConflictInfoCard(getString(R.string.mod_import_conflict_original), conflict.existingEntries.get(0)));
+			}
+			content.addView(buildImportConflictInfoCard(getString(R.string.mod_import_conflict_incoming), conflict.incomingEntry));
+		}
+		ScrollView scrollView = new ScrollView(this);
+		scrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.mod_import_conflict_title)
+			.setView(scrollView)
+			.setNegativeButton(R.string.mod_import_conflict_keep_original, (dialog, which) -> keepOriginal.run())
+			.setNeutralButton(android.R.string.cancel, (dialog, which) -> cancelImport.run())
+			.setPositiveButton(R.string.mod_import_conflict_use_new, (dialog, which) -> useNew.run())
+			.setOnCancelListener(dialog -> cancelImport.run())
+			.show();
+	}
+
+	private View buildImportConflictInfoCard(String label, ExtraSettingsRepository.ModEntry entry) {
+		MaterialCardView card = ExtraSettingsUi.card(this);
+		card.setRadius(ExtraSettingsUi.dp(this, 16));
+		card.setCardBackgroundColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
+		card.setStrokeColor(ExtraSettingsUi.COLOR_OUTLINE);
+		card.setStrokeWidth(ExtraSettingsUi.dp(this, 1));
+		LinearLayout content = ExtraSettingsUi.cardContent(this, card);
+		content.setPadding(ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 12), ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 12));
+		content.addView(ExtraSettingsUi.text(this, label, 15, ExtraSettingsUi.COLOR_ON_SURFACE, android.graphics.Typeface.BOLD));
+		content.addView(ExtraSettingsUi.body(this, entry.displayName));
+		content.addView(ExtraSettingsUi.caption(this, "ID: " + entry.modId));
+		content.addView(ExtraSettingsUi.caption(this, getString(R.string.mod_detail_version) + ": " + emptyToDash(entry.version)));
+		content.addView(ExtraSettingsUi.caption(this, getString(R.string.mod_detail_author) + ": " + emptyToDash(entry.authors)));
+		content.addView(ExtraSettingsUi.caption(this, getString(R.string.mod_detail_path) + ": " + entry.relativePath));
+		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		params.topMargin = ExtraSettingsUi.dp(this, 8);
+		card.setLayoutParams(params);
+		return card;
+	}
+
+	private String emptyToDash(String value) {
+		return TextUtils.isEmpty(value) ? "—" : value;
 	}
 
 	private void runPayloadImportOperation(Uri uri, boolean bundled) {

@@ -28,9 +28,11 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
@@ -49,11 +51,16 @@ public final class ExtraSettingsRepository {
 	public static final String TOOLTIP_MODE_HIDDEN = "hidden";
 
 	private static final String MOD_SOURCE_MODS_DIRECTORY = "mods_directory";
+	private static final String MOD_GROUP_MARKER_FILE_NAME = ".sts2_mod_group";
+	private static final String MOD_GROUP_CORE_NAME = "core";
+	private static final String MOD_GROUP_CONTENT_NAME = "content";
 	private static final String SETTINGS_FILE_NAME = "settings.save";
 	private static final String PENDING_UNLOCK_ALL_FILE_NAME = "pending_unlock_all.flag";
 	private static final String MOD_PROFILE_PREFERENCES_NAME = "sts2_mod_profiles";
 	private static final String KEY_MOD_PROFILES = "profiles";
 	private static final String KEY_ACTIVE_MOD_PROFILE_ID = "active_profile_id";
+	private static final String KEY_MOD_GROUP_ORDER = "mod_group_order";
+	private static final String KEY_MOD_ORDER = "mod_order";
 	private static final String DEFAULT_MOD_PROFILE_ID = "default";
 	private static final String KEY_ANDROID_GRAPHICS_PRESET = "android_graphics_preset";
 	private static final String KEY_ANDROID_DISPLAY_PRESET = "android_display_preset";
@@ -431,48 +438,139 @@ public final class ExtraSettingsRepository {
 	}
 
 	public String importMod(Uri inputUri) throws Exception {
-		File modsRoot = getModsRootDir();
-		ensureDirectory(modsRoot);
-		String displayName = queryDisplayName(inputUri);
-		String normalizedName = (displayName == null) ? "imported_mod" : sanitizeFileName(displayName);
-		String lowerName = normalizedName.toLowerCase(Locale.ROOT);
-		boolean shouldUnzip = lowerName.endsWith(".zip") || isZipUri(inputUri);
-		if (shouldUnzip) {
-			unzipIntoDirectory(inputUri, modsRoot);
-		} else {
-			copyUriToFile(inputUri, new File(modsRoot, normalizedName));
-		}
-		normalizeRuntimeModAliases(modsRoot);
-		JSONObject settings = loadSettingsJson();
-		ensureModSettings(settings).put("mods_enabled", true);
-		saveSettingsJson(settings);
-		return normalizedName;
+		PreparedModImport preparedImport = prepareModImport(inputUri);
+		return commitPreparedModImport(preparedImport, true);
 	}
 
 	public String importDownloadedModFile(File sourceFile, String displayName) throws Exception {
+		PreparedModImport preparedImport = prepareDownloadedModImport(sourceFile, displayName);
+		return commitPreparedModImport(preparedImport, true);
+	}
+
+	public PreparedModImport prepareModImport(Uri inputUri) throws Exception {
+		File stagingRoot = createModImportTempRoot();
+		deleteRecursively(stagingRoot);
+		ensureDirectory(stagingRoot);
+		try {
+			String displayName = queryDisplayName(inputUri);
+			String normalizedName = (displayName == null) ? "imported_mod" : sanitizeFileName(displayName);
+			String lowerName = normalizedName.toLowerCase(Locale.ROOT);
+			boolean shouldUnzip = lowerName.endsWith(".zip") || isZipUri(inputUri);
+			if (shouldUnzip) {
+				unzipIntoDirectory(inputUri, stagingRoot);
+			} else {
+				copyUriToFile(inputUri, new File(stagingRoot, normalizedName));
+			}
+			return finishPreparedModImport(stagingRoot, displayName, normalizedName);
+		} catch (Exception exception) {
+			deleteRecursively(stagingRoot);
+			throw exception;
+		}
+	}
+
+	public PreparedModImport prepareDownloadedModImport(File sourceFile, String displayName) throws Exception {
 		if (sourceFile == null || !sourceFile.isFile()) {
 			throw new IOException(context.getString(R.string.nexus_mod_store_download_missing_file));
 		}
-		File modsRoot = getModsRootDir();
-		ensureDirectory(modsRoot);
-		String normalizedName = sanitizeFileName(TextUtils.isEmpty(displayName) ? sourceFile.getName() : displayName);
-		String lowerName = normalizedName.toLowerCase(Locale.ROOT);
-		boolean shouldUnzip = lowerName.endsWith(".zip") || isZipFile(sourceFile);
-		if (shouldUnzip) {
-			unzipFileIntoDirectory(sourceFile, modsRoot);
-		} else {
-			copyRecursively(sourceFile, new File(modsRoot, normalizedName));
+		File stagingRoot = createModImportTempRoot();
+		deleteRecursively(stagingRoot);
+		ensureDirectory(stagingRoot);
+		try {
+			String normalizedName = sanitizeFileName(TextUtils.isEmpty(displayName) ? sourceFile.getName() : displayName);
+			String lowerName = normalizedName.toLowerCase(Locale.ROOT);
+			boolean shouldUnzip = lowerName.endsWith(".zip") || isZipFile(sourceFile);
+			if (shouldUnzip) {
+				unzipFileIntoDirectory(sourceFile, stagingRoot);
+			} else {
+				copyRecursively(sourceFile, new File(stagingRoot, normalizedName));
+			}
+			return finishPreparedModImport(stagingRoot, displayName, normalizedName);
+		} catch (Exception exception) {
+			deleteRecursively(stagingRoot);
+			throw exception;
 		}
-		normalizeRuntimeModAliases(modsRoot);
-		JSONObject settings = loadSettingsJson();
-		ensureModSettings(settings).put("mods_enabled", true);
-		saveSettingsJson(settings);
-		return normalizedName;
+	}
+
+	private PreparedModImport finishPreparedModImport(File stagingRoot, String displayName, String normalizedName) {
+		normalizeRuntimeModAliases(stagingRoot);
+		List<ModEntry> incomingEntries = new ArrayList<>();
+		collectManifestFiles(stagingRoot, stagingRoot, incomingEntries);
+		List<ModImportConflict> conflicts = findImportConflicts(incomingEntries);
+		return new PreparedModImport(stagingRoot, displayName, normalizedName, incomingEntries, conflicts);
+	}
+
+	public String commitPreparedModImport(PreparedModImport preparedImport, boolean replaceExistingConflicts) throws Exception {
+		if (preparedImport == null || preparedImport.stagingRoot == null || !preparedImport.stagingRoot.isDirectory()) {
+			throw new IOException("Prepared MOD import is no longer available.");
+		}
+		try {
+			if (replaceExistingConflicts) {
+				deleteExistingImportConflicts(findCurrentImportConflicts(preparedImport));
+			}
+			File modsRoot = getModsRootDir();
+			ensureDirectory(modsRoot);
+			copyDirectoryContents(preparedImport.stagingRoot, modsRoot);
+			normalizeRuntimeModAliases(modsRoot);
+			JSONObject settings = loadSettingsJson();
+			ensureModSettings(settings).put("mods_enabled", true);
+			saveSettingsJson(settings);
+			return preparedImport.normalizedName;
+		} finally {
+			discardPreparedModImport(preparedImport);
+		}
+	}
+
+	public void discardPreparedModImport(PreparedModImport preparedImport) {
+		if (preparedImport != null) {
+			deleteRecursively(preparedImport.stagingRoot);
+		}
+	}
+
+	public List<ModImportConflict> findCurrentImportConflicts(PreparedModImport preparedImport) {
+		if (preparedImport == null) {
+			return Collections.emptyList();
+		}
+		return findImportConflicts(preparedImport.incomingEntries);
+	}
+
+	private List<ModImportConflict> findImportConflicts(List<ModEntry> incomingEntries) {
+		if (incomingEntries == null || incomingEntries.isEmpty()) {
+			return Collections.emptyList();
+		}
+		Map<String, List<ModEntry>> installedById = new LinkedHashMap<>();
+		for (ModEntry entry : listInstalledModManifests()) {
+			installedById.computeIfAbsent(entry.modId, ignored -> new ArrayList<>()).add(entry);
+		}
+		List<ModImportConflict> conflicts = new ArrayList<>();
+		Set<String> seen = new LinkedHashSet<>();
+		for (ModEntry incomingEntry : incomingEntries) {
+			List<ModEntry> existingEntries = installedById.get(incomingEntry.modId);
+			if (existingEntries == null || existingEntries.isEmpty() || !seen.add(incomingEntry.modId)) {
+				continue;
+			}
+			conflicts.add(new ModImportConflict(incomingEntry.modId, existingEntries, incomingEntry));
+		}
+		return conflicts;
+	}
+
+	private void deleteExistingImportConflicts(List<ModImportConflict> conflicts) throws Exception {
+		if (conflicts == null || conflicts.isEmpty()) {
+			return;
+		}
+		Set<String> deletedManifestPaths = new LinkedHashSet<>();
+		for (ModImportConflict conflict : conflicts) {
+			for (ModEntry existingEntry : conflict.existingEntries) {
+				String canonicalPath = existingEntry.manifestFile.getCanonicalPath();
+				if (deletedManifestPaths.add(canonicalPath)) {
+					deleteMod(existingEntry);
+				}
+			}
+		}
 	}
 
 	private void normalizeRuntimeModAliases(File modsRoot) {
 		List<ModEntry> entries = new ArrayList<>();
-		collectManifestFiles(modsRoot, entries);
+		collectManifestFiles(modsRoot, modsRoot, entries);
 		for (ModEntry entry : entries) {
 			try {
 				ensureRuntimeModAlias(entry, ".pck");
@@ -574,6 +672,253 @@ public final class ExtraSettingsRepository {
 		}
 	}
 
+	public List<String> listModGroups() {
+		List<String> groups = new ArrayList<>();
+		File modsRoot = getModsRootDir();
+		File[] children = modsRoot.listFiles(file -> file.isDirectory() && !file.getName().startsWith(".") && !isSymbolicLink(file) && isModGroupDirectory(file));
+		if (children != null) {
+			for (File child : children) {
+				groups.add(child.getName());
+			}
+		}
+		groups.sort(String::compareToIgnoreCase);
+		return groups;
+	}
+
+	public String createModGroup(String rawGroupName) throws Exception {
+		String groupName = sanitizeFileName(normalizeModGroupName(rawGroupName));
+		if (TextUtils.isEmpty(groupName)) {
+			throw new IOException("Group name cannot be empty.");
+		}
+		File modsRoot = getModsRootDir();
+		ensureDirectory(modsRoot);
+		if (MOD_GROUP_CORE_NAME.equalsIgnoreCase(groupName) || MOD_GROUP_CONTENT_NAME.equalsIgnoreCase(groupName)) {
+			return groupName;
+		}
+		File groupDirectory = new File(modsRoot, groupName);
+		ensureDirectory(groupDirectory);
+		markModGroupDirectory(groupDirectory);
+		return groupName;
+	}
+
+	public List<String> loadModGroupOrder() {
+		SharedPreferences preferences = context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE);
+		return decodeStringList(preferences.getString(KEY_MOD_GROUP_ORDER, ""));
+	}
+
+	public void saveModGroupOrder(List<String> groupIds) {
+		SharedPreferences preferences = context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE);
+		preferences.edit().putString(KEY_MOD_GROUP_ORDER, encodeStringList(groupIds)).apply();
+	}
+
+	public List<String> loadModOrder(String groupId) {
+		SharedPreferences preferences = context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE);
+		return decodeStringList(preferences.getString(KEY_MOD_ORDER + ":" + safeOrderKey(groupId), ""));
+	}
+
+	public void saveModOrder(String groupId, List<String> modIds) {
+		SharedPreferences preferences = context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE);
+		preferences.edit().putString(KEY_MOD_ORDER + ":" + safeOrderKey(groupId), encodeStringList(modIds)).apply();
+	}
+
+	private String safeOrderKey(String value) {
+		return TextUtils.isEmpty(value) ? "__root__" : value.replace(':', '_');
+	}
+
+	private String encodeStringList(List<String> values) {
+		JSONArray array = new JSONArray();
+		if (values != null) {
+			for (String value : values) {
+				if (!TextUtils.isEmpty(value)) {
+					array.put(value);
+				}
+			}
+		}
+		return array.toString();
+	}
+
+	private List<String> decodeStringList(String encoded) {
+		List<String> values = new ArrayList<>();
+		if (TextUtils.isEmpty(encoded)) {
+			return values;
+		}
+		try {
+			JSONArray array = new JSONArray(encoded);
+			for (int i = 0; i < array.length(); i++) {
+				String value = array.optString(i, "");
+				if (!TextUtils.isEmpty(value) && !values.contains(value)) {
+					values.add(value);
+				}
+			}
+		} catch (Exception ignored) {
+		}
+		return values;
+	}
+
+	public void moveModToGroup(ModEntry modEntry, String rawGroupName) throws Exception {
+		if (modEntry == null || TextUtils.isEmpty(modEntry.modId)) {
+			return;
+		}
+		String groupName = normalizeModGroupName(rawGroupName);
+		File modsRoot = getModsRootDir();
+		ensureDirectory(modsRoot);
+		File sourceDirectory = getModEntryDirectory(modEntry);
+		File targetGroupDirectory = TextUtils.isEmpty(groupName) ? modsRoot : new File(modsRoot, sanitizeFileName(groupName));
+		ensureDirectory(targetGroupDirectory);
+		if (!TextUtils.isEmpty(groupName)) {
+			markModGroupDirectory(targetGroupDirectory);
+		}
+		boolean targetIsRoot = targetGroupDirectory.getCanonicalFile().equals(modsRoot.getCanonicalFile());
+		if (!targetIsRoot && sourceDirectory != null && sourceDirectory.isDirectory()) {
+			String sourcePath = sourceDirectory.getCanonicalPath();
+			String targetGroupPath = targetGroupDirectory.getCanonicalPath();
+			if (sourcePath.equals(targetGroupPath) || sourcePath.startsWith(targetGroupPath + File.separator)) {
+				return;
+			}
+		}
+		if (!targetIsRoot && sourceDirectory != null && sourceDirectory.isDirectory() && !sourceDirectory.getCanonicalFile().equals(modsRoot.getCanonicalFile()) && !isModGroupDirectory(sourceDirectory) && shouldMoveWholeModDirectory(sourceDirectory, modEntry)) {
+			File targetDirectory = uniqueDirectory(new File(targetGroupDirectory, sourceDirectory.getName()));
+			String sourcePath = sourceDirectory.getCanonicalPath();
+			String targetPath = targetDirectory.getCanonicalPath();
+			if (targetPath.equals(sourcePath) || targetPath.startsWith(sourcePath + File.separator)) {
+				return;
+			}
+			if (!sourceDirectory.renameTo(targetDirectory)) {
+				copyRecursively(sourceDirectory, targetDirectory);
+				deleteRecursively(sourceDirectory);
+			}
+			pruneEmptyDirectories(sourceDirectory.getParentFile(), modsRoot);
+		} else {
+			moveModEntryFiles(modEntry, targetGroupDirectory);
+		}
+		normalizeRuntimeModAliases(modsRoot);
+	}
+
+	private boolean isModGroupDirectory(File directory) {
+		return new File(directory, MOD_GROUP_MARKER_FILE_NAME).isFile();
+	}
+
+	private void markModGroupDirectory(File directory) throws IOException {
+		File marker = new File(directory, MOD_GROUP_MARKER_FILE_NAME);
+		if (!marker.isFile()) {
+			writeTextFile(marker, "STS2 Android MOD group\n");
+		}
+	}
+
+	private boolean shouldMoveWholeModDirectory(File sourceDirectory, ModEntry modEntry) {
+		File[] manifests = sourceDirectory.listFiles((dir, name) -> name.toLowerCase(Locale.ROOT).endsWith(".json"));
+		if (manifests == null || manifests.length == 0) {
+			return true;
+		}
+		int parsedCount = 0;
+		for (File manifest : manifests) {
+			ModEntry parsed = tryParseModEntry(sourceDirectory, manifest);
+			if (parsed != null && !parsed.modId.equals(modEntry.modId)) {
+				return false;
+			}
+			if (parsed != null) {
+				parsedCount++;
+			}
+		}
+		return parsedCount <= 1 || sourceDirectory.getName().equals(modEntry.modId) || sourceDirectory.getName().equals(modEntry.pckName);
+	}
+
+	private void moveModEntryFiles(ModEntry modEntry, File targetDirectory) throws Exception {
+		File currentParent = modEntry.manifestFile.getParentFile();
+		if (currentParent != null && currentParent.getCanonicalFile().equals(targetDirectory.getCanonicalFile())) {
+			return;
+		}
+		List<File> sources = new ArrayList<>();
+		addIfFile(sources, modEntry.manifestFile);
+		File parent = modEntry.manifestFile.getParentFile();
+		if (parent != null) {
+			addIfFile(sources, new File(parent, modEntry.modId + ".json"));
+			addIfFile(sources, new File(parent, modEntry.modId + ".pck"));
+			addIfFile(sources, new File(parent, modEntry.modId + ".dll"));
+			if (!modEntry.modId.equals(modEntry.pckName)) {
+				addIfFile(sources, new File(parent, modEntry.pckName + ".pck"));
+				addIfFile(sources, new File(parent, modEntry.pckName + ".dll"));
+			}
+		}
+		Set<String> moved = new LinkedHashSet<>();
+		for (File source : sources) {
+			String canonical = source.getCanonicalPath();
+			if (!moved.add(canonical)) {
+				continue;
+			}
+			File target = uniqueFile(new File(targetDirectory, source.getName()));
+			if (!source.renameTo(target)) {
+				copyRecursively(source, target);
+				deleteIfExists(source);
+			}
+		}
+		if (parent != null) {
+			pruneEmptyDirectories(parent, getModsRootDir());
+		}
+	}
+
+	private void addIfFile(List<File> files, File file) {
+		if (file != null && file.isFile()) {
+			files.add(file);
+		}
+	}
+
+	private File getModEntryDirectory(ModEntry modEntry) {
+		File parent = modEntry.manifestFile.getParentFile();
+		File modsRoot = getModsRootDir();
+		if (parent == null) {
+			return null;
+		}
+		try {
+			File parentCanonical = parent.getCanonicalFile();
+			File rootCanonical = modsRoot.getCanonicalFile();
+			if (parentCanonical.equals(rootCanonical)) {
+				return parentCanonical;
+			}
+			return parentCanonical;
+		} catch (Exception ignored) {
+			return parent;
+		}
+	}
+
+	private String normalizeModGroupName(String rawGroupName) {
+		if (rawGroupName == null) {
+			return "";
+		}
+		String trimmed = rawGroupName.trim();
+		if (trimmed.isEmpty() || "__root__".equals(trimmed)) {
+			return "";
+		}
+		return trimmed;
+	}
+
+	private File uniqueDirectory(File desired) {
+		File candidate = desired;
+		int index = 2;
+		while (candidate.exists()) {
+			candidate = new File(desired.getParentFile(), desired.getName() + "-" + index);
+			index++;
+		}
+		return candidate;
+	}
+
+	private File uniqueFile(File desired) {
+		if (!desired.exists()) {
+			return desired;
+		}
+		String name = desired.getName();
+		int dot = name.lastIndexOf('.');
+		String base = dot > 0 ? name.substring(0, dot) : name;
+		String extension = dot > 0 ? name.substring(dot) : "";
+		int index = 2;
+		File candidate;
+		do {
+			candidate = new File(desired.getParentFile(), base + "-" + index + extension);
+			index++;
+		} while (candidate.exists());
+		return candidate;
+	}
+
 	public void setModsEnabled(List<ModEntry> modEntries, boolean enabled) throws Exception {
 		JSONObject settings = loadSettingsJson();
 		for (ModEntry modEntry : modEntries) {
@@ -612,7 +957,8 @@ public final class ExtraSettingsRepository {
 
 	public List<ModEntry> listInstalledModManifests() {
 		List<ModEntry> results = new ArrayList<>();
-		collectManifestFiles(getModsRootDir(), results);
+		File modsRoot = getModsRootDir();
+		collectManifestFiles(modsRoot, modsRoot, results);
 		results.sort(Comparator.comparing(entry -> entry.relativePath, String::compareToIgnoreCase));
 		return results;
 	}
@@ -1027,6 +1373,11 @@ public final class ExtraSettingsRepository {
 	}
 
 	private void collectManifestFiles(File directory, List<ModEntry> results) {
+		File root = getModsRootDir();
+		collectManifestFiles(root, directory, results);
+	}
+
+	private void collectManifestFiles(File rootDirectory, File directory, List<ModEntry> results) {
 		if (directory == null || !directory.isDirectory()) {
 			return;
 		}
@@ -1036,9 +1387,9 @@ public final class ExtraSettingsRepository {
 		}
 		for (File file : files) {
 			if (file.isDirectory()) {
-				collectManifestFiles(file, results);
+				collectManifestFiles(rootDirectory, file, results);
 			} else if (file.getName().toLowerCase(Locale.ROOT).endsWith(".json")) {
-				ModEntry modEntry = tryParseModEntry(file);
+				ModEntry modEntry = tryParseModEntry(rootDirectory, file);
 				if (modEntry != null) {
 					results.add(modEntry);
 				}
@@ -1047,6 +1398,10 @@ public final class ExtraSettingsRepository {
 	}
 
 	private ModEntry tryParseModEntry(File manifestFile) {
+		return tryParseModEntry(getModsRootDir(), manifestFile);
+	}
+
+	private ModEntry tryParseModEntry(File rootDirectory, File manifestFile) {
 		try {
 			String content = readTextFile(manifestFile);
 			if (TextUtils.isEmpty(content)) {
@@ -1078,7 +1433,7 @@ public final class ExtraSettingsRepository {
 			File parent = manifestFile.getParentFile();
 			boolean hasPck = hasSibling(parent, modId, ".pck") || hasSibling(parent, pckName, ".pck");
 			boolean hasDll = hasSibling(parent, modId, ".dll") || hasSibling(parent, pckName, ".dll");
-			return new ModEntry(manifestFile, modId, pckName, displayName, getRelativeModsPath(manifestFile), version, authors, description, category, dependencies, hasPck, hasDll);
+			return new ModEntry(manifestFile, modId, pckName, displayName, getRelativePath(rootDirectory, manifestFile), version, authors, description, category, dependencies, hasPck, hasDll);
 		} catch (Exception ignored) {
 			return null;
 		}
@@ -1586,11 +1941,18 @@ public final class ExtraSettingsRepository {
 		return new File(context.getDataDir(), "cache/sts2_full_data_restore_" + UUID.randomUUID());
 	}
 
-	private String getRelativeModsPath(File modFile) {
-		return getRelativePath(getModsRootDir(), modFile);
+	private File createModImportTempRoot() {
+		File cacheDir = context.getCacheDir();
+		if (cacheDir != null) {
+			return new File(cacheDir, "sts2_mod_import_" + UUID.randomUUID());
+		}
+		return new File(context.getDataDir(), "cache/sts2_mod_import_" + UUID.randomUUID());
 	}
 
 	private String getRelativePath(File root, File file) {
+		if (root == null || file == null) {
+			return file == null ? "" : file.getName();
+		}
 		String rootPath = root.getAbsolutePath();
 		String filePath = file.getAbsolutePath();
 		if (filePath.equals(rootPath)) {
@@ -1715,6 +2077,34 @@ public final class ExtraSettingsRepository {
 			this.id = id;
 			this.name = name;
 			this.enabledModIds = Collections.unmodifiableSet(new LinkedHashSet<>(enabledModIds));
+		}
+	}
+
+	public static final class PreparedModImport {
+		public final File stagingRoot;
+		public final String displayName;
+		public final String normalizedName;
+		public final List<ModEntry> incomingEntries;
+		public final List<ModImportConflict> conflicts;
+
+		PreparedModImport(File stagingRoot, String displayName, String normalizedName, List<ModEntry> incomingEntries, List<ModImportConflict> conflicts) {
+			this.stagingRoot = stagingRoot;
+			this.displayName = displayName == null ? normalizedName : displayName;
+			this.normalizedName = normalizedName;
+			this.incomingEntries = Collections.unmodifiableList(new ArrayList<>(incomingEntries));
+			this.conflicts = Collections.unmodifiableList(new ArrayList<>(conflicts));
+		}
+	}
+
+	public static final class ModImportConflict {
+		public final String modId;
+		public final List<ModEntry> existingEntries;
+		public final ModEntry incomingEntry;
+
+		ModImportConflict(String modId, List<ModEntry> existingEntries, ModEntry incomingEntry) {
+			this.modId = modId;
+			this.existingEntries = Collections.unmodifiableList(new ArrayList<>(existingEntries));
+			this.incomingEntry = incomingEntry;
 		}
 	}
 

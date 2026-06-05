@@ -1,36 +1,52 @@
 package com.godot.game;
 
+import android.animation.LayoutTransition;
+import android.animation.ValueAnimator;
+import android.content.ClipData;
 import android.content.Context;
+import android.content.res.ColorStateList;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.text.Editable;
+import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.transition.AutoTransition;
 import android.transition.TransitionManager;
+import android.util.TypedValue;
+import android.view.DragEvent;
 import android.view.Gravity;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.appcompat.widget.PopupMenu;
-
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
-import com.google.android.material.checkbox.MaterialCheckBox;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.materialswitch.MaterialSwitch;
-import com.google.android.material.textfield.TextInputEditText;
-import com.google.android.material.textfield.TextInputLayout;
-
+import com.google.android.material.shape.ShapeAppearanceModel;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -49,9 +65,9 @@ public final class ModsPage {
 	private static final int PROFILE_DELETE_ACTIVE_ID = 3002;
 	private static final int PROFILE_ITEM_BASE_ID = 3100;
 
-	private static final int MOD_ACTION_INFO_ID = 4001;
-	private static final int MOD_ACTION_SELECT_ID = 4002;
-	private static final int MOD_ACTION_DELETE_ID = 4003;
+	private static final String MOD_GROUP_UNGROUPED = "__root__";
+	private static final String MOD_GROUP_CORE = "core";
+	private static final String MOD_GROUP_CONTENT = "content";
 
 	private static final int SORT_GROUP_ID = 5000;
 	private static final int SORT_INSTALLED_ID = 5001;
@@ -59,6 +75,8 @@ public final class ModsPage {
 
 	private static final String SORT_INSTALLED = "installed";
 	private static final String SORT_NAME = "name";
+	private static final int TAG_EXPANDED_STATE = 0x53544D45;
+	private static int retainedChipScrollX;
 
 	private final Context context;
 	private final ExtraSettingsRepository repository;
@@ -66,20 +84,32 @@ public final class ModsPage {
 
 	private final Set<String> selectedModIds = new HashSet<>();
 	private final Set<String> expandedModIds = new HashSet<>();
+	private final Set<String> fullDescriptionModIds = new HashSet<>();
+	private final Set<String> collapsedGroupIds = new HashSet<>();
 	private final List<ExtraSettingsRepository.ModEntry> currentFilteredMods = new ArrayList<>();
+	private final Map<String, ModGroupBucket> renderedBuckets = new LinkedHashMap<>();
 	private ScrollView scrollView;
+	private LinearLayout rootContent;
 	private LinearLayout listContainer;
 	private MaterialCardView bottomPanelCard;
 	private LinearLayout bottomPanelContent;
-	private TextInputEditText searchInput;
+	private EditText searchInput;
+	private HorizontalScrollView chipScrollView;
+	private int chipScrollX;
+	private boolean suppressChipScrollCapture;
 	private String filter = "all";
 	private String sortMode = SORT_INSTALLED;
 	private boolean bottomPanelVisible;
+	private boolean bottomPanelCollapsed;
+	private View activeDropGhost;
+	private LinearLayout activeDropList;
+	private int activeDropIndex = -1;
 
 	public ModsPage(Context context, ExtraSettingsRepository repository, ExtraSettingsActions actions) {
 		this.context = context;
 		this.repository = repository;
 		this.actions = actions;
+		this.chipScrollX = retainedChipScrollX;
 	}
 
 	public View build() {
@@ -90,16 +120,18 @@ public final class ModsPage {
 		scrollView.setFillViewport(false);
 		scrollView.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 
-		LinearLayout root = ExtraSettingsUi.vertical(context);
-		int padding = ExtraSettingsUi.dp(context, 20);
-		root.setPadding(padding, ExtraSettingsUi.dp(context, 24), padding, ExtraSettingsUi.dp(context, 122));
-		scrollView.addView(root, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		rootContent = ExtraSettingsUi.vertical(context);
+		rootContent.setPadding(0, ExtraSettingsUi.dp(context, 10), 0, ExtraSettingsUi.dp(context, 122));
+		scrollView.addView(rootContent, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-		root.addView(buildTopBar());
-		ExtraSettingsUi.addCardSpacing(root, buildToolsCard());
+		rootContent.addView(buildTopBar());
+		rootContent.addView(buildCompactActions());
 
 		listContainer = ExtraSettingsUi.vertical(context);
-		ExtraSettingsUi.addCardSpacing(root, listContainer);
+		listContainer.setOnDragListener((view, event) -> handleGroupReorderDrag(event));
+		int horizontalPadding = ExtraSettingsUi.dp(context, 16);
+		listContainer.setPadding(horizontalPadding, ExtraSettingsUi.dp(context, 12), horizontalPadding, 0);
+		rootContent.addView(listContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
 		frame.addView(scrollView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 		frame.addView(buildBottomPanel(), bottomPanelParams());
@@ -110,49 +142,26 @@ public final class ModsPage {
 	private View buildTopBar() {
 		LinearLayout row = ExtraSettingsUi.horizontal(context);
 		row.setGravity(Gravity.CENTER_VERTICAL);
-		row.addView(ExtraSettingsUi.title(context, R.string.tab_mods), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-		MaterialButton profileMenu = topBarIconButton(R.drawable.ic_layers_24);
-		profileMenu.setContentDescription(context.getString(R.string.mod_profiles_title));
-		profileMenu.setOnClickListener(v -> showProfilesMenu(profileMenu));
-		row.addView(profileMenu);
-
-		MaterialButton sortMenu = topBarIconButton(R.drawable.ic_sort_24);
-		sortMenu.setContentDescription(context.getString(R.string.mod_sort_menu_title));
-		sortMenu.setOnClickListener(v -> showSortMenu(sortMenu));
-		row.addView(sortMenu);
-
-		MaterialButton filterMenu = topBarIconButton(R.drawable.ic_tune_24);
-		filterMenu.setContentDescription(context.getString(R.string.mod_filter_menu_title));
-		filterMenu.setOnClickListener(v -> showFilterMenu(filterMenu));
-		row.addView(filterMenu);
-		return row;
-	}
-
-	private MaterialButton topBarIconButton(int iconRes) {
-		MaterialButton button = ExtraSettingsUi.iconButton(context, iconRes);
-		button.setPadding(ExtraSettingsUi.dp(context, 7), ExtraSettingsUi.dp(context, 10), ExtraSettingsUi.dp(context, 7), ExtraSettingsUi.dp(context, 10));
-		button.setLayoutParams(new LinearLayout.LayoutParams(ExtraSettingsUi.dp(context, 36), ExtraSettingsUi.dp(context, 44)));
-		return button;
-	}
-
-	private View buildToolsCard() {
-		MaterialCardView card = ExtraSettingsUi.card(context);
-		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
-		content.addView(ExtraSettingsUi.iconTitleRow(
-			context,
-			R.drawable.ic_extension_24,
-			R.string.mods_tools_title,
-			R.string.mods_tools_subtitle,
-			infoButton(R.string.mods_tools_title, R.string.mods_tools_info)
-		));
-
+		row.setMinimumHeight(ExtraSettingsUi.dp(context, 78));
+		row.setPadding(ExtraSettingsUi.dp(context, 16), ExtraSettingsUi.dp(context, 18), ExtraSettingsUi.dp(context, 16), ExtraSettingsUi.dp(context, 14));
+		TextView title = ExtraSettingsUi.text(context, context.getString(R.string.tab_mods), 22, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
+		title.setSingleLine(true);
+		title.setEllipsize(TextUtils.TruncateAt.END);
+		row.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 		try {
 			JSONObject settings = repository.loadSettingsJson();
+			TextView label = ExtraSettingsUi.text(context, context.getString(R.string.mod_master_switch), 16, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
+			label.setSingleLine(true);
+			label.setEllipsize(TextUtils.TruncateAt.END);
+			LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			labelParams.setMarginStart(ExtraSettingsUi.dp(context, 12));
+			labelParams.setMarginEnd(ExtraSettingsUi.dp(context, 8));
+			row.addView(label, labelParams);
 			MaterialSwitch master = new MaterialSwitch(context);
-			master.setText(R.string.mod_master_switch);
-			master.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
 			master.setChecked(repository.isModLoadingEnabled(settings));
+			master.setMinWidth(ExtraSettingsUi.dp(context, 52));
+			master.setScaleX(1.08f);
+			master.setScaleY(1.08f);
 			master.setOnCheckedChangeListener((buttonView, isChecked) -> {
 				try {
 					repository.saveSetting(root -> repository.ensureModSettings(root).put("mods_enabled", isChecked));
@@ -161,35 +170,142 @@ public final class ModsPage {
 					actions.showError(exception);
 				}
 			});
-			ExtraSettingsUi.addSmallSpacing(content, master);
+			row.addView(master);
 		} catch (Exception exception) {
 			actions.showError(exception);
 		}
+		return row;
+	}
 
-		MaterialButton importButton = ExtraSettingsUi.filledButton(context, R.string.import_mod, R.drawable.ic_upload_file_24);
-		importButton.setOnClickListener(v -> actions.requestImportMod());
-		ExtraSettingsUi.addSmallSpacing(content, importButton);
+	private View buildCompactActions() {
+		LinearLayout section = ExtraSettingsUi.vertical(context);
+		section.setPadding(ExtraSettingsUi.dp(context, 16), 0, ExtraSettingsUi.dp(context, 16), ExtraSettingsUi.dp(context, 12));
+		section.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 
-		MaterialButton storeButton = ExtraSettingsUi.tonalButton(context, R.string.nexus_mod_store_open, R.drawable.ic_download_24);
-		storeButton.setOnClickListener(v -> actions.openModStore());
-		ExtraSettingsUi.addSmallSpacing(content, storeButton);
+		LinearLayout searchBar = ExtraSettingsUi.horizontal(context);
+		searchBar.setGravity(Gravity.CENTER_VERTICAL);
+		GradientDrawable searchBackground = new GradientDrawable();
+		searchBackground.setColor(ExtraSettingsUi.COLOR_SURFACE_VARIANT);
+		searchBackground.setCornerRadius(ExtraSettingsUi.dp(context, 999));
+		searchBar.setBackground(searchBackground);
+		searchBar.setPadding(ExtraSettingsUi.dp(context, 16), 0, ExtraSettingsUi.dp(context, 12), 0);
+		searchBar.addView(ExtraSettingsUi.icon(context, R.drawable.ic_search_24, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, 22));
 
-		TextInputLayout searchLayout = new TextInputLayout(context);
-		searchLayout.setHint(context.getString(R.string.mod_search_hint));
-		searchLayout.setStartIconDrawable(R.drawable.ic_search_24);
-		searchLayout.setBoxBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
-		searchInput = new TextInputEditText(searchLayout.getContext());
+		searchInput = new EditText(context);
 		searchInput.setSingleLine(true);
-		searchInput.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+		searchInput.setHint(R.string.mod_search_hint);
 		searchInput.setHintTextColor(ExtraSettingsUi.COLOR_MUTED);
-		searchInput.addTextChangedListener(new android.text.TextWatcher() {
+		searchInput.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+		searchInput.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+		searchInput.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+		searchInput.setBackgroundColor(Color.TRANSPARENT);
+		searchInput.setPadding(ExtraSettingsUi.dp(context, 8), 0, 0, 0);
+		searchInput.addTextChangedListener(new TextWatcher() {
 			@Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
 			@Override public void onTextChanged(CharSequence s, int start, int before, int count) { refreshList(); }
-			@Override public void afterTextChanged(android.text.Editable s) {}
+			@Override public void afterTextChanged(Editable s) {}
 		});
-		searchLayout.addView(searchInput);
-		ExtraSettingsUi.addSmallSpacing(content, searchLayout);
-		return card;
+		searchBar.addView(searchInput, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+		section.addView(searchBar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ExtraSettingsUi.dp(context, 48)));
+
+		chipScrollView = new HorizontalScrollView(context);
+		chipScrollView.setHorizontalScrollBarEnabled(false);
+		chipScrollView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+		LinearLayout chips = ExtraSettingsUi.horizontal(context);
+		chips.setGravity(Gravity.CENTER_VERTICAL);
+		chips.setPadding(0, 0, ExtraSettingsUi.dp(context, 16), 0);
+		chipScrollView.addView(chips, new HorizontalScrollView.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		int restoreChipScrollX = retainedChipScrollX;
+
+		chips.addView(actionChip(R.string.import_mod, R.drawable.ic_upload_file_24, v -> actions.requestImportMod()));
+		addChipGap(chips);
+		chips.addView(actionChip(R.string.mod_group_create, R.drawable.ic_folder_24, v -> showCreateGroupDialog()));
+		addChipGap(chips);
+		chips.addView(actionChip(R.string.mod_profiles_title, R.drawable.ic_layers_24, this::showProfilesMenu));
+		addChipGap(chips);
+		chips.addView(actionChip(R.string.mod_sort_menu_title, R.drawable.ic_sort_24, this::showSortMenu));
+		addChipGap(chips);
+		chips.addView(actionChip(R.string.mod_filter_menu_title, R.drawable.ic_tune_24, this::showFilterMenu));
+
+		LinearLayout.LayoutParams chipScrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		chipScrollParams.topMargin = ExtraSettingsUi.dp(context, 12);
+		section.addView(chipScrollView, chipScrollParams);
+		chipScrollView.post(() -> {
+			restoreChipScrollNow(restoreChipScrollX);
+			chipScrollView.setOnScrollChangeListener((view, scrollX, scrollY, oldScrollX, oldScrollY) -> {
+				if (suppressChipScrollCapture) {
+					return;
+				}
+				chipScrollX = scrollX;
+				retainedChipScrollX = scrollX;
+			});
+		});
+
+		View divider = new View(context);
+		divider.setBackgroundColor(Color.rgb(68, 71, 78));
+		LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ExtraSettingsUi.dp(context, 1));
+		dividerParams.topMargin = ExtraSettingsUi.dp(context, 12);
+		section.addView(divider, dividerParams);
+		return section;
+	}
+
+	private void rememberChipScroll() {
+		if (chipScrollView != null && !suppressChipScrollCapture) {
+			chipScrollX = chipScrollView.getScrollX();
+			retainedChipScrollX = chipScrollX;
+		}
+	}
+
+	private void restoreChipScrollNow(int scrollX) {
+		if (chipScrollView == null) {
+			return;
+		}
+		suppressChipScrollCapture = true;
+		chipScrollX = scrollX;
+		retainedChipScrollX = scrollX;
+		chipScrollView.setScrollX(scrollX);
+		chipScrollView.post(() -> {
+			if (chipScrollView != null) {
+				chipScrollView.setScrollX(scrollX);
+			}
+			suppressChipScrollCapture = false;
+		});
+	}
+
+	private void restoreRememberedChipScroll() {
+		restoreChipScrollNow(retainedChipScrollX);
+	}
+
+	private MaterialButton actionChip(int textRes, int iconRes, java.util.function.Consumer<View> action) {
+		MaterialButton chip = new MaterialButton(context);
+		chip.setText(textRes);
+		chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+		chip.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+		chip.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT);
+		chip.setBackgroundTintList(ColorStateList.valueOf(ExtraSettingsUi.COLOR_SECONDARY_CONTAINER));
+		chip.setRippleColor(ColorStateList.valueOf(Color.argb(72, 201, 238, 211)));
+		chip.setShapeAppearanceModel(ShapeAppearanceModel.builder().setAllCornerSizes(ExtraSettingsUi.dp(context, 8)).build());
+		chip.setMinHeight(0);
+		chip.setMinWidth(0);
+		chip.setInsetTop(0);
+		chip.setInsetBottom(0);
+		chip.setPadding(ExtraSettingsUi.dp(context, 14), ExtraSettingsUi.dp(context, 7), ExtraSettingsUi.dp(context, 14), ExtraSettingsUi.dp(context, 7));
+		if (iconRes != 0) {
+			chip.setIconResource(iconRes);
+			chip.setIconTint(ColorStateList.valueOf(ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT));
+			chip.setIconSize(ExtraSettingsUi.dp(context, 18));
+		}
+		chip.setOnClickListener(v -> {
+			rememberChipScroll();
+			action.accept(v);
+			restoreRememberedChipScroll();
+		});
+		return chip;
+	}
+
+	private void addChipGap(LinearLayout chips) {
+		View gap = new View(context);
+		chips.addView(gap, new LinearLayout.LayoutParams(ExtraSettingsUi.dp(context, 8), 1));
 	}
 
 	private View buildBottomPanel() {
@@ -204,6 +320,14 @@ public final class ModsPage {
 		return bottomPanelCard;
 	}
 
+	private LayoutTransition createSmoothLayoutTransition() {
+		LayoutTransition transition = new LayoutTransition();
+		transition.setAnimator(LayoutTransition.APPEARING, null);
+		transition.setAnimator(LayoutTransition.DISAPPEARING, null);
+		transition.setDuration(180);
+		return transition;
+	}
+
 	private FrameLayout.LayoutParams bottomPanelParams() {
 		FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
 		int horizontal = ExtraSettingsUi.dp(context, 10);
@@ -212,8 +336,10 @@ public final class ModsPage {
 	}
 
 	private void showFilterMenu(View anchor) {
+		rememberChipScroll();
 		PopupMenu popup = new PopupMenu(context, anchor);
 		popup.setForceShowIcon(true);
+		popup.setOnDismissListener(menuPopup -> restoreRememberedChipScroll());
 		Menu menu = popup.getMenu();
 		addFilterMenuItem(menu, FILTER_ALL_ID, R.string.mod_filter_all, R.drawable.ic_layers_24, "all");
 		addFilterMenuItem(menu, FILTER_ENABLED_ID, R.string.mod_filter_enabled, R.drawable.ic_check_circle_24, "enabled");
@@ -260,8 +386,10 @@ public final class ModsPage {
 	}
 
 	private void showSortMenu(View anchor) {
+		rememberChipScroll();
 		PopupMenu popup = new PopupMenu(context, anchor);
 		popup.setForceShowIcon(true);
+		popup.setOnDismissListener(menuPopup -> restoreRememberedChipScroll());
 		Menu menu = popup.getMenu();
 		addSortMenuItem(menu, SORT_INSTALLED_ID, R.string.mod_sort_installed, R.drawable.ic_download_24, SORT_INSTALLED);
 		addSortMenuItem(menu, SORT_NAME_ID, R.string.mod_sort_name, R.drawable.ic_text_fields_24, SORT_NAME);
@@ -273,6 +401,7 @@ public final class ModsPage {
 			}
 			item.setChecked(true);
 			sortMode = value;
+			rememberChipScroll();
 			refreshList();
 			return true;
 		});
@@ -303,8 +432,10 @@ public final class ModsPage {
 			ExtraSettingsRepository.ModProfileState state = repository.loadModProfileState(settings, mods);
 			Map<Integer, ExtraSettingsRepository.ModProfile> profileItems = new LinkedHashMap<>();
 			ExtraSettingsRepository.ModProfile activeProfile = null;
+			rememberChipScroll();
 			PopupMenu popup = new PopupMenu(context, anchor);
 			popup.setForceShowIcon(true);
+			popup.setOnDismissListener(menuPopup -> restoreRememberedChipScroll());
 			Menu menu = popup.getMenu();
 			menu.add(Menu.NONE, PROFILE_CREATE_ID, 0, R.string.mod_profile_save_current).setIcon(R.drawable.ic_add_circle_24);
 			for (int i = 0; i < state.profiles.size(); i++) {
@@ -351,6 +482,7 @@ public final class ModsPage {
 		try {
 			repository.applyModProfile(profileId);
 			selectedModIds.clear();
+			rememberChipScroll();
 			refreshList();
 		} catch (Exception exception) {
 			actions.showError(exception);
@@ -360,6 +492,7 @@ public final class ModsPage {
 	private void setFilter(String value) {
 		filter = value;
 		selectedModIds.clear();
+		rememberChipScroll();
 		refreshList();
 	}
 
@@ -369,11 +502,28 @@ public final class ModsPage {
 		}
 		bottomPanelContent.removeAllViews();
 		if (selectedModIds.isEmpty()) {
+			bottomPanelCollapsed = false;
 			hideBottomPanel();
 			return;
 		}
 		showBottomPanel();
-		bottomPanelContent.addView(ExtraSettingsUi.sectionTitle(context, context.getString(R.string.mod_selected_count_format, selectedModIds.size())));
+		LinearLayout handleRow = ExtraSettingsUi.horizontal(context);
+		handleRow.setGravity(Gravity.CENTER);
+		MaterialButton collapseToggle = ExtraSettingsUi.iconButton(context, bottomPanelCollapsed ? R.drawable.ic_expand_less_24 : R.drawable.ic_expand_more_24);
+		collapseToggle.setContentDescription(context.getString(bottomPanelCollapsed ? R.string.mod_selection_panel_expand : R.string.mod_selection_panel_collapse));
+		collapseToggle.setOnClickListener(v -> {
+			bottomPanelCollapsed = !bottomPanelCollapsed;
+			updateSelectionActionsPanel();
+		});
+		handleRow.addView(collapseToggle, new LinearLayout.LayoutParams(ExtraSettingsUi.dp(context, 52), ExtraSettingsUi.dp(context, 30)));
+		bottomPanelContent.addView(handleRow);
+		TextView selectedTitle = ExtraSettingsUi.sectionTitle(context, context.getString(R.string.mod_selected_count_format, selectedModIds.size()));
+		if (bottomPanelCollapsed) {
+			selectedTitle.setGravity(Gravity.CENTER);
+			ExtraSettingsUi.addSmallSpacing(bottomPanelContent, selectedTitle);
+			return;
+		}
+		ExtraSettingsUi.addSmallSpacing(bottomPanelContent, selectedTitle);
 
 		LinearLayout selectionRow = ExtraSettingsUi.horizontal(context);
 		MaterialButton selectRange = ExtraSettingsUi.outlineButton(context, R.string.mod_select_range, R.drawable.ic_list_24);
@@ -457,6 +607,7 @@ public final class ModsPage {
 		}
 		int scrollY = scrollView == null ? 0 : scrollView.getScrollY();
 		listContainer.removeAllViews();
+		renderedBuckets.clear();
 		currentFilteredMods.clear();
 		try {
 			JSONObject settings = repository.loadSettingsJson();
@@ -480,8 +631,11 @@ public final class ModsPage {
 				updateSelectionActionsPanel();
 				return;
 			}
-			for (ExtraSettingsRepository.ModEntry entry : filtered) {
-				ExtraSettingsUi.addCardSpacing(listContainer, modCard(settings, entry));
+			for (ModGroupBucket bucket : buildModGroups(filtered)) {
+				if (bucket.entries.isEmpty() && !bucket.userCreated) {
+					continue;
+				}
+				addGroupSpacing(listContainer, buildGroupView(settings, bucket));
 			}
 			updateSelectionActionsPanel();
 		} catch (Exception exception) {
@@ -517,7 +671,7 @@ public final class ModsPage {
 			if ("missing".equals(filter) && !missingFiles) {
 				continue;
 			}
-			String haystack = (entry.displayName + " " + entry.modId + " " + entry.pckName + " " + entry.version + " " + entry.authors + " " + entry.description + " " + entry.category + " " + entry.relativePath).toLowerCase(Locale.ROOT);
+			String haystack = (entry.displayName + " " + entry.modId + " " + entry.pckName + " " + entry.version + " " + entry.authors + " " + entry.description + " " + entry.category + " " + entry.relativePath + " " + TextUtils.join(" ", entry.dependencies)).toLowerCase(Locale.ROOT);
 			if (!query.isEmpty() && !haystack.contains(query)) {
 				continue;
 			}
@@ -534,55 +688,499 @@ public final class ModsPage {
 		mods.sort((first, second) -> Long.compare(second.manifestFile.lastModified(), first.manifestFile.lastModified()));
 	}
 
-	private View modCard(JSONObject settings, ExtraSettingsRepository.ModEntry entry) throws Exception {
+	private void sortGroupsBySavedOrder(List<ModGroupBucket> buckets) {
+		List<String> order = repository.loadModGroupOrder();
+		if (order.isEmpty()) {
+			return;
+		}
+		buckets.sort((first, second) -> Integer.compare(orderIndex(order, first.id), orderIndex(order, second.id)));
+	}
+
+	private void sortBucketEntriesBySavedOrder(ModGroupBucket bucket) {
+		List<String> order = repository.loadModOrder(bucket.id);
+		if (order.isEmpty()) {
+			return;
+		}
+		bucket.entries.sort((first, second) -> Integer.compare(orderIndex(order, first.modId), orderIndex(order, second.modId)));
+	}
+
+	private int orderIndex(List<String> order, String value) {
+		int index = order.indexOf(value);
+		return index < 0 ? Integer.MAX_VALUE : index;
+	}
+
+	private List<ModGroupBucket> buildModGroups(List<ExtraSettingsRepository.ModEntry> mods) {
+		LinkedHashMap<String, ModGroupBucket> groups = new LinkedHashMap<>();
+		List<String> userGroups = repository.listModGroups();
+		Set<String> userGroupNames = new LinkedHashSet<>(userGroups);
+		putGroup(groups, MOD_GROUP_CORE, context.getString(R.string.mod_group_core), false);
+		putGroup(groups, MOD_GROUP_CONTENT, context.getString(R.string.mod_group_content), false);
+		for (String groupName : userGroups) {
+			String groupId = normalizeGroupId(groupName);
+			String label = groupLabel(groupId, groupName);
+			putGroup(groups, groupId, label, true);
+		}
+		for (ExtraSettingsRepository.ModEntry entry : mods) {
+			String groupId = groupIdForEntry(entry, userGroupNames);
+			ModGroupBucket bucket = groups.get(groupId);
+			if (bucket == null) {
+				bucket = putGroup(groups, groupId, groupLabel(groupId, groupId), true);
+			}
+			bucket.entries.add(entry);
+		}
+		List<ModGroupBucket> buckets = new ArrayList<>(groups.values());
+		for (ModGroupBucket bucket : buckets) {
+			sortBucketEntriesBySavedOrder(bucket);
+		}
+		sortGroupsBySavedOrder(buckets);
+		return buckets;
+	}
+
+	private ModGroupBucket putGroup(LinkedHashMap<String, ModGroupBucket> groups, String id, String label, boolean userCreated) {
+		ModGroupBucket bucket = groups.get(id);
+		if (bucket == null) {
+			bucket = new ModGroupBucket(id, label, userCreated);
+			groups.put(id, bucket);
+		} else if (userCreated) {
+			bucket.userCreated = true;
+		}
+		return bucket;
+	}
+
+	private String groupIdForEntry(ExtraSettingsRepository.ModEntry entry, Set<String> userGroupNames) {
+		String top = topLevelDirectory(entry.relativePath);
+		if (!TextUtils.isEmpty(top)) {
+			String normalizedTop = normalizeGroupId(top);
+			if (MOD_GROUP_CORE.equals(normalizedTop) || MOD_GROUP_CONTENT.equals(normalizedTop) || userGroupNames.contains(top)) {
+				return normalizedTop;
+			}
+		}
+		return isLibraryLike(entry) ? MOD_GROUP_CORE : MOD_GROUP_CONTENT;
+	}
+
+	private String normalizeGroupId(String value) {
+		if (TextUtils.isEmpty(value)) {
+			return MOD_GROUP_UNGROUPED;
+		}
+		String trimmed = value.trim();
+		String lower = trimmed.toLowerCase(Locale.ROOT);
+		if ("core".equals(lower) || "libraries".equals(lower) || "library".equals(lower)) {
+			return MOD_GROUP_CORE;
+		}
+		if ("content".equals(lower)) {
+			return MOD_GROUP_CONTENT;
+		}
+		return trimmed;
+	}
+
+	private String groupLabel(String groupId, String fallback) {
+		if (MOD_GROUP_CORE.equals(groupId)) {
+			return context.getString(R.string.mod_group_core);
+		}
+		if (MOD_GROUP_CONTENT.equals(groupId)) {
+			return context.getString(R.string.mod_group_content);
+		}
+		if (MOD_GROUP_UNGROUPED.equals(groupId)) {
+			return context.getString(R.string.mod_group_ungrouped);
+		}
+		return fallback;
+	}
+
+	private String topLevelDirectory(String relativePath) {
+		if (TextUtils.isEmpty(relativePath)) {
+			return "";
+		}
+		String normalized = relativePath.replace('\\', '/');
+		int slash = normalized.indexOf('/');
+		if (slash <= 0) {
+			return "";
+		}
+		return normalized.substring(0, slash);
+	}
+
+	private View buildGroupView(JSONObject settings, ModGroupBucket bucket) throws Exception {
+		renderedBuckets.put(bucket.id, bucket);
+		LinearLayout group = ExtraSettingsUi.vertical(context);
+		group.setTag("group:" + bucket.id);
+		boolean collapsed = collapsedGroupIds.contains(bucket.id);
+
+		LinearLayout header = ExtraSettingsUi.horizontal(context);
+		header.setGravity(Gravity.CENTER_VERTICAL);
+		header.setPadding(ExtraSettingsUi.dp(context, 4), ExtraSettingsUi.dp(context, 8), ExtraSettingsUi.dp(context, 0), ExtraSettingsUi.dp(context, 8));
+		TextView title = ExtraSettingsUi.text(context, context.getString(R.string.mod_group_header_format, bucket.label, bucket.entries.size()), 14, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, Typeface.BOLD);
+		header.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+		MaterialButton expand = ExtraSettingsUi.iconButton(context, collapsed ? R.drawable.ic_expand_more_24 : R.drawable.ic_expand_less_24);
+		expand.setContentDescription(context.getString(collapsed ? R.string.mod_group_expand : R.string.mod_group_collapse));
+		header.addView(expand, new LinearLayout.LayoutParams(ExtraSettingsUi.dp(context, 40), ExtraSettingsUi.dp(context, 40)));
+		group.addView(header);
+
+		LinearLayout groupList = ExtraSettingsUi.vertical(context);
+		groupList.setTag("group_list:" + bucket.id);
+		groupList.setLayoutTransition(createSmoothLayoutTransition());
+		groupList.setMinimumHeight(ExtraSettingsUi.dp(context, 18));
+		attachGroupDragTarget(groupList, bucket);
+		for (ExtraSettingsRepository.ModEntry entry : bucket.entries) {
+			addModItemSpacing(groupList, modCard(settings, bucket, entry));
+		}
+		groupList.setVisibility(collapsed ? View.GONE : View.VISIBLE);
+		group.addView(groupList, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+		expand.setOnClickListener(v -> toggleGroupCollapsed(group, groupList, expand, bucket.id));
+		header.setOnLongClickListener(v -> startGroupDrag(v, group, bucket));
+		return group;
+	}
+
+	private void toggleGroupCollapsed(ViewGroup transitionRoot, View groupList, MaterialButton expand, String groupId) {
+		boolean collapsed;
+		if (collapsedGroupIds.contains(groupId)) {
+			collapsedGroupIds.remove(groupId);
+			collapsed = false;
+		} else {
+			collapsedGroupIds.add(groupId);
+			collapsed = true;
+		}
+		AutoTransition transition = new AutoTransition();
+		transition.setDuration(220);
+		TransitionManager.beginDelayedTransition(transitionRoot, transition);
+		groupList.setVisibility(collapsed ? View.GONE : View.VISIBLE);
+		expand.setIconResource(collapsed ? R.drawable.ic_expand_more_24 : R.drawable.ic_expand_less_24);
+	}
+
+	private void addGroupSpacing(LinearLayout parent, View child) {
+		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		params.topMargin = parent.getChildCount() == 0 ? 0 : ExtraSettingsUi.dp(context, 16);
+		parent.addView(child, params);
+	}
+
+	private void addModItemSpacing(LinearLayout parent, View child) {
+		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		params.topMargin = parent.getChildCount() == 0 ? 0 : ExtraSettingsUi.dp(context, 8);
+		parent.addView(child, params);
+	}
+
+	private void attachGroupDragTarget(View target, ModGroupBucket bucket) {
+		target.setOnDragListener((view, event) -> handleModDragOverGroupList((LinearLayout) view, bucket, event, event.getY()));
+	}
+
+	private boolean handleModDragOverGroupList(LinearLayout targetList, ModGroupBucket bucket, DragEvent event, float yInList) {
+		DragState state = asDragState(event.getLocalState());
+		if (state == null || state.type != DragState.TYPE_MOD || !selectedModIds.isEmpty()) {
+			return event.getAction() == DragEvent.ACTION_DRAG_STARTED;
+		}
+		switch (event.getAction()) {
+			case DragEvent.ACTION_DRAG_STARTED:
+				return true;
+			case DragEvent.ACTION_DRAG_LOCATION:
+			case DragEvent.ACTION_DRAG_ENTERED:
+				showModDropGhost(targetList, bucket, calculateDropIndex(targetList, yInList));
+				return true;
+			case DragEvent.ACTION_DRAG_EXITED:
+				return true;
+			case DragEvent.ACTION_DROP:
+				int index = activeDropList == targetList ? activeDropIndex : calculateDropIndex(targetList, yInList);
+				removeDropGhosts(rootContent);
+				moveModToGroup(state.entry, state.sourceBucket, bucket, index);
+				return true;
+			case DragEvent.ACTION_DRAG_ENDED:
+				removeDropGhosts(rootContent);
+				return true;
+			default:
+				return true;
+		}
+	}
+
+	private boolean handleGroupReorderDrag(DragEvent event) {
+		DragState state = asDragState(event.getLocalState());
+		if (state != null && state.type == DragState.TYPE_MOD && !selectedModIds.isEmpty()) {
+			return event.getAction() == DragEvent.ACTION_DRAG_STARTED;
+		}
+		if (state != null && state.type == DragState.TYPE_MOD) {
+			ModGroupBucket bucket = findBucketByListY(event.getY());
+			LinearLayout targetList = bucket == null ? null : findGroupListView(bucket.id);
+			if (targetList != null) {
+				float yInList = event.getY() - targetList.getTop();
+				View parent = targetList;
+				while (parent.getParent() instanceof View && parent.getParent() != listContainer) {
+					parent = (View) parent.getParent();
+					yInList -= parent.getTop();
+				}
+				return handleModDragOverGroupList(targetList, bucket, event, yInList);
+			}
+		}
+		if (state == null || state.type != DragState.TYPE_GROUP || !selectedModIds.isEmpty()) {
+			return event.getAction() == DragEvent.ACTION_DRAG_STARTED;
+		}
+		switch (event.getAction()) {
+			case DragEvent.ACTION_DRAG_STARTED:
+				return true;
+			case DragEvent.ACTION_DRAG_LOCATION:
+			case DragEvent.ACTION_DRAG_ENTERED:
+				showGroupDropGhost(calculateDropIndex(listContainer, event.getY()));
+				return true;
+			case DragEvent.ACTION_DROP:
+				int index = activeDropList == listContainer ? activeDropIndex : calculateDropIndex(listContainer, event.getY());
+				removeDropGhosts(rootContent);
+				reorderGroup(state.sourceBucket, index);
+				return true;
+			case DragEvent.ACTION_DRAG_ENDED:
+				removeDropGhosts(rootContent);
+				return true;
+			default:
+				return true;
+		}
+	}
+
+	private DragState asDragState(Object localState) {
+		return localState instanceof DragState ? (DragState) localState : null;
+	}
+
+	private ModGroupBucket findBucketByListY(float y) {
+		for (int i = 0; i < listContainer.getChildCount(); i++) {
+			View groupView = listContainer.getChildAt(i);
+			Object tag = groupView.getTag();
+			if (!(tag instanceof String) || !((String) tag).startsWith("group:")) {
+				continue;
+			}
+			if (y >= groupView.getTop() && y <= groupView.getBottom()) {
+				return renderedBuckets.get(((String) tag).substring("group:".length()));
+			}
+		}
+		return null;
+	}
+
+	private LinearLayout findGroupListView(String groupId) {
+		for (int i = 0; i < listContainer.getChildCount(); i++) {
+			View groupView = listContainer.getChildAt(i);
+			Object tag = groupView.getTag();
+			if (!(tag instanceof String) || !("group:" + groupId).equals(tag) || !(groupView instanceof ViewGroup)) {
+				continue;
+			}
+			ViewGroup group = (ViewGroup) groupView;
+			for (int j = 0; j < group.getChildCount(); j++) {
+				View child = group.getChildAt(j);
+				Object childTag = child.getTag();
+				if (child instanceof LinearLayout && ("group_list:" + groupId).equals(childTag)) {
+					return (LinearLayout) child;
+				}
+			}
+		}
+		return null;
+	}
+
+	private int calculateDropIndex(LinearLayout list, float y) {
+		int index = 0;
+		for (int i = 0; i < list.getChildCount(); i++) {
+			View child = list.getChildAt(i);
+			if ("mod_drop_ghost".equals(child.getTag())) {
+				continue;
+			}
+			if (y > child.getTop() + child.getHeight() / 2f) {
+				index++;
+			}
+		}
+		return Math.max(0, Math.min(index, childCountWithoutGhost(list)));
+	}
+
+	private int childCountWithoutGhost(LinearLayout list) {
+		int count = 0;
+		for (int i = 0; i < list.getChildCount(); i++) {
+			if (!"mod_drop_ghost".equals(list.getChildAt(i).getTag())) {
+				count++;
+			}
+		}
+		return count;
+	}
+
+	private void showModDropGhost(LinearLayout targetList, ModGroupBucket bucket, int logicalIndex) {
+		if (activeDropList == targetList && activeDropIndex == logicalIndex && activeDropGhost != null) {
+			return;
+		}
+		removeDropGhosts(rootContent);
+		activeDropList = targetList;
+		activeDropIndex = logicalIndex;
+		activeDropGhost = createDropGhost(56);
+		targetList.addView(activeDropGhost, physicalIndexForLogicalIndex(targetList, logicalIndex), ghostParams(56));
+	}
+
+	private void showGroupDropGhost(int logicalIndex) {
+		if (activeDropList == listContainer && activeDropIndex == logicalIndex && activeDropGhost != null) {
+			return;
+		}
+		removeDropGhosts(rootContent);
+		activeDropList = listContainer;
+		activeDropIndex = logicalIndex;
+		activeDropGhost = createDropGhost(68);
+		listContainer.addView(activeDropGhost, physicalIndexForLogicalIndex(listContainer, logicalIndex), ghostParams(68));
+	}
+
+	private int physicalIndexForLogicalIndex(LinearLayout list, int logicalIndex) {
+		int logical = 0;
+		for (int i = 0; i < list.getChildCount(); i++) {
+			if ("mod_drop_ghost".equals(list.getChildAt(i).getTag())) {
+				continue;
+			}
+			if (logical == logicalIndex) {
+				return i;
+			}
+			logical++;
+		}
+		return list.getChildCount();
+	}
+
+	private View createDropGhost(int heightDp) {
+		View ghost = new View(context);
+		ghost.setTag("mod_drop_ghost");
+		GradientDrawable bg = new GradientDrawable();
+		bg.setColor(Color.argb(92, Color.red(ExtraSettingsUi.COLOR_PRIMARY_CONTAINER), Color.green(ExtraSettingsUi.COLOR_PRIMARY_CONTAINER), Color.blue(ExtraSettingsUi.COLOR_PRIMARY_CONTAINER)));
+		bg.setCornerRadius(ExtraSettingsUi.dp(context, 12));
+		bg.setStroke(ExtraSettingsUi.dp(context, 1), ExtraSettingsUi.COLOR_PRIMARY, ExtraSettingsUi.dp(context, 5), ExtraSettingsUi.dp(context, 4));
+		ghost.setBackground(bg);
+		ghost.setAlpha(0.55f);
+		return ghost;
+	}
+
+	private LinearLayout.LayoutParams ghostParams(int heightDp) {
+		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ExtraSettingsUi.dp(context, heightDp));
+		params.topMargin = ExtraSettingsUi.dp(context, 8);
+		return params;
+	}
+
+	private void removeDropGhosts(View view) {
+		if (!(view instanceof ViewGroup)) {
+			return;
+		}
+		ViewGroup group = (ViewGroup) view;
+		for (int i = group.getChildCount() - 1; i >= 0; i--) {
+			View child = group.getChildAt(i);
+			if ("mod_drop_ghost".equals(child.getTag())) {
+				group.removeViewAt(i);
+			} else {
+				removeDropGhosts(child);
+			}
+		}
+		activeDropGhost = null;
+		activeDropList = null;
+		activeDropIndex = -1;
+	}
+
+	private void moveModToGroup(ExtraSettingsRepository.ModEntry entry, ModGroupBucket sourceBucket, ModGroupBucket targetBucket, int targetIndex) {
+		if (entry == null || targetBucket == null) {
+			return;
+		}
+		int adjustedTargetIndex = targetIndex;
+		if (sourceBucket != null && sourceBucket.id.equals(targetBucket.id)) {
+			for (int i = 0; i < targetBucket.entries.size(); i++) {
+				if (targetBucket.entries.get(i).modId.equals(entry.modId)) {
+					if (i < adjustedTargetIndex) {
+						adjustedTargetIndex--;
+					}
+					break;
+				}
+			}
+		}
+		List<String> targetOrder = new ArrayList<>();
+		for (ExtraSettingsRepository.ModEntry mod : targetBucket.entries) {
+			if (!mod.modId.equals(entry.modId)) {
+				targetOrder.add(mod.modId);
+			}
+		}
+		int clamped = Math.max(0, Math.min(adjustedTargetIndex, targetOrder.size()));
+		targetOrder.add(clamped, entry.modId);
+		repository.saveModOrder(targetBucket.id, targetOrder);
+		if (sourceBucket != null && !sourceBucket.id.equals(targetBucket.id)) {
+			List<String> sourceOrder = new ArrayList<>();
+			for (ExtraSettingsRepository.ModEntry mod : sourceBucket.entries) {
+				if (!mod.modId.equals(entry.modId)) {
+					sourceOrder.add(mod.modId);
+				}
+			}
+			repository.saveModOrder(sourceBucket.id, sourceOrder);
+		}
+		String targetGroup = targetBucket.id;
+		actions.runAsyncOperation(context.getString(R.string.status_busy_move_mod_group), () -> {
+			if (sourceBucket == null || !sourceBucket.id.equals(targetBucket.id)) {
+				repository.moveModToGroup(entry, targetGroup);
+			}
+			return context.getString(R.string.status_move_mod_group_done, targetBucket.label);
+		});
+	}
+
+	private void reorderGroup(ModGroupBucket movedBucket, int targetIndex) {
+		if (movedBucket == null) {
+			return;
+		}
+		int adjustedTargetIndex = targetIndex;
+		List<String> currentOrder = new ArrayList<>();
+		for (int i = 0; i < listContainer.getChildCount(); i++) {
+			View child = listContainer.getChildAt(i);
+			Object tag = child.getTag();
+			if (tag instanceof String && ((String) tag).startsWith("group:")) {
+				currentOrder.add(((String) tag).substring("group:".length()));
+			}
+		}
+		int oldIndex = currentOrder.indexOf(movedBucket.id);
+		if (oldIndex >= 0 && oldIndex < adjustedTargetIndex) {
+			adjustedTargetIndex--;
+		}
+		List<String> order = new ArrayList<>();
+		for (int i = 0; i < listContainer.getChildCount(); i++) {
+			View child = listContainer.getChildAt(i);
+			Object tag = child.getTag();
+			if (tag instanceof String && ((String) tag).startsWith("group:")) {
+				String id = ((String) tag).substring("group:".length());
+				if (!id.equals(movedBucket.id)) {
+					order.add(id);
+				}
+			}
+		}
+		int clamped = Math.max(0, Math.min(adjustedTargetIndex, order.size()));
+		order.add(clamped, movedBucket.id);
+		repository.saveModGroupOrder(order);
+		refreshList();
+	}
+
+	private View modCard(JSONObject settings, ModGroupBucket bucket, ExtraSettingsRepository.ModEntry entry) throws Exception {
 		boolean enabled = !repository.isModDisabled(settings, entry);
 		final boolean[] enabledState = new boolean[] { enabled };
 		boolean selected = selectedModIds.contains(entry.modId);
-		boolean selectionMode = !selectedModIds.isEmpty();
 		boolean expanded = expandedModIds.contains(entry.modId);
 		MaterialCardView card = ExtraSettingsUi.clickableCard(context);
-		card.setRadius(ExtraSettingsUi.dp(context, 10));
+		card.setRadius(ExtraSettingsUi.dp(context, 12));
+		card.setUseCompatPadding(false);
 		applyModCardStyle(card, enabled, selected);
-		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
-		content.setPadding(ExtraSettingsUi.dp(context, 14), ExtraSettingsUi.dp(context, 12), ExtraSettingsUi.dp(context, 12), ExtraSettingsUi.dp(context, 12));
 
-		LinearLayout top = ExtraSettingsUi.horizontal(context);
-		if (selectionMode) {
-			MaterialCheckBox checkBox = new MaterialCheckBox(context);
-			checkBox.setChecked(selected);
-			checkBox.setOnClickListener(v -> toggleSelected(entry.modId));
-			LinearLayout.LayoutParams checkParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-			checkParams.setMarginEnd(ExtraSettingsUi.dp(context, 6));
-			top.addView(checkBox, checkParams);
-		}
+		LinearLayout content = ExtraSettingsUi.vertical(context);
+		content.setPadding(ExtraSettingsUi.dp(context, 12), 0, ExtraSettingsUi.dp(context, 12), 0);
+		card.addView(content, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+		LinearLayout header = ExtraSettingsUi.horizontal(context);
+		header.setGravity(Gravity.CENTER_VERTICAL);
+		header.setPadding(0, ExtraSettingsUi.dp(context, 12), 0, ExtraSettingsUi.dp(context, 12));
+
+		ImageView handle = ExtraSettingsUi.icon(context, R.drawable.ic_drag_indicator_24, ExtraSettingsUi.COLOR_OUTLINE, 24);
+		handle.setPadding(ExtraSettingsUi.dp(context, 4), ExtraSettingsUi.dp(context, 4), ExtraSettingsUi.dp(context, 4), ExtraSettingsUi.dp(context, 4));
+		LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(context, 32), ExtraSettingsUi.dp(context, 40));
+		header.addView(handle, handleParams);
+
 		LinearLayout textColumn = ExtraSettingsUi.vertical(context);
-		top.addView(textColumn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-		textColumn.addView(ExtraSettingsUi.sectionTitle(context, entry.displayName));
-		if (!android.text.TextUtils.isEmpty(entry.modId)) {
-			textColumn.addView(ExtraSettingsUi.caption(context, entry.modId));
-		}
-
-		MaterialButton more = ExtraSettingsUi.iconButton(context, R.drawable.ic_more_vert_24);
-		more.setContentDescription(context.getString(R.string.mod_card_more_actions));
-		more.setOnClickListener(v -> showModActionsMenu(more, entry, enabledState[0]));
-		top.addView(more);
-		content.addView(top);
-
-		if (!android.text.TextUtils.isEmpty(entry.description)) {
-			ExtraSettingsUi.addSmallSpacing(content, buildDescriptionRow(content, entry));
-		}
-
-		LinearLayout bottom = ExtraSettingsUi.horizontal(context);
-		bottom.setGravity(Gravity.CENTER_VERTICAL);
-		LinearLayout metaColumn = ExtraSettingsUi.vertical(context);
-		bottom.addView(metaColumn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-		addMetaInfo(metaColumn, R.drawable.ic_code_24, displayCategory(entry));
-		addMetaInfo(metaColumn, R.drawable.ic_badge_24, emptyToDash(entry.version));
-		addMetaInfo(metaColumn, R.drawable.ic_person_24, emptyToDash(entry.authors));
-		addMetaInfo(metaColumn, R.drawable.ic_article_24, entry.relativePath);
+		textColumn.setGravity(Gravity.CENTER_VERTICAL);
+		TextView title = ExtraSettingsUi.text(context, emptyToDash(entry.displayName), 16, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
+		title.setSingleLine(true);
+		title.setEllipsize(TextUtils.TruncateAt.END);
+		textColumn.addView(title);
+		TextView meta = ExtraSettingsUi.caption(context, compactMeta(entry));
+		meta.setSingleLine(true);
+		meta.setEllipsize(TextUtils.TruncateAt.END);
+		LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		metaParams.topMargin = ExtraSettingsUi.dp(context, 2);
+		textColumn.addView(meta, metaParams);
+		LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		textParams.setMarginStart(ExtraSettingsUi.dp(context, 12));
+		header.addView(textColumn, textParams);
 
 		MaterialSwitch switchView = new MaterialSwitch(context);
 		switchView.setChecked(enabled);
+		switchView.setEnabled(selectedModIds.isEmpty());
 		switchView.setOnCheckedChangeListener((buttonView, isChecked) -> {
 			try {
 				repository.saveSetting(root -> repository.setModDisabled(root, entry.modId, !isChecked));
@@ -594,15 +1192,26 @@ public final class ModsPage {
 			}
 		});
 		LinearLayout.LayoutParams switchParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-		switchParams.setMarginStart(ExtraSettingsUi.dp(context, 12));
-		bottom.addView(switchView, switchParams);
-		ExtraSettingsUi.addSmallSpacing(content, bottom);
+		switchParams.setMarginStart(ExtraSettingsUi.dp(context, 10));
+		header.addView(switchView, switchParams);
+		content.addView(header);
 
-		card.setOnClickListener(v -> {
+		LinearLayout details = buildExpandedDetails(card, entry, enabledState);
+		content.addView(details);
+		setDetailsExpandedImmediately(details, expanded);
+
+		View.OnClickListener itemClick = v -> {
 			if (!selectedModIds.isEmpty()) {
 				toggleSelected(entry.modId);
 			} else {
-				toggleExpandedDescription(content, entry.modId);
+				toggleCardExpanded(content, details, entry.modId);
+			}
+		};
+		card.setOnClickListener(itemClick);
+		handle.setOnLongClickListener(v -> startModDrag(v, content, details, card, bucket, entry));
+		handle.setOnClickListener(v -> {
+			if (!selectedModIds.isEmpty()) {
+				toggleSelected(entry.modId);
 			}
 		});
 		card.setOnLongClickListener(v -> {
@@ -612,153 +1221,319 @@ public final class ModsPage {
 		return card;
 	}
 
-	private View buildDescriptionRow(LinearLayout transitionRoot, ExtraSettingsRepository.ModEntry entry) {
-		LinearLayout row = ExtraSettingsUi.horizontal(context);
-		row.setGravity(Gravity.CENTER_VERTICAL);
-		boolean expanded = expandedModIds.contains(entry.modId);
-		TextView description = ExtraSettingsUi.body(context, entry.description);
-		description.setTag(entry.modId);
-		description.setMaxLines(expanded ? Integer.MAX_VALUE : 2);
-		description.setEllipsize(expanded ? null : android.text.TextUtils.TruncateAt.END);
-		row.addView(description, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-		MaterialButton arrow = ExtraSettingsUi.iconButton(context, expanded ? R.drawable.ic_expand_less_24 : R.drawable.ic_expand_more_24);
-		arrow.setTag(entry.modId + ":arrow");
-		arrow.setVisibility(shouldShowExpandArrow(entry.description) ? View.VISIBLE : View.INVISIBLE);
-		arrow.setOnClickListener(v -> toggleExpandedDescription(transitionRoot, entry.modId));
-		row.addView(arrow);
-		return row;
+	private LinearLayout buildExpandedDetails(MaterialCardView card, ExtraSettingsRepository.ModEntry entry, boolean[] enabledState) {
+		LinearLayout wrapper = ExtraSettingsUi.vertical(context);
+		wrapper.setPadding(0, 0, 0, ExtraSettingsUi.dp(context, 16));
+		DashedDivider divider = new DashedDivider(context);
+		wrapper.addView(divider, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ExtraSettingsUi.dp(context, 1)));
+
+		LinearLayout details = ExtraSettingsUi.vertical(context);
+		details.setPadding(ExtraSettingsUi.dp(context, 36), ExtraSettingsUi.dp(context, 8), 0, 0);
+		TextView description = ExtraSettingsUi.text(context, TextUtils.isEmpty(entry.description) ? context.getString(R.string.mod_description_empty) : entry.description, 13, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, Typeface.NORMAL);
+		description.setLineSpacing(ExtraSettingsUi.dp(context, 2), 1.0f);
+		boolean longDescription = isLongDescription(entry.description);
+		boolean showFullDescription = fullDescriptionModIds.contains(entry.modId);
+		if (longDescription && !showFullDescription) {
+			description.setMaxLines(10);
+			description.setEllipsize(TextUtils.TruncateAt.END);
+		}
+		details.addView(description);
+		if (longDescription && !showFullDescription) {
+			TextView more = ExtraSettingsUi.text(context, context.getString(R.string.mod_description_show_more), 13, ExtraSettingsUi.COLOR_PRIMARY, Typeface.BOLD);
+			more.setPadding(0, ExtraSettingsUi.dp(context, 6), 0, 0);
+			more.setOnClickListener(v -> {
+				fullDescriptionModIds.add(entry.modId);
+				animateHeightMutation(wrapper, () -> {
+					description.setMaxLines(Integer.MAX_VALUE);
+					description.setEllipsize(null);
+					more.setVisibility(View.GONE);
+				});
+			});
+			details.addView(more);
+		}
+		addDetailRow(details, R.drawable.ic_code_24, displayCategory(entry));
+		addDetailRow(details, R.drawable.ic_article_24, entry.relativePath);
+		addDetailRow(details, R.drawable.ic_person_24, context.getString(R.string.mod_detail_author) + ": " + emptyToDash(entry.authors));
+		addDetailRow(details, R.drawable.ic_layers_24, context.getString(R.string.mod_detail_dependencies) + ": " + dependenciesText(entry));
+
+		LinearLayout actionsRow = ExtraSettingsUi.horizontal(context);
+		actionsRow.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
+		MaterialButton select = detailIconButton(R.drawable.ic_check_circle_24, selectedModIds.contains(entry.modId) ? R.string.mod_action_unselect : R.string.mod_action_select);
+		MaterialButton info = detailIconButton(R.drawable.ic_info_24, R.string.mod_action_info);
+		MaterialButton delete = detailIconButton(R.drawable.ic_delete_24, R.string.delete);
+		select.setOnClickListener(v -> toggleSelected(entry.modId));
+		info.setOnClickListener(v -> showModDetails(entry, enabledState[0]));
+		delete.setOnClickListener(v -> confirmDelete(entry));
+		actionsRow.addView(select);
+		actionsRow.addView(info);
+		actionsRow.addView(delete);
+		LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		actionParams.topMargin = ExtraSettingsUi.dp(context, 12);
+		details.addView(actionsRow, actionParams);
+		wrapper.addView(details);
+		return wrapper;
 	}
 
-	private boolean shouldShowExpandArrow(String description) {
-		return description != null && (description.length() > 72 || description.contains("\n"));
-	}
-
-	private void toggleExpandedDescription(ViewGroup transitionRoot, String modId) {
+	private void toggleCardExpanded(ViewGroup transitionRoot, View details, String modId) {
+		boolean expanded;
 		if (expandedModIds.contains(modId)) {
 			expandedModIds.remove(modId);
+			expanded = false;
 		} else {
 			expandedModIds.add(modId);
+			expanded = true;
 		}
-		TextView description = findDescriptionTextView(transitionRoot, modId);
-		MaterialButton arrow = findArrowButton(transitionRoot, modId);
-		if (description == null) {
+		animateDetailsVisibility(details, expanded);
+	}
+
+	private void setDetailsExpandedImmediately(View details, boolean expanded) {
+		cancelDetailsAnimation(details);
+		ViewGroup.LayoutParams params = details.getLayoutParams();
+		if (params != null) {
+			params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+			details.setLayoutParams(params);
+		}
+		details.setVisibility(expanded ? View.VISIBLE : View.GONE);
+	}
+
+	private void animateDetailsVisibility(View details, boolean expanded) {
+		cancelDetailsAnimation(details);
+		int startHeight;
+		int endHeight;
+		if (expanded) {
+			details.setVisibility(View.VISIBLE);
+			endHeight = measureWrapContentHeight(details);
+			startHeight = 0;
+			ViewGroup.LayoutParams params = details.getLayoutParams();
+			if (params != null) {
+				params.height = 0;
+				details.setLayoutParams(params);
+			}
+		} else {
+			startHeight = details.getHeight();
+			if (startHeight <= 0) {
+				startHeight = measureWrapContentHeight(details);
+			}
+			endHeight = 0;
+		}
+		ValueAnimator animator = ValueAnimator.ofInt(startHeight, endHeight);
+		animator.setDuration(220);
+		animator.addUpdateListener(animation -> {
+			ViewGroup.LayoutParams params = details.getLayoutParams();
+			if (params != null) {
+				params.height = (Integer) animation.getAnimatedValue();
+				details.setLayoutParams(params);
+			}
+		});
+		animator.addListener(new android.animation.AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(android.animation.Animator animation) {
+				if (details.getTag(TAG_EXPANDED_STATE) != animator) {
+					return;
+				}
+				details.setTag(TAG_EXPANDED_STATE, null);
+				ViewGroup.LayoutParams params = details.getLayoutParams();
+				if (params != null) {
+					params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+					details.setLayoutParams(params);
+				}
+				details.setVisibility(expanded ? View.VISIBLE : View.GONE);
+			}
+		});
+		details.setTag(TAG_EXPANDED_STATE, animator);
+		animator.start();
+	}
+
+	private void cancelDetailsAnimation(View details) {
+		Object tag = details.getTag(TAG_EXPANDED_STATE);
+		if (tag instanceof ValueAnimator) {
+			((ValueAnimator) tag).cancel();
+			details.setTag(TAG_EXPANDED_STATE, null);
+		}
+	}
+
+	private int measureWrapContentHeight(View view) {
+		View parent = view.getParent() instanceof View ? (View) view.getParent() : null;
+		int width = parent == null ? view.getWidth() : parent.getWidth();
+		if (width <= 0 && scrollView != null) {
+			width = scrollView.getWidth() - ExtraSettingsUi.dp(context, 32);
+		}
+		if (width <= 0) {
+			width = context.getResources().getDisplayMetrics().widthPixels - ExtraSettingsUi.dp(context, 32);
+		}
+		int widthSpec = View.MeasureSpec.makeMeasureSpec(Math.max(1, width), View.MeasureSpec.EXACTLY);
+		int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
+		view.measure(widthSpec, heightSpec);
+		return Math.max(1, view.getMeasuredHeight());
+	}
+
+	private void animateHeightMutation(View container, Runnable mutation) {
+		cancelDetailsAnimation(container);
+		int startHeight = container.getHeight() > 0 ? container.getHeight() : measureWrapContentHeight(container);
+		mutation.run();
+		int endHeight = measureWrapContentHeight(container);
+		ViewGroup.LayoutParams params = container.getLayoutParams();
+		if (params != null) {
+			params.height = startHeight;
+			container.setLayoutParams(params);
+		}
+		ValueAnimator animator = ValueAnimator.ofInt(startHeight, endHeight);
+		animator.setDuration(220);
+		animator.addUpdateListener(animation -> {
+			ViewGroup.LayoutParams updateParams = container.getLayoutParams();
+			if (updateParams != null) {
+				updateParams.height = (Integer) animation.getAnimatedValue();
+				container.setLayoutParams(updateParams);
+			}
+		});
+		animator.addListener(new android.animation.AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(android.animation.Animator animation) {
+				if (container.getTag(TAG_EXPANDED_STATE) != animator) {
+					return;
+				}
+				container.setTag(TAG_EXPANDED_STATE, null);
+				ViewGroup.LayoutParams endParams = container.getLayoutParams();
+				if (endParams != null) {
+					endParams.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+					container.setLayoutParams(endParams);
+				}
+			}
+		});
+		container.setTag(TAG_EXPANDED_STATE, animator);
+		animator.start();
+	}
+
+	private boolean isLongDescription(String description) {
+		if (TextUtils.isEmpty(description)) {
+			return false;
+		}
+		int lineBreaks = 0;
+		for (int i = 0; i < description.length(); i++) {
+			if (description.charAt(i) == '\n') {
+				lineBreaks++;
+			}
+		}
+		return lineBreaks >= 10 || description.length() > 520;
+	}
+
+	private boolean startModDrag(View handle, ViewGroup transitionRoot, View details, View card, ModGroupBucket bucket, ExtraSettingsRepository.ModEntry entry) {
+		if (!selectedModIds.isEmpty()) {
+			return false;
+		}
+		if (expandedModIds.contains(entry.modId)) {
+			expandedModIds.remove(entry.modId);
+			setDetailsExpandedImmediately(details, false);
+		}
+		performDragHaptic(handle);
+		ClipData clipData = ClipData.newPlainText("mod_id", entry.modId);
+		View.DragShadowBuilder shadowBuilder = new View.DragShadowBuilder(card);
+		DragState dragState = DragState.forMod(entry, bucket);
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+			return handle.startDragAndDrop(clipData, shadowBuilder, dragState, 0);
+		}
+		return handle.startDrag(clipData, shadowBuilder, dragState, 0);
+	}
+
+	private boolean startGroupDrag(View handle, View groupView, ModGroupBucket bucket) {
+		if (!selectedModIds.isEmpty()) {
+			return false;
+		}
+		performDragHaptic(handle);
+		ClipData clipData = ClipData.newPlainText("mod_group", bucket.id);
+		View.DragShadowBuilder shadowBuilder = new View.DragShadowBuilder(groupView);
+		DragState dragState = DragState.forGroup(bucket);
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+			return handle.startDragAndDrop(clipData, shadowBuilder, dragState, 0);
+		}
+		return handle.startDrag(clipData, shadowBuilder, dragState, 0);
+	}
+
+	private void performDragHaptic(View view) {
+		view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+		try {
+			Vibrator vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
+			if (vibrator == null || !vibrator.hasVibrator()) {
+				return;
+			}
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+				vibrator.vibrate(VibrationEffect.createOneShot(35, VibrationEffect.DEFAULT_AMPLITUDE));
+			} else {
+				vibrator.vibrate(35);
+			}
+		} catch (Exception ignored) {
+		}
+	}
+
+	private MaterialButton detailIconButton(int iconRes, int descriptionRes) {
+		MaterialButton button = ExtraSettingsUi.iconButton(context, iconRes);
+		button.setContentDescription(context.getString(descriptionRes));
+		button.setIconTint(ColorStateList.valueOf(ExtraSettingsUi.COLOR_PRIMARY));
+		return button;
+	}
+
+	private void addDetailRow(LinearLayout parent, int iconRes, String value) {
+		if (TextUtils.isEmpty(value)) {
 			return;
 		}
-		boolean expanded = expandedModIds.contains(modId);
-		AutoTransition transition = new AutoTransition();
-		transition.setDuration(180);
-		TransitionManager.beginDelayedTransition(transitionRoot, transition);
-		description.setMaxLines(expanded ? Integer.MAX_VALUE : 2);
-		description.setEllipsize(expanded ? null : android.text.TextUtils.TruncateAt.END);
-		if (arrow != null) {
-			arrow.setIconResource(expanded ? R.drawable.ic_expand_less_24 : R.drawable.ic_expand_more_24);
-		}
+		LinearLayout row = ExtraSettingsUi.horizontal(context);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		row.addView(ExtraSettingsUi.icon(context, iconRes, ExtraSettingsUi.COLOR_MUTED, 16));
+		TextView text = ExtraSettingsUi.caption(context, value);
+		text.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT);
+		LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		textParams.setMarginStart(ExtraSettingsUi.dp(context, 6));
+		row.addView(text, textParams);
+		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		params.topMargin = ExtraSettingsUi.dp(context, 6);
+		parent.addView(row, params);
 	}
 
-	private TextView findDescriptionTextView(View view, String modId) {
-		Object tag = view.getTag();
-		if (modId.equals(tag) && view instanceof TextView textView) {
-			return textView;
+	private String compactMeta(ExtraSettingsRepository.ModEntry entry) {
+		List<String> parts = new ArrayList<>();
+		if (!TextUtils.isEmpty(entry.version)) {
+			parts.add("v" + entry.version.replaceFirst("^[vV]", ""));
 		}
-		if (view instanceof ViewGroup group) {
-			for (int i = 0; i < group.getChildCount(); i++) {
-				TextView found = findDescriptionTextView(group.getChildAt(i), modId);
-				if (found != null) {
-					return found;
-				}
-			}
+		if (!TextUtils.isEmpty(entry.authors)) {
+			parts.add(entry.authors);
 		}
-		return null;
+		if (parts.isEmpty()) {
+			parts.add(entry.modId);
+		}
+		return TextUtils.join("  •  ", parts);
 	}
 
-	private MaterialButton findArrowButton(View view, String modId) {
-		Object tag = view.getTag();
-		if ((modId + ":arrow").equals(tag) && view instanceof MaterialButton button) {
-			return button;
-		}
-		if (view instanceof ViewGroup group) {
-			for (int i = 0; i < group.getChildCount(); i++) {
-				MaterialButton found = findArrowButton(group.getChildAt(i), modId);
-				if (found != null) {
-					return found;
-				}
-			}
-		}
-		return null;
+	private String dependenciesText(ExtraSettingsRepository.ModEntry entry) {
+		return entry.dependencies.isEmpty() ? "—" : TextUtils.join(", ", entry.dependencies);
 	}
 
 	private void applyModCardStyle(MaterialCardView card, boolean enabled, boolean selected) {
-		if (selected) {
-			card.setStrokeWidth(ExtraSettingsUi.dp(context, 5));
-			card.setStrokeColor(Color.rgb(0, 150, 64));
-			card.setCardBackgroundColor(Color.rgb(18, 58, 36));
-		} else if (enabled) {
-			card.setStrokeWidth(ExtraSettingsUi.dp(context, 1));
-			card.setStrokeColor(Color.rgb(72, 104, 84));
-			card.setCardBackgroundColor(Color.rgb(29, 50, 38));
-		} else {
-			card.setStrokeWidth(ExtraSettingsUi.dp(context, 1));
-			card.setStrokeColor(ExtraSettingsUi.COLOR_OUTLINE);
-			card.setCardBackgroundColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
-		}
-	}
-
-	private void addMetaInfo(LinearLayout parent, int iconRes, String value) {
-		if (android.text.TextUtils.isEmpty(value)) {
-			return;
-		}
-		LinearLayout row = ExtraSettingsUi.horizontal(context);
-		row.setGravity(Gravity.CENTER_VERTICAL);
-		row.addView(ExtraSettingsUi.icon(context, iconRes, ExtraSettingsUi.COLOR_MUTED, 15));
-		TextView text = ExtraSettingsUi.caption(context, value);
-		text.setSingleLine(true);
-		text.setEllipsize(android.text.TextUtils.TruncateAt.END);
-		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-		params.setMarginStart(ExtraSettingsUi.dp(context, 6));
-		row.addView(text, params);
-		parent.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-	}
-
-	private void showModActionsMenu(View anchor, ExtraSettingsRepository.ModEntry entry, boolean enabled) {
-		PopupMenu popup = new PopupMenu(context, anchor);
-		popup.setForceShowIcon(true);
-		Menu menu = popup.getMenu();
-		menu.add(Menu.NONE, MOD_ACTION_INFO_ID, 0, R.string.mod_action_info).setIcon(R.drawable.ic_info_24);
-		menu.add(Menu.NONE, MOD_ACTION_SELECT_ID, 1, selectedModIds.contains(entry.modId) ? R.string.mod_action_unselect : R.string.mod_action_select).setIcon(R.drawable.ic_check_circle_24);
-		menu.add(Menu.NONE, MOD_ACTION_DELETE_ID, 2, R.string.delete).setIcon(R.drawable.ic_delete_24);
-		popup.setOnMenuItemClickListener(item -> {
-			if (item.getItemId() == MOD_ACTION_INFO_ID) {
-				showModDetails(entry, enabled);
-				return true;
-			}
-			if (item.getItemId() == MOD_ACTION_SELECT_ID) {
-				toggleSelected(entry.modId);
-				return true;
-			}
-			if (item.getItemId() == MOD_ACTION_DELETE_ID) {
-				confirmDelete(entry);
-				return true;
-			}
-			return false;
-		});
-		popup.show();
+		int background = selected ? Color.rgb(30, 50, 39) : ExtraSettingsUi.COLOR_SURFACE_CONTAINER;
+		int border = selected ? ExtraSettingsUi.COLOR_PRIMARY : (enabled ? Color.rgb(72, 104, 84) : ExtraSettingsUi.COLOR_OUTLINE);
+		card.setCardBackgroundColor(background);
+		card.setStrokeWidth(ExtraSettingsUi.dp(context, selected ? 2 : 1));
+		card.setStrokeColor(border);
 	}
 
 	private void toggleSelected(String modId) {
+		boolean enteringSelectionMode = selectedModIds.isEmpty() && !selectedModIds.contains(modId);
 		if (selectedModIds.contains(modId)) {
 			selectedModIds.remove(modId);
 		} else {
 			selectedModIds.add(modId);
 		}
+		if (enteringSelectionMode) {
+			expandedModIds.clear();
+		}
 		refreshList();
 	}
 
 	private String emptyToDash(String value) {
-		return android.text.TextUtils.isEmpty(value) ? "—" : value;
+		return TextUtils.isEmpty(value) ? "—" : value;
 	}
 
 	private String displayCategory(ExtraSettingsRepository.ModEntry entry) {
-		if (!android.text.TextUtils.isEmpty(entry.category)) {
+		if (!TextUtils.isEmpty(entry.category)) {
 			return entry.category;
 		}
 		if (isMissingPayload(entry)) {
@@ -767,7 +1542,7 @@ public final class ModsPage {
 		if (isLibraryLike(entry)) {
 			return context.getString(R.string.mod_category_library);
 		}
-		return "";
+		return context.getString(R.string.mod_category_content);
 	}
 
 	private boolean isMissingPayload(ExtraSettingsRepository.ModEntry entry) {
@@ -775,7 +1550,7 @@ public final class ModsPage {
 	}
 
 	private boolean isLibraryLike(ExtraSettingsRepository.ModEntry entry) {
-		String probe = (entry.modId + " " + entry.displayName + " " + entry.category).toLowerCase(Locale.ROOT);
+		String probe = (entry.modId + " " + entry.displayName + " " + entry.category + " " + entry.relativePath).toLowerCase(Locale.ROOT);
 		return probe.contains("lib") || probe.contains("library") || probe.contains("api") || (entry.hasDll && !entry.hasPck);
 	}
 
@@ -796,12 +1571,6 @@ public final class ModsPage {
 		return card;
 	}
 
-	private MaterialButton infoButton(int titleRes, int messageRes) {
-		MaterialButton button = ExtraSettingsUi.iconButton(context, R.drawable.ic_info_24);
-		button.setOnClickListener(v -> ExtraSettingsUi.showInfoDialog(context, titleRes, messageRes));
-		return button;
-	}
-
 	private void showModDetails(ExtraSettingsRepository.ModEntry entry, boolean enabled) {
 		StringBuilder message = new StringBuilder();
 		appendLine(message, context.getString(R.string.mod_detail_status), enabled ? context.getString(R.string.mod_enabled) : context.getString(R.string.mod_disabled));
@@ -810,9 +1579,9 @@ public final class ModsPage {
 		appendLine(message, context.getString(R.string.mod_detail_version), entry.version);
 		appendLine(message, context.getString(R.string.mod_detail_author), entry.authors);
 		appendLine(message, context.getString(R.string.mod_detail_files), context.getString(R.string.mod_detail_files_format, entry.hasPck ? "PCK" : "—", entry.hasDll ? "DLL" : "—"));
-		appendLine(message, context.getString(R.string.mod_detail_dependencies), entry.dependencies.isEmpty() ? "—" : android.text.TextUtils.join(", ", entry.dependencies));
+		appendLine(message, context.getString(R.string.mod_detail_dependencies), entry.dependencies.isEmpty() ? "—" : TextUtils.join(", ", entry.dependencies));
 		appendLine(message, context.getString(R.string.mod_detail_path), entry.relativePath);
-		if (!android.text.TextUtils.isEmpty(entry.description)) {
+		if (!TextUtils.isEmpty(entry.description)) {
 			message.append('\n').append(entry.description);
 		}
 		new MaterialAlertDialogBuilder(context)
@@ -838,6 +1607,7 @@ public final class ModsPage {
 				try {
 					repository.createModProfileFromCurrent(input.getText() == null ? "" : input.getText().toString());
 					selectedModIds.clear();
+					rememberChipScroll();
 					refreshList();
 				} catch (Exception exception) {
 					actions.showError(exception);
@@ -855,6 +1625,7 @@ public final class ModsPage {
 				try {
 					repository.deleteModProfile(profile.id);
 					selectedModIds.clear();
+					rememberChipScroll();
 					refreshList();
 				} catch (Exception exception) {
 					actions.showError(exception);
@@ -873,6 +1644,7 @@ public final class ModsPage {
 					repository.deleteMod(entry);
 					selectedModIds.remove(entry.modId);
 					expandedModIds.remove(entry.modId);
+					fullDescriptionModIds.remove(entry.modId);
 					refreshList();
 				} catch (Exception exception) {
 					actions.showError(exception);
@@ -913,6 +1685,7 @@ public final class ModsPage {
 						for (ExtraSettingsRepository.ModEntry entry : selected) {
 							selectedModIds.remove(entry.modId);
 							expandedModIds.remove(entry.modId);
+							fullDescriptionModIds.remove(entry.modId);
 						}
 						refreshList();
 					} catch (Exception exception) {
@@ -972,5 +1745,83 @@ public final class ModsPage {
 			}
 		}
 		return result;
+	}
+
+	private void showCreateGroupDialog() {
+		EditText input = new EditText(context);
+		input.setHint(R.string.mod_group_name_hint);
+		input.setSingleLine(true);
+		new MaterialAlertDialogBuilder(context)
+			.setTitle(R.string.mod_group_create)
+			.setView(input)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(android.R.string.ok, (dialog, which) -> {
+				try {
+					String name = input.getText() == null ? "" : input.getText().toString();
+					if (TextUtils.isEmpty(name.trim())) {
+						actions.showMessage(context.getString(R.string.mod_group_name_required));
+						return;
+					}
+					repository.createModGroup(name);
+					rememberChipScroll();
+					refreshList();
+				} catch (Exception exception) {
+					actions.showError(exception);
+				}
+			})
+			.show();
+	}
+
+	private static final class ModGroupBucket {
+		final String id;
+		final String label;
+		boolean userCreated;
+		final List<ExtraSettingsRepository.ModEntry> entries = new ArrayList<>();
+
+		ModGroupBucket(String id, String label, boolean userCreated) {
+			this.id = id;
+			this.label = label;
+			this.userCreated = userCreated;
+		}
+	}
+
+	private static final class DragState {
+		static final int TYPE_MOD = 1;
+		static final int TYPE_GROUP = 2;
+		final int type;
+		final ExtraSettingsRepository.ModEntry entry;
+		final ModGroupBucket sourceBucket;
+
+		private DragState(int type, ExtraSettingsRepository.ModEntry entry, ModGroupBucket sourceBucket) {
+			this.type = type;
+			this.entry = entry;
+			this.sourceBucket = sourceBucket;
+		}
+
+		static DragState forMod(ExtraSettingsRepository.ModEntry entry, ModGroupBucket sourceBucket) {
+			return new DragState(TYPE_MOD, entry, sourceBucket);
+		}
+
+		static DragState forGroup(ModGroupBucket sourceBucket) {
+			return new DragState(TYPE_GROUP, null, sourceBucket);
+		}
+	}
+
+	private static final class DashedDivider extends View {
+		private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+		DashedDivider(Context context) {
+			super(context);
+			paint.setColor(ExtraSettingsUi.COLOR_OUTLINE);
+			paint.setStyle(Paint.Style.STROKE);
+			paint.setStrokeWidth(ExtraSettingsUi.dp(context, 1));
+			paint.setPathEffect(new android.graphics.DashPathEffect(new float[] { ExtraSettingsUi.dp(context, 4), ExtraSettingsUi.dp(context, 4) }, 0));
+		}
+
+		@Override
+		protected void onDraw(Canvas canvas) {
+			super.onDraw(canvas);
+			canvas.drawLine(0, getHeight() / 2f, getWidth(), getHeight() / 2f, paint);
+		}
 	}
 }

@@ -228,7 +228,7 @@ adb shell run-as com.megacrit.sts2re ls files/instances
 4. 点击启动游戏后，logcat 能看到加载 imported game PCK 的日志。
 5. 附加设置中的图形、输入、MOD 设置能写入 `files/default/1/settings.save`。
 6. 游戏内返回附加设置、日志页、文件浏览器、崩溃页不崩溃。
-7. MOD 总开关和单 MOD 禁用能在启动日志中反映。
+7. MOD 总开关和单 MOD 禁用能在启动日志中反映；MOD 页导入同 ID MOD 会弹冲突选择框，卡片默认折叠且可展开查看作者/依赖，长按左侧手柄可拖到分组。
 8. Steam 中心可登录/验证 refresh token；从 Steam 下载的本体进入 `files/payloads/`，并自动选择匹配兼容包。
 9. Steam Cloud 手动刷新/拉取/上传使用当前 launch profile 的存档根；拉取前会在 `files/steam/cloud/<profile_id>/backups/` 创建备份。
 
