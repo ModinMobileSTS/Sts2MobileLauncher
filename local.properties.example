@@ -20,7 +20,7 @@ android.release_keystore_password=android
 android.release_keystore_alias=androiddebugkey
 
 # Compatibility build defaults.
-compat.default_reference_flavor=original-v0.106.1
+compat.default_reference_flavor=original-v0.107.0
 compat.bundled_packs_config=tools/android/bundled-compat-packs.json
 compat.asset_dir=android/assets/compat_packs
 compat.worktree_root=.agent/worktrees/compat-packs

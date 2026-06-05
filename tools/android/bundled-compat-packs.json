@@ -1,12 +1,16 @@
 {
   "packs": [
     {
-      "id": "v0.103.2",
+      "id": "v0.103.x",
       "branch": "compat/v0.103.2"
     },
     {
       "id": "v0.106.1-beta",
       "branch": "compat/v0.106.1-beta"
+    },
+    {
+      "id": "v0.107.0-beta",
+      "branch": "compat/v0.107.0-beta"
     }
   ]
 }

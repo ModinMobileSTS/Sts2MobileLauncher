@@ -44,8 +44,9 @@ DOTNET_BIN=/path/to/dotnet
 STS2_ANDROID_RUNTIME_REFERENCE_ROOT=/path/to/reference/android-template
 STS2_FMOD_PLUGIN_AAR=/path/to/fmod-release.aar
 STS2_CRYPTO_NATIVE_JAR=/path/to/libSystem.Security.Cryptography.Native.Android.jar
-STS2_ORIGINAL_V103_REFERENCE_DIR=/path/to/v0.103.2/bin/Debug
+STS2_ORIGINAL_V103_REFERENCE_DIR=/path/to/v0.103.x/bin/Debug
 STS2_ORIGINAL_V1061_REFERENCE_DIR=/path/to/v0.106.1/bin/Debug
+STS2_ORIGINAL_V1070_REFERENCE_DIR=/path/to/v0.107.0/bin/Debug
 ```
 
 `STS2_ORIGINAL_*_REFERENCE_DIR` 目录需包含 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll`。这些是 compile gate 引用，不提交到仓库。
@@ -104,9 +105,14 @@ android/assets/dotnet_bcl/STS2Mobile.dll
 android/assets/port_compat.pck
 ```
 
-默认 `ReferenceFlavor` 来自 `local.properties` 的 `compat.default_reference_flavor`（示例为 `original-v0.106.1`）。可临时覆盖：
+默认 `ReferenceFlavor` 来自 `local.properties` 的 `compat.default_reference_flavor`（示例为 `original-v0.107.0`）。可临时覆盖：
 
 ```bash
+# 当前 beta v0.107.0
+REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
+# 旧 beta v0.106.1
+REFERENCE_FLAVOR=original-v0.106.1 tools/android/build-port-mod.sh
+# stable v0.103.x
 REFERENCE_FLAVOR=original tools/android/build-port-mod.sh
 ```
 
@@ -120,8 +126,9 @@ tools/android/stage-bundled-compat-packs.sh
 
 脚本读取 `tools/android/bundled-compat-packs.json`（或 `local.properties` 的 `compat.bundled_packs_config`）。当前会构建：
 
-- `compat/v0.103.2` → `sts2-android-compat-v0.103.2.zip`
-- `compat/v0.106.1-beta` → `sts2-android-compat-v0.106.1-beta.zip`
+- `compat/v0.103.2` → `sts2-android-compat-v0.103.x.zip`（支持 `v0.103.2` / `v0.103.3`）
+- `compat/v0.106.1-beta` → `sts2-android-compat-v0.106.1-beta.zip`（旧 beta）
+- `compat/v0.107.0-beta` → `sts2-android-compat-v0.107.0-beta.zip`
 
 非当前分支使用 `compat.worktree_root`（默认 `.agent/worktrees/compat-packs/`）临时 worktree 构建；当前分支可直接使用 dirty worktree 方便测试。输出到：
 
@@ -187,22 +194,22 @@ tools/package/build_android_body_zip.sh \
 - `data_sts2_windows_x86_64/sts2.dll`、`sts2.deps.json`、`sts2.runtimeconfig.json` 来自 PC zip 原版，不用重新编译出的 DLL，避免 IL 变化影响 MOD。
 - `SlayTheSpire2.pck` 由临时 Godot 工程通过 Android `--export-pack` 重新生成，启用 ETC2/ASTC 导入，并过滤 PC 用的 BPTC/S3TC 纹理、`.godot/mono` publish、桌面 native runtime 等。
 - 字体 import 会在临时工程中关闭 MSDF 大 fontdata 设置，以接近移植版体积；Sentry autoload/GDExtension 在临时工程中禁用。
-- 产物仍满足 `validate_payload_zip.py` 与当前 launcher 导入格式，可在导入版 APK 中当普通 payload zip 导入。
+- 产物仍满足 `validate_payload_zip.py` 与当前 launcher 导入格式，可在导入版 APK 中当普通 payload zip 导入；输入 PC zip 若包含单一顶层目录（例如 `Slay the Spire 2/...`），脚本会自动识别并在输出 zip 中展平。
 
 常用本地示例：
 
 ```bash
-# v0.103.2：PC zip + 对应源码/反导出工程
+# v0.103.3：PC zip + 对应源码/反导出工程
 tools/package/build_android_body_zip.sh \
-  --pc-zip "/path/to/v0.103.2/SlayTheSpire2.zip" \
-  --source-dir "/path/to/s21032" \
-  --out "dist/payload/sts2-v0.103.2-android-body.zip"
+  --pc-zip "/path/to/v0.103.3/SlayTheSpire2.zip" \
+  --source-dir "/path/to/s201033" \
+  --out "dist/payload/sts2-v0.103.3-android-body.zip"
 
-# v0.106.1 beta：PC zip + 对应源码/反导出工程
+# v0.107.0 beta：PC zip + 对应源码/反导出工程
 tools/package/build_android_body_zip.sh \
-  --pc-zip "/path/to/sts2-v0.106.1.zip" \
-  --source-dir "/path/to/s201061" \
-  --out "dist/payload/sts2-v0.106.1-android-body.zip"
+  --pc-zip "/path/to/sts2-v0.107.0.zip" \
+  --source-dir "/path/to/s201070" \
+  --out "dist/payload/sts2-v0.107.0-android-body.zip"
 ```
 
 临时工程和 Godot 日志默认写入 `.agent/tmp/android-body-build/`，该目录不入库；生成的 zip 应留在 `dist/` 或其他本地输出目录，不要提交。
@@ -217,10 +224,11 @@ tools/android/gradle-with-s2-env.sh :compileMonoDebugJavaWithJavac
 tools/package/validate_payload_zip.py "/path/to/SlayTheSpire2.zip"
 
 # beta compile gate（通过脚本自动传 CompatReferenceDir）
-REFERENCE_FLAVOR=original-v0.106.1 tools/android/build-port-mod.sh
+REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
 
-# v0.103.2 compile gate
+# v0.103.x / 旧 beta compile gate
 REFERENCE_FLAVOR=original tools/android/build-port-mod.sh
+REFERENCE_FLAVOR=original-v0.106.1 tools/android/build-port-mod.sh
 
 # 查看/准备 GitHub 外部参考项目
 tools/deps/prepare-external-projects.sh --list
@@ -228,8 +236,8 @@ tools/deps/prepare-external-projects.sh --group modding-reference
 
 # standalone dotnet 编译也可显式传入 CompatReferenceDir
 "$DOTNET_BIN" build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj \
-  -p:ReferenceFlavor=original-v0.106.1 \
-  -p:CompatReferenceDir="$STS2_ORIGINAL_V1061_REFERENCE_DIR" -v:q
+  -p:ReferenceFlavor=original-v0.107.0 \
+  -p:CompatReferenceDir="$STS2_ORIGINAL_V1070_REFERENCE_DIR" -v:q
 ```
 
 ## 11. 构建后基本验证

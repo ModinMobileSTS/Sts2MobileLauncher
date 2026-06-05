@@ -44,8 +44,9 @@ s2_re/
 
 | 通道 | 游戏版本 | 原版引用配置 | port-mod 分支 | ReferenceFlavor | 兼容包 id |
 | --- | --- | --- | --- | --- | --- |
-| 正式/稳定 | `v0.103.2` | `.env` 的 `STS2_ORIGINAL_V103_REFERENCE_DIR` 或 `STS2_ORIGINAL_V103_ROOT` | `compat/v0.103.2` | `original` | `sts2-android-compat-v0.103.2` |
-| Beta | `v0.106.1` | `.env` 的 `STS2_ORIGINAL_V1061_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1061_ROOT` | `compat/v0.106.1-beta` | `original-v0.106.1` | `sts2-android-compat-v0.106.1-beta` |
+| 正式/稳定 | `v0.103.2` / `v0.103.3` | `.env` 的 `STS2_ORIGINAL_V103_REFERENCE_DIR` 或 `STS2_ORIGINAL_V103_ROOT` | `compat/v0.103.2` | `original` | `sts2-android-compat-v0.103.x` |
+| Beta（旧测试） | `v0.106.1` | `.env` 的 `STS2_ORIGINAL_V1061_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1061_ROOT` | `compat/v0.106.1-beta` | `original-v0.106.1` | `sts2-android-compat-v0.106.1-beta` |
+| Beta | `v0.107.0` | `.env` 的 `STS2_ORIGINAL_V1070_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1070_ROOT` | `compat/v0.107.0-beta` | `original-v0.107.0` | `sts2-android-compat-v0.107.0-beta` |
 
 内置兼容包列表由 `tools/android/bundled-compat-packs.json` 控制。打包脚本会用 `stage-bundled-compat-packs.sh` 为列表中的每个分支构建 zip 并复制到 `android/assets/compat_packs/`；这些 zip 是构建产物，随本地 APK 打包但不再由 git 跟踪。compile gate 引用目录由 `.env` 解析后通过 `CompatReferenceDir` 传给 MSBuild，不依赖提交到仓库的个人 symlink。
 

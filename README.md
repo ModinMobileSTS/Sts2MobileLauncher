@@ -80,7 +80,7 @@ s2_re/
 
 - **游戏本体版本 / payload**：导入的 PC zip 或 SteamPipe 下载结果安装到 `<files>/payloads/<payload_id>/game/`。`payload_id` 由版本、commit 和 payload hash 派生，切换版本不再复制完整本体。
 - **启动配置 / launch profile**：保存到 `<files>/instances/<profile_id>/instance.json`，绑定一个 payload、一个可选兼容包，并指定存档/设置和 MOD 使用全局目录还是该 profile 的隔离目录。同一个 payload 可以创建多个 profile。
-- **移动端兼容包**：安装到 `<files>/compat-packs/<pack_id>/`，每个包包含 manifest、`STS2Mobile.dll` 和 `port_compat.pck`。启动游戏前按当前 profile payload manifest 中的游戏版本号自动匹配或检查当前选择的兼容包；不再因 `sts2.dll` SHA-256 不一致阻止启动。
+- **移动端兼容包**：安装到 `<files>/compat-packs/<pack_id>/`，每个包包含 manifest、`STS2Mobile.dll` 和 `port_compat.pck`。启动游戏前按当前 profile payload manifest 中的游戏版本号自动匹配或检查当前选择的兼容包；manifest 可用 `target_game.supported_versions` 让一个包兼容多个游戏 patch 版本；不再因 `sts2.dll` SHA-256 不一致阻止启动。
 
 APK 打包前，脚本会把内置兼容包生成到：
 
@@ -88,7 +88,7 @@ APK 打包前，脚本会把内置兼容包生成到：
 android/assets/compat_packs/*.zip
 ```
 
-这些 zip 是可复现的构建产物，**不再由 git 跟踪**；需要刷新时运行 `tools/android/stage-bundled-compat-packs.sh` 或完整打包脚本。当前内置包列表由 `tools/android/bundled-compat-packs.json` 控制，包含正式/稳定 `v0.103.2`（`compat/v0.103.2`，compile gate `original`）和 beta `v0.106.1`（`compat/v0.106.1-beta`，compile gate `original-v0.106.1`）。对应原版 DLL 引用目录通过 `.env` 中的 `STS2_ORIGINAL_V103_REFERENCE_DIR` / `STS2_ORIGINAL_V1061_REFERENCE_DIR` 配置。
+这些 zip 是可复现的构建产物，**不再由 git 跟踪**；需要刷新时运行 `tools/android/stage-bundled-compat-packs.sh` 或完整打包脚本。当前内置包列表由 `tools/android/bundled-compat-packs.json` 控制，包含正式/稳定 `v0.103.x`（同一个 `compat/v0.103.2` 分支兼容 `v0.103.2` 与 `v0.103.3`，compile gate `original`）、旧 beta `v0.106.1`（`compat/v0.106.1-beta`，compile gate `original-v0.106.1`）和当前 beta `v0.107.0`（`compat/v0.107.0-beta`，compile gate `original-v0.107.0`）。对应原版 DLL 引用目录通过 `.env` 中的 `STS2_ORIGINAL_V103_REFERENCE_DIR` / `STS2_ORIGINAL_V1061_REFERENCE_DIR` / `STS2_ORIGINAL_V1070_REFERENCE_DIR` 配置。
 
 ## 不提交的内容
 
@@ -121,7 +121,7 @@ cp local.properties.example local.properties
 - `DOTNET_BIN`：.NET SDK 可执行文件。
 - `STS2_ANDROID_RUNTIME_REFERENCE_ROOT`：参考 Android runtime/template 目录，需包含 `libs/`、`assets/dotnet_bcl/`、`gradle/wrapper/gradle-wrapper.jar`。
 - `STS2_FMOD_PLUGIN_AAR`、`STS2_CRYPTO_NATIVE_JAR`：同步 runtime 时需要的 AAR/JAR。
-- `STS2_ORIGINAL_V103_REFERENCE_DIR`、`STS2_ORIGINAL_V1061_REFERENCE_DIR`（或对应 `*_ROOT`）：兼容层 original compile gate 引用目录，需包含 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll`。
+- `STS2_ORIGINAL_V103_REFERENCE_DIR`、`STS2_ORIGINAL_V1061_REFERENCE_DIR`、`STS2_ORIGINAL_V1070_REFERENCE_DIR`（或对应 `*_ROOT`）：兼容层 original compile gate 引用目录，需包含 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll`。
 - `RELEASE_KEYSTORE_*`：本地签名配置；测试可使用 Android debug keystore，正式发布请改为私有 release keystore。
 
 非 secret 的本地选项（Gradle task、输出路径、compat pack staging 目录等）放在 `local.properties`。两个文件都已加入 `.gitignore`。完整说明见 [`doc/build/local-configuration.md`](doc/build/local-configuration.md)。
@@ -158,7 +158,7 @@ data_sts2_windows_x86_64/sts2.deps.json
 data_sts2_windows_x86_64/sts2.runtimeconfig.json
 ```
 
-脚本还会检查 `SlayTheSpire2.pck` 的 PCK magic，并输出 zip 的 sha256 与 `release_info.json` 信息。
+脚本还会检查 `SlayTheSpire2.pck` 的 PCK magic，并输出 zip 的 sha256 与 `release_info.json` 信息；如果 PC zip 只有一个顶层目录（如 `Slay the Spire 2/`）且必需文件位于其中，也会自动识别。
 
 ### 2. 可选：生成 Android 优化本体 zip
 
@@ -171,7 +171,7 @@ tools/package/build_android_body_zip.sh \
   --out "dist/payload/sts2-vX.Y.Z-android-body.zip"
 ```
 
-脚本会保留 PC zip 里的原版 `sts2.dll` / deps / runtimeconfig，避免重新编译改变 IL；资源 PCK 则通过 Godot Android `--export-pack` 重新导入为 ETC2/ASTC，并过滤 PC 纹理格式和桌面 runtime。生成的 zip 仍可用 `tools/package/validate_payload_zip.py` 校验并由当前 launcher 导入。
+脚本会保留 PC zip 里的原版 `sts2.dll` / deps / runtimeconfig，避免重新编译改变 IL；资源 PCK 则通过 Godot Android `--export-pack` 重新导入为 ETC2/ASTC，并过滤 PC 纹理格式和桌面 runtime。输入 PC zip 可以是平铺结构或单一顶层目录结构；生成的 zip 会展平为 launcher 导入格式，仍可用 `tools/package/validate_payload_zip.py` 校验并由当前 launcher 导入。
 
 ### 3. 构建导入版 APK
 
@@ -264,10 +264,13 @@ tools/android/gradle-with-s2-env.sh :compileMonoDebugJavaWithJavac
 # 默认 ReferenceFlavor 来自 local.properties 的 compat.default_reference_flavor
 tools/android/build-port-mod.sh
 
-# 0.106.1 beta original gate
+# 0.107.0 beta original gate（当前默认）
+REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
+
+# 0.106.1 beta original gate（旧 beta）
 REFERENCE_FLAVOR=original-v0.106.1 tools/android/build-port-mod.sh
 
-# 0.103.2 original gate
+# 0.103.x stable original gate
 REFERENCE_FLAVOR=original tools/android/build-port-mod.sh
 ```
 
@@ -275,8 +278,8 @@ REFERENCE_FLAVOR=original tools/android/build-port-mod.sh
 
 ```bash
 "$DOTNET_BIN" build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj \
-  -p:ReferenceFlavor=original-v0.106.1 \
-  -p:CompatReferenceDir="$STS2_ORIGINAL_V1061_REFERENCE_DIR" -v:q
+  -p:ReferenceFlavor=original-v0.107.0 \
+  -p:CompatReferenceDir="$STS2_ORIGINAL_V1070_REFERENCE_DIR" -v:q
 ```
 
 准备/查看 GitHub 外部参考项目：

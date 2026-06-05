@@ -1,6 +1,6 @@
 # MOD 与兼容包加载流程
 
-本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。当前说明适用于内置的 `v0.103.2` 正式/稳定兼容分支与 `v0.106.1` beta 兼容分支。
+本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。当前说明适用于内置的 `v0.103.x` 正式/稳定兼容分支、旧 `v0.106.1` beta 兼容分支与当前 `v0.107.0` beta 兼容分支。
 
 ## 1. 术语
 
@@ -57,7 +57,7 @@ port-mod branch
 
 1. 用户在设置页选择 `SlayTheSpire2.zip`，直装版从 APK assets `payload/SlayTheSpire2.zip` 解压，或在 Steam 中心使用自己拥有 STS2 的 Steam 账号通过 SteamPipe 下载。
 2. zip 路径由 `PayloadManager` 复制 zip 到私有临时文件并计算 sha256；Steam 路径由 `Sts2SteamPayloadDownloader` 下载 depot 文件到 `<files>/steam/downloads/staging-*` 后调用 `PayloadManager.importPayloadDirectory(...)`。
-3. staging 目录统一校验：
+3. staging 目录统一校验；若用户 zip 顶层只有一个目录且必需文件都在该目录内，导入器会先把该顶层目录展平：
    - `SlayTheSpire2.pck`
    - `release_info.json`
    - `data_sts2_windows_x86_64/sts2.dll`
@@ -78,7 +78,7 @@ port-mod branch
    - 调 `CompatPackManager.findBestMatch(payload.manifest)`。
    - 找到匹配包且当前 profile 未绑定匹配包时自动选择。
    - 若无选中包，阻止启动。
-   - 若选中包 target version 与 payload version 不一致，弹出风险对话框，用户可取消、去版本页或强制启动。
+   - 若选中包 manifest 支持版本列表与 payload version 不一致，弹出风险对话框，用户可取消、去版本页或强制启动。
 3. 若 Steam Cloud 模式配置为“启动前拉取”或“完整自动”，且已保存 Steam refresh token，则先由 launcher 侧拉取当前 launch profile account root 的 Steam Cloud 文件；失败时弹窗允许取消、打开 Steam 中心或跳过同步继续启动。
 4. 启动后台线程执行 `GameLaunchPreparationManager.prepareForLaunch()`。
 5. 准备完成后启动 `GodotApp` 并附加 `launch_prepared=true`。
@@ -189,7 +189,7 @@ OS.GetDataDir()/port_compat.pck
 
 `ModLoaderPatches` 行为：
 
-- Prefix 替换 `ModManager.Initialize()`，避免 Android 上高风险 IL transpiler。
+- Prefix 替换 `ModManager.Initialize()`，避免 Android 上高风险 IL transpiler；`v0.107.0` 起原方法返回 `Task`，跳过原方法时兼容层会返回 `Task.CompletedTask`，避免 `ExecuteVeryEarly()` `await` 到 `null`。
 - 设置原版私有字段 `_settings`、`_fileIo`、`_gameVersion`。
 - 添加 assembly resolve fallback。
 - 为对齐 PC 时序，在用户 MOD 的 Harmony patch 全部应用前不对任何 MOD 模型类型调用 `ModelDb.GetId`/`GetEntry`。原版模型占位提前到**加载任何 MOD 之前**（`ModLoaderPatches` 触发，原版不带前缀，安全，修复 MOD patch getter / MOD 静态构造引用原版模型的早访问）；每个 MOD initializer 期间只隐藏非原版类型命中早期原版占位的 `ModelDb.Contains(Type)` 结果，避免同名模型误判；MOD 自定义模型占位延迟到 `ModelDb.Init()` 之前的 phase 1，按最终 ID 进行。

@@ -81,8 +81,9 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 
 | 游戏版本 | 分支 | 原版引用配置 | ReferenceFlavor |
 | --- | --- | --- | --- |
-| `v0.103.2` | `compat/v0.103.2` | `.env`: `STS2_ORIGINAL_V103_REFERENCE_DIR` 或 `STS2_ORIGINAL_V103_ROOT` | `original` |
-| `v0.106.1` beta | `compat/v0.106.1-beta` | `.env`: `STS2_ORIGINAL_V1061_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1061_ROOT` | `original-v0.106.1` |
+| `v0.103.2` / `v0.103.3` | `compat/v0.103.2` | `.env`: `STS2_ORIGINAL_V103_REFERENCE_DIR` 或 `STS2_ORIGINAL_V103_ROOT` | `original` |
+| `v0.106.1` beta（旧测试） | `compat/v0.106.1-beta` | `.env`: `STS2_ORIGINAL_V1061_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1061_ROOT` | `original-v0.106.1` |
+| `v0.107.0` beta | `compat/v0.107.0-beta` | `.env`: `STS2_ORIGINAL_V1070_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1070_ROOT` | `original-v0.107.0` |
 
 开发步骤建议：
 
@@ -91,7 +92,7 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 git -C port-mod status --short --branch
 
 # 2. 编译对应 original gate（引用目录从 .env 解析）
-REFERENCE_FLAVOR=original-v0.106.1 tools/android/build-port-mod.sh
+REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
 
 # 3. 构建 fallback 或 compat pack
 tools/android/build-port-mod.sh
@@ -103,7 +104,7 @@ tools/android/stage-bundled-compat-packs.sh
 tools/package/build_importer_apk.sh
 ```
 
-对 `compat/v0.103.2` 分支，把 `ReferenceFlavor` 改为 `original`。
+对 `compat/v0.103.2` 分支，把 `ReferenceFlavor` 改为 `original`；维护旧 beta `compat/v0.106.1-beta` 时使用 `original-v0.106.1`。
 
 ## 6. 新增游戏版本 checklist
 
@@ -118,6 +119,7 @@ tools/package/build_importer_apk.sh
    - `compat_version`
    - `channel`
    - `target_game.version`
+   - 可选 `target_game.supported_versions` / `compatible_versions` / `versions`（一个兼容包覆盖多个游戏 patch 版本时使用）
    - `target_game.source`（描述性来源，不写个人本地路径）
    - `target_game.sts2_dll_sha256`
 5. 用对应 `ReferenceFlavor` 做 compile gate。
@@ -134,7 +136,7 @@ tools/package/build_importer_apk.sh
 - Android temp 目录必须尽早配置，否则 Harmony/MonoMod 可能尝试使用不可写 `/tmp`。
 - Shader/resource overlay 资源应放入 `port-mod/overlay/`，重新打包 `port_compat.pck` 后才能生效。
 - 普通 MOD loader 的目标是尽量复用游戏原本的 scanner、dependency sort 和 TryLoadMod，减少与 PC 行为分叉。
-- `v0.103.2` 与 `v0.106.1` beta 分支应保持同一套 Android/Mono MOD 初始化不变式：加载任何 MOD 前只允许预注册原版模型占位；每个 MOD initializer 期间只允许短暂隐藏“非原版类型命中早期原版占位”的 `ModelDb.Contains(Type)` 结果，避免与原版同名的 MOD 模型因 Android 提前占位误报重复；MOD 自定义模型占位必须等到所有 MOD Harmony patch 应用后、`ModelDb.Init()` 前再按最终 ID 注册。
+- `v0.103.x`、`v0.106.1` beta 与 `v0.107.0` beta 分支应保持同一套 Android/Mono MOD 初始化不变式：加载任何 MOD 前只允许预注册原版模型占位；每个 MOD initializer 期间只允许短暂隐藏“非原版类型命中早期原版占位”的 `ModelDb.Contains(Type)` 结果，避免与原版同名的 MOD 模型因 Android 提前占位误报重复；MOD 自定义模型占位必须等到所有 MOD Harmony patch 应用后、`ModelDb.Init()` 前再按最终 ID 注册。
 
 ## 8. MOD 兼容性排查规范
 
@@ -154,13 +156,14 @@ tools/package/build_importer_apk.sh
 ```json
 {
   "schema": 1,
-  "pack_id": "sts2-android-compat-v0.106.1-beta",
-  "display_name": "STS2 Android Compatibility beta for v0.106.1",
-  "compat_version": "0.2.0-beta.1061",
+  "pack_id": "sts2-android-compat-v0.107.0-beta",
+  "display_name": "STS2 Android Compatibility beta for v0.107.0",
+  "compat_version": "0.3.1-beta.1070",
   "channel": "beta",
   "target_game": {
-    "version": "v0.106.1",
-    "source": "original_pc_reference_v0.106.1",
+    "version": "v0.107.0",
+    "supported_versions": ["v0.107.0"],
+    "source": "original_pc_reference_v0.107.0",
     "sts2_dll_sha256": "...",
     "match": "exact-preferred"
   },
@@ -176,7 +179,7 @@ tools/package/build_importer_apk.sh
 }
 ```
 
-`CompatPackManager` 当前主要用 `target_game.version` 与 payload manifest 的 `version` 匹配。`sts2_dll_sha256` 记录用于诊断和未来更严格匹配。
+`CompatPackManager` 优先用 `target_game.version` 与 payload manifest 的 `version` 精确匹配；如果 manifest 提供 `target_game.supported_versions` / `compatible_versions` / `versions`，也会把这些版本视为兼容，用于 `v0.103.x` 这类一个包覆盖多个 patch 版本的场景。`sts2_dll_sha256` 记录用于诊断和未来更严格匹配。
 
 ## 10. 用户 MOD 测试建议
 

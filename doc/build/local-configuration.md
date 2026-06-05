@@ -25,8 +25,9 @@ cp local.properties.example local.properties
 | `STS2_ANDROID_RUNTIME_REFERENCE_ROOT` | 参考 Android template 目录，需包含 `libs/`、`assets/dotnet_bcl/`、`gradle/wrapper/gradle-wrapper.jar`。 |
 | `STS2_FMOD_PLUGIN_AAR` | FMOD Android AAR。 |
 | `STS2_CRYPTO_NATIVE_JAR` | Godot/Mono crypto native Java wrapper jar。 |
-| `STS2_ORIGINAL_V103_ROOT` 或 `STS2_ORIGINAL_V103_REFERENCE_DIR` | v0.103.2 original compile gate 引用。 |
-| `STS2_ORIGINAL_V1061_ROOT` 或 `STS2_ORIGINAL_V1061_REFERENCE_DIR` | v0.106.1 beta original compile gate 引用。 |
+| `STS2_ORIGINAL_V103_ROOT` 或 `STS2_ORIGINAL_V103_REFERENCE_DIR` | v0.103.x stable original compile gate 引用。 |
+| `STS2_ORIGINAL_V1061_ROOT` 或 `STS2_ORIGINAL_V1061_REFERENCE_DIR` | v0.106.1 beta（旧测试）original compile gate 引用。 |
+| `STS2_ORIGINAL_V1070_ROOT` 或 `STS2_ORIGINAL_V1070_REFERENCE_DIR` | v0.107.0 beta original compile gate 引用。 |
 | `RELEASE_KEYSTORE_FILE` / `RELEASE_KEYSTORE_PASSWORD` / `RELEASE_KEYSTORE_ALIAS` | 本地 APK 签名参数。默认可用 Android debug keystore，正式发布请改为私有 release keystore。 |
 
 可选快捷项：
@@ -47,7 +48,7 @@ cp local.properties.example local.properties
 | `android.importer.dist` | `dist/sts2-re-importer.apk` | 导入版稳定副本。 |
 | `android.direct.dist` | `dist/sts2-re-direct.apk` | 直装版稳定副本。 |
 | `android.release_keystore_*` | debug keystore 兼容默认值 | 本地签名 fallback；更建议把密码类值放到 `.env` 或 CI secrets。 |
-| `compat.default_reference_flavor` | `original-v0.106.1` | 当前分支 fallback 的默认 compile gate。 |
+| `compat.default_reference_flavor` | `original-v0.107.0` | 当前分支 fallback 的默认 compile gate。 |
 | `compat.bundled_packs_config` | `tools/android/bundled-compat-packs.json` | 内置兼容包列表。 |
 | `compat.asset_dir` | `android/assets/compat_packs` | 内置兼容包输出到 APK assets 的目录；生成 zip 已 gitignore，不提交。 |
 | `compat.worktree_root` | `.agent/worktrees/compat-packs` | 多分支兼容包临时 worktree 根目录；位于 ignored `.agent/`。 |

@@ -8,7 +8,7 @@ source "$ROOT/tools/env/load-local-config.sh"
 sts2_init_env
 
 DOTNET_BIN="$(sts2_config_path DOTNET_BIN build.dotnet "${DOTNET_BIN:-}")"
-REFERENCE_FLAVOR="${REFERENCE_FLAVOR:-$(sts2_config_value '' compat.default_reference_flavor original-v0.106.1)}"
+REFERENCE_FLAVOR="${REFERENCE_FLAVOR:-$(sts2_config_value '' compat.default_reference_flavor original-v0.107.0)}"
 COMPAT_REFERENCE_DIR="$(sts2_compat_reference_dir_for_flavor "$REFERENCE_FLAVOR")"
 PROJECT="$ROOT/port-mod/STS2AndroidPortCompat/STS2Mobile.csproj"
 OUTPUT="$ROOT/port-mod/STS2AndroidPortCompat/bin/Debug/net9.0/STS2Mobile.dll"

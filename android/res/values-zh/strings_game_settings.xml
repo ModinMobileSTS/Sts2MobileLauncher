@@ -577,7 +577,7 @@
     <string name="launch_requires_payload">请先导入游戏压缩包再启动</string>
     <string name="launch_requires_compat_pack">请先安装或选择对应的移动端兼容包再启动</string>
     <string name="launch_incompatible_compat_pack_dialog_title">兼容包版本不匹配</string>
-    <string name="launch_incompatible_compat_pack_dialog_message">当前兼容包：%1$s\n兼容包目标：%2$s\n当前游戏：%3$s\n\n此检查只比较游戏版本号。你可以前往“版本”页切换兼容包，也可以选择继续启动。</string>
+    <string name="launch_incompatible_compat_pack_dialog_message">当前兼容包：%1$s\n兼容包支持：%2$s\n当前游戏：%3$s\n\n此检查只比较游戏版本号/支持版本列表。你可以前往“版本”页切换兼容包，也可以选择继续启动。</string>
     <string name="launch_anyway">仍然启动</string>
     <string name="status_busy_prepare_launch">正在准备游戏文件…</string>
     <string name="import_game_payload">导入游戏压缩包</string>
@@ -637,7 +637,7 @@
     <string name="version_manager_detail_game_version">游戏版本</string>
     <string name="version_manager_detail_commit">提交</string>
     <string name="version_manager_detail_sts2_dll_sha">sts2.dll SHA-256</string>
-    <string name="version_manager_detail_target_version">目标版本</string>
+    <string name="version_manager_detail_target_version">支持版本</string>
     <string name="version_manager_detail_compat_version">兼容版本</string>
     <string name="version_manager_detail_channel">通道</string>
     <string name="version_manager_detail_storage_path">存放路径</string>

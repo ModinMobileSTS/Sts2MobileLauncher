@@ -7,6 +7,7 @@ import android.net.Uri;
 import android.provider.OpenableColumns;
 import android.text.TextUtils;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
@@ -149,11 +150,21 @@ public final class CompatPackManager {
 			return null;
 		}
 		PayloadIdentity identity = readPayloadIdentity(payloadManifest);
+		if (TextUtils.isEmpty(identity.version)) {
+			return null;
+		}
+
+		// Prefer packs whose primary target version is an exact match, then fall
+		// back to packs that explicitly list the payload version in their manifest.
+		// This allows a single stable compat pack to cover adjacent patch releases
+		// such as v0.103.2 and v0.103.3 while preserving exact-version priority.
 		for (CompatPack pack : installedPacks) {
-			if (!pack.ready) {
-				continue;
+			if (pack.ready && identity.version.equalsIgnoreCase(pack.targetVersion)) {
+				return pack;
 			}
-			if (!TextUtils.isEmpty(identity.version) && identity.version.equalsIgnoreCase(pack.targetVersion)) {
+		}
+		for (CompatPack pack : installedPacks) {
+			if (pack.ready && packSupportsVersion(pack, identity.version)) {
 				return pack;
 			}
 		}
@@ -165,7 +176,7 @@ public final class CompatPackManager {
 			return false;
 		}
 		PayloadIdentity identity = readPayloadIdentity(payloadManifest);
-		return !TextUtils.isEmpty(identity.version) && !TextUtils.isEmpty(pack.targetVersion) && identity.version.equalsIgnoreCase(pack.targetVersion);
+		return !TextUtils.isEmpty(identity.version) && packSupportsVersion(pack, identity.version);
 	}
 
 	public String getPayloadVersion(JSONObject payloadManifest) {
@@ -239,6 +250,18 @@ public final class CompatPackManager {
 			selectPack("");
 			selectLatestInstalledIfNeeded();
 		}
+	}
+
+	private boolean packSupportsVersion(CompatPack pack, String version) {
+		if (pack == null || TextUtils.isEmpty(version)) {
+			return false;
+		}
+		for (String supportedVersion : pack.targetVersions) {
+			if (version.equalsIgnoreCase(supportedVersion)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private PayloadIdentity readPayloadIdentity(JSONObject payloadManifest) {
@@ -338,6 +361,11 @@ public final class CompatPackManager {
 		JSONObject manifest = new JSONObject(readTextFile(manifestFile));
 		String packId = sanitizeId(manifest.optString("pack_id", dir.getName()));
 		JSONObject target = manifest.optJSONObject("target_game");
+		List<String> targetVersions = readTargetVersions(target);
+		String targetVersion = target == null ? "" : target.optString("version", "");
+		if (TextUtils.isEmpty(targetVersion) && !targetVersions.isEmpty()) {
+			targetVersion = targetVersions.get(0);
+		}
 		File dll = new File(dir, ENTRY_DLL);
 		File overlay = new File(dir, ENTRY_OVERLAY_PCK);
 		return new CompatPack(
@@ -345,7 +373,8 @@ public final class CompatPackManager {
 			manifest.optString("display_name", packId),
 			manifest.optString("compat_version", ""),
 			manifest.optString("channel", ""),
-			target == null ? "" : target.optString("version", ""),
+			targetVersion,
+			targetVersions,
 			target == null ? "" : target.optString("commit", ""),
 			target == null ? "" : target.optString("sts2_dll_sha256", ""),
 			manifest.optLong("installed_at_unix", dir.lastModified() / 1000L),
@@ -355,6 +384,37 @@ public final class CompatPackManager {
 			manifest,
 			dll.isFile() && overlay.isFile()
 		);
+	}
+
+	private List<String> readTargetVersions(JSONObject target) {
+		List<String> versions = new ArrayList<>();
+		if (target == null) {
+			return versions;
+		}
+		addTargetVersion(versions, target.optString("version", ""));
+		for (String key : new String[] { "supported_versions", "compatible_versions", "versions" }) {
+			JSONArray array = target.optJSONArray(key);
+			if (array == null) {
+				continue;
+			}
+			for (int i = 0; i < array.length(); i++) {
+				addTargetVersion(versions, array.optString(i, ""));
+			}
+		}
+		return versions;
+	}
+
+	private void addTargetVersion(List<String> versions, String version) {
+		String normalized = version == null ? "" : version.trim();
+		if (TextUtils.isEmpty(normalized)) {
+			return;
+		}
+		for (String existing : versions) {
+			if (normalized.equalsIgnoreCase(existing)) {
+				return;
+			}
+		}
+		versions.add(normalized);
 	}
 
 	private File locatePackRoot(File stagingRoot) throws IOException {
@@ -554,6 +614,7 @@ public final class CompatPackManager {
 		public final String compatVersion;
 		public final String channel;
 		public final String targetVersion;
+		public final List<String> targetVersions;
 		public final String targetCommit;
 		public final String targetSts2DllSha256;
 		public final long installedAtUnix;
@@ -563,12 +624,16 @@ public final class CompatPackManager {
 		public final JSONObject manifest;
 		public final boolean ready;
 
-		CompatPack(String packId, String displayName, String compatVersion, String channel, String targetVersion, String targetCommit, String targetSts2DllSha256, long installedAtUnix, File dir, File dllFile, File overlayPckFile, JSONObject manifest, boolean ready) {
+		CompatPack(String packId, String displayName, String compatVersion, String channel, String targetVersion, List<String> targetVersions, String targetCommit, String targetSts2DllSha256, long installedAtUnix, File dir, File dllFile, File overlayPckFile, JSONObject manifest, boolean ready) {
 			this.packId = packId == null ? "" : packId;
 			this.displayName = TextUtils.isEmpty(displayName) ? this.packId : displayName;
 			this.compatVersion = compatVersion == null ? "" : compatVersion;
 			this.channel = channel == null ? "" : channel;
 			this.targetVersion = targetVersion == null ? "" : targetVersion;
+			this.targetVersions = targetVersions == null ? new ArrayList<>() : new ArrayList<>(targetVersions);
+			if (this.targetVersions.isEmpty() && !TextUtils.isEmpty(this.targetVersion)) {
+				this.targetVersions.add(this.targetVersion);
+			}
 			this.targetCommit = targetCommit == null ? "" : targetCommit;
 			this.targetSts2DllSha256 = targetSts2DllSha256 == null ? "" : targetSts2DllSha256;
 			this.installedAtUnix = installedAtUnix;
@@ -580,11 +645,12 @@ public final class CompatPackManager {
 		}
 
 		public String targetLabel() {
-			if (!TextUtils.isEmpty(targetVersion) && !TextUtils.isEmpty(targetCommit)) {
-				return targetVersion + " (" + targetCommit + ")";
-			}
-			if (!TextUtils.isEmpty(targetVersion)) {
-				return targetVersion;
+			if (!targetVersions.isEmpty()) {
+				String label = TextUtils.join(" / ", targetVersions);
+				if (targetVersions.size() == 1 && !TextUtils.isEmpty(targetCommit)) {
+					return label + " (" + targetCommit + ")";
+				}
+				return label;
 			}
 			if (!TextUtils.isEmpty(targetSts2DllSha256)) {
 				return targetSts2DllSha256.substring(0, Math.min(12, targetSts2DllSha256.length()));

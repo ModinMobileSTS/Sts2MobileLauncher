@@ -239,6 +239,7 @@ public final class PayloadManager {
 		try {
 			checkCancelled(control);
 			reportProgress(progressListener, 86, "validate");
+			normalizePayloadRootIfNeeded(staging);
 			Validation validation = validateGameDir(staging);
 			reportProgress(progressListener, 91, "patch");
 			PckPatcher.PatchResult patchResult = patchPayloadPck(staging);
@@ -378,6 +379,55 @@ public final class PayloadManager {
 		try (OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(outputFile))) {
 			copy(entryInputStream, outputStream, entry.getSize(), progress, control);
 		}
+	}
+
+	private void normalizePayloadRootIfNeeded(File staging) throws IOException {
+		if (hasRequiredGameFiles(staging)) {
+			return;
+		}
+		File[] children = staging.listFiles();
+		if (children == null || children.length == 0) {
+			return;
+		}
+		File payloadRoot = null;
+		for (File child : children) {
+			if (child.isDirectory() && hasRequiredGameFiles(child)) {
+				if (payloadRoot != null) {
+					return;
+				}
+				payloadRoot = child;
+			}
+		}
+		if (payloadRoot == null) {
+			return;
+		}
+		for (File child : children) {
+			if (!child.equals(payloadRoot)) {
+				deleteRecursively(child);
+			}
+		}
+		File[] nested = payloadRoot.listFiles();
+		if (nested == null) {
+			return;
+		}
+		for (File child : nested) {
+			File destination = new File(staging, child.getName());
+			if (destination.exists()) {
+				throw new IOException("Unable to flatten payload root; destination already exists: " + destination.getAbsolutePath());
+			}
+			if (!child.renameTo(destination)) {
+				throw new IOException("Unable to flatten payload root entry: " + child.getAbsolutePath());
+			}
+		}
+		deleteRecursively(payloadRoot);
+	}
+
+	private boolean hasRequiredGameFiles(File gameDir) {
+		return new File(gameDir, PCK_FILE_NAME).isFile()
+			&& new File(gameDir, RELEASE_INFO_FILE_NAME).isFile()
+			&& new File(gameDir, STS2_DLL_PATH).isFile()
+			&& new File(gameDir, STS2_DEPS_PATH).isFile()
+			&& new File(gameDir, STS2_RUNTIME_CONFIG_PATH).isFile();
 	}
 
 	private Validation validateGameDir(File gameDir) throws Exception {

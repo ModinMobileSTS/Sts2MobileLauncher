@@ -384,23 +384,55 @@ def pck_stats(path: Path) -> dict:
     }
 
 
+
+def normalize_zip_name(name: str) -> str:
+    normalized = name.replace("\\", "/").strip()
+    while normalized.startswith("/"):
+        normalized = normalized[1:]
+    return normalized
+
+
+def detect_pc_zip_prefix(zf: zipfile.ZipFile) -> str:
+    names = {normalize_zip_name(info.filename) for info in zf.infolist() if not info.is_dir()}
+
+    def has_required(prefix: str) -> bool:
+        return all(prefix + required in names for required in REQUIRED_ZIP_ENTRIES)
+
+    if has_required(""):
+        return ""
+
+    candidates: set[str] = set()
+    for name in names:
+        for required in REQUIRED_ZIP_ENTRIES:
+            suffix = "/" + required
+            if name.endswith(suffix):
+                candidates.add(name[: -len(required)])
+            elif name == required:
+                candidates.add("")
+    for prefix in sorted(candidates, key=lambda value: (value.count("/"), len(value))):
+        if prefix and not prefix.endswith("/"):
+            prefix += "/"
+        if has_required(prefix):
+            return prefix
+
+    missing = sorted(REQUIRED_ZIP_ENTRIES - names)
+    raise BuildError(f"PC zip is missing required entries: {missing}")
+
 def validate_pc_zip(path: Path) -> dict:
     if not path.is_file():
         raise BuildError(f"Missing PC zip: {path}")
     with zipfile.ZipFile(path) as zf:
-        names = {info.filename.replace("\\", "/") for info in zf.infolist() if not info.is_dir()}
-        missing = sorted(REQUIRED_ZIP_ENTRIES - names)
-        if missing:
-            raise BuildError(f"PC zip is missing required entries: {missing}")
-        release_info = json.loads(zf.read("release_info.json").decode("utf-8"))
-        sts2_dll = zf.read("data_sts2_windows_x86_64/sts2.dll")
-        with zf.open("SlayTheSpire2.pck") as fp:
+        prefix = detect_pc_zip_prefix(zf)
+        release_info = json.loads(zf.read(prefix + "release_info.json").decode("utf-8"))
+        sts2_dll = zf.read(prefix + "data_sts2_windows_x86_64/sts2.dll")
+        with zf.open(prefix + "SlayTheSpire2.pck") as fp:
             if fp.read(4) != b"GDPC":
                 raise BuildError("Original PC zip contains an invalid SlayTheSpire2.pck")
     return {
         "path": str(path),
         "size": path.stat().st_size,
         "sha256": sha256_file(path),
+        "entry_prefix": prefix,
         "release_info": release_info,
         "sts2_dll_sha256": sha256_bytes(sts2_dll),
         "sts2_dll_size": len(sts2_dll),
@@ -411,7 +443,8 @@ def load_keep_data_basenames(pc_zip: Path) -> set[str]:
     keep = set(ALWAYS_KEEP_DATA_BASENAMES)
     try:
         with zipfile.ZipFile(pc_zip) as zf:
-            deps = json.loads(zf.read("data_sts2_windows_x86_64/sts2.deps.json").decode("utf-8"))
+            prefix = detect_pc_zip_prefix(zf)
+            deps = json.loads(zf.read(prefix + "data_sts2_windows_x86_64/sts2.deps.json").decode("utf-8"))
         for target in deps.get("targets", {}).values():
             for library_name, metadata in target.items():
                 if library_name.startswith("runtimepack.Microsoft.NETCore.App.Runtime") or library_name.startswith("GodotSharp/"):
@@ -700,6 +733,7 @@ def package_zip(pc_zip: Path, pck: Path, out_zip: Path, manifest: dict, keep_dat
     written: list[str] = []
     total_uncompressed = 0
     with zipfile.ZipFile(pc_zip, "r") as zin, zipfile.ZipFile(temp_zip, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=ZIP_COMPRESSION_LEVEL) as zout:
+        source_prefix = detect_pc_zip_prefix(zin)
         pck_info = zipfile.ZipInfo("SlayTheSpire2.pck", date_time=time.localtime()[:6])
         pck_info.compress_type = zipfile.ZIP_DEFLATED
         with pck.open("rb") as fp:
@@ -708,23 +742,31 @@ def package_zip(pc_zip: Path, pck: Path, out_zip: Path, manifest: dict, keep_dat
         total_uncompressed += pck.stat().st_size
 
         for info in zin.infolist():
-            name = info.filename.replace("\\", "/")
-            if info.is_dir() or name == "SlayTheSpire2.pck":
+            name = normalize_zip_name(info.filename)
+            if info.is_dir():
+                continue
+            if source_prefix:
+                if not name.startswith(source_prefix):
+                    continue
+                rel_name = name[len(source_prefix):]
+            else:
+                rel_name = name
+            if not rel_name or rel_name == "SlayTheSpire2.pck":
                 continue
             include = False
-            if name in {"release_info.json", "mp_names.json"} or name.startswith("controller_config/"):
+            if rel_name in {"release_info.json", "mp_names.json"} or rel_name.startswith("controller_config/"):
                 include = True
-            elif name.startswith("data_sts2_windows_x86_64/"):
-                basename = Path(name).name
+            elif rel_name.startswith("data_sts2_windows_x86_64/"):
+                basename = Path(rel_name).name
                 include = basename in keep_data_basenames
             if not include:
                 continue
             data = zin.read(info)
-            new_info = zipfile.ZipInfo(name, date_time=info.date_time)
+            new_info = zipfile.ZipInfo(rel_name, date_time=info.date_time)
             new_info.external_attr = info.external_attr
             new_info.compress_type = zipfile.ZIP_DEFLATED
             zout.writestr(new_info, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=ZIP_COMPRESSION_LEVEL)
-            written.append(name)
+            written.append(rel_name)
             total_uncompressed += len(data)
         manifest_info = zipfile.ZipInfo(".android_body_manifest.json", date_time=time.localtime()[:6])
         manifest_info.compress_type = zipfile.ZIP_DEFLATED
@@ -787,6 +829,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     log(f"PC zip: {pc_zip}")
     log(f"Source: {source_dir}")
     log(f"Version: {version}")
+    if pc_info.get("entry_prefix"):
+        log(f"PC zip root prefix: {pc_info['entry_prefix']}")
     log(f"Godot: {godot_bin}")
     if godot_home:
         log(f"Godot HOME: {godot_home}")

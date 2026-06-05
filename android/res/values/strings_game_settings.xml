@@ -577,7 +577,7 @@
     <string name="launch_requires_payload">Import a game zip before launching.</string>
     <string name="launch_requires_compat_pack">Install or select a compatible mobile compatibility pack before launching.</string>
     <string name="launch_incompatible_compat_pack_dialog_title">Compatibility pack version mismatch</string>
-    <string name="launch_incompatible_compat_pack_dialog_message">Selected pack: %1$s\nPack target: %2$s\nCurrent game: %3$s\n\nThis check only compares game version labels. You can switch packs in Versions or continue anyway.</string>
+    <string name="launch_incompatible_compat_pack_dialog_message">Selected pack: %1$s\nPack support: %2$s\nCurrent game: %3$s\n\nThis check only compares game version labels/support lists. You can switch packs in Versions or continue anyway.</string>
     <string name="launch_anyway">Launch anyway</string>
     <string name="status_busy_prepare_launch">Preparing game files…</string>
     <string name="import_game_payload">Import game zip</string>
@@ -637,7 +637,7 @@
     <string name="version_manager_detail_game_version">Game version</string>
     <string name="version_manager_detail_commit">Commit</string>
     <string name="version_manager_detail_sts2_dll_sha">sts2.dll SHA-256</string>
-    <string name="version_manager_detail_target_version">Target version</string>
+    <string name="version_manager_detail_target_version">Supported version(s)</string>
     <string name="version_manager_detail_compat_version">Compat version</string>
     <string name="version_manager_detail_channel">Channel</string>
     <string name="version_manager_detail_storage_path">Storage path</string>
