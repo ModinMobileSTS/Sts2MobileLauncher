@@ -97,7 +97,7 @@ For the safety of your device and accounts, please pay strict attention to the f
 ### 2. Get the Source Code
 Because it includes the compatibility pack submodule, please clone with the `--recursive` flag:
 ```bash
-git clone --recursive https://github.com/YourUsername/Sts2MobileLauncher.git
+git clone --recursive https://github.com/ModinMobileSTS/Sts2MobileLauncher.git
 cd Sts2MobileLauncher
 ```
 
