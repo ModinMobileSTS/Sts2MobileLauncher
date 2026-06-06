@@ -581,8 +581,7 @@ public final class GameVersionManagerPage {
 		button.setMinHeight(ExtraSettingsUi.dp(context, 42));
 		button.setAllCaps(false);
 		if (iconRes != 0) {
-			button.setIconResource(iconRes);
-			button.setIconTint(ColorStateList.valueOf(textColor));
+			MaterialSymbols.applyButtonIcon(button, iconRes, ColorStateList.valueOf(textColor), 24);
 		}
 		return button;
 	}

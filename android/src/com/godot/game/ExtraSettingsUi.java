@@ -166,8 +166,7 @@ public final class ExtraSettingsUi {
 
 	public static ImageView icon(Context context, int iconRes, int tint, int sizeDp) {
 		ImageView image = new ImageView(context);
-		image.setImageResource(iconRes);
-		image.setColorFilter(tint);
+		image.setImageDrawable(MaterialSymbols.drawable(context, iconRes, tint, sizeDp));
 		int size = dp(context, sizeDp);
 		image.setLayoutParams(new LinearLayout.LayoutParams(size, size));
 		return image;
@@ -210,8 +209,7 @@ public final class ExtraSettingsUi {
 
 	public static MaterialButton iconButton(Context context, int iconRes) {
 		MaterialButton button = new MaterialButton(context);
-		button.setIconResource(iconRes);
-		button.setIconTint(ColorStateList.valueOf(COLOR_ON_SURFACE_VARIANT));
+		MaterialSymbols.applyButtonIcon(button, iconRes, ColorStateList.valueOf(COLOR_ON_SURFACE_VARIANT), 24);
 		button.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
 		button.setText("");
 		button.setMinWidth(0);
@@ -237,8 +235,7 @@ public final class ExtraSettingsUi {
 		button.setShapeAppearanceModel(ShapeAppearanceModel.builder().setAllCornerSizes(dp(context, 18)).build());
 		button.setPadding(dp(context, 16), dp(context, 10), dp(context, 16), dp(context, 10));
 		if (iconRes != 0) {
-			button.setIconResource(iconRes);
-			button.setIconTint(ColorStateList.valueOf(COLOR_ON_PRIMARY));
+			MaterialSymbols.applyButtonIcon(button, iconRes, ColorStateList.valueOf(COLOR_ON_PRIMARY), 24);
 		}
 		return button;
 	}
@@ -247,7 +244,7 @@ public final class ExtraSettingsUi {
 		MaterialButton button = filledButton(context, textRes, iconRes);
 		button.setTextColor(COLOR_ON_PRIMARY_CONTAINER);
 		if (iconRes != 0) {
-			button.setIconTint(ColorStateList.valueOf(COLOR_ON_PRIMARY_CONTAINER));
+			MaterialSymbols.applyButtonIcon(button, iconRes, ColorStateList.valueOf(COLOR_ON_PRIMARY_CONTAINER), 24);
 		}
 		button.setBackgroundTintList(ColorStateList.valueOf(COLOR_PRIMARY_CONTAINER));
 		return button;
@@ -263,8 +260,7 @@ public final class ExtraSettingsUi {
 		button.setRippleColor(ColorStateList.valueOf(Color.argb(72, 201, 238, 211)));
 		button.setShapeAppearanceModel(ShapeAppearanceModel.builder().setAllCornerSizes(dp(context, 18)).build());
 		if (iconRes != 0) {
-			button.setIconResource(iconRes);
-			button.setIconTint(ColorStateList.valueOf(COLOR_PRIMARY));
+			MaterialSymbols.applyButtonIcon(button, iconRes, ColorStateList.valueOf(COLOR_PRIMARY), 24);
 		}
 		return button;
 	}

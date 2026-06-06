@@ -291,9 +291,7 @@ public final class ModsPage {
 		chip.setInsetBottom(0);
 		chip.setPadding(ExtraSettingsUi.dp(context, 14), ExtraSettingsUi.dp(context, 7), ExtraSettingsUi.dp(context, 14), ExtraSettingsUi.dp(context, 7));
 		if (iconRes != 0) {
-			chip.setIconResource(iconRes);
-			chip.setIconTint(ColorStateList.valueOf(ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT));
-			chip.setIconSize(ExtraSettingsUi.dp(context, 18));
+			MaterialSymbols.applyButtonIcon(chip, iconRes, ColorStateList.valueOf(ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT), 18);
 		}
 		chip.setOnClickListener(v -> {
 			rememberChipScroll();
@@ -361,7 +359,7 @@ public final class ModsPage {
 
 	private void addFilterMenuItem(Menu menu, int itemId, int titleRes, int iconRes, String value) {
 		MenuItem item = menu.add(FILTER_GROUP_ID, itemId, Menu.NONE, titleRes);
-		item.setIcon(iconRes);
+		MaterialSymbols.applyMenuIcon(context, item, iconRes, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, 24);
 		item.setCheckable(true);
 		item.setChecked(value.equals(filter));
 	}
@@ -410,7 +408,7 @@ public final class ModsPage {
 
 	private void addSortMenuItem(Menu menu, int itemId, int titleRes, int iconRes, String value) {
 		MenuItem item = menu.add(SORT_GROUP_ID, itemId, Menu.NONE, titleRes);
-		item.setIcon(iconRes);
+		MaterialSymbols.applyMenuIcon(context, item, iconRes, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, 24);
 		item.setCheckable(true);
 		item.setChecked(value.equals(sortMode));
 	}
@@ -437,7 +435,7 @@ public final class ModsPage {
 			popup.setForceShowIcon(true);
 			popup.setOnDismissListener(menuPopup -> restoreRememberedChipScroll());
 			Menu menu = popup.getMenu();
-			menu.add(Menu.NONE, PROFILE_CREATE_ID, 0, R.string.mod_profile_save_current).setIcon(R.drawable.ic_add_circle_24);
+			MaterialSymbols.applyMenuIcon(context, menu.add(Menu.NONE, PROFILE_CREATE_ID, 0, R.string.mod_profile_save_current), R.drawable.ic_add_circle_24, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, 24);
 			for (int i = 0; i < state.profiles.size(); i++) {
 				ExtraSettingsRepository.ModProfile profile = state.profiles.get(i);
 				boolean active = state.activeProfileId.equals(profile.id);
@@ -446,14 +444,14 @@ public final class ModsPage {
 				}
 				int itemId = PROFILE_ITEM_BASE_ID + i;
 				MenuItem item = menu.add(PROFILE_APPLY_GROUP_ID, itemId, i + 10, profile.name);
-				item.setIcon(active ? R.drawable.ic_check_circle_24 : R.drawable.ic_layers_24);
+				MaterialSymbols.applyMenuIcon(context, item, active ? R.drawable.ic_check_circle_24 : R.drawable.ic_layers_24, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, 24);
 				item.setCheckable(true);
 				item.setChecked(active);
 				profileItems.put(itemId, profile);
 			}
 			menu.setGroupCheckable(PROFILE_APPLY_GROUP_ID, true, true);
 			if (activeProfile != null && !"default".equals(activeProfile.id)) {
-				menu.add(Menu.NONE, PROFILE_DELETE_ACTIVE_ID, 1000, R.string.mod_profile_delete_active).setIcon(R.drawable.ic_delete_24);
+				MaterialSymbols.applyMenuIcon(context, menu.add(Menu.NONE, PROFILE_DELETE_ACTIVE_ID, 1000, R.string.mod_profile_delete_active), R.drawable.ic_delete_24, ExtraSettingsUi.COLOR_ERROR, 24);
 			}
 			ExtraSettingsRepository.ModProfile finalActiveProfile = activeProfile;
 			popup.setOnMenuItemClickListener(item -> {
@@ -843,7 +841,7 @@ public final class ModsPage {
 		transition.setDuration(220);
 		TransitionManager.beginDelayedTransition(transitionRoot, transition);
 		groupList.setVisibility(collapsed ? View.GONE : View.VISIBLE);
-		expand.setIconResource(collapsed ? R.drawable.ic_expand_more_24 : R.drawable.ic_expand_less_24);
+		MaterialSymbols.applyButtonIcon(expand, collapsed ? R.drawable.ic_expand_more_24 : R.drawable.ic_expand_less_24, ColorStateList.valueOf(ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT), 24);
 	}
 
 	private void addGroupSpacing(LinearLayout parent, View child) {

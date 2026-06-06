@@ -73,6 +73,10 @@ public final class SettingsPage {
 	private enum SettingsSegment { GRAPHICS, INPUT, SAVE, SYSTEM }
 	private static SettingsSegment lastSelectedSegment = SettingsSegment.GRAPHICS;
 
+	public static void selectSaveSegment() {
+		lastSelectedSegment = SettingsSegment.SAVE;
+	}
+
 	private final Context context;
 	private final ExtraSettingsRepository repository;
 	private final ExtraSettingsActions actions;

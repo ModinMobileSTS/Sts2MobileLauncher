@@ -1,6 +1,7 @@
 package com.godot.game;
 
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -121,7 +122,7 @@ public final class WelcomeSetupPage {
 		}
 		if (nextButton != null) {
 			nextButton.setText(stepIndex == STEP_DONE ? R.string.welcome_enter_settings : R.string.welcome_action_next);
-			nextButton.setIconResource(stepIndex == STEP_DONE ? R.drawable.ic_settings_24 : R.drawable.ic_arrow_forward_24);
+			MaterialSymbols.applyButtonIcon(nextButton, stepIndex == STEP_DONE ? R.drawable.ic_settings_24 : R.drawable.ic_arrow_forward_24, ColorStateList.valueOf(ExtraSettingsUi.COLOR_ON_PRIMARY), 24);
 		}
 	}
 

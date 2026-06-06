@@ -29,7 +29,9 @@ public interface ExtraSettingsActions {
 	void openFileBrowser();
 	void openUrl(String url);
 	void requestUpdateCheck();
+	void openModsTab();
 	void openSettingsTab();
+	void openSaveSettingsTab();
 	void openVersionsTab();
 	void refreshCurrentScreen();
 	void showMessage(String message);

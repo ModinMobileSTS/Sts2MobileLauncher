@@ -116,13 +116,33 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 		bottomNavigationView = new BottomNavigationView(this);
 		bottomNavigationView.inflateMenu(R.menu.menu_extra_settings_nav);
-		bottomNavigationView.setBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
-		ColorStateList itemColors = new ColorStateList(
+		bottomNavigationView.setBackgroundColor(Color.rgb(30, 35, 31));
+		ColorStateList itemIconColors = new ColorStateList(
 			new int[][] { new int[] { android.R.attr.state_checked }, new int[] {} },
-			new int[] { ExtraSettingsUi.COLOR_PRIMARY, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT }
+			new int[] { Color.rgb(207, 233, 214), Color.rgb(193, 201, 193) }
 		);
-		bottomNavigationView.setItemIconTintList(itemColors);
-		bottomNavigationView.setItemTextColor(itemColors);
+		ColorStateList itemTextColors = new ColorStateList(
+			new int[][] { new int[] { android.R.attr.state_checked }, new int[] {} },
+			new int[] { Color.rgb(225, 227, 223), Color.rgb(193, 201, 193) }
+		);
+		bottomNavigationView.getMenu().findItem(R.id.nav_game).setIcon(MaterialSymbols.drawable(this, "stadia_controller", itemIconColors, 24));
+		bottomNavigationView.getMenu().findItem(R.id.nav_mods).setIcon(MaterialSymbols.drawable(this, "extension", itemIconColors, 24));
+		bottomNavigationView.getMenu().findItem(R.id.nav_versions).setIcon(MaterialSymbols.drawable(this, "layers", itemIconColors, 24));
+		bottomNavigationView.getMenu().findItem(R.id.nav_settings).setIcon(MaterialSymbols.drawable(this, "settings", itemIconColors, 24));
+		bottomNavigationView.getMenu().findItem(R.id.nav_about).setIcon(MaterialSymbols.drawable(this, "info", itemIconColors, 24));
+		bottomNavigationView.setItemIconTintList(itemIconColors);
+		bottomNavigationView.setItemTextColor(itemTextColors);
+		bottomNavigationView.setItemRippleColor(ColorStateList.valueOf(Color.argb(72, 129, 217, 154)));
+		bottomNavigationView.setItemActiveIndicatorEnabled(true);
+		bottomNavigationView.setItemActiveIndicatorColor(ColorStateList.valueOf(Color.rgb(51, 75, 59)));
+		bottomNavigationView.setItemActiveIndicatorWidth(ExtraSettingsUi.dp(this, 64));
+		bottomNavigationView.setItemActiveIndicatorHeight(ExtraSettingsUi.dp(this, 32));
+		bottomNavigationView.setItemActiveIndicatorShapeAppearance(
+			com.google.android.material.shape.ShapeAppearanceModel.builder()
+				.setAllCornerSizes(ExtraSettingsUi.dp(this, 16))
+				.build()
+		);
+		bottomNavigationView.setItemTextAppearanceActiveBoldEnabled(true);
 		bottomNavigationView.setLabelVisibilityMode(com.google.android.material.navigation.NavigationBarView.LABEL_VISIBILITY_LABELED);
 		bottomNavigationView.setOnItemSelectedListener(item -> {
 			openTab(item.getItemId());
@@ -1117,8 +1137,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			content.setPadding(padding, padding, padding, padding);
 
 			ImageView gear = new ImageView(GameSettingsActivity.this);
-			gear.setImageResource(R.drawable.ic_settings_24);
-			gear.setColorFilter(ExtraSettingsUi.COLOR_PRIMARY);
+			gear.setImageDrawable(MaterialSymbols.drawable(GameSettingsActivity.this, "settings", ExtraSettingsUi.COLOR_PRIMARY, 56));
 			LinearLayout.LayoutParams gearParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(GameSettingsActivity.this, 56), ExtraSettingsUi.dp(GameSettingsActivity.this, 56));
 			gearParams.gravity = Gravity.CENTER_HORIZONTAL;
 			content.addView(gear, gearParams);
@@ -1253,12 +1272,27 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	}
 
 	@Override
+	public void openModsTab() {
+		if (bottomNavigationView != null) {
+			bottomNavigationView.setSelectedItemId(R.id.nav_mods);
+		} else {
+			openTab(R.id.nav_mods);
+		}
+	}
+
+	@Override
 	public void openSettingsTab() {
 		if (bottomNavigationView != null) {
 			bottomNavigationView.setSelectedItemId(R.id.nav_settings);
 		} else {
 			openTab(R.id.nav_settings);
 		}
+	}
+
+	@Override
+	public void openSaveSettingsTab() {
+		SettingsPage.selectSaveSegment();
+		openSettingsTab();
 	}
 
 	@Override

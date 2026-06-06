@@ -146,7 +146,7 @@ public class NexusModsStoreActivity extends AppCompatActivity {
 
 		TextInputLayout searchLayout = new TextInputLayout(this);
 		searchLayout.setHint(getString(R.string.nexus_mod_store_search_hint));
-		searchLayout.setStartIconDrawable(R.drawable.ic_search_24);
+		searchLayout.setStartIconDrawable(MaterialSymbols.drawable(this, R.drawable.ic_search_24, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, 24));
 		searchLayout.setBoxBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
 		searchInput = new TextInputEditText(searchLayout.getContext());
 		searchInput.setSingleLine(true);
