@@ -1,7 +1,7 @@
 
 <p align="center">
   <!-- 替换为您的实际应用图标路径或图床URL -->
-  <img src="docs/images/icon.png" width="128" alt="App Icon">
+  <img src="doc/images/icon.png" width="128" alt="App Icon">
 </p>
 
 <h1 align="center">Slay the Spire 2 Android 启动器</h1>
@@ -23,10 +23,10 @@
 
 <p align="center">
   <!-- 请将 src 替换为实际截图路径 -->
-  <img src="docs/images/screenshot_1.jpg" width="24%" alt="首页仪表盘">
-  <img src="docs/images/screenshot_2.jpg" width="24%" alt="Steam 下载">
-  <img src="docs/images/screenshot_3.jpg" width="24%" alt="MOD 管理">
-  <img src="docs/images/screenshot_4.jpg" width="24%" alt="游戏内画面">
+  <img src="doc/images/screenshot_1.jpg" width="24%" alt="首页仪表盘">
+  <img src="doc/images/screenshot_2.jpg" width="24%" alt="Steam 下载">
+  <img src="doc/images/screenshot_3.jpg" width="24%" alt="MOD 管理">
+  <img src="doc/images/screenshot_4.jpg" width="24%" alt="游戏内画面">
 </p>
 
 ## 📖 项目简介
