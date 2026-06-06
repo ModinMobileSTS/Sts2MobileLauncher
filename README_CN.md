@@ -91,7 +91,7 @@
 ### 2. 获取源码
 因为包含了兼容包子模块，克隆时请带上 `--recursive` 参数：
 ```bash
-git clone --recursive https://github.com/您的用户名/Sts2MobileLauncher.git
+git clone --recursive https://github.com/ModinMobileSTS/Sts2MobileLauncher.git
 cd Sts2MobileLauncher
 ```
 
