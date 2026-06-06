@@ -179,6 +179,8 @@ OS.GetDataDir()/port_compat.pck
 
 成功后通过 `ProjectSettings.LoadResourcePack()` 挂载资源，并在节点加入树时替换已知桌面 shader 为 `res://shaders/mobile_compat/*`。
 
+卡面/先古卡遮罩使用的 `res://shaders/blur/canvas_group_mask_blur.gdshader` 不再进入替换表，也不预加载对应的 `mobile_compat/canvas_group_mask_blur_compat.gdshader`。该移动替代版在开启着色器兼容后可能把先古卡面渲染成纯白，因此保留原版 shader。
+
 另外 `TransitionMaterialPatches` 会在 `NTransition._Ready` 后复制场景默认 `ShaderMaterial`，并在原版 `AssetCache.GetMaterial()` 返回 `fade_transition_mat.tres` / `fight_transition_mat.tres` 时返回缓存材质的副本。这样关闭预加载时，原版 `LoadCommonAndMainMenuAssets()` 触发的 missed-cache 清理即使 dispose 了缓存条目，也不会把正在执行主菜单 `FadeIn()` 的 transition 材质一并释放，避免 `ObjectDisposedException: Godot.ShaderMaterial` 后黑屏。
 
 是否启用由附加设置中的 `shader_compatibility_mode` 控制。

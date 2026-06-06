@@ -44,6 +44,7 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/ModLoaderPatches.cs" \
     "STS2AndroidPortCompat/Patches/SavePathPatches.cs" \
     "STS2AndroidPortCompat/Patches/LifecycleAndPerformancePatches.cs" \
+    "STS2AndroidPortCompat/Patches/ShaderCompatibilityPatches.cs" \
     "STS2AndroidPortCompat/Patches/AndroidStartupLoadingScreen.cs" \
     "STS2AndroidPortCompat/Patches/AndroidSettingsMerge.cs" \
     "STS2AndroidPortCompat/Patches/AndroidInGameSettingsPatches.cs" \
