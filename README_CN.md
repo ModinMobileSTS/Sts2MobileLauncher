@@ -1,6 +1,3 @@
-帮我翻译一个英文版，并且带跳转中文版的链接（README_CN.md）：
-
-
 <p align="center">
   <img src="doc/images/icon.png" width="128" alt="App Icon">
 </p>
