@@ -597,6 +597,8 @@
     <string name="steam_link_desc">游玩此移植版前请务必先购买支持Steam上的官方桌面版本！</string>
     <string name="download_link_title">游戏下载</string>
     <string name="download_link_desc">打开夸克网盘游戏本体分享。</string>
+    <string name="issue_feedback_title">问题反馈</string>
+    <string name="issue_feedback_desc">打开 GitHub，新建启动器 Issue。</string>
     <string name="update_check_title">检查启动器更新</string>
     <string name="update_check_desc">启动时检查更新</string>
     <string name="update_check_manual">立即检查</string>

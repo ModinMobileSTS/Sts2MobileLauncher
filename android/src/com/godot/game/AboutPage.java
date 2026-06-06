@@ -13,7 +13,8 @@ import com.google.android.material.materialswitch.MaterialSwitch;
 
 public final class AboutPage {
 	private static final String AUTHOR_BILIBILI_URL = "https://space.bilibili.com/116375500";
-	private static final String AUTHOR_GITHUB_URL = "https://github.com/wsdx233";
+	private static final String LAUNCHER_GITHUB_URL = "https://github.com/ModinMobileSTS/Sts2MobileLauncher";
+	private static final String LAUNCHER_NEW_ISSUE_URL = LAUNCHER_GITHUB_URL + "/issues/new";
 	private static final String GAME_DOWNLOAD_URL = ExtraSettingsUpdateChecker.GAME_DOWNLOAD_URL;
 	private static final String STEAM_URL = "https://store.steampowered.com/app/2868840/Slay_the_Spire_2/";
 	private static final String SLAY_AMETHYST_URL = "https://github.com/ModinMobileSTS/SlayTheAmethystModded";
@@ -43,6 +44,7 @@ public final class AboutPage {
 		ExtraSettingsUi.addCardSpacing(root, authorCard());
 		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_desktop_windows_24, R.string.steam_link_title, R.string.steam_link_desc, STEAM_URL));
 		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_download_24, R.string.download_link_title, R.string.download_link_desc, GAME_DOWNLOAD_URL));
+		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_error_outline_24, R.string.issue_feedback_title, R.string.issue_feedback_desc, LAUNCHER_NEW_ISSUE_URL));
 		ExtraSettingsUi.addCardSpacing(root, updateCheckCard());
 		ExtraSettingsUi.addCardSpacing(root, friendHeader());
 		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_extension_24, R.string.friend_link_amethyst_title, R.string.friend_link_amethyst_desc, SLAY_AMETHYST_URL));
@@ -70,7 +72,7 @@ public final class AboutPage {
 		MaterialButton bilibili = ExtraSettingsUi.tonalButton(context, R.string.author_link_bilibili, R.drawable.ic_open_in_new_24);
 		MaterialButton github = ExtraSettingsUi.outlineButton(context, R.string.author_link_github, R.drawable.ic_code_24);
 		bilibili.setOnClickListener(v -> actions.openUrl(AUTHOR_BILIBILI_URL));
-		github.setOnClickListener(v -> actions.openUrl(AUTHOR_GITHUB_URL));
+		github.setOnClickListener(v -> actions.openUrl(LAUNCHER_GITHUB_URL));
 		links.addView(bilibili, weighted(0));
 		links.addView(github, weighted(10));
 		ExtraSettingsUi.addSmallSpacing(content, links);

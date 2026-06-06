@@ -597,6 +597,8 @@
     <string name="steam_link_desc">Before playing this mobile port, please purchase and support the official desktop version on Steam!</string>
     <string name="download_link_title">Game download</string>
     <string name="download_link_desc">Open the Quark share for the game package.</string>
+    <string name="issue_feedback_title">Issue feedback</string>
+    <string name="issue_feedback_desc">Open GitHub to create a new launcher issue.</string>
     <string name="update_check_title">Check for launcher updates</string>
     <string name="update_check_desc">Automatically checks the GitHub releases of ModinMobileSTS/Sts2MobileLauncher when Extra Settings opens.</string>
     <string name="update_check_manual">Check now</string>
