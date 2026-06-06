@@ -1,13 +1,17 @@
 
+<div align="right">
+  <strong><a href="README_CN.md">🇨🇳 简体中文 (Chinese)</a></strong>
+</div>
+
 <p align="center">
-  <!-- 替换为您的实际应用图标路径或图床URL -->
+  <!-- Replace with your actual app icon path or image URL -->
   <img src="doc/images/icon.png" width="128" alt="App Icon">
 </p>
 
-<h1 align="center">Slay the Spire 2 Android 启动器</h1>
+<h1 align="center">Slay the Spire 2 Android Launcher</h1>
 
 <p align="center">
-  基于 Godot/Mono 运行时的非官方开源《杀戮尖塔2》移动端兼容层与启动器环境。
+  An unofficial, open-source mobile compatibility layer and launcher environment for <i>Slay the Spire 2</i>, based on the Godot/Mono runtime.
 </p>
 
 <p align="center">
@@ -18,120 +22,119 @@
   <img src="https://img.shields.io/badge/Godot-4.5_Mono-478CBF.svg" alt="Godot">
 </p>
 
-## 📱 应用截图
-
+## Screenshots
 
 <p align="center">
-  <!-- 请将 src 替换为实际截图路径 -->
-  <img src="doc/images/screenshot_1.jpg" width="24%" alt="首页仪表盘">
-  <img src="doc/images/screenshot_2.jpg" width="24%" alt="Steam 下载">
-  <img src="doc/images/screenshot_3.jpg" width="24%" alt="MOD 管理">
-  <img src="doc/images/screenshot_4.jpg" width="24%" alt="游戏内画面">
+  <!-- Please replace the src with actual screenshot paths -->
+  <img src="doc/images/screenshot_1.jpg" width="24%" alt="Home Dashboard">
+  <img src="doc/images/screenshot_2.jpg" width="24%" alt="Steam Download">
+  <img src="doc/images/screenshot_3.jpg" width="24%" alt="MOD Management">
+  <img src="doc/images/screenshot_4.jpg" width="24%" alt="In-game Footage">
 </p>
 
-## 📖 项目简介
+## About the Project
 
-本项目是一个实验性的、非官方的《杀戮尖塔2》Android 移植与启动器框架。它**不包含**任何游戏本体文件，而是提供了一个 Android 运行外壳，让玩家能在手机上导入并运行自己合法拥有的 PC 版游戏文件，同时支持 MOD 加载与 Steam 云同步。
+This project is an experimental, unofficial Android port and launcher framework for *Slay the Spire 2*. It **DOES NOT** contain any base game files. Instead, it provides an Android shell that allows players to import and run their legally owned PC game files on mobile devices, featuring support for Mod loading and Steam Cloud synchronization.
 
-**应用核心架构分为三层：**
-1. **Android 启动器外壳 (`android/`)：** 负责游戏数据的导入、Steam 账号登录与本体下载、Steam 云存档同步、本地文件/MOD 管理，并在准备就绪后拉起 Godot 游戏进程。
-2. **Android 兼容包 (`port-mod/` 子模块)：** 作为底层 Hook（基于 Harmony），在游戏启动的最早期加载，用于拦截并修复 PC 版在 Android 上的各种水土不服（如输入适配、路径重定向、PC 专有 Shader 替换、MOD 加载器桥接等）。
-3. **游戏本体 (用户提供)：** 由用户通过导入 PC 版 `SlayTheSpire2.zip` 或在应用内登录 Steam 账号通过 SteamPipe 接口合法下载。
-
----
-
-## ⚠️ 法律声明 (Disclaimer)
-
-- **非官方作品：** 本项目为玩家社区开源的技术研究工程，不隶属于 Mega Crit、Slay the Spire 2 或 Godot 引擎官方，也不能代表其任何立场。
-- **不提供游戏资产：** 本仓库**绝对不包含**、也不分发任何受版权保护的商业游戏资源（包含但不限于音频、图像、PCK文件、DLL核心逻辑等）。
-- **合法使用：** 请遵守相关软件许可、平台规则和当地法律。您必须**合法拥有**《Slay the Spire 2》的 PC 副本，才能使用此工具在您自己的设备上运行游戏。
-- **禁止分发侵权 APK：** 请勿将打包了商业游戏资产的直装版 APK 用于公开发布或商业牟利。
+**The core architecture consists of three layers:**
+1. **Android Launcher Shell (`android/`):** Handles game data importing, Steam login and game downloading, Steam Cloud save syncing, and local file/MOD management. Once everything is ready, it boots up the Godot game process.
+2. **Android Compatibility Pack (`port-mod/` submodule):** Acts as a low-level hook (based on Harmony), loaded at the very beginning of the game boot process. It intercepts and fixes various PC-to-Android incompatibilities (e.g., input adaptation, path redirection, PC-specific shader replacement, Mod loader bridging).
+3. **Base Game (Provided by User):** Supplied by the user either by importing the PC version's `SlayTheSpire2.zip` or by legally downloading it via the SteamPipe API after logging into their Steam account within the app.
 
 ---
 
-## 🙏 鸣谢与参考项目
+## Legal Disclaimer
 
-本项目的诞生离不开开源社区的探索，特别感谢以下项目的启发与代码参考：
+- **Unofficial Project:** This is an open-source technical research project created by the player community. It is not affiliated with Mega Crit, *Slay the Spire 2*, or the Godot Engine, nor does it represent their views.
+- **No Game Assets Provided:** This repository **ABSOLUTELY DOES NOT** contain or distribute any copyrighted commercial game assets (including but not limited to audio, images, PCK files, core logic DLLs, etc.).
+- **Legal Use:** Please comply with relevant software licenses, platform rules, and local laws. You must **legally own** a PC copy of *Slay the Spire 2* to use this tool to run the game on your own device.
+- **No Pirated APK Distribution:** Do not use standalone APKs bundled with commercial game assets for public release or commercial monetization.
+
+---
+
+## Credits & References
+
+The creation of this project relies heavily on the explorations of the open-source community. Special thanks to the following projects for their inspiration and code references:
 
 - **[StS2-Launcher_Mod_Manager](https://github.com/iunius612/StS2-Launcher_Mod_Manager)**
-  提供了底层的 Godot/Mono 运行时剥离思路、Android 兼容补丁加载顺序以及部分构建脚本的设计参考。
+  Provided underlying concepts for stripping the Godot/Mono runtime, Android compatibility patch load orders, and design references for some build scripts.
 - **[SlayTheAmethystModded](https://github.com/ModinMobileSTS/SlayTheAmethystModded)**
-  STS1 的非官方移动端启动器。本作的 `steam-protocol` (Steam 协议)、`steam-content` (SteamPipe 游戏下载) 以及 Steam Cloud 云存档的逆向接入方案与源码主要移植/改编自该项目。
+  An unofficial mobile launcher for STS1. The reverse-engineered integration and source code for `steam-protocol`, `steam-content` (SteamPipe game downloads), and Steam Cloud saves in this project are primarily ported/adapted from it.
 - **[STS2-RitsuLib](https://github.com/BAKAOLC/STS2-RitsuLib) / [BaseLib-StS2](https://github.com/Alchyr/BaseLib-StS2)**
-  作为 Android 端 MOD 兼容性排查的重要测试基准参考库。
+  Served as vital test baseline reference libraries for troubleshooting Android MOD compatibility.
 
-*(详细的第三方开源协议见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
-
----
-
-## 🛡️ 核心安全说明
-
-为了您的设备与账号安全，使用及编译本应用时请务必注意：
-
-1. **ADB 与 Debuggable 风险：**
-   当前默认的 release 构建选项中**保留了 `debuggable=true`**（为了便于发生崩溃时抓取日志排查）。这意味着任何连接到您的手机并获得 `ADB` 权限的电脑或恶意软件，都能提取此应用的数据（包含加密保存的 Steam 凭据）。**请绝对不要将手机的 ADB 调试权限授予不可信的电脑或第三方应用市场。**
-2. **Steam 账号安全：**
-   - 本应用**绝不会**将您的 Steam 账号密码上传至任何第三方服务器。密码仅用于单次向 Steam 服务器请求并换取 `Refresh Token`。
-   - `Refresh Token` 通过 Android 的 `EncryptedSharedPreferences` 加密保存在本地。
-   - **强烈建议：** 只使用从可信源码自行编译或可信渠道获取的 APK 登录 Steam。
-3. **恶意 MOD 风险：**
-   《杀戮尖塔2》的 MOD 本质上是任意执行的 C# 代码。**恶意 MOD 可以绕过沙盒直接读取您手机上的本地文件（包括存有 Steam Token 的配置）**。在尝试安装来源不明的未知 MOD 之前，**请务必在设置中退出 Steam 登录**，以防账号被盗。
+*(For detailed third-party open-source licenses, please see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
 
 ---
 
-## 🛠️ 如何构建本项目 (APK打包)
+## Core Security Notes
 
-> 💡 **提示:** 完整的环境配置与参数说明请查阅 [`doc/build/building-and-packaging.md`](doc/build/building-and-packaging.md)。
+For the safety of your device and accounts, please pay strict attention to the following when using and compiling this app:
 
-### 1. 环境准备
-- **操作系统:** Linux / macOS / WSL (Windows)
-- **工具链:** 
+1. **ADB & `Debuggable` Risks:**
+   The current default release build configuration **keeps `debuggable=true`** (to facilitate log capture in case of crashes). This means any computer or malicious software connected to your phone with `ADB` permissions can extract data from this app (including encrypted Steam credentials). **NEVER grant ADB debugging permissions to untrusted computers or third-party app stores.**
+2. **Steam Account Security:**
+   - This app will **NEVER** upload your Steam account password to any third-party server. The password is only used for a one-time request to Steam servers to exchange for a `Refresh Token`.
+   - The `Refresh Token` is encrypted and stored locally via Android's `EncryptedSharedPreferences`.
+   - **Strongly Recommended:** Only log into Steam using an APK compiled by yourself from trusted source code or obtained from a highly trusted channel.
+3. **Malicious MOD Risks:**
+   Mods for *Slay the Spire 2* are essentially arbitrarily executed C# code. **Malicious Mods can bypass the sandbox to directly read local files on your phone (including configurations containing your Steam Token).** Before attempting to install unknown Mods from untrusted sources, **make sure to log out of Steam in the app settings** to prevent account theft.
+
+---
+
+## How to Build (APK Packaging)
+
+> **Note:** For complete environment configuration and parameter details, please refer to [`doc/build/building-and-packaging.md`](doc/build/building-and-packaging.md).
+
+### 1. Prerequisites
+- **OS:** Linux / macOS / WSL (Windows)
+- **Toolchain:** 
   - JDK 17+
   - Android SDK (API 35) & NDK
-  - .NET SDK (用于编译 C# 兼容插件)
+  - .NET SDK (for compiling C# compat plugins)
   - Python 3
 
-### 2. 获取源码
-因为包含了兼容包子模块，克隆时请带上 `--recursive` 参数：
+### 2. Get the Source Code
+Because it includes the compatibility pack submodule, please clone with the `--recursive` flag:
 ```bash
-git clone --recursive https://github.com/您的用户名/Sts2MobileLauncher.git
+git clone --recursive https://github.com/YourUsername/Sts2MobileLauncher.git
 cd Sts2MobileLauncher
 ```
 
-### 3. 配置本地环境
-复制环境变量模板，并根据你的本机实际路径修改 `.env` 文件：
+### 3. Local Environment Setup
+Copy the environment variable templates and modify the `.env` and `local.properties` files according to your actual local paths:
 ```bash
 cp .env.example .env
 cp local.properties.example local.properties
 ```
-> **注意：** `.env` 文件中必须配置好 `JAVA_HOME`、`ANDROID_HOME`、`DOTNET_BIN`，以及用于编译兼容包的原版 PC DLL 引用路径 (`STS2_ORIGINAL_*_REFERENCE_DIR`)。
+> **Note:** The `.env` file must configure `JAVA_HOME`, `ANDROID_HOME`, `DOTNET_BIN`, and the original PC DLL reference paths used for compiling the compatibility pack (`STS2_ORIGINAL_*_REFERENCE_DIR`).
 
-### 4. 同步运行时与依赖
-运行以下脚本，将大型的运行时产物（Godot模板、FMOD等）提取到指定位置（这些文件被 git ignore，需本地生成）：
+### 4. Sync Runtimes and Dependencies
+Run the following script to extract large runtime artifacts (Godot templates, FMOD, etc.) to their designated locations (these files are git-ignored and must be generated locally):
 ```bash
 tools/android/sync-runtime-from-references.sh
 ```
 
-### 5. 编译兼容包 (Compat Packs)
-将移动端兼容层 C# 代码编译为 DLL 并打包为 ZIP 放入 Assets：
+### 5. Compile Compatibility Packs (Compat Packs)
+Compile the mobile compatibility layer C# code into DLLs and package them as a ZIP into the Assets:
 ```bash
 tools/android/stage-bundled-compat-packs.sh
 ```
 
-### 6. 构建导入版 APK
-执行构建脚本。这将会输出一个**不包含**游戏本体的 “导入版 APK”（推荐的合规分发方式）：
+### 6. Build the Importer APK
+Run the build script. This will output an "Importer APK" that **DOES NOT** contain the base game (the recommended, legally compliant distribution method):
 ```bash
 tools/package/build_importer_apk.sh
 ```
-构建成功后，APK 将输出至 `dist/sts2-re-importer.apk`。
+Upon successful build, the APK will be output to `dist/sts2-re-importer.apk`.
 
 ---
 
-## 📚 更多文档
+## More Documentation
 
-如果您想参与开发、了解兼容包的运作原理或更深入的架构设计，请查阅 `doc/` 目录：
+If you want to contribute to development, understand how the compatibility packs work, or dive deeper into the architecture, please check the `doc/` directory:
 
-- [项目结构与版本模型](doc/architecture/project-structure.md)
-- [构建与打包详细指南](doc/build/building-and-packaging.md)
-- [运行时加载与兼容包生命周期](doc/runtime/compat-pack-loading-flow.md)
-- [MOD 兼容补丁开发注意事项](doc/modding/mod-and-compat-notes.md)
+- [Project Structure & Version Model](doc/architecture/project-structure.md)
+- [Detailed Guide to Building & Packaging](doc/build/building-and-packaging.md)
+- [Runtime Loading & Compat Pack Lifecycle](doc/runtime/compat-pack-loading-flow.md)
+- [Notes on Developing MOD Compatibility Patches](doc/modding/mod-and-compat-notes.md)
