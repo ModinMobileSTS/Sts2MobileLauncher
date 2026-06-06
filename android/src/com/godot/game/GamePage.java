@@ -275,11 +275,11 @@ public final class GamePage {
 		card.setFocusable(true);
 		card.setForeground(rippleForeground(16));
 
-		ImageView watermark = icon(iconGlyph, COLOR_PRIMARY, 180);
+		ImageView watermark = icon(iconGlyph, COLOR_PRIMARY, 135);
 		watermark.setAlpha(0.06f);
 		watermark.setRotation(-15f);
-		FrameLayout.LayoutParams watermarkParams = new FrameLayout.LayoutParams(dp(180), dp(180), Gravity.BOTTOM | Gravity.END);
-		watermarkParams.setMargins(0, 0, -dp(20), -dp(30));
+		FrameLayout.LayoutParams watermarkParams = new FrameLayout.LayoutParams(dp(135), dp(135), Gravity.BOTTOM | Gravity.END);
+		watermarkParams.setMargins(0, 0, -dp(15), -dp(23));
 		card.setWatermark(watermark);
 		card.addView(watermark, watermarkParams);
 
