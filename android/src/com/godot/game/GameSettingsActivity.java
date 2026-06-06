@@ -235,6 +235,11 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	@Override
 	public void launchGame() {
 		try {
+			LaunchProfileManager.LaunchProfile selectedProfile = launchProfileManager.getSelectedProfile();
+			if (selectedProfile != null && !selectedProfile.ready) {
+				showLaunchProfilePayloadMissingDialog(selectedProfile);
+				return;
+			}
 			PayloadManager.Status payloadStatus = payloadManager.getStatus();
 			if (!payloadStatus.ready) {
 				if (payloadManager.hasBundledPayload()) {
@@ -245,10 +250,6 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				return;
 			}
 			if (compatPackManager.isCompatPackEnabled()) {
-				CompatPackManager.CompatPack compatPack = compatPackManager.findBestMatch(payloadStatus.manifest);
-				if (compatPack != null && (compatPackManager.getSelectedPack() == null || !compatPack.packId.equals(compatPackManager.getSelectedPackId()))) {
-					compatPackManager.selectPack(compatPack.packId);
-				}
 				CompatPackManager.CompatPack selectedCompatPack = compatPackManager.getSelectedPack();
 				if (selectedCompatPack == null) {
 					showMessage(getString(R.string.launch_requires_compat_pack));
@@ -324,14 +325,6 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	@Override
 	public void requestInstallBundledCompatPacks() {
 		installBundledCompatPacksInBackground(true);
-	}
-
-	@Override
-	public void requestSelectCompatPack(String packId) {
-		runAsyncOperation(getString(R.string.status_busy_select_compat_pack), () -> {
-			compatPackManager.selectPack(packId);
-			return getString(R.string.status_select_compat_pack_done);
-		});
 	}
 
 	@Override
@@ -426,10 +419,12 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		try {
 			LaunchProfileManager.LaunchProfile profile = TextUtils.isEmpty(profileId) ? null : launchProfileManager.readProfile(profileId);
 			final LaunchProfileManager.GamePayload[] selectedPayload = new LaunchProfileManager.GamePayload[] { profile != null ? profile.payload : launchProfileManager.readPayload(payloadId) };
-			if (selectedPayload[0] == null || !selectedPayload[0].ready) {
+			if (profile == null && (selectedPayload[0] == null || !selectedPayload[0].ready)) {
 				showMessage(getString(R.string.launch_profile_payload_missing));
 				return;
 			}
+			final String[] selectedCompatPackId = new String[] { profile == null ? findBestCompatPackIdForPayload(selectedPayload[0]) : profile.compatPackId };
+			final MaterialButton[] compatButtonRef = new MaterialButton[1];
 
 			BottomSheetDialog dialog = new BottomSheetDialog(this);
 			LinearLayout content = ExtraSettingsUi.vertical(this);
@@ -461,17 +456,29 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			ExtraSettingsUi.addSmallSpacing(content, nameInput);
 
 			MaterialButton selectPayload = ExtraSettingsUi.outlineButton(this, R.string.launch_profile_select_payload_title, R.drawable.ic_folder_24);
-			selectPayload.setText(getString(R.string.launch_profile_select_payload_button, selectedPayload[0].label));
-			selectPayload.setEnabled(profile == null);
+			selectPayload.setText(getString(R.string.launch_profile_select_payload_button, launchProfilePayloadLabel(profile, selectedPayload[0])));
 			selectPayload.setOnClickListener(v -> showLaunchProfilePayloadPicker(selectedPayload[0], picked -> {
 				selectedPayload[0] = picked;
+				selectedCompatPackId[0] = findBestCompatPackIdForPayload(picked);
 				selectPayload.setText(getString(R.string.launch_profile_select_payload_button, picked.label));
+				if (compatButtonRef[0] != null) {
+					setLaunchProfileCompatButtonText(compatButtonRef[0], selectedCompatPackId[0]);
+				}
 				String currentName = nameInput.getText() == null ? "" : nameInput.getText().toString().trim();
 				if (currentName.isEmpty()) {
 					nameInput.setText(picked.label);
 				}
 			}));
 			ExtraSettingsUi.addSmallSpacing(content, selectPayload);
+
+			MaterialButton selectCompat = ExtraSettingsUi.outlineButton(this, R.string.launch_profile_select_compat_title, R.drawable.ic_extension_24);
+			compatButtonRef[0] = selectCompat;
+			setLaunchProfileCompatButtonText(selectCompat, selectedCompatPackId[0]);
+			selectCompat.setOnClickListener(v -> showLaunchProfileCompatPicker(selectedCompatPackId[0], selectedPayload[0], picked -> {
+				selectedCompatPackId[0] = picked;
+				setLaunchProfileCompatButtonText(selectCompat, selectedCompatPackId[0]);
+			}));
+			ExtraSettingsUi.addSmallSpacing(content, selectCompat);
 
 			TextView saveLabel = ExtraSettingsUi.sectionTitle(this, getString(R.string.launch_profile_save_mode_title));
 			ExtraSettingsUi.addSmallSpacing(content, saveLabel);
@@ -525,11 +532,15 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				dialog.dismiss();
 				runAsyncOperation(getString(R.string.status_busy_save_launch_profile), () -> {
 					if (profile == null) {
-						launchProfileManager.createProfile(selectedPayload[0].id, name, saveMode, modsMode, true);
+						if (selectedPayload[0] == null || !selectedPayload[0].ready) {
+							throw new IllegalStateException(getString(R.string.launch_profile_payload_missing));
+						}
+						launchProfileManager.createProfile(selectedPayload[0].id, name, saveMode, modsMode, selectedCompatPackId[0], true);
 						repository.ensureAppDirectories();
 						return getString(R.string.status_create_launch_profile_done);
 					}
-					launchProfileManager.updateProfile(profile.id, name, saveMode, modsMode, profile.compatPackId);
+					String updatedPayloadId = selectedPayload[0] == null ? profile.payloadId : selectedPayload[0].id;
+					launchProfileManager.updateProfile(profile.id, updatedPayloadId, name, saveMode, modsMode, selectedCompatPackId[0]);
 					repository.ensureAppDirectories();
 					return getString(R.string.status_update_launch_profile_done);
 				});
@@ -545,6 +556,88 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		} catch (Exception exception) {
 			showError(exception);
 		}
+	}
+
+	private String launchProfilePayloadLabel(LaunchProfileManager.LaunchProfile profile, LaunchProfileManager.GamePayload payload) {
+		if (payload != null) {
+			return payload.label;
+		}
+		if (profile != null && !TextUtils.isEmpty(profile.payloadId)) {
+			return getString(R.string.launch_profile_payload_missing_format, profile.payloadId);
+		}
+		return getString(R.string.launch_profile_payload_missing);
+	}
+
+	private String findBestCompatPackIdForPayload(LaunchProfileManager.GamePayload payload) {
+		try {
+			CompatPackManager.CompatPack pack = payload == null ? null : compatPackManager.findBestMatch(payload.manifest);
+			return pack == null ? "" : pack.packId;
+		} catch (Exception ignored) {
+			return "";
+		}
+	}
+
+	private void setLaunchProfileCompatButtonText(MaterialButton button, String compatPackId) {
+		button.setText(getString(R.string.launch_profile_select_compat_button, launchProfileCompatLabel(compatPackId)));
+	}
+
+	private String launchProfileCompatLabel(String compatPackId) {
+		if (TextUtils.isEmpty(compatPackId)) {
+			return getString(R.string.launch_profile_select_compat_none);
+		}
+		CompatPackManager.CompatPack pack = findCompatPackById(compatPackManager.listInstalledPacks(), compatPackId);
+		if (pack == null) {
+			return getString(R.string.launch_profile_compat_missing_format, compatPackId);
+		}
+		return getString(R.string.version_manager_selected_compat_format, pack.displayName, pack.targetLabel());
+	}
+
+	private CompatPackManager.CompatPack findCompatPackById(List<CompatPackManager.CompatPack> packs, String packId) {
+		if (TextUtils.isEmpty(packId) || packs == null) {
+			return null;
+		}
+		for (CompatPackManager.CompatPack pack : packs) {
+			if (pack.packId.equals(packId)) {
+				return pack;
+			}
+		}
+		return null;
+	}
+
+	private void showLaunchProfileCompatPicker(String currentCompatPackId, LaunchProfileManager.GamePayload selectedPayload, LaunchProfileCompatPickerCallback callback) {
+		try {
+			List<CompatPackManager.CompatPack> packs = compatPackManager.listInstalledPacks();
+			List<String> ids = new ArrayList<>();
+			List<String> labels = new ArrayList<>();
+			ids.add("");
+			labels.add(getString(R.string.launch_profile_select_compat_none));
+			int checked = 0;
+			for (CompatPackManager.CompatPack pack : packs) {
+				ids.add(pack.packId);
+				String label = getString(R.string.version_manager_selected_compat_format, pack.displayName, pack.targetLabel());
+				if (selectedPayload != null && compatPackManager.isPackCompatibleWithPayload(pack, selectedPayload.manifest)) {
+					label = label + " ✓";
+				}
+				labels.add(label);
+				if (pack.packId.equals(currentCompatPackId)) {
+					checked = ids.size() - 1;
+				}
+			}
+			new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.launch_profile_select_compat_title)
+				.setSingleChoiceItems(labels.toArray(new String[0]), checked, (dialog, which) -> {
+					callback.onCompatPicked(ids.get(which));
+					dialog.dismiss();
+				})
+				.setNegativeButton(android.R.string.cancel, null)
+				.show();
+		} catch (Exception exception) {
+			showError(exception);
+		}
+	}
+
+	private interface LaunchProfileCompatPickerCallback {
+		void onCompatPicked(String compatPackId);
 	}
 
 	private void showLaunchProfilePayloadPicker(LaunchProfileManager.GamePayload currentPayload, LaunchProfilePayloadPickerCallback callback) {
@@ -862,14 +955,6 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				PayloadManager.Status status = bundled
 					? payloadManager.extractBundledPayload((percent, stage) -> runOnUiThread(() -> progressDialog.setProgress(percent)), control)
 					: payloadManager.importPayloadZip(uri, (percent, stage) -> runOnUiThread(() -> progressDialog.setProgress(percent)), control);
-				try {
-					CompatPackManager.CompatPack match = compatPackManager.findBestMatch(status.manifest);
-					if (match != null) {
-						compatPackManager.selectPack(match.packId);
-					}
-				} catch (Exception exception) {
-					Log.w(TAG, "Unable to select matching compatibility pack for imported game.", exception);
-				}
 				runOnUiThread(() -> {
 					busy = false;
 					progressDialog.dismiss();
@@ -892,6 +977,20 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		worker.start();
 	}
 
+	private void showLaunchProfilePayloadMissingDialog(LaunchProfileManager.LaunchProfile profile) {
+		String payloadLabel = TextUtils.isEmpty(profile.payloadId) ? getString(R.string.unknown) : profile.payloadId;
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.launch_profile_payload_missing_launch_title)
+			.setMessage(getString(R.string.launch_profile_payload_missing_launch_message, profile.displayName, payloadLabel))
+			.setNegativeButton(android.R.string.cancel, null)
+			.setNeutralButton(R.string.version_manager_tab_profiles, (dialog, which) -> {
+				GameVersionManagerPage.selectProfilesTab();
+				openVersionsTab();
+			})
+			.setPositiveButton(R.string.import_game_payload, (dialog, which) -> requestImportGamePayload())
+			.show();
+	}
+
 	private void showCompatMismatchDialog(PayloadManager.Status payloadStatus, CompatPackManager.CompatPack selectedCompatPack) {
 		String payloadVersion = compatPackManager.getPayloadVersion(payloadStatus.manifest);
 		if (TextUtils.isEmpty(payloadVersion)) {
@@ -902,7 +1001,10 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			.setTitle(R.string.launch_incompatible_compat_pack_dialog_title)
 			.setMessage(message)
 			.setNegativeButton(android.R.string.cancel, null)
-			.setNeutralButton(R.string.tab_versions, (dialog, which) -> openVersionsTab())
+			.setNeutralButton(R.string.version_manager_tab_profiles, (dialog, which) -> {
+				GameVersionManagerPage.selectProfilesTab();
+				openVersionsTab();
+			})
 			.setPositiveButton(R.string.launch_anyway, (dialog, which) -> prepareAndStartGame())
 			.show();
 	}

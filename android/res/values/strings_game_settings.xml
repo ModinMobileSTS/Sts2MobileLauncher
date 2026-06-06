@@ -396,6 +396,7 @@
     <string name="game_action_unlock_all">Unlock all</string>
     <string name="game_action_browse_files">Browse files</string>
     <string name="game_action_compat_pack">Compat packs</string>
+    <string name="game_action_launch_profiles">Launch profiles</string>
     <string name="game_status_title">Overall status</string>
     <string name="game_status_subtitle">Ready to launch after any changed settings.</string>
     <string name="game_mod_count_format">MODs: %1$d installed · %2$d enabled</string>
@@ -624,9 +625,9 @@
     <string name="payload_stats_calculating">File size: calculating…</string>
     <string name="payload_source_format">Source: %1$s / %2$s / SHA-256 %3$s</string>
     <string name="launch_requires_payload">Import a game zip before launching.</string>
-    <string name="launch_requires_compat_pack">Install or select a compatible mobile compatibility pack before launching.</string>
+    <string name="launch_requires_compat_pack">Edit the current launch profile and choose a compatible mobile compatibility pack before launching.</string>
     <string name="launch_incompatible_compat_pack_dialog_title">Compatibility pack version mismatch</string>
-    <string name="launch_incompatible_compat_pack_dialog_message">Selected pack: %1$s\nPack support: %2$s\nCurrent game: %3$s\n\nThis check only compares game version labels/support lists. You can switch packs in Versions or continue anyway.</string>
+    <string name="launch_incompatible_compat_pack_dialog_message">Selected pack: %1$s\nPack support: %2$s\nCurrent game: %3$s\n\nThis check only compares game version labels/support lists. Edit the current launch profile to switch packs, or continue anyway.</string>
     <string name="launch_anyway">Launch anyway</string>
     <string name="status_busy_prepare_launch">Preparing game files…</string>
     <string name="import_game_payload">Import game zip</string>
@@ -640,7 +641,7 @@
     <string name="status_import_game_payload_done">Game payload ready: %1$s</string>
     <string name="status_clear_game_payload_done">Game payload cleared.</string>
     <string name="clear_game_payload_confirm_title">Clear imported game?</string>
-    <string name="clear_game_payload_confirm_message">This deletes the selected launch profile and removes its game body only when no other profile uses it. Saves, extra settings and MOD files are kept.</string>
+    <string name="clear_game_payload_confirm_message">This deletes the selected game body but keeps launch profiles. Affected profiles remain visible and will ask you to re-import, download or rebind a game body before launching.</string>
 
     <string name="version_manager_title">Version manager</string>
     <string name="version_manager_subtitle">Manage game bodies, launch profiles and mobile compatibility packs.</string>
@@ -656,7 +657,6 @@
     <string name="version_manager_payload_list_subtitle">Size: %1$s · Files: %2$d</string>
     <string name="version_manager_compat_list_subtitle">Version: %1$s</string>
     <string name="version_manager_select_game_body">Select body</string>
-    <string name="version_manager_select_compat_pack">Select pack</string>
     <string name="version_manager_game_ready_format">Selected game: %1$s</string>
     <string name="version_manager_selected_compat_format">Compat: %1$s · target %2$s</string>
     <string name="game_compat_status_format">Compat pack: %1$s · target %2$s</string>
@@ -672,7 +672,7 @@
     <string name="archive_active_game_version">Register selected game</string>
     <string name="version_manager_no_archived_games">No game bodies yet. Import a game zip to create one.</string>
     <string name="version_manager_compat_packs_title">Compatibility packs</string>
-    <string name="version_manager_compat_packs_subtitle">Install, import and select mobile compatibility packs.</string>
+    <string name="version_manager_compat_packs_subtitle">Install or import mobile compatibility packs. Assign a pack when creating or editing a launch profile.</string>
     <string name="version_manager_no_compat_packs">No compatibility packs installed.</string>
     <string name="version_manager_compat_target_format">Compat %1$s · %2$s · target %3$s</string>
     <string name="version_manager_installed_at_format">Installed: %1$s</string>
@@ -700,12 +700,10 @@
     <string name="status_import_compat_pack_done">Compatibility pack installed: %1$s</string>
     <string name="status_busy_install_bundled_compat">Installing bundled compatibility packs…</string>
     <string name="status_install_bundled_compat_done">Bundled compatibility packs installed: %1$d.</string>
-    <string name="status_busy_select_compat_pack">Selecting compatibility pack…</string>
-    <string name="status_select_compat_pack_done">Compatibility pack selected. Restart the game to apply it.</string>
     <string name="status_busy_delete_compat_pack">Deleting compatibility pack…</string>
     <string name="status_delete_compat_pack_done">Compatibility pack deleted.</string>
     <string name="delete_compat_pack_confirm_title">Delete compatibility pack?</string>
-    <string name="delete_compat_pack_confirm_message">This deletes only the selected mobile compatibility pack. Game bodies, saves and user MODs are kept.</string>
+    <string name="delete_compat_pack_confirm_message">This deletes only the mobile compatibility pack. Launch profiles that referenced it are kept and will show the pack as missing until edited.</string>
     <string name="status_busy_archive_game_version">Registering selected game body…</string>
     <string name="status_archive_game_version_done">Game body registered: %1$s</string>
     <string name="status_busy_select_game_version">Selecting game body…</string>
@@ -713,7 +711,7 @@
     <string name="status_busy_delete_game_version">Deleting game body…</string>
     <string name="status_delete_game_version_done">Game body deleted.</string>
     <string name="delete_game_version_confirm_title">Delete game body?</string>
-    <string name="delete_game_version_confirm_message">This deletes the imported game body and any launch profiles that point to it. Save and MOD folders are kept only if they belong to global roots or another profile.</string>
+    <string name="delete_game_version_confirm_message">This deletes the imported game body but keeps launch profiles that point to it. Those profiles remain visible and will require a re-import, download or rebind before launching.</string>
 
     <string name="launch_profiles_title">Launch profiles</string>
     <string name="launch_profiles_subtitle">A profile chooses one game body plus global or isolated save/MOD roots.</string>
@@ -730,6 +728,13 @@
     <string name="launch_profile_name_hint">Profile name</string>
     <string name="launch_profile_select_payload_button">Game body: %1$s</string>
     <string name="launch_profile_select_payload_title">Choose game body</string>
+    <string name="launch_profile_select_compat_button">Compatibility pack: %1$s</string>
+    <string name="launch_profile_select_compat_title">Choose compatibility pack</string>
+    <string name="launch_profile_select_compat_none">No compatibility pack</string>
+    <string name="launch_profile_payload_missing_format">Missing game body: %1$s</string>
+    <string name="launch_profile_compat_missing_format">Missing pack: %1$s</string>
+    <string name="launch_profile_payload_missing_launch_title">Game body missing</string>
+    <string name="launch_profile_payload_missing_launch_message">The selected launch profile “%1$s” points to game body %2$s, but that body is missing or incomplete. Re-import/download the body, choose another launch profile, or edit this profile before launching.</string>
     <string name="launch_profile_save_mode_title">Save/settings root</string>
     <string name="launch_profile_save_mode_global">Use global saves and settings</string>
     <string name="launch_profile_save_mode_isolated">Use an isolated save/settings folder for this profile</string>
@@ -748,7 +753,7 @@
     <string name="delete_launch_profile_confirm_title">Delete launch profile?</string>
     <string name="delete_launch_profile_confirm_message">This removes only the launch profile. Shared game bodies are kept. Isolated save/MOD folders under the profile are deleted.</string>
     <string name="delete_game_payload_confirm_title">Delete game body?</string>
-    <string name="delete_game_payload_confirm_message">This removes the imported payload and all launch profiles that use it. Global save and MOD folders are kept.</string>
+    <string name="delete_game_payload_confirm_message">This removes the imported game body but keeps launch profiles that use it. Global and isolated save/MOD folders are kept.</string>
 
     <string name="yes">Yes</string>
     <string name="no">No</string>

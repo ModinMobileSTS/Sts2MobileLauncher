@@ -10,8 +10,8 @@
   - `STS2Mobile.dll`
   - `port_compat.pck`
   - `SHA256SUMS`
-- **compat fallback**：APK assets 中的 `android/assets/dotnet_bcl/STS2Mobile.dll` 与 `android/assets/port_compat.pck`，主要用于兼容旧启动路径或无已选包的兜底。
-- **launch profile / 启动配置**：安装在 `<files>/instances/<profile_id>/instance.json`，绑定一个 payload、一个可选 compat pack，并决定存档/设置与 MOD 使用全局目录还是 profile 独立目录。
+- **compat fallback**：APK assets 中的 `android/assets/dotnet_bcl/STS2Mobile.dll` 与 `android/assets/port_compat.pck`，主要用于兼容旧启动路径或无已选包的兜底；正常 launcher 启动会先检查当前启动配置的 compat pack，缺包时不静默 fallback。
+- **launch profile / 启动配置**：安装在 `<files>/instances/<profile_id>/instance.json`，绑定一个 payload、一个可选 compat pack，并决定存档/设置与 MOD 使用全局目录还是 profile 独立目录。兼容包选择属于启动配置，不再有运行时全局选中包 fallback。
 - **普通用户 MOD**：默认放在全局 `<files>/mods/`；当当前 launch profile 的 `mods_mode=isolated` 时放在 `<files>/instances/<profile_id>/mods/`。由游戏原版 `ModManager` 在被兼容层 patch 后扫描加载。
 
 Compat pack 不是普通用户 MOD。它必须早于原版 `ModManager.Initialize()` 加载，否则无法 patch Steam/Sentry/platform、路径、MOD 扫描、输入、shader 等 Android 必需行为。
@@ -50,8 +50,8 @@ port-mod branch
    - 安全解压、寻找 `compat_manifest.json`。
    - 校验 `STS2Mobile.dll` 与 `port_compat.pck` 存在。
    - 安装到 `<files>/compat-packs/<pack_id>/`。
-   - 如果当前未选择兼容包，选择最新安装的包。
-3. 用户也可在“版本”页通过 SAF 导入外部 compat pack zip。
+   - 不会自动把新安装的包设为全局选中包；用户需要在创建或编辑启动配置时选择。
+3. 用户也可在“版本”页通过 SAF 导入外部 compat pack zip；导入后同样只进入已安装包列表。
 
 ## 4. Payload 导入与版本匹配
 
@@ -66,19 +66,18 @@ port-mod branch
 4. `PckPatcher` 只修改私有 PCK copy，禁用 Sentry autoload/gdextension 元数据，避免 Android 缺少桌面 Sentry 扩展导致启动前解析错误。
 5. 写入 staging 中的 `.payload_manifest.json`，包含 `release_info`、`version`、`commit`、`sts2_dll_sha256`、PCK patch 结果等。
 6. 按 manifest 身份生成 `payload_id`，原子安装到 `<files>/payloads/<payload_id>/game/`；同一 payload 已存在时只替换 payload store 中的该目录，不再复制到 `<files>/game/`。
-7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload，并按 payload manifest 中的 `version` 自动选择最佳 compat pack；Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot` 与 `source.steam.depots[]` 中记录。
+7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload；新建 profile 时会按 payload manifest 中的 `version` 填入推荐 compat pack，已有 profile 不会在每次导入/启动时被覆盖。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot` 与 `source.steam.depots[]` 中记录。
 8. 旧安装中的 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制。
 
 ## 5. 启动前检查
 
 `GameSettingsActivity.launchGame()`：
 
-1. 检查当前 launch profile 绑定的 payload 是否 ready；没有 payload 时提示导入，直装版可先解压内置 payload。
+1. 检查当前 launch profile 绑定的 payload 是否 ready；配置存在但本体缺失/被删除时不 fallback 到旧 `<files>/game/`，而是提示重新导入/下载、切换配置或编辑配置；没有 payload 时提示导入，直装版可先解压内置 payload。
 2. 如果 Android 兼容包开关启用：
-   - 调 `CompatPackManager.findBestMatch(payload.manifest)`。
-   - 找到匹配包且当前 profile 未绑定匹配包时自动选择。
-   - 若无选中包，阻止启动。
-   - 若选中包 manifest 支持版本列表与 payload version 不一致，弹出风险对话框，用户可取消、去版本页或强制启动。
+   - 只读取当前 launch profile 的 `compat_pack_id` 并解析已安装包。
+   - 若配置未选择兼容包或引用的包已删除，阻止启动并提示编辑启动配置。
+   - 若选中包 manifest 支持版本列表与 payload version 不一致，弹出风险对话框，用户可取消、去启动配置页或强制启动。
 3. 若 Steam Cloud 模式配置为“启动前拉取”或“完整自动”，且已保存 Steam refresh token，则先由 launcher 侧拉取当前 launch profile account root 的 Steam Cloud 文件；失败时弹窗允许取消、打开 Steam 中心或跳过同步继续启动。
 4. 启动后台线程执行 `GameLaunchPreparationManager.prepareForLaunch()`。
 5. 准备完成后启动 `GodotApp` 并附加 `launch_prepared=true`。
@@ -96,12 +95,12 @@ port-mod branch
 7. Stage overlay：
    - 兼容包开关关闭：删除 `<files>/port_compat.pck`。
    - 有 selected pack：复制 `<files>/compat-packs/<pack_id>/port_compat.pck` 到 `<files>/port_compat.pck`。
-   - 无 selected pack：使用 APK assets `port_compat.pck` fallback。
+   - 无 selected pack：仅在绕过 launcher 检查的 fallback 准备路径中使用 APK assets `port_compat.pck` fallback。
 8. 准备 Mono publish 目录 `<files>/.godot/mono/publish/arm64/`：
    - 复制 APK assets `dotnet_bcl/*`，但 `STS2Mobile.dll` 由 selected pack 决定。
    - 兼容包开关关闭：删除 publish 目录中的 `STS2Mobile.dll`。
    - 有 selected pack：复制 selected `STS2Mobile.dll`。
-   - 无 selected pack：尝试复制 fallback `dotnet_bcl/STS2Mobile.dll`。
+   - 无 selected pack：仅在绕过 launcher 检查的 fallback 准备路径中尝试复制 fallback `dotnet_bcl/STS2Mobile.dll`。
    - 复制当前 profile payload 目录中 `data_*/*` 的游戏 assemblies，跳过 `.so`，并保护 BCL/System/GodotSharp 等 runtime DLL。
    - 使用 SharedPreferences stamp 避免不必要的大文件重复复制；payload/profile 变化时强制刷新游戏 assemblies，并清理 publish 目录里旧 payload 遗留的游戏 DLL/JSON。
 

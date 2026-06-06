@@ -548,7 +548,7 @@ v1 先只做直连 OkHttp：
   -> 调 PayloadManager.installFromDirectory(...)
   -> 写 .payload_manifest.json，source.kind=steam_depot
   -> 安装到 payload store 并创建/选择 launch profile
-  -> 自动匹配 compat pack
+  -> 新建 launch profile 时按版本填入推荐 compat pack
 ```
 
 ### 9.2 UI 入口
@@ -1214,7 +1214,7 @@ adb shell run-as com.megacrit.sts2re ls files/steam/cloud/backups
 
 - 不登录 Steam 时，本地 zip 导入流程不变。
 - NexusMods 商店不受影响。
-- 兼容包安装/选择不受影响。
+- 兼容包安装不受影响；具体使用哪个兼容包仍由启动配置保存。
 - `tools/package/build_importer_apk.sh` 构建通过。
 - `tools/package/build_direct_apk.sh` 仍能临时内置 zip。
 - 无 Steam 功能时启动游戏不增加等待。

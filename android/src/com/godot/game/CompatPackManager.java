@@ -87,13 +87,10 @@ public final class CompatPackManager {
 			return "";
 		}
 		try {
-			String profilePackId = new LaunchProfileManager(context).getSelectedCompatPackId();
-			if (!TextUtils.isEmpty(profilePackId)) {
-				return profilePackId;
-			}
+			return new LaunchProfileManager(context).getSelectedCompatPackId();
 		} catch (Exception ignored) {
+			return "";
 		}
-		return prefs().getString(KEY_SELECTED_COMPAT_PACK_ID, "");
 	}
 
 	public boolean isCompatPackEnabled() {
@@ -108,16 +105,16 @@ public final class CompatPackManager {
 		if (TextUtils.isEmpty(packId)) {
 			prefs().edit().remove(KEY_SELECTED_COMPAT_PACK_ID).apply();
 			new LaunchProfileManager(context).setSelectedProfileCompatPack("");
-			writeSelectedCompatJson(null);
+			writeSelectedCompatJson("", null);
 			return;
 		}
 		CompatPack pack = readPack(new File(getCompatPacksRootDir(), packId));
 		if (pack == null || !pack.ready) {
 			throw new IOException("Compat pack is not installed or incomplete: " + packId);
 		}
-		prefs().edit().putString(KEY_SELECTED_COMPAT_PACK_ID, pack.packId).apply();
+		prefs().edit().remove(KEY_SELECTED_COMPAT_PACK_ID).apply();
 		new LaunchProfileManager(context).setSelectedProfileCompatPack(pack.packId);
-		writeSelectedCompatJson(pack);
+		writeSelectedCompatJson(pack.packId, pack);
 	}
 
 	public File getSelectedCompatDll() {
@@ -211,7 +208,6 @@ public final class CompatPackManager {
 				FileBrowserSupport.deleteRecursively(tempZip);
 			}
 		}
-		selectLatestInstalledIfNeeded();
 		return installed;
 	}
 
@@ -230,9 +226,7 @@ public final class CompatPackManager {
 			copyStreamToFile(inputStream, tempZip);
 		}
 		try {
-			CompatPack pack = installFromZipFile(tempZip, "saf_zip", displayName);
-			selectPack(pack.packId);
-			return pack;
+			return installFromZipFile(tempZip, "saf_zip", displayName);
 		} finally {
 			FileBrowserSupport.deleteRecursively(tempZip);
 		}
@@ -247,8 +241,7 @@ public final class CompatPackManager {
 			FileBrowserSupport.deleteRecursively(dir);
 		}
 		if (packId.equals(getSelectedPackId())) {
-			selectPack("");
-			selectLatestInstalledIfNeeded();
+			writeSelectedCompatJson(packId, null);
 		}
 	}
 
@@ -336,17 +329,6 @@ public final class CompatPackManager {
 			}
 		} finally {
 			FileBrowserSupport.deleteRecursively(stagingRoot);
-		}
-	}
-
-	private void selectLatestInstalledIfNeeded() throws Exception {
-		if (!TextUtils.isEmpty(getSelectedPackId()) && getSelectedPack() != null) {
-			return;
-		}
-		List<CompatPack> packs = listInstalledPacks();
-		if (!packs.isEmpty()) {
-			packs.sort((a, b) -> Long.compare(b.installedAtUnix, a.installedAtUnix));
-			selectPack(packs.get(0).packId);
 		}
 	}
 
@@ -575,12 +557,31 @@ public final class CompatPackManager {
 		return sanitized;
 	}
 
-	private void writeSelectedCompatJson(CompatPack pack) throws Exception {
+	public void writeSelectedCompatJsonForProfile(String compatPackId) {
+		try {
+			String normalizedId = sanitizeId(compatPackId);
+			if ("unnamed".equals(normalizedId)) {
+				normalizedId = "";
+			}
+			CompatPack pack = TextUtils.isEmpty(normalizedId) ? null : readPack(new File(getCompatPacksRootDir(), normalizedId));
+			writeSelectedCompatJson(normalizedId, pack);
+		} catch (Exception ignored) {
+		}
+	}
+
+	private void writeSelectedCompatJson(String requestedPackId, CompatPack pack) throws Exception {
 		File launcherDir = new File(context.getFilesDir(), "launcher");
 		FileBrowserSupport.ensureDirectory(launcherDir);
 		JSONObject root = new JSONObject();
 		root.put("schema", 1);
 		root.put("compat_pack_enabled", isCompatPackEnabled());
+		String normalizedRequestedPackId = sanitizeId(requestedPackId);
+		if ("unnamed".equals(normalizedRequestedPackId)) {
+			normalizedRequestedPackId = "";
+		}
+		if (!TextUtils.isEmpty(normalizedRequestedPackId)) {
+			root.put("selected_compat_pack_id", normalizedRequestedPackId);
+		}
 		if (pack != null && isCompatPackEnabled()) {
 			root.put("selected_compat_pack_id", pack.packId);
 			root.put("selected_compat_pack_dir", pack.dir.getAbsolutePath());

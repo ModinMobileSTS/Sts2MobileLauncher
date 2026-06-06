@@ -36,6 +36,10 @@ public final class GameVersionManagerPage {
 	private static final int TAB_COMPAT = 3;
 	private static int lastSelectedTab = TAB_PROFILES;
 
+	public static void selectProfilesTab() {
+		lastSelectedTab = TAB_PROFILES;
+	}
+
 	private final Context context;
 	private final PayloadManager payloadManager;
 	private final CompatPackManager compatPackManager;
@@ -68,18 +72,17 @@ public final class GameVersionManagerPage {
 		List<LaunchProfileManager.LaunchProfile> profiles = launchProfileManager.listProfiles();
 		List<CompatPackManager.CompatPack> packs = compatPackManager.listInstalledPacks();
 		LaunchProfileManager.LaunchProfile selectedProfile = launchProfileManager.getSelectedProfile();
-		String selectedCompatId = compatPackManager.getSelectedPackId();
 
 		LinearLayout tabContent = ExtraSettingsUi.vertical(context);
-		ExtraSettingsUi.addSmallSpacing(root, buildSegmentedTabs(tabContent, payloadStatus, payloads, profiles, packs, selectedProfile, selectedCompatId));
+		ExtraSettingsUi.addSmallSpacing(root, buildSegmentedTabs(tabContent, payloadStatus, payloads, profiles, packs, selectedProfile));
 		ExtraSettingsUi.addSmallSpacing(root, tabContent);
-		populateTabContent(tabContent, payloadStatus, payloads, profiles, packs, selectedProfile, selectedCompatId);
+		populateTabContent(tabContent, payloadStatus, payloads, profiles, packs, selectedProfile);
 
 		frame.addView(scrollView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 		return frame;
 	}
 
-	private View buildSegmentedTabs(LinearLayout tabContent, PayloadManager.Status payloadStatus, List<LaunchProfileManager.GamePayload> payloads, List<LaunchProfileManager.LaunchProfile> profiles, List<CompatPackManager.CompatPack> packs, LaunchProfileManager.LaunchProfile selectedProfile, String selectedCompatId) {
+	private View buildSegmentedTabs(LinearLayout tabContent, PayloadManager.Status payloadStatus, List<LaunchProfileManager.GamePayload> payloads, List<LaunchProfileManager.LaunchProfile> profiles, List<CompatPackManager.CompatPack> packs, LaunchProfileManager.LaunchProfile selectedProfile) {
 		MaterialButtonToggleGroup group = new MaterialButtonToggleGroup(context);
 		group.setSingleSelection(true);
 		group.setSelectionRequired(true);
@@ -109,7 +112,7 @@ public final class GameVersionManagerPage {
 			} else {
 				lastSelectedTab = TAB_PROFILES;
 			}
-			populateTabContent(tabContent, payloadStatus, payloads, profiles, packs, selectedProfile, selectedCompatId);
+			populateTabContent(tabContent, payloadStatus, payloads, profiles, packs, selectedProfile);
 		});
 		return group;
 	}
@@ -145,14 +148,14 @@ public final class GameVersionManagerPage {
 		return params;
 	}
 
-	private void populateTabContent(LinearLayout content, PayloadManager.Status payloadStatus, List<LaunchProfileManager.GamePayload> payloads, List<LaunchProfileManager.LaunchProfile> profiles, List<CompatPackManager.CompatPack> packs, LaunchProfileManager.LaunchProfile selectedProfile, String selectedCompatId) {
+	private void populateTabContent(LinearLayout content, PayloadManager.Status payloadStatus, List<LaunchProfileManager.GamePayload> payloads, List<LaunchProfileManager.LaunchProfile> profiles, List<CompatPackManager.CompatPack> packs, LaunchProfileManager.LaunchProfile selectedProfile) {
 		content.removeAllViews();
 		if (lastSelectedTab == TAB_PAYLOADS) {
 			populatePayloadsTab(content, payloadStatus, payloads, selectedProfile);
 			return;
 		}
 		if (lastSelectedTab == TAB_COMPAT) {
-			populateCompatTab(content, packs, selectedCompatId);
+			populateCompatTab(content, packs);
 			return;
 		}
 		populateProfilesTab(content, payloads, profiles, packs, selectedProfile);
@@ -178,8 +181,11 @@ public final class GameVersionManagerPage {
 		for (LaunchProfileManager.LaunchProfile profile : profiles) {
 			CompatPackManager.CompatPack pack = findPackById(packs, profile.compatPackId);
 			boolean selected = selectedProfile != null && selectedProfile.id.equals(profile.id);
-			String compatLabel = pack == null ? context.getString(R.string.version_manager_no_compat_selected) : pack.targetLabel();
+			String compatLabel = compatLabel(profile, pack);
 			String subtitle = context.getString(R.string.version_manager_profile_list_subtitle, modeLabel(profile.saveMode), compatLabel);
+			if (!profile.ready) {
+				subtitle = context.getString(R.string.launch_profile_payload_missing_format, profile.payloadId) + " · " + subtitle;
+			}
 			ExtraSettingsUi.addSmallSpacing(content, listItem(
 				R.drawable.ic_gamepad_24,
 				profile.displayName,
@@ -226,7 +232,7 @@ public final class GameVersionManagerPage {
 		}
 	}
 
-	private void populateCompatTab(LinearLayout content, List<CompatPackManager.CompatPack> packs, String selectedCompatId) {
+	private void populateCompatTab(LinearLayout content, List<CompatPackManager.CompatPack> packs) {
 		LinearLayout actionsRow = ExtraSettingsUi.horizontal(context);
 		MaterialButton importPack = neutralButton(context.getString(R.string.version_manager_import_short), R.drawable.ic_upload_file_24);
 		importPack.setOnClickListener(v -> actions.requestImportCompatPack());
@@ -242,14 +248,13 @@ public final class GameVersionManagerPage {
 		}
 
 		for (CompatPackManager.CompatPack pack : packs) {
-			boolean selected = pack.packId.equals(selectedCompatId);
 			String subtitle = context.getString(R.string.version_manager_compat_list_subtitle, TextUtils.isEmpty(pack.compatVersion) ? context.getString(R.string.unknown) : pack.compatVersion);
 			ExtraSettingsUi.addSmallSpacing(content, listItem(
 				R.drawable.ic_extension_24,
 				pack.displayName,
-				selected ? context.getString(R.string.version_manager_selected_badge) : "",
+				"",
 				subtitle,
-				v -> showCompatSheet(pack, selected),
+				v -> showCompatSheet(pack),
 				TextUtils.TruncateAt.MIDDLE
 			));
 		}
@@ -346,18 +351,18 @@ public final class GameVersionManagerPage {
 		BottomSheetDialog dialog = createBottomSheetDialog();
 		LinearLayout content = buildSheetContent(profile.displayName);
 		LinearLayout details = sheetDetailsContainer(content);
-		String payloadLabel = profile.payload == null ? profile.payloadId : profile.payload.label;
+		String payloadLabel = profile.payload == null ? context.getString(R.string.launch_profile_payload_missing_format, profile.payloadId) : profile.payload.label;
 		addSheetDetailRow(details, R.drawable.ic_desktop_windows_24, R.string.version_manager_detail_game_body, payloadLabel);
 		addSheetDetailRow(details, R.drawable.ic_folder_24, R.string.version_manager_detail_profile_path, profile.dir.getAbsolutePath());
 		addSheetDetailRow(details, R.drawable.ic_save_24, R.string.version_manager_detail_save_mode, modeLabel(profile.saveMode));
 		addSheetDetailRow(details, R.drawable.ic_extension_24, R.string.version_manager_detail_mods_mode, modeLabel(profile.modsMode));
-		addSheetDetailRow(details, R.drawable.ic_layers_24, R.string.version_manager_detail_compat_pack, pack == null ? context.getString(R.string.version_manager_no_compat_selected) : context.getString(R.string.version_manager_selected_compat_format, pack.displayName, pack.targetLabel()));
+		addSheetDetailRow(details, R.drawable.ic_layers_24, R.string.version_manager_detail_compat_pack, pack == null ? compatLabel(profile, null) : context.getString(R.string.version_manager_selected_compat_format, pack.displayName, pack.targetLabel()));
 		if (profile.updatedAtUnix > 0) {
 			addSheetDetailRow(details, R.drawable.ic_article_24, R.string.version_manager_detail_updated_at, formatTime(profile.updatedAtUnix));
 		}
 
 		LinearLayout actionsLayout = sheetActionsContainer(content);
-		if (!selected && profile.ready) {
+		if (!selected) {
 			addSheetAction(actionsLayout, primaryButton(context.getString(R.string.version_manager_select), R.drawable.ic_check_circle_24, v -> {
 				dialog.dismiss();
 				actions.requestSelectLaunchProfile(profile.id);
@@ -416,7 +421,7 @@ public final class GameVersionManagerPage {
 		dialog.show();
 	}
 
-	private void showCompatSheet(CompatPackManager.CompatPack pack, boolean selected) {
+	private void showCompatSheet(CompatPackManager.CompatPack pack) {
 		BottomSheetDialog dialog = createBottomSheetDialog();
 		LinearLayout content = buildSheetContent(pack.displayName);
 		LinearLayout details = sheetDetailsContainer(content);
@@ -434,12 +439,6 @@ public final class GameVersionManagerPage {
 		}
 
 		LinearLayout actionsLayout = sheetActionsContainer(content);
-		if (!selected && pack.ready) {
-			addSheetAction(actionsLayout, primaryButton(context.getString(R.string.version_manager_select_compat_pack), R.drawable.ic_check_circle_24, v -> {
-				dialog.dismiss();
-				actions.requestSelectCompatPack(pack.packId);
-			}));
-		}
 		addSheetAction(actionsLayout, errorButton(context.getString(R.string.delete), R.drawable.ic_delete_24, v -> {
 			dialog.dismiss();
 			actions.requestDeleteCompatPack(pack.packId);
@@ -624,6 +623,16 @@ public final class GameVersionManagerPage {
 			}
 		}
 		return null;
+	}
+
+	private String compatLabel(LaunchProfileManager.LaunchProfile profile, CompatPackManager.CompatPack pack) {
+		if (pack != null) {
+			return pack.targetLabel();
+		}
+		if (profile != null && !TextUtils.isEmpty(profile.compatPackId)) {
+			return context.getString(R.string.launch_profile_compat_missing_format, profile.compatPackId);
+		}
+		return context.getString(R.string.version_manager_no_compat_selected);
 	}
 
 	private String modeLabel(String mode) {

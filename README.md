@@ -14,7 +14,7 @@
    用户本地提供 `SlayTheSpire2.zip`，或使用自己拥有 STS2 的 Steam 账号从 SteamPipe 下载，导入到 payload store：`<files>/payloads/<payload_id>/game/`。版本页通过 launch profile 选择本体、兼容包、存档/MOD 隔离模式，切换时不复制 PCK。构建直装版 APK 时也可以临时内置 zip，但不会提交到仓库。
 
 3. **移动端兼容插件 / compatibility pack**
-   `port-mod/` 是独立 git 仓库 <https://github.com/ModinMobileSTS/sts2-android-compat> 的 submodule。插件按游戏版本使用 git 分支维护，可导出为独立 zip 兼容包（`compat_manifest.json` + `STS2Mobile.dll` + `port_compat.pck`），由启动器安装、选择并在启动 Godot 前 staging。
+   `port-mod/` 是独立 git 仓库 <https://github.com/ModinMobileSTS/sts2-android-compat> 的 submodule。插件按游戏版本使用 git 分支维护，可导出为独立 zip 兼容包（`compat_manifest.json` + `STS2Mobile.dll` + `port_compat.pck`），由启动器安装，并由具体启动配置选择后在启动 Godot 前 staging。
 
 核心目标不是维护一份完整重编译的游戏源码，而是让 Android 壳、用户本地游戏资源和移动端兼容补丁分离，便于后续多游戏版本、多兼容包维护、验证与更新。
 
@@ -76,11 +76,11 @@ s2_re/
 
 ## 多版本与兼容包
 
-启动器现在内置“版本”页，管理两类对象：
+启动器现在内置“版本”页，管理三类对象：
 
 - **游戏本体版本 / payload**：导入的 PC zip 或 SteamPipe 下载结果安装到 `<files>/payloads/<payload_id>/game/`。`payload_id` 由版本、commit 和 payload hash 派生，切换版本不再复制完整本体。
 - **启动配置 / launch profile**：保存到 `<files>/instances/<profile_id>/instance.json`，绑定一个 payload、一个可选兼容包，并指定存档/设置和 MOD 使用全局目录还是该 profile 的隔离目录。同一个 payload 可以创建多个 profile。
-- **移动端兼容包**：安装到 `<files>/compat-packs/<pack_id>/`，每个包包含 manifest、`STS2Mobile.dll` 和 `port_compat.pck`。启动游戏前按当前 profile payload manifest 中的游戏版本号自动匹配或检查当前选择的兼容包；manifest 可用 `target_game.supported_versions` 让一个包兼容多个游戏 patch 版本；不再因 `sts2.dll` SHA-256 不一致阻止启动。
+- **移动端兼容包**：安装到 `<files>/compat-packs/<pack_id>/`，每个包包含 manifest、`STS2Mobile.dll` 和 `port_compat.pck`。新建/编辑启动配置时按当前 profile payload manifest 中的游戏版本号推荐匹配包，启动时只检查该配置保存的 `compat_pack_id`；manifest 可用 `target_game.supported_versions` 让一个包兼容多个游戏 patch 版本；不再因 `sts2.dll` SHA-256 不一致阻止启动。
 
 APK 打包前，脚本会把内置兼容包生成到：
 
@@ -229,7 +229,7 @@ adb shell run-as com.megacrit.sts2re ls files/instances
 5. 附加设置中的图形、输入、MOD 设置能写入 `files/default/1/settings.save`。
 6. 游戏内返回附加设置、日志页、文件浏览器、崩溃页不崩溃。
 7. MOD 总开关和单 MOD 禁用能在启动日志中反映；MOD 页导入同 ID MOD 会弹冲突选择框，卡片默认折叠且可展开查看作者/依赖，长按左侧手柄可拖到分组。
-8. Steam 中心可登录/验证 refresh token；从 Steam 下载的本体进入 `files/payloads/`，并自动选择匹配兼容包。
+8. Steam 中心可登录/验证 refresh token；从 Steam 下载的本体进入 `files/payloads/`，新建启动配置会按版本填入推荐兼容包，后续只能在创建/编辑启动配置时调整兼容包。
 9. Steam Cloud 手动刷新/拉取/上传使用当前 launch profile 的存档根；拉取前会在 `files/steam/cloud/<profile_id>/backups/` 创建备份。
 
 ## 常用开发命令
@@ -312,7 +312,7 @@ tools/android/make-port-overlay-pck.py
 <files>/steam/cloud/<profile_id>/           # Steam Cloud manifest、baseline、备份与诊断
 <files>/compat-packs/<pack_id>/             # 已安装移动端兼容包
 <files>/launcher/selected_instance.json     # 当前启动上下文
-<files>/launcher/selected_compat_pack.json  # 当前兼容包选择记录
+<files>/launcher/selected_compat_pack.json  # 当前启动配置解析出的兼容包诊断记录
 <files>/default/1/settings.save             # 全局存档/设置
 <files>/mods/                              # 全局 MOD 目录
 <files>/.godot/mono/publish/arm64/          # Godot/Mono publish 目录
@@ -320,10 +320,10 @@ tools/android/make-port-overlay-pck.py
 
 关键流程：
 
-- `GameSettingsActivity` 是默认 launcher，负责首次向导和附加设置；“游戏”主页采用 MD3 深色仪表盘，提供 Steam chip、动态启动卡、MOD/存档状态卡和导入/存档/日志/兼容包等快捷入口；启动器图标统一改用 bundled Material Symbols Rounded 字体渲染。
+- `GameSettingsActivity` 是默认 launcher，负责首次向导和附加设置；“游戏”主页采用 MD3 深色仪表盘，提供 Steam chip、动态启动卡、MOD/存档状态卡和导入/存档/日志/启动配置等快捷入口；启动器图标统一改用 bundled Material Symbols Rounded 字体渲染。
 - `SteamAccountActivity` 提供 Steam 登录、refresh token 验证、SteamPipe 下载游戏本体，以及当前 launch profile account root 的 Steam Cloud 手动/自动同步入口；首次打开会显示带动态倒计时、5 秒后才能关闭的账号安全提示，提醒本地 refresh token、可信来源、未知 MOD 风险、云存档备份和国内网络加速器需求，页面底部也常驻“安全说明”按钮可再次查看。
 - `PayloadManager` 负责 SAF 选择 zip、assets 内置 payload 解压、校验、staging、安装到 payload store 和 rollback。
-- `LaunchProfileManager` 负责选择当前 payload/compat/save/mod/log 路径，并写入 `<files>/launcher/selected_instance.json`。
+- `LaunchProfileManager` 负责选择当前 payload/compat/save/mod/log 路径，并写入 `<files>/launcher/selected_instance.json`；兼容包是每个启动配置的 `compat_pack_id`，不是全局选中项。删除游戏本体或兼容包时启动配置会保留，启动前再提示缺失项。
 - `GodotApp` 是真正的 Godot 游戏 Activity：
   - 有当前 profile payload 的 `SlayTheSpire2.pck` 时传入 `--main-pack`。
   - 无 payload 时使用 `assets/bootstrap.pck`。

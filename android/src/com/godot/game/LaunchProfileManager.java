@@ -209,14 +209,18 @@ public final class LaunchProfileManager {
 	}
 
 	public LaunchProfile createProfile(String payloadId, String displayName, String saveMode, String modsMode, boolean select) throws Exception {
+		return createProfile(payloadId, displayName, saveMode, modsMode, null, select);
+	}
+
+	public LaunchProfile createProfile(String payloadId, String displayName, String saveMode, String modsMode, String compatPackId, boolean select) throws Exception {
 		GamePayload payload = readPayload(payloadId);
 		if (payload == null || !payload.ready) {
 			throw new IOException("Game payload is missing or incomplete: " + payloadId);
 		}
 		String name = TextUtils.isEmpty(displayName) ? payload.label : displayName.trim();
 		String id = buildUniqueProfileId(name + "-" + UUID.randomUUID().toString().substring(0, 8));
-		String compatPackId = findBestCompatPackId(payload);
-		LaunchProfile profile = writeProfile(id, name, payload.id, compatPackId, normalizeSaveMode(saveMode), normalizeModsMode(modsMode), System.currentTimeMillis() / 1000L);
+		String selectedCompatPackId = compatPackId == null ? findBestCompatPackId(payload) : sanitizeOptionalId(compatPackId);
+		LaunchProfile profile = writeProfile(id, name, payload.id, selectedCompatPackId, normalizeSaveMode(saveMode), normalizeModsMode(modsMode), System.currentTimeMillis() / 1000L);
 		ensureProfileDirectories(profile);
 		if (select) {
 			selectProfile(profile.id);
@@ -247,15 +251,18 @@ public final class LaunchProfileManager {
 
 	public LaunchProfile updateProfile(String profileId, String displayName, String saveMode, String modsMode, String compatPackId) throws Exception {
 		LaunchProfile profile = readProfile(profileId);
+		return updateProfile(profileId, profile == null ? "" : profile.payloadId, displayName, saveMode, modsMode, compatPackId);
+	}
+
+	public LaunchProfile updateProfile(String profileId, String payloadId, String displayName, String saveMode, String modsMode, String compatPackId) throws Exception {
+		LaunchProfile profile = readProfile(profileId);
 		if (profile == null) {
 			throw new IOException("Launch profile not found: " + profileId);
 		}
 		String name = TextUtils.isEmpty(displayName) ? profile.displayName : displayName.trim();
+		String normalizedPayloadId = TextUtils.isEmpty(payloadId) ? profile.payloadId : sanitizeId(payloadId);
 		String normalizedCompatPackId = sanitizeOptionalId(compatPackId);
-		if (!TextUtils.isEmpty(normalizedCompatPackId) && findInstalledCompatPack(normalizedCompatPackId) == null) {
-			throw new IOException("Compatibility pack is not installed: " + normalizedCompatPackId);
-		}
-		LaunchProfile updated = writeProfile(profile.id, name, profile.payloadId, normalizedCompatPackId, normalizeSaveMode(saveMode), normalizeModsMode(modsMode), profile.createdAtUnix);
+		LaunchProfile updated = writeProfile(profile.id, name, normalizedPayloadId, normalizedCompatPackId, normalizeSaveMode(saveMode), normalizeModsMode(modsMode), profile.createdAtUnix);
 		ensureProfileDirectories(updated);
 		if (profile.id.equals(getSelectedProfileId())) {
 			writeSelectedLaunchContextJson(readProfile(profile.id));
@@ -273,8 +280,8 @@ public final class LaunchProfileManager {
 
 	public void selectProfile(String profileId) throws Exception {
 		LaunchProfile profile = readProfile(profileId);
-		if (profile == null || !profile.ready) {
-			throw new IOException("Launch profile is missing or incomplete: " + profileId);
+		if (profile == null) {
+			throw new IOException("Launch profile not found: " + profileId);
 		}
 		ensureProfileDirectories(profile);
 		prefs().edit()
@@ -303,11 +310,6 @@ public final class LaunchProfileManager {
 			return;
 		}
 		String normalized = sanitizeId(payloadId);
-		for (LaunchProfile profile : listProfiles()) {
-			if (normalized.equals(profile.payloadId)) {
-				deleteProfile(profile.id);
-			}
-		}
 		FileBrowserSupport.deleteRecursively(new File(getPayloadsRootDir(), normalized));
 		ensureSelectedProfileIfPossible();
 		writeSelectedLaunchContextJson(getSelectedProfile());
@@ -315,16 +317,10 @@ public final class LaunchProfileManager {
 
 	public void clearSelectedProfileAndUnusedPayload() throws Exception {
 		LaunchProfile selected = getSelectedProfile();
-		if (selected == null) {
+		if (selected == null || TextUtils.isEmpty(selected.payloadId)) {
 			return;
 		}
-		String payloadId = selected.payloadId;
-		deleteProfile(selected.id);
-		if (!isPayloadUsed(payloadId)) {
-			FileBrowserSupport.deleteRecursively(new File(getPayloadsRootDir(), payloadId));
-		}
-		ensureSelectedProfileIfPossible();
-		writeSelectedLaunchContextJson(getSelectedProfile());
+		deletePayload(selected.payloadId);
 	}
 
 	public GamePayload getSelectedPayload() {
@@ -334,10 +330,16 @@ public final class LaunchProfileManager {
 
 	public File getSelectedGameDir() {
 		LaunchProfile profile = getSelectedProfile();
-		if (profile != null && profile.payload != null && profile.payload.gameDir.isDirectory()) {
-			return profile.payload.gameDir;
+		if (profile != null) {
+			if (profile.payload != null) {
+				return profile.payload.gameDir;
+			}
+			if (!TextUtils.isEmpty(profile.payloadId)) {
+				return getPayloadGameDir(profile.payloadId);
+			}
+			return new File(profile.dir, "missing-game");
 		}
-		return getLegacyActiveGameDir();
+		return new File(context.getFilesDir(), "missing-game");
 	}
 
 	public File getSelectedManifestFile() {
@@ -570,27 +572,31 @@ public final class LaunchProfileManager {
 
 		JSONObject legacy = new JSONObject();
 		legacy.put("schema", 2);
-		if (profile != null && profile.payload != null) {
+		if (profile != null) {
 			legacy.put("selected_game_version_id", profile.payloadId);
-			legacy.put("selected_game_dir", profile.payload.gameDir.getAbsolutePath());
 			legacy.put("selected_launch_profile_id", profile.id);
+			if (profile.payload != null) {
+				legacy.put("selected_game_dir", profile.payload.gameDir.getAbsolutePath());
+			}
 		}
 		FileBrowserSupport.writeTextFile(new File(launcherDir, "selected_game_version.json"), legacy.toString(2));
+		new CompatPackManager(context).writeSelectedCompatJsonForProfile(profile == null ? "" : profile.compatPackId);
 	}
 
 	private JSONObject buildLaunchContextJson(LaunchProfile profile) throws Exception {
 		JSONObject root = new JSONObject();
 		root.put("schema", 1);
 		root.put("data_dir", context.getFilesDir().getAbsolutePath());
-		if (profile == null || profile.payload == null) {
+		if (profile == null) {
 			return root;
 		}
+		File selectedGameDir = profile.payload == null ? getPayloadGameDir(profile.payloadId) : profile.payload.gameDir;
 		root.put("selected_instance_id", profile.id);
 		root.put("selected_profile_id", profile.id);
 		root.put("display_name", profile.displayName);
 		root.put("payload_id", profile.payloadId);
-		root.put("selected_game_dir", profile.payload.gameDir.getAbsolutePath());
-		root.put("selected_release_info", new File(profile.payload.gameDir, PayloadManager.RELEASE_INFO_FILE_NAME).getAbsolutePath());
+		root.put("selected_game_dir", selectedGameDir.getAbsolutePath());
+		root.put("selected_release_info", new File(selectedGameDir, PayloadManager.RELEASE_INFO_FILE_NAME).getAbsolutePath());
 		root.put("save_mode", profile.saveMode);
 		root.put("mods_mode", profile.modsMode);
 		root.put("selected_account_root", getAccountRootDir(profile).getAbsolutePath());
@@ -643,16 +649,6 @@ public final class LaunchProfileManager {
 			}
 		}
 		return null;
-	}
-
-	private boolean isPayloadUsed(String payloadId) {
-		String normalized = sanitizeId(payloadId);
-		for (LaunchProfile profile : listProfilesWithoutBootstrap()) {
-			if (normalized.equals(profile.payloadId)) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	private boolean isValidPayloadGameDir(File gameDir) {

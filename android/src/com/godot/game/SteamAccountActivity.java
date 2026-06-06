@@ -298,14 +298,6 @@ public class SteamAccountActivity extends AppCompatActivity {
 						runOnUiThread(() -> setProgress(progress.getPercent(), progress.getMessage()));
 						return kotlin.Unit.INSTANCE;
 					}, control);
-					try {
-						CompatPackManager compat = new CompatPackManager(this);
-						CompatPackManager.CompatPack match = compat.findBestMatch(status.manifest);
-						if (match != null) {
-							compat.selectPack(match.packId);
-						}
-					} catch (Exception ignored) {
-					}
 					return getString(R.string.status_import_game_payload_done, status.shortVersionLabel());
 				});
 			})

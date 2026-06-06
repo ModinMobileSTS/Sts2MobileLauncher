@@ -99,7 +99,10 @@ public final class GamePage {
 			content.addView(buildActionRow(new ActionSpec[] {
 				new ActionSpec("folder_open", R.string.game_action_browse_files, false, v -> actions.openFileBrowser()),
 				new ActionSpec("receipt_long", R.string.view_logs, false, v -> actions.openLogViewer()),
-				new ActionSpec("layers", R.string.game_action_compat_pack, false, v -> actions.openVersionsTab()),
+				new ActionSpec("gamepad", R.string.game_action_launch_profiles, false, v -> {
+					GameVersionManagerPage.selectProfilesTab();
+					actions.openVersionsTab();
+				}),
 				new ActionSpec("settings", R.string.tab_settings, false, v -> actions.openSettingsTab())
 			}), matchWrapParams(12));
 		} catch (Exception exception) {

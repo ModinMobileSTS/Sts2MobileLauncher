@@ -83,7 +83,7 @@ android/steam-content/                        # SteamPipe depot manifest/chunk �
 <files>/compat-packs/<pack_id>/             # 已安装兼容包
 <files>/launcher/selected_instance.json     # 当前启动配置与解析后的运行路径
 <files>/launcher/selected_game_version.json # legacy 兼容诊断记录，指向当前 payload
-<files>/launcher/selected_compat_pack.json  # 当前兼容包选择
+<files>/launcher/selected_compat_pack.json  # 当前启动配置解析出的兼容包诊断记录
 <files>/default/1/settings.save             # 全局存档/设置根，profile 选择 global 时使用
 <files>/mods/                              # 全局普通用户 MOD 根，profile 选择 global 时使用
 <files>/.godot/mono/publish/arm64/          # Mono publish 目录
@@ -96,9 +96,9 @@ android/steam-content/                        # SteamPipe depot manifest/chunk �
 当前实现是“payload store + launch profile”的完整多实例模型：
 
 - 导入 PC zip 或 SteamPipe 下载完成后，payload 安装到 `<files>/payloads/<payload_id>/game/`，`payload_id` 由版本、commit 与 payload hash 派生；同一 payload 不再复制到固定 active 目录。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot` 与 `source.steam.*` 中记录 app/depot/manifest/branch 诊断信息。
-- 版本页以 Material 3 分段页呈现三类对象：`启动配置`、`游戏本体`、`兼容包`。列表项点击后从底部抽屉查看路径、版本、文件统计等详情，并在抽屉中执行选择、新建配置、编辑或删除等操作；顶部本体页保留本地 zip 导入、Steam 中心和预留的网盘分享入口。
+- 版本页以 Material 3 分段页呈现三类对象：`启动配置`、`游戏本体`、`兼容包`。列表项点击后从底部抽屉查看路径、版本、文件统计等详情；兼容包页只负责安装/导入/删除，具体使用哪个兼容包只能在创建或编辑启动配置时选择。
 - 版本页维护 `<files>/instances/<profile_id>/instance.json` 启动配置。一个 profile 绑定一个 payload、一个可选 compat pack，并分别记录 save/settings 与 MOD 使用 `global` 还是 `isolated`。
-- 切换游戏版本/配置只更新 `<files>/launcher/selected_instance.json` 与 SharedPreferences，不复制 `SlayTheSpire2.pck` 或解压目录。
+- 切换游戏版本/配置只更新 `<files>/launcher/selected_instance.json` 与 SharedPreferences，不复制 `SlayTheSpire2.pck` 或解压目录；删除游戏本体或兼容包不会删除启动配置，配置会保留缺失引用并在启动前提示。
 - 同一个 payload 可以创建多个 profile：例如同一 beta 本体分别使用全局 MOD、独立 MOD、独立存档等。
 - Java 侧 `GodotApp` / `GameLaunchPreparationManager` 根据当前 profile 动态解析 PCK、assembly、settings、mods 与 logs 路径，并写入 `selected_instance.json`；C# 兼容层 `AppPaths` 从 Mono publish 目录或 Android 进程包名推导 `<files>` 后读取该 JSON（避免兼容层早期初始化时调用 Godot API/Java bridge），并由 `SavePathPatches` 将原版 `UserDataPathProvider` 重定向到当前 profile 的 account root。
 - 旧 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制；`selected_game_version.json` 保留为 legacy 诊断文件。

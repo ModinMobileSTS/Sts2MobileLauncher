@@ -396,6 +396,7 @@
     <string name="game_action_unlock_all">全解锁</string>
     <string name="game_action_browse_files">浏览文件</string>
     <string name="game_action_compat_pack">兼容包</string>
+    <string name="game_action_launch_profiles">启动配置</string>
     <string name="game_status_title">整体状态</string>
     <string name="game_status_subtitle">改动设置后，完全重启游戏即可生效。</string>
     <string name="game_mod_count_format">MOD：已安装 %1$d · 已启用 %2$d</string>
@@ -624,9 +625,9 @@
     <string name="payload_stats_calculating">文件大小：计算中…</string>
     <string name="payload_source_format">来源：%1$s / %2$s / SHA-256 %3$s</string>
     <string name="launch_requires_payload">请先导入游戏压缩包再启动</string>
-    <string name="launch_requires_compat_pack">请先安装或选择对应的移动端兼容包再启动</string>
+    <string name="launch_requires_compat_pack">请先编辑当前启动配置，并为它选择对应的移动端兼容包再启动</string>
     <string name="launch_incompatible_compat_pack_dialog_title">兼容包版本不匹配</string>
-    <string name="launch_incompatible_compat_pack_dialog_message">当前兼容包：%1$s\n兼容包支持：%2$s\n当前游戏：%3$s\n\n此检查只比较游戏版本号/支持版本列表。你可以前往“版本”页切换兼容包，也可以选择继续启动。</string>
+    <string name="launch_incompatible_compat_pack_dialog_message">当前兼容包：%1$s\n兼容包支持：%2$s\n当前游戏：%3$s\n\n此检查只比较游戏版本号/支持版本列表。你可以编辑当前启动配置来切换兼容包，也可以选择继续启动。</string>
     <string name="launch_anyway">仍然启动</string>
     <string name="status_busy_prepare_launch">正在准备游戏文件…</string>
     <string name="import_game_payload">导入游戏压缩包</string>
@@ -640,7 +641,7 @@
     <string name="status_import_game_payload_done">游戏本体已就绪：%1$s</string>
     <string name="status_clear_game_payload_done">游戏本体已清除。</string>
     <string name="clear_game_payload_confirm_title">清除已导入的游戏本体？</string>
-    <string name="clear_game_payload_confirm_message">会删除当前启动配置；仅当没有其他配置使用同一游戏本体时才会删除该本体。存档、附加设置和 MOD 文件会保留。</string>
+    <string name="clear_game_payload_confirm_message">会删除当前游戏本体，但启动配置会保留。受影响的配置仍会显示，启动前会要求重新导入、下载或重新绑定游戏本体。</string>
 
     <string name="version_manager_title">版本管理器</string>
     <string name="version_manager_subtitle">管理游戏本体、启动配置和移动端兼容包</string>
@@ -656,7 +657,6 @@
     <string name="version_manager_payload_list_subtitle">大小：%1$s · 文件：%2$d 个</string>
     <string name="version_manager_compat_list_subtitle">版本：%1$s</string>
     <string name="version_manager_select_game_body">选择本体</string>
-    <string name="version_manager_select_compat_pack">选择兼容包</string>
     <string name="version_manager_game_ready_format">已选游戏：%1$s</string>
     <string name="version_manager_selected_compat_format">兼容包：%1$s · 目标 %2$s</string>
     <string name="game_compat_status_format">兼容包：%1$s · 目标 %2$s</string>
@@ -672,7 +672,7 @@
     <string name="archive_active_game_version">登记已选游戏</string>
     <string name="version_manager_no_archived_games">还没有游戏本体。导入游戏压缩包即可添加。</string>
     <string name="version_manager_compat_packs_title">兼容包</string>
-    <string name="version_manager_compat_packs_subtitle">安装、导入和选择移动端兼容包。</string>
+    <string name="version_manager_compat_packs_subtitle">安装或导入移动端兼容包；创建或编辑启动配置时再把兼容包分配给具体配置。</string>
     <string name="version_manager_no_compat_packs">还没有安装兼容包。</string>
     <string name="version_manager_compat_target_format">兼容 %1$s · %2$s · 目标 %3$s</string>
     <string name="version_manager_installed_at_format">安装时间：%1$s</string>
@@ -700,12 +700,10 @@
     <string name="status_import_compat_pack_done">兼容包已安装：%1$s</string>
     <string name="status_busy_install_bundled_compat">正在安装内置兼容包…</string>
     <string name="status_install_bundled_compat_done">已安装 %1$d 个内置兼容包。</string>
-    <string name="status_busy_select_compat_pack">正在选择兼容包…</string>
-    <string name="status_select_compat_pack_done">兼容包已选择，重启游戏后生效。</string>
     <string name="status_busy_delete_compat_pack">正在删除兼容包…</string>
     <string name="status_delete_compat_pack_done">兼容包已删除。</string>
     <string name="delete_compat_pack_confirm_title">删除兼容包？</string>
-    <string name="delete_compat_pack_confirm_message">只会删除所选移动端兼容包；游戏本体、存档和用户 MOD 会保留。</string>
+    <string name="delete_compat_pack_confirm_message">只会删除该移动端兼容包；引用它的启动配置会保留，并在编辑前显示为兼容包缺失。</string>
     <string name="status_busy_archive_game_version">正在登记已选游戏本体…</string>
     <string name="status_archive_game_version_done">游戏本体已登记：%1$s</string>
     <string name="status_busy_select_game_version">正在选择游戏本体…</string>
@@ -713,7 +711,7 @@
     <string name="status_busy_delete_game_version">正在删除游戏本体…</string>
     <string name="status_delete_game_version_done">游戏本体已删除。</string>
     <string name="delete_game_version_confirm_title">删除游戏本体？</string>
-    <string name="delete_game_version_confirm_message">这会删除导入的游戏本体和所有指向它的启动配置。全局存档和 MOD 文件夹会保留。</string>
+    <string name="delete_game_version_confirm_message">会删除已导入的游戏本体，但指向它的启动配置会保留。这些配置仍会显示，启动前需要重新导入、下载或重新绑定游戏本体。</string>
 
     <string name="launch_profiles_title">启动配置</string>
     <string name="launch_profiles_subtitle">一个配置会选择一个游戏本体，并决定存档/设置和 MOD 使用全局目录还是独立目录。</string>
@@ -730,6 +728,13 @@
     <string name="launch_profile_name_hint">配置名称</string>
     <string name="launch_profile_select_payload_button">游戏本体：%1$s</string>
     <string name="launch_profile_select_payload_title">选择游戏本体</string>
+    <string name="launch_profile_select_compat_button">兼容包：%1$s</string>
+    <string name="launch_profile_select_compat_title">选择兼容包</string>
+    <string name="launch_profile_select_compat_none">不选择兼容包</string>
+    <string name="launch_profile_payload_missing_format">游戏本体缺失：%1$s</string>
+    <string name="launch_profile_compat_missing_format">兼容包缺失：%1$s</string>
+    <string name="launch_profile_payload_missing_launch_title">游戏本体缺失</string>
+    <string name="launch_profile_payload_missing_launch_message">当前启动配置“%1$s”指向游戏本体 %2$s，但该本体缺失或不完整。请重新导入/下载本体、切换其他启动配置，或编辑此配置后再启动。</string>
     <string name="launch_profile_save_mode_title">存档/设置目录</string>
     <string name="launch_profile_save_mode_global">使用全局存档和设置</string>
     <string name="launch_profile_save_mode_isolated">为此配置使用独立存档/设置文件夹</string>
@@ -748,7 +753,7 @@
     <string name="delete_launch_profile_confirm_title">删除启动配置？</string>
     <string name="delete_launch_profile_confirm_message">只会移除此启动配置。共享游戏本体会保留；配置下的独立存档/MOD 文件夹会被删除。</string>
     <string name="delete_game_payload_confirm_title">删除游戏本体？</string>
-    <string name="delete_game_payload_confirm_message">会移除此导入本体以及所有使用它的启动配置。全局存档和 MOD 文件夹会保留。</string>
+    <string name="delete_game_payload_confirm_message">会删除已导入的游戏本体，但使用该本体的启动配置会保留。全局和独立存档/MOD 文件夹都会保留。</string>
 
     <string name="yes">是</string>
     <string name="no">否</string>
