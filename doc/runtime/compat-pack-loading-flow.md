@@ -162,7 +162,7 @@ STS2Mobile.ModEntry
    - `preload_combat_code_enabled`：额外预热攻击/伤害/VFX 托管方法，默认 `false`。
    - `preload_shader_mode`：`off` / `load_resources`，默认 `off`；仅加载已知 shader 资源，不保证 GPU pipeline 已完成编译。
    Android 附加设置页在顶部“系统”分区的系统卡片中显示 `preload_enabled` 总开关；右侧箭头打开预加载详细管理 BottomSheet，默认不会自动展开。总开关开/关只写入自身，不改写上述细分项目；BottomSheet 的“恢复默认”只重置细分项目，不修改 `preload_enabled`。默认组合保持本次改动前的预加载行为，不额外启用 VFX/菜单/shader/code warmup。
-8. LAN bootstrap。
+8. LAN bootstrap。`LanMultiplayerBootstrapPatches` 在主菜单就绪后才尝试应用本地 LAN 兼容补丁；若 `settings.save` 中 `lan_multiplayer_enabled=false`，或已加载 `sts2_lan_connect` / STS2 Game Lobby 大厅 MOD，`LanMultiplayerPatches` 会整组跳过，避免其固定消息 ID / LAN host-join 补丁与大厅 MOD 自己的联机协议 profile 冲突。
 9. `ModLoaderPatches`。
 10. save diagnostic。
 

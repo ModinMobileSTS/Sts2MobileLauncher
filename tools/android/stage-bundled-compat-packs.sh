@@ -48,6 +48,7 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/AndroidStartupLoadingScreen.cs" \
     "STS2AndroidPortCompat/Patches/AndroidSettingsMerge.cs" \
     "STS2AndroidPortCompat/Patches/AndroidInGameSettingsPatches.cs" \
+    "STS2AndroidPortCompat/Patches/LanMultiplayerPatches.cs" \
     "STS2AndroidPortCompat/Patches/MobileTooltipPatches.cs" \
     "STS2AndroidPortCompat/Patches/DisplaySettingsPatches.cs" \
     "STS2AndroidPortCompat/Patches/TransitionMaterialPatches.cs" \

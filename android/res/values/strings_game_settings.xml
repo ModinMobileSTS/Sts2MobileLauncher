@@ -120,8 +120,8 @@
     <string name="lan_compatibility_mod_list_required">MOD name cannot be empty.</string>
     <string name="lan_compatibility_mod_list_duplicate">That MOD entry is already in the list.</string>
     <string name="edit">Edit</string>
-    <string name="lan_multiplayer_enabled_switch">Enable LAN Multiplayer compatibility</string>
-    <string name="lan_multiplayer_enabled_help">Enabled by default. Turn this off if you want to connect to other builds that do not use the Android LAN Multiplayer compatibility layer.</string>
+    <string name="lan_multiplayer_enabled_switch">Local multiplayer patch</string>
+    <string name="lan_multiplayer_enabled_help">Enabled by default for the built-in LAN compatibility layer. Turn it off to skip all Android LAN patches on the next game launch; the compatibility pack also skips them automatically when the STS2 Game Lobby MOD is loaded.</string>
     <string name="lan_custom_player_id_switch">Use custom player ID</string>
     <string name="lan_custom_platform_player_id_switch">Use custom platform player ID</string>
     <string name="lan_custom_player_id_hint">Enter any player ID (text is auto-mapped)</string>

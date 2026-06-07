@@ -120,8 +120,8 @@
     <string name="lan_compatibility_mod_list_required">MOD 名称不能为空。</string>
     <string name="lan_compatibility_mod_list_duplicate">列表里已经有这个 MOD 项了。</string>
     <string name="edit">编辑</string>
-    <string name="lan_multiplayer_enabled_switch">启用 LAN Multiplayer 兼容</string>
-    <string name="lan_multiplayer_enabled_help">默认开启。如果你要连接不使用 Android 版 LAN Multiplayer 兼容层的其它端，可以关闭这个开关。</string>
+    <string name="lan_multiplayer_enabled_switch">本地联机补丁</string>
+    <string name="lan_multiplayer_enabled_help">默认开启，用于内置 Android 局域网兼容层。关闭后会在下次启动游戏时跳过所有 Android 本地联机补丁；检测到 STS2 Game Lobby 大厅 MOD 已加载时，兼容包也会自动跳过这些补丁。</string>
     <string name="lan_custom_player_id_switch">启用自定义玩家 ID</string>
     <string name="lan_custom_platform_player_id_switch">启用自定义平台玩家 ID</string>
     <string name="lan_custom_player_id_hint">可输入任意玩家 ID（会自动映射）</string>
