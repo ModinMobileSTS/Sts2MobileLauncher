@@ -56,6 +56,8 @@
   STS1 的非官方移动端启动器。本作的 `steam-protocol` (Steam 协议)、`steam-content` (SteamPipe 游戏下载) 以及 Steam Cloud 云存档的逆向接入方案与源码主要移植/改编自该项目。
 - **[STS2-RitsuLib](https://github.com/BAKAOLC/STS2-RitsuLib) / [BaseLib-StS2](https://github.com/Alchyr/BaseLib-StS2)**
   作为 Android 端 MOD 兼容性排查的重要测试基准参考库。
+- **[Google Material Symbols](https://fonts.google.com/icons)**
+  提供启动器 UI 使用的官方 Rounded 图标轮廓，并由 bundled 字体离线生成 Android vector drawable。
 
 *(详细的第三方开源协议见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
 

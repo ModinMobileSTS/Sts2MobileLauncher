@@ -62,6 +62,8 @@ The creation of this project relies heavily on the explorations of the open-sour
   An unofficial mobile launcher for STS1. The reverse-engineered integration and source code for `steam-protocol`, `steam-content` (SteamPipe game downloads), and Steam Cloud saves in this project are primarily ported/adapted from it.
 - **[STS2-RitsuLib](https://github.com/BAKAOLC/STS2-RitsuLib) / [BaseLib-StS2](https://github.com/Alchyr/BaseLib-StS2)**
   Served as vital test baseline reference libraries for troubleshooting Android MOD compatibility.
+- **[Google Material Symbols](https://fonts.google.com/icons)**
+  Provides the official rounded icon outlines used by the launcher UI, generated into Android vector drawables from the bundled font.
 
 *(For detailed third-party open-source licenses, please see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
 

@@ -3,37 +3,22 @@ package com.godot.game;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.ColorFilter;
-import android.graphics.Paint;
 import android.graphics.PixelFormat;
-import android.graphics.Rect;
-import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.view.MenuItem;
 
 import androidx.appcompat.content.res.AppCompatResources;
-import androidx.core.content.res.ResourcesCompat;
+import androidx.core.graphics.drawable.DrawableCompat;
 
 import com.google.android.material.button.MaterialButton;
 
 public final class MaterialSymbols {
-	private static Typeface roundedTypeface;
-
 	private MaterialSymbols() {
 	}
 
 	public static Drawable drawable(Context context, int iconRes, int tint, int sizeDp) {
-		String glyph = glyphForDrawable(iconRes);
-		if (glyph == null || glyph.isEmpty()) {
-			Drawable fallback = AppCompatResources.getDrawable(context, iconRes);
-			if (fallback != null) {
-				fallback = fallback.mutate();
-				fallback.setTint(tint);
-			}
-			return fallback;
-		}
-		return drawable(context, glyph, ColorStateList.valueOf(tint), sizeDp);
+		return drawable(context, iconRes, ColorStateList.valueOf(tint), sizeDp);
 	}
 
 	public static Drawable drawable(Context context, String glyph, int tint, int sizeDp) {
@@ -41,20 +26,16 @@ public final class MaterialSymbols {
 	}
 
 	public static Drawable drawable(Context context, int iconRes, ColorStateList tint, int sizeDp) {
-		String glyph = glyphForDrawable(iconRes);
-		if (glyph == null || glyph.isEmpty()) {
-			Drawable fallback = AppCompatResources.getDrawable(context, iconRes);
-			if (fallback != null && tint != null) {
-				fallback = fallback.mutate();
-				fallback.setTintList(tint);
-			}
-			return fallback;
-		}
-		return drawable(context, glyph, tint, sizeDp);
+		int vectorRes = vectorForDrawable(iconRes);
+		return sizedDrawable(context, vectorRes != 0 ? vectorRes : iconRes, tint, sizeDp);
 	}
 
 	public static Drawable drawable(Context context, String glyph, ColorStateList tint, int sizeDp) {
-		return new MaterialSymbolDrawable(loadTypeface(context), glyph, tint, ExtraSettingsUi.dp(context, sizeDp));
+		int vectorRes = vectorForGlyph(glyph);
+		if (vectorRes == 0) {
+			return null;
+		}
+		return sizedDrawable(context, vectorRes, tint, sizeDp);
 	}
 
 	public static void applyButtonIcon(MaterialButton button, int iconRes, ColorStateList tint, int sizeDp) {
@@ -91,18 +72,24 @@ public final class MaterialSymbols {
 		item.setIcon(drawable(context, glyph, tint, sizeDp));
 	}
 
-	private static Typeface loadTypeface(Context context) {
-		if (roundedTypeface == null) {
-			try {
-				roundedTypeface = ResourcesCompat.getFont(context, R.font.material_symbols_rounded);
-			} catch (Exception ignored) {
-				roundedTypeface = Typeface.DEFAULT;
-			}
-			if (roundedTypeface == null) {
-				roundedTypeface = Typeface.DEFAULT;
-			}
+	private static Drawable sizedDrawable(Context context, int drawableRes, ColorStateList tint, int sizeDp) {
+		if (context == null || drawableRes == 0) {
+			return null;
 		}
-		return roundedTypeface;
+		Drawable drawable = AppCompatResources.getDrawable(context, drawableRes);
+		if (drawable == null) {
+			return null;
+		}
+		drawable = DrawableCompat.wrap(drawable.mutate());
+		if (tint != null) {
+			DrawableCompat.setTintList(drawable, tint);
+		}
+		return new SizedDrawable(drawable, ExtraSettingsUi.dp(context, sizeDp));
+	}
+
+	private static int vectorForDrawable(int iconRes) {
+		String glyph = glyphForDrawable(iconRes);
+		return glyph == null ? 0 : vectorForGlyph(glyph);
 	}
 
 	private static String glyphForDrawable(int iconRes) {
@@ -166,90 +153,140 @@ public final class MaterialSymbols {
 		return null;
 	}
 
-	private static final class MaterialSymbolDrawable extends Drawable {
-		private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
-		private final String glyph;
-		private final int intrinsicSize;
-		private ColorStateList tint;
-		private int currentColor;
-		private int alpha = 255;
-		private ColorFilter colorFilter;
+	private static int vectorForGlyph(String glyph) {
+		if ("add_circle".equals(glyph)) return R.drawable.ic_ms_add_circle_24;
+		if ("arrow_forward".equals(glyph)) return R.drawable.ic_ms_arrow_forward_24;
+		if ("aspect_ratio".equals(glyph)) return R.drawable.ic_ms_aspect_ratio_24;
+		if ("auto_awesome".equals(glyph)) return R.drawable.ic_ms_auto_awesome_24;
+		if ("badge".equals(glyph)) return R.drawable.ic_ms_badge_24;
+		if ("block".equals(glyph)) return R.drawable.ic_ms_block_24;
+		if ("blur_on".equals(glyph)) return R.drawable.ic_ms_blur_on_24;
+		if ("bolt".equals(glyph)) return R.drawable.ic_ms_bolt_24;
+		if ("build".equals(glyph)) return R.drawable.ic_ms_build_24;
+		if ("check_circle".equals(glyph)) return R.drawable.ic_ms_check_circle_24;
+		if ("chevron_right".equals(glyph)) return R.drawable.ic_ms_chevron_right_24;
+		if ("close".equals(glyph)) return R.drawable.ic_ms_close_24;
+		if ("cloud_done".equals(glyph)) return R.drawable.ic_ms_cloud_done_24;
+		if ("cloud_sync".equals(glyph)) return R.drawable.ic_ms_cloud_sync_24;
+		if ("code".equals(glyph)) return R.drawable.ic_ms_code_24;
+		if ("compare_arrows".equals(glyph)) return R.drawable.ic_ms_compare_arrows_24;
+		if ("dashboard".equals(glyph)) return R.drawable.ic_ms_dashboard_24;
+		if ("delete".equals(glyph)) return R.drawable.ic_ms_delete_24;
+		if ("desktop_windows".equals(glyph)) return R.drawable.ic_ms_desktop_windows_24;
+		if ("drag_indicator".equals(glyph)) return R.drawable.ic_ms_drag_indicator_24;
+		if ("edit".equals(glyph)) return R.drawable.ic_ms_edit_24;
+		if ("error".equals(glyph)) return R.drawable.ic_ms_error_24;
+		if ("expand_less".equals(glyph)) return R.drawable.ic_ms_expand_less_24;
+		if ("expand_more".equals(glyph)) return R.drawable.ic_ms_expand_more_24;
+		if ("extension".equals(glyph)) return R.drawable.ic_ms_extension_24;
+		if ("file_download".equals(glyph)) return R.drawable.ic_ms_file_download_24;
+		if ("file_upload".equals(glyph)) return R.drawable.ic_ms_file_upload_24;
+		if ("folder_open".equals(glyph)) return R.drawable.ic_ms_folder_open_24;
+		if ("gamepad".equals(glyph)) return R.drawable.ic_ms_gamepad_24;
+		if ("gesture".equals(glyph)) return R.drawable.ic_ms_gesture_24;
+		if ("groups".equals(glyph)) return R.drawable.ic_ms_groups_24;
+		if ("high_quality".equals(glyph)) return R.drawable.ic_ms_high_quality_24;
+		if ("info".equals(glyph)) return R.drawable.ic_ms_info_24;
+		if ("keyboard".equals(glyph)) return R.drawable.ic_ms_keyboard_24;
+		if ("layers".equals(glyph)) return R.drawable.ic_ms_layers_24;
+		if ("list".equals(glyph)) return R.drawable.ic_ms_list_24;
+		if ("lock_open".equals(glyph)) return R.drawable.ic_ms_lock_open_24;
+		if ("login".equals(glyph)) return R.drawable.ic_ms_login_24;
+		if ("mood".equals(glyph)) return R.drawable.ic_ms_mood_24;
+		if ("more_vert".equals(glyph)) return R.drawable.ic_ms_more_vert_24;
+		if ("open_in_new".equals(glyph)) return R.drawable.ic_ms_open_in_new_24;
+		if ("person".equals(glyph)) return R.drawable.ic_ms_person_24;
+		if ("phone_android".equals(glyph)) return R.drawable.ic_ms_phone_android_24;
+		if ("play_arrow".equals(glyph)) return R.drawable.ic_ms_play_arrow_24;
+		if ("receipt_long".equals(glyph)) return R.drawable.ic_ms_receipt_long_24;
+		if ("remove_circle".equals(glyph)) return R.drawable.ic_ms_remove_circle_24;
+		if ("restart_alt".equals(glyph)) return R.drawable.ic_ms_restart_alt_24;
+		if ("rocket_launch".equals(glyph)) return R.drawable.ic_ms_rocket_launch_24;
+		if ("save".equals(glyph)) return R.drawable.ic_ms_save_24;
+		if ("search".equals(glyph)) return R.drawable.ic_ms_search_24;
+		if ("settings".equals(glyph)) return R.drawable.ic_ms_settings_24;
+		if ("sort".equals(glyph)) return R.drawable.ic_ms_sort_24;
+		if ("speed".equals(glyph)) return R.drawable.ic_ms_speed_24;
+		if ("stadia_controller".equals(glyph)) return R.drawable.ic_ms_stadia_controller_24;
+		if ("sync".equals(glyph)) return R.drawable.ic_ms_sync_24;
+		if ("text_fields".equals(glyph)) return R.drawable.ic_ms_text_fields_24;
+		if ("touch_app".equals(glyph)) return R.drawable.ic_ms_touch_app_24;
+		if ("tune".equals(glyph)) return R.drawable.ic_ms_tune_24;
+		if ("unarchive".equals(glyph)) return R.drawable.ic_ms_unarchive_24;
+		if ("volume_up".equals(glyph)) return R.drawable.ic_ms_volume_up_24;
+		if ("zoom_in".equals(glyph)) return R.drawable.ic_ms_zoom_in_24;
+		return 0;
+	}
 
-		MaterialSymbolDrawable(Typeface typeface, String glyph, ColorStateList tint, int intrinsicSize) {
-			this.glyph = glyph == null ? "" : glyph;
-			this.tint = tint == null ? ColorStateList.valueOf(Color.WHITE) : tint;
-			this.intrinsicSize = intrinsicSize;
-			this.currentColor = this.tint.getDefaultColor();
-			paint.setTypeface(typeface == null ? Typeface.DEFAULT : typeface);
-			paint.setTextAlign(Paint.Align.CENTER);
-			paint.setFontFeatureSettings("liga");
+	private static final class SizedDrawable extends Drawable implements Drawable.Callback {
+		private final Drawable wrapped;
+		private final int sizePx;
+
+		SizedDrawable(Drawable wrapped, int sizePx) {
+			this.wrapped = wrapped;
+			this.sizePx = sizePx;
+			wrapped.setCallback(this);
 		}
 
 		@Override
 		public void draw(Canvas canvas) {
-			Rect bounds = getBounds();
-			if (bounds.isEmpty() || glyph.isEmpty()) {
-				return;
-			}
-			float size = Math.min(bounds.width(), bounds.height());
-			paint.setTextSize(size * 0.92f);
-			paint.setColor(currentColor);
-			paint.setAlpha(alpha);
-			paint.setColorFilter(colorFilter);
-			Paint.FontMetrics metrics = paint.getFontMetrics();
-			float x = bounds.exactCenterX();
-			float y = bounds.exactCenterY() - (metrics.ascent + metrics.descent) / 2f;
-			canvas.drawText(glyph, x, y, paint);
+			wrapped.setBounds(getBounds());
+			wrapped.draw(canvas);
+		}
+
+		@Override
+		protected void onBoundsChange(android.graphics.Rect bounds) {
+			wrapped.setBounds(bounds);
 		}
 
 		@Override
 		protected boolean onStateChange(int[] state) {
-			int nextColor = tint.getColorForState(state, tint.getDefaultColor());
-			if (nextColor == currentColor) {
-				return false;
-			}
-			currentColor = nextColor;
-			invalidateSelf();
-			return true;
+			return wrapped.setState(state);
 		}
 
 		@Override
 		public boolean isStateful() {
-			return tint != null && tint.isStateful();
+			return wrapped.isStateful();
 		}
 
 		@Override
 		public int getIntrinsicWidth() {
-			return intrinsicSize;
+			return sizePx;
 		}
 
 		@Override
 		public int getIntrinsicHeight() {
-			return intrinsicSize;
+			return sizePx;
 		}
 
 		@Override
 		public void setAlpha(int alpha) {
-			this.alpha = alpha;
-			invalidateSelf();
+			wrapped.setAlpha(alpha);
 		}
 
 		@Override
 		public void setColorFilter(ColorFilter colorFilter) {
-			this.colorFilter = colorFilter;
-			invalidateSelf();
-		}
-
-		@Override
-		public void setTintList(ColorStateList tint) {
-			this.tint = tint == null ? ColorStateList.valueOf(Color.WHITE) : tint;
-			onStateChange(getState());
-			invalidateSelf();
+			wrapped.setColorFilter(colorFilter);
 		}
 
 		@Override
 		public int getOpacity() {
 			return PixelFormat.TRANSLUCENT;
+		}
+
+		@Override
+		public void invalidateDrawable(Drawable who) {
+			invalidateSelf();
+		}
+
+		@Override
+		public void scheduleDrawable(Drawable who, Runnable what, long when) {
+			scheduleSelf(what, when);
+		}
+
+		@Override
+		public void unscheduleDrawable(Drawable who, Runnable what) {
+			unscheduleSelf(what);
 		}
 	}
 }

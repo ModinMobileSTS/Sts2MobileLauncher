@@ -138,7 +138,29 @@ android/assets/compat_packs/*.zip
 
 该目录下的 zip 是构建产物，已 gitignore，不再由 git 跟踪；提交前不要 `git add -f` 这些 zip。
 
-## 7. 构建导入版 APK
+## 7. 生成启动器 Material Symbols 矢量图
+
+启动器原生 Android UI 使用 `MaterialSymbols` helper 加载 `android/res/drawable/ic_ms_*.xml`。这些文件由 bundled `android/res/font/material_symbols_rounded.ttf` 离线生成，保留 Google Material Symbols Rounded 官方轮廓，但运行时不再依赖系统字体 ligature，避免部分 ROM（例如关闭 MIUI 优化后）把图标显示成 `settings` / `play_arrow` 这类 glyph 名称。
+
+新增或修改 `MaterialSymbols` 的 glyph 映射后，刷新并检查生成资源：
+
+```bash
+# 推荐用本地 venv；.agent/ 已 gitignore，不应提交
+python3 -m venv .agent/venv-fonttools
+.agent/venv-fonttools/bin/pip install fonttools
+.agent/venv-fonttools/bin/python tools/android/generate-material-symbol-vectors.py
+.agent/venv-fonttools/bin/python tools/android/generate-material-symbol-vectors.py --check
+```
+
+如果本机 Python 允许用户级安装，也可以直接运行：
+
+```bash
+python3 -m pip install --user fonttools
+tools/android/generate-material-symbol-vectors.py
+tools/android/generate-material-symbol-vectors.py --check
+```
+
+## 8. 构建导入版 APK
 
 导入版不内置游戏 zip：
 
@@ -154,7 +176,7 @@ tools/package/build_importer_apk.sh
 4. 执行 `local.properties` 中的 `android.gradle.task`（默认 `assembleMonoRelease`）。
 5. 复制 APK 到 `android.importer.dist`（默认 `dist/sts2-re-importer.apk`）。
 
-## 8. 构建直装版 APK
+## 9. 构建直装版 APK
 
 直装版临时内置本地 PC zip：
 
@@ -178,7 +200,7 @@ tools/package/build_direct_apk.sh
 6. 执行 Gradle task。
 7. 复制 APK 到 `android.direct.dist`（默认 `dist/sts2-re-direct.apk`），脚本退出时删除临时 zip。
 
-## 9. 生成 Android 优化本体 zip（可选）
+## 10. 生成 Android 优化本体 zip（可选）
 
 如果同时拥有某个版本的 PC 原版 zip 与匹配的 Godot 源码/反导出工程，可以重新用 Android export preset 导入资源，生成更适合移动端导入的本体 zip：
 
@@ -214,7 +236,7 @@ tools/package/build_android_body_zip.sh \
 
 临时工程和 Godot 日志默认写入 `.agent/tmp/android-body-build/`，该目录不入库；生成的 zip 应留在 `dist/` 或其他本地输出目录，不要提交。
 
-## 10. 局部检查
+## 11. 局部检查
 
 ```bash
 # Java/Kotlin/Steam 子模块编译检查
@@ -234,13 +256,16 @@ REFERENCE_FLAVOR=original-v0.106.1 tools/android/build-port-mod.sh
 tools/deps/prepare-external-projects.sh --list
 tools/deps/prepare-external-projects.sh --group modding-reference
 
+# 检查 Material Symbols vector drawable 是否已按当前 glyph 映射刷新
+tools/android/generate-material-symbol-vectors.py --check
+
 # standalone dotnet 编译也可显式传入 CompatReferenceDir
 "$DOTNET_BIN" build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj \
   -p:ReferenceFlavor=original-v0.107.0 \
   -p:CompatReferenceDir="$STS2_ORIGINAL_V1070_REFERENCE_DIR" -v:q
 ```
 
-## 11. 构建后基本验证
+## 12. 构建后基本验证
 
 ```bash
 adb install -r dist/sts2-re-importer.apk
