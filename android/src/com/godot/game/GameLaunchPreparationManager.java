@@ -49,6 +49,7 @@ public final class GameLaunchPreparationManager {
 
 	public void prepareForLaunch() throws Exception {
 		AndroidTempDirectory.configure(context, TAG);
+		Sts2LogcatCollector.startNewLaunchForSelectedProfile(context);
 		normalizeSavedLanguageIfNeeded();
 		refreshBundledCompatPacksIfNeeded();
 		logSelectedCompatPackForLaunch();

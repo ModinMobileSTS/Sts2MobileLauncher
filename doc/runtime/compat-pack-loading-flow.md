@@ -112,6 +112,7 @@ port-mod branch
 
 - 添加 renderer/display 参数。
 - 配置 `--log-file` 到当前 profile 日志目录 `<files>/instances/<profile_id>/logs/godot.log`，没有 profile 时 fallback 到 `<files>/logs/`。
+- `Sts2Application` 会在主进程早期启动应用内 logcat 采集器，统一写入全局 `<files>/logs/sts2.log`；启动准备和 `GodotApp` 进入当前 profile 后也继续使用同一个全局文件，不再写入 `<files>/instances/<profile_id>/logs/sts2.log`。每次启动游戏会像 `godot.log` 一样把旧全局 `sts2.log` 归档为 `sts2YYYY-MM-DDTHH.mm.ss.log` 并只把最新采集写入 `sts2.log`；输出采用紧凑 `level tag message` 格式，例如 `I DOTNET [STS2Mobile] ...`，采集过滤遵循附加设置 `log_level`（`info`→I/W/E、`debug`→D/I/W/E、`very_debug`→V/D/I/W/E）。该文件用于补充 `godot.log` 抓不到的 Java/Godot/Mono stderr/native 顶层日志（例如 `[STS2Mobile]`），但普通 app 只能读取自身 UID/进程可见 logcat，完整设备级日志仍需 ADB。
 - 根据附加设置中的 `log_level`（`info` / `debug` / `very_debug`）追加 STS2 原生命令行 `-log <LogType> <LogLevel>`，覆盖 `Generic`、`Network`、`Actions`、`GameSync`、`VisualSync` 的运行日志等级；Debug/Very Debug 会增加日志量并在下次启动生效。
 - 如果当前 profile payload 的 `SlayTheSpire2.pck` 存在，添加：
 
@@ -166,7 +167,7 @@ STS2Mobile.ModEntry
 9. `ModLoaderPatches`。
 10. save diagnostic。
 
-失败时 `ModEntry` 会记录异常；部分 patch 失败可能导致后续游戏启动不完整，因此 logcat 和 `godot.log` 是首要诊断来源。
+失败时 `ModEntry` 会记录异常；部分 patch 失败可能导致后续游戏启动不完整，因此 `sts2.log`（应用内 logcat 采集）、ADB logcat 和 `godot.log` 是首要诊断来源。
 
 ## 9. Overlay PCK 加载
 
@@ -230,6 +231,7 @@ adb shell run-as com.megacrit.sts2re ls files/compat-packs
 adb shell run-as com.megacrit.sts2re cat files/launcher/selected_compat_pack.json
 adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 adb shell run-as com.megacrit.sts2re cat files/logs/android-launch.log
+adb shell run-as com.megacrit.sts2re cat files/logs/sts2.log
 ```
 
 关键日志关键词：

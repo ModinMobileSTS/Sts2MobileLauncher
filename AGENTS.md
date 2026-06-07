@@ -186,7 +186,7 @@ s2_re/
   - 首次向导未完成时会重定向回 `GameSettingsActivity`。
   - `getCommandLine()` 加 renderer/display/log 参数；日志等级由附加设置 `log_level`（`info` / `debug` / `very_debug`）转为 STS2 `-log <LogType> <LogLevel>` 命令行，覆盖 Generic/Network/Actions/GameSync/VisualSync；有当前 launch profile payload 的 `SlayTheSpire2.pck` 时传 `--main-pack <files>/payloads/<payload_id>/game/SlayTheSpire2.pck`，否则使用 `assets/bootstrap.pck`。
   - 暴露 `launchGameSettingsFromGame()`、`restartToSettingsFromGame()`、`getGodotDataDir()`、`getSelectedGameDir()`、`getSelectedAccountRootDir()`、`getSelectedModsDir()`、`getSelectedLaunchContextJson()`、`getSelectedCompatPackDir()`、`getSelectedCompatOverlayPck()` 等静态桥给 C# 兼容层。
-  - 维护当前 profile 的 `logs/godot.log` 与 `logs/android-launch.log`，并保留最近若干 Godot 日志。
+  - 维护当前 profile 的 `logs/godot.log` 与 `logs/android-launch.log`；应用内 logcat 统一采集到全局 `<files>/logs/sts2.log`，每次启动游戏时像 `godot.log` 一样归档旧 `sts2.log`。`sts2.log` 使用紧凑 `level tag message` 格式并遵循附加设置 `log_level`（info/debug/very_debug），只能抓到普通 app 可见的自身 UID/进程相关 logcat，完整设备级日志仍需 ADB。
 - 启动路径：
   1. `GameSettingsActivity.launchGame()` 检查当前启动配置绑定的 payload 是否 ready；配置存在但本体缺失时不 fallback 到旧 `<files>/game/`，而是提示用户重新导入、下载、切换或编辑启动配置。
   2. 如果兼容包开关启用，只读取当前启动配置的 `compat_pack_id`；无包/包已删除则阻止启动并提示编辑启动配置，版本不匹配则弹窗提示。
@@ -219,7 +219,7 @@ s2_re/
 <files>/instances/<profile_id>/instance.json # 启动配置，绑定 payload/compat/save/mod 模式
 <files>/instances/<profile_id>/default/<account>/settings.save # 隔离存档/设置目录
 <files>/instances/<profile_id>/mods/        # 隔离普通用户 MOD 目录
-<files>/instances/<profile_id>/logs/        # profile 日志目录
+<files>/instances/<profile_id>/logs/        # profile 日志目录：godot.log / android-launch.log
 <files>/steam/downloads/                    # SteamPipe 下载 staging / 任务诊断
 <files>/steam/cloud/<profile_id>/           # Steam Cloud manifest、baseline、备份与诊断
 <files>/compat-packs/<pack_id>/             # 已安装 Android 兼容包
@@ -230,7 +230,7 @@ s2_re/
 <files>/mods/                              # 全局普通用户 MOD 目录
 <files>/.godot/mono/publish/arm64/          # Godot/Mono publish 目录
 <files>/port_compat.pck                    # 启动前 staging 的当前兼容包 overlay
-<files>/logs/                              # legacy/global 日志 fallback
+<files>/logs/                              # legacy/global 日志 fallback 与统一应用内 logcat：sts2.log
 ```
 
 ## 8. 兼容包 / port-mod submodule
@@ -502,7 +502,7 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 2. “版本”页能安装/显示内置兼容包，至少包含正式 `v0.103.x` 与 beta `v0.107.0` 对应包（当前仍可内置旧 beta `v0.106.1`）。
 3. 导入版选择 PC zip 或 Steam 下载后，`files/payloads/<payload_id>/game/.payload_manifest.json` 存在，`files/payloads/<payload_id>/game/SlayTheSpire2.pck` 存在，并创建/选择 `files/instances/<profile_id>/instance.json`；切换版本不应复制回 `files/game/`。Steam 下载来源应在 manifest 中记录 `source.kind=steam_depot`。
 4. 新建启动配置时按 payload 版本填入匹配兼容包；之后兼容包只能通过新建/编辑启动配置修改，不再有全局选中包。删除 payload 或 compat pack 后，相关启动配置仍保留并在列表中显示缺失，启动前弹提示。
-5. 点击启动后 logcat / 当前 profile 的 `files/instances/<profile_id>/logs/android-launch.log` 能看到 selected compatibility pack 和 `Loading imported game PCK`。
+5. 点击启动后 logcat / 当前 profile 的 `files/instances/<profile_id>/logs/android-launch.log` 能看到 selected compatibility pack 和 `Loading imported game PCK`；全局 `files/logs/sts2.log` 应包含应用内采集到的 Android logcat（如 `Sts2Re` / `GODOT` / `[STS2Mobile]`）。
 6. `files/.godot/mono/publish/arm64/STS2Mobile.dll` 来自当前选择的兼容包；`files/port_compat.pck` 已 staging。
 7. 修改图形/输入/MOD 设置后，当前 profile 解析出的 settings（全局 `files/default/1/settings.save` 或隔离 `files/instances/<profile_id>/default/1/settings.save`）有对应字段。
 8. 从游戏内打开附加设置、退出回设置、crash/log/file browser 页面不崩溃。

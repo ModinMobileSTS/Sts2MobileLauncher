@@ -18,6 +18,7 @@ public class Sts2Application extends Application {
 	public void onCreate() {
 		super.onCreate();
 		AndroidTempDirectory.configure(this, "Sts2Application");
+		Sts2LogcatCollector.start(this);
 
 		CaocConfig.Builder.create()
 			.backgroundMode(CaocConfig.BACKGROUND_MODE_SHOW_CUSTOM)

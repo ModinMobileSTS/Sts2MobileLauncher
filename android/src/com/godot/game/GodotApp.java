@@ -129,6 +129,7 @@ public class GodotApp extends GodotActivity {
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		AndroidTempDirectory.configure(this, TAG);
+		Sts2LogcatCollector.startForSelectedProfile(this);
 		gameDir = new LaunchProfileManager(this).getSelectedGameDir();
 		SplashScreen.installSplashScreen(this);
 		if (!ExtraSettingsPreferences.isFirstRunSetupCompleted(this)) {

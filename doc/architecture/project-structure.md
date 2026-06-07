@@ -77,7 +77,7 @@ android/steam-content/                        # SteamPipe depot manifest/chunk �
 <files>/instances/<profile_id>/instance.json # 启动配置：绑定 payload/compat/save/mod 模式
 <files>/instances/<profile_id>/default/1/settings.save # 隔离存档/设置模式使用
 <files>/instances/<profile_id>/mods/        # 隔离 MOD 模式使用
-<files>/instances/<profile_id>/logs/        # 当前配置日志
+<files>/instances/<profile_id>/logs/        # 当前配置日志：godot.log / android-launch.log
 <files>/steam/downloads/                    # SteamPipe 下载 staging / 任务诊断
 <files>/steam/cloud/<profile_id>/           # Steam Cloud manifest、baseline、备份与诊断
 <files>/compat-packs/<pack_id>/             # 已安装兼容包
@@ -88,7 +88,7 @@ android/steam-content/                        # SteamPipe depot manifest/chunk �
 <files>/mods/                              # 全局普通用户 MOD 根，profile 选择 global 时使用
 <files>/.godot/mono/publish/arm64/          # Mono publish 目录
 <files>/port_compat.pck                    # 启动前 staging 的 overlay
-<files>/logs/                              # legacy/global 日志 fallback
+<files>/logs/                              # legacy/global 日志 fallback 与统一应用内 logcat：sts2.log
 ```
 
 ## 6. 版本选择模型
