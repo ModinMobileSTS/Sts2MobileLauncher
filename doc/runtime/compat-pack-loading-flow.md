@@ -111,9 +111,9 @@ port-mod branch
 `GodotApp.getCommandLine()`：
 
 - 添加 renderer/display 参数。
-- 配置 `--log-file` 到当前 profile 日志目录 `<files>/instances/<profile_id>/logs/godot.log`，没有 profile 时 fallback 到 `<files>/logs/`。
-- `Sts2Application` 会在主进程早期启动应用内 logcat 采集器，统一写入全局 `<files>/logs/sts2.log`；启动准备和 `GodotApp` 进入当前 profile 后也继续使用同一个全局文件，不再写入 `<files>/instances/<profile_id>/logs/sts2.log`。每次启动游戏会像 `godot.log` 一样把旧全局 `sts2.log` 归档为 `sts2YYYY-MM-DDTHH.mm.ss.log` 并只把最新采集写入 `sts2.log`；输出采用紧凑 `level tag message` 格式，例如 `I DOTNET [STS2Mobile] ...`，采集过滤遵循附加设置 `log_level`（`info`→I/W/E、`debug`→D/I/W/E、`very_debug`→V/D/I/W/E）。该文件用于补充 `godot.log` 抓不到的 Java/Godot/Mono stderr/native 顶层日志（例如 `[STS2Mobile]`），但普通 app 只能读取自身 UID/进程可见 logcat，完整设备级日志仍需 ADB。
-- 根据附加设置中的 `log_level`（`info` / `debug` / `very_debug`）追加 STS2 原生命令行 `-log <LogType> <LogLevel>`，覆盖 `Generic`、`Network`、`Actions`、`GameSync`、`VisualSync` 的运行日志等级；Debug/Very Debug 会增加日志量并在下次启动生效。
+- 默认配置 `--log-file` 到当前 profile 日志目录 `<files>/instances/<profile_id>/logs/godot.log`，没有 profile 时 fallback 到 `<files>/logs/`；若附加设置 `log_level=off`，则不传 `--log-file`，完全禁用新的 `godot.log` 写入。
+- `Sts2Application` 会在主进程早期启动应用内 logcat 采集器，统一写入全局 `<files>/logs/sts2.log`；启动准备和 `GodotApp` 进入当前 profile 后也继续使用同一个全局文件，不再写入 `<files>/instances/<profile_id>/logs/sts2.log`。每次启动游戏会像 `godot.log` 一样把旧全局 `sts2.log` 归档为 `sts2YYYY-MM-DDTHH.mm.ss.log` 并只把最新采集写入 `sts2.log`；输出采用紧凑 `level tag message` 格式，例如 `I DOTNET [STS2Mobile] ...`，采集过滤遵循附加设置 `log_level`（`off`→停止采集、`info`→I/W/E、`debug`→D/I/W/E、`very_debug`→V/D/I/W/E）。该文件用于补充 `godot.log` 抓不到的 Java/Godot/Mono stderr/native 顶层日志（例如 `[STS2Mobile]`），但普通 app 只能读取自身 UID/进程可见 logcat，完整设备级日志仍需 ADB。
+- 根据附加设置中的 `log_level`（默认 `info`，可选 `off` / `debug` / `very_debug`）追加 STS2 原生命令行 `-log <LogType> <LogLevel>`，覆盖 `Generic`、`Network`、`Actions`、`GameSync`、`VisualSync` 的运行日志等级；`off` 时不追加 STS2 `-log` 参数，Debug/Very Debug 会增加日志量并在下次启动生效。
 - 如果当前 profile payload 的 `SlayTheSpire2.pck` 存在，添加：
 
 ```text

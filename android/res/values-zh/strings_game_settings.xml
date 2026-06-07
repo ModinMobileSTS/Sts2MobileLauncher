@@ -150,10 +150,11 @@
     <string name="section_log">日志</string>
     <string name="section_log_subtitle">配置运行日志详细程度，并查看已生成的日志。</string>
     <string name="log_level">日志等级</string>
+    <string name="log_level_off_option">关闭</string>
     <string name="log_level_info_option">普通（Info）</string>
     <string name="log_level_debug_option">Debug</string>
     <string name="log_level_very_debug_option">Very Debug</string>
-    <string name="log_level_info">Debug 和 Very Debug 会产生大量日志，可能影响性能。所选等级会在下次启动游戏时生效。</string>
+    <string name="log_level_info">关闭会完全禁用 godot.log 和 sts2.log。Debug 和 Very Debug 会产生大量日志，可能影响性能。所选等级会在下次启动游戏时生效。</string>
     <string name="view_logs">查看日志</string>
     <string name="section_files">文件</string>
     <string name="view_files">文件浏览器</string>
@@ -502,6 +503,7 @@
     <string name="choice_sheet_renderer_vulkan_desc">驱动开销更低，可能更流畅；但部分设备可能闪退或显示异常。</string>
     <string name="choice_sheet_launcher_settings_desc">点击桌面图标后先打开启动器附加设置页。</string>
     <string name="choice_sheet_launcher_game_desc">首次向导完成后，点击桌面图标会尝试直接准备文件并启动游戏。</string>
+    <string name="choice_sheet_log_off_desc">完全禁用 godot.log 和 sts2.log。仅在不需要诊断时使用。</string>
     <string name="choice_sheet_log_info_desc">普通运行诊断，日志体积最小。</string>
     <string name="choice_sheet_log_debug_desc">输出更多细节，适合排查 MOD、渲染或启动问题。</string>
     <string name="choice_sheet_log_very_debug_desc">最详细诊断。日志可能非常大，也可能影响性能。</string>

@@ -77,6 +77,10 @@ public final class Sts2LogcatCollector {
 		File targetLogsDir = getGlobalLogsDir(appContext);
 		String logLevel = resolveLogLevel(appContext, useLaunchLogLevel);
 		synchronized (LOCK) {
+			if (ExtraSettingsRepository.LOG_LEVEL_OFF.equals(logLevel)) {
+				stopLocked();
+				return;
+			}
 			if (!forceRestart && isCollectorAliveLocked() && isSameDirectory(activeLogsDir, targetLogsDir) && logLevel.equals(activeLogLevel)) {
 				return;
 			}
@@ -404,6 +408,9 @@ public final class Sts2LogcatCollector {
 
 	private static int minPriorityRank(String logLevel) {
 		String normalized = ExtraSettingsRepository.normalizeLogLevel(logLevel);
+		if (ExtraSettingsRepository.LOG_LEVEL_OFF.equals(normalized)) {
+			return priorityRank('S');
+		}
 		if (ExtraSettingsRepository.LOG_LEVEL_VERY_DEBUG.equals(normalized)) {
 			return priorityRank('V');
 		}
@@ -415,6 +422,9 @@ public final class Sts2LogcatCollector {
 
 	private static String toLogcatFilterPriority(String logLevel) {
 		String normalized = ExtraSettingsRepository.normalizeLogLevel(logLevel);
+		if (ExtraSettingsRepository.LOG_LEVEL_OFF.equals(normalized)) {
+			return "S";
+		}
 		if (ExtraSettingsRepository.LOG_LEVEL_VERY_DEBUG.equals(normalized)) {
 			return "V";
 		}

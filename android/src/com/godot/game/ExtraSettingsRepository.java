@@ -43,6 +43,7 @@ public final class ExtraSettingsRepository {
 	public static final int SETTINGS_SCHEMA_VERSION = 6;
 	public static final String KEY_ANDROID_COMPAT_PACK_ENABLED = "android_compat_pack_enabled";
 	public static final String KEY_LOG_LEVEL = "log_level";
+	public static final String LOG_LEVEL_OFF = "off";
 	public static final String LOG_LEVEL_INFO = "info";
 	public static final String LOG_LEVEL_DEBUG = "debug";
 	public static final String LOG_LEVEL_VERY_DEBUG = "very_debug";
@@ -270,6 +271,9 @@ public final class ExtraSettingsRepository {
 			return LOG_LEVEL_INFO;
 		}
 		String normalized = value.trim().toLowerCase(Locale.ROOT).replace('-', '_').replace(" ", "_");
+		if ("none".equals(normalized) || "disabled".equals(normalized) || LOG_LEVEL_OFF.equals(normalized)) {
+			return LOG_LEVEL_OFF;
+		}
 		if ("verydebug".equals(normalized) || "very_debug".equals(normalized)) {
 			return LOG_LEVEL_VERY_DEBUG;
 		}

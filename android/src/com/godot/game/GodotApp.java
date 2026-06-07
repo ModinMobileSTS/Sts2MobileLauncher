@@ -193,6 +193,11 @@ public class GodotApp extends GodotActivity {
 	}
 
 	private void appendGodotLogFileCommandLineArgs(List<String> commandLine) {
+		if (ExtraSettingsRepository.LOG_LEVEL_OFF.equals(new ExtraSettingsRepository(this).getLogLevelForLaunch())) {
+			Log.i(TAG, "Godot runtime log file disabled by log level setting.");
+			appendAndroidLaunchLog("Godot --log-file disabled by log level setting.");
+			return;
+		}
 		File logsDir = new LaunchProfileManager(this).getSelectedLogsRootDir();
 		File godotLogFile = new File(logsDir, "godot.log");
 		try {
@@ -209,6 +214,11 @@ public class GodotApp extends GodotActivity {
 
 	private void appendSts2LogLevelCommandLineArgs(List<String> commandLine) {
 		String configuredLevel = new ExtraSettingsRepository(this).getLogLevelForLaunch();
+		if (ExtraSettingsRepository.LOG_LEVEL_OFF.equals(configuredLevel)) {
+			Log.i(TAG, "STS2 runtime log command line disabled by log level setting.");
+			appendAndroidLaunchLog("STS2 runtime log command line disabled by log level setting.");
+			return;
+		}
 		String commandLineLevel = toSts2LogLevelArgument(configuredLevel);
 		String[] logTypes = new String[] { "Generic", "Network", "Actions", "GameSync", "VisualSync" };
 		for (String logType : logTypes) {

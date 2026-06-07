@@ -64,7 +64,7 @@ public final class SettingsPage {
 	private static final String[] VSYNC_VALUES = new String[] { "off", "on", "adaptive" };
 	private static final String[] ASPECT_VALUES = new String[] { "auto", "sixteen_by_nine", "sixteen_by_ten", "twenty_one_by_nine", "four_by_three" };
 	private static final String[] RENDERER_VALUES = new String[] { RendererPreference.RENDERER_OPENGL_ES3, RendererPreference.RENDERER_VULKAN };
-	private static final String[] LOG_LEVEL_VALUES = new String[] { ExtraSettingsRepository.LOG_LEVEL_INFO, ExtraSettingsRepository.LOG_LEVEL_DEBUG, ExtraSettingsRepository.LOG_LEVEL_VERY_DEBUG };
+	private static final String[] LOG_LEVEL_VALUES = new String[] { ExtraSettingsRepository.LOG_LEVEL_OFF, ExtraSettingsRepository.LOG_LEVEL_INFO, ExtraSettingsRepository.LOG_LEVEL_DEBUG, ExtraSettingsRepository.LOG_LEVEL_VERY_DEBUG };
 	private static final String[] LAUNCHER_STARTUP_VALUES = new String[] { ExtraSettingsPreferences.LAUNCHER_STARTUP_SETTINGS, ExtraSettingsPreferences.LAUNCHER_STARTUP_GAME };
 	private static final String[] VFX_PRELOAD_VALUES = new String[] { "off", "hot", "full" };
 	private static final String[] SHADER_PRELOAD_VALUES = new String[] { "off", "load_resources" };
@@ -610,11 +610,12 @@ public final class SettingsPage {
 				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_launcher_game_desc), R.drawable.ic_rocket_launch_24)
 			);
 		}
-		if (labelRes == R.string.log_level && labels.size() >= 3) {
+		if (labelRes == R.string.log_level && labels.size() >= 4) {
 			return Arrays.asList(
-				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_log_info_desc), R.drawable.ic_article_24),
-				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_log_debug_desc), R.drawable.ic_tune_24),
-				new ChoiceOption(labels.get(2), context.getString(R.string.choice_sheet_log_very_debug_desc), R.drawable.ic_speed_24)
+				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_log_off_desc), R.drawable.ic_close_24),
+				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_log_info_desc), R.drawable.ic_article_24),
+				new ChoiceOption(labels.get(2), context.getString(R.string.choice_sheet_log_debug_desc), R.drawable.ic_tune_24),
+				new ChoiceOption(labels.get(3), context.getString(R.string.choice_sheet_log_very_debug_desc), R.drawable.ic_speed_24)
 			);
 		}
 		if (labelRes == R.string.mobile_tooltip_mode_title && labels.size() >= 3) {
@@ -1158,6 +1159,7 @@ public final class SettingsPage {
 
 	private List<String> buildLogLevelLabels() {
 		return Arrays.asList(
+			context.getString(R.string.log_level_off_option),
 			context.getString(R.string.log_level_info_option),
 			context.getString(R.string.log_level_debug_option),
 			context.getString(R.string.log_level_very_debug_option)

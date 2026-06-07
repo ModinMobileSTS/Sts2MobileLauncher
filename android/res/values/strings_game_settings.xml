@@ -150,10 +150,11 @@
     <string name="section_log">Logs</string>
     <string name="section_log_subtitle">Configure runtime log detail and inspect generated logs.</string>
     <string name="log_level">Log level</string>
+    <string name="log_level_off_option">Off</string>
     <string name="log_level_info_option">Normal (Info)</string>
     <string name="log_level_debug_option">Debug</string>
     <string name="log_level_very_debug_option">Very Debug</string>
-    <string name="log_level_info">Debug and Very Debug output can be very large and may affect performance. The selected level is applied next time the game starts.</string>
+    <string name="log_level_info">Off disables godot.log and sts2.log entirely. Debug and Very Debug output can be very large and may affect performance. The selected level is applied next time the game starts.</string>
     <string name="view_logs">View Logs</string>
     <string name="section_files">Files</string>
     <string name="view_files">Browse Files</string>
@@ -502,6 +503,7 @@
     <string name="choice_sheet_renderer_vulkan_desc">Lower driver overhead and potentially smoother rendering, but some devices may crash or show glitches.</string>
     <string name="choice_sheet_launcher_settings_desc">Open the launcher settings page when tapping the desktop icon.</string>
     <string name="choice_sheet_launcher_game_desc">After setup is complete, try to prepare files and launch the game directly from the desktop icon.</string>
+    <string name="choice_sheet_log_off_desc">Disable godot.log and sts2.log entirely. Use only when you do not need diagnostics.</string>
     <string name="choice_sheet_log_info_desc">Normal runtime diagnostics with the smallest log size.</string>
     <string name="choice_sheet_log_debug_desc">More detailed logs for troubleshooting MODs, rendering or startup issues.</string>
     <string name="choice_sheet_log_very_debug_desc">Most verbose diagnostics. Logs can become very large and may affect performance.</string>
