@@ -71,7 +71,11 @@ public final class CompatPackManager {
 		if (!isCompatPackEnabled()) {
 			return null;
 		}
-		String id = getSelectedPackId();
+		return getSelectedPackIgnoringEnabled();
+	}
+
+	public CompatPack getSelectedPackIgnoringEnabled() {
+		String id = getSelectedPackIdIgnoringEnabled();
 		if (TextUtils.isEmpty(id)) {
 			return null;
 		}
@@ -86,6 +90,10 @@ public final class CompatPackManager {
 		if (!isCompatPackEnabled()) {
 			return "";
 		}
+		return getSelectedPackIdIgnoringEnabled();
+	}
+
+	public String getSelectedPackIdIgnoringEnabled() {
 		try {
 			return new LaunchProfileManager(context).getSelectedCompatPackId();
 		} catch (Exception ignored) {
@@ -122,8 +130,18 @@ public final class CompatPackManager {
 		return pack == null ? null : pack.dllFile;
 	}
 
+	public File getSelectedCompatDllIgnoringEnabled() {
+		CompatPack pack = getSelectedPackIgnoringEnabled();
+		return pack == null ? null : pack.dllFile;
+	}
+
 	public File getSelectedCompatOverlayPck() {
 		CompatPack pack = getSelectedPack();
+		return pack == null ? null : pack.overlayPckFile;
+	}
+
+	public File getSelectedCompatOverlayPckIgnoringEnabled() {
+		CompatPack pack = getSelectedPackIgnoringEnabled();
 		return pack == null ? null : pack.overlayPckFile;
 	}
 

@@ -85,7 +85,7 @@ public final class Sts2LogcatCollector {
 				return;
 			}
 			stopLocked();
-			startLocked(appContext, targetLogsDir, MODE_FULL, logLevel, archivePreviousLog);
+			startLocked(appContext, targetLogsDir, MODE_FULL, logLevel, archivePreviousLog, true);
 		}
 	}
 
@@ -93,9 +93,9 @@ public final class Sts2LogcatCollector {
 		return new File(context.getFilesDir(), "logs");
 	}
 
-	private static void startLocked(Context context, File logsDir, int mode, String logLevel, boolean archivePreviousLog) {
+	private static void startLocked(Context context, File logsDir, int mode, String logLevel, boolean archivePreviousLog, boolean usePidFilter) {
 		File logFile = new File(logsDir, LOG_FILE_NAME);
-		List<String> command = buildCommand(mode, logLevel);
+		List<String> command = buildCommand(mode, logLevel, usePidFilter);
 		try {
 			FileBrowserSupport.ensureDirectory(logsDir);
 			if (archivePreviousLog) {
@@ -113,7 +113,7 @@ public final class Sts2LogcatCollector {
 			int generation = ++activeGeneration;
 			long startedAt = SystemClock.uptimeMillis();
 			startPipeThread(startedProcess, logFile, minPriorityRank(logLevel), generation);
-			startWaiterThread(context, logsDir, logFile, startedProcess, mode, logLevel, startedAt, generation);
+			startWaiterThread(context, logsDir, logFile, startedProcess, mode, logLevel, startedAt, generation, usePidFilter);
 			Log.i(TAG, "Capturing Android logcat to " + logFile.getAbsolutePath() + " mode=" + describeMode(mode) + " logLevel=" + logLevel);
 		} catch (Exception exception) {
 			appendCollectorLine(logFile, 'E', "failed to start logcat: " + exception);
@@ -123,9 +123,13 @@ public final class Sts2LogcatCollector {
 		}
 	}
 
-	private static List<String> buildCommand(int mode, String logLevel) {
+	private static List<String> buildCommand(int mode, String logLevel, boolean usePidFilter) {
 		List<String> command = new ArrayList<>();
 		command.add("logcat");
+		if (usePidFilter && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+			command.add("--pid");
+			command.add(String.valueOf(android.os.Process.myPid()));
+		}
 		command.add("-v");
 		command.add("threadtime");
 		command.add("-b");
@@ -197,7 +201,7 @@ public final class Sts2LogcatCollector {
 		}
 	}
 
-	private static void startWaiterThread(Context context, File logsDir, File logFile, Process startedProcess, int mode, String logLevel, long startedAt, int generation) {
+	private static void startWaiterThread(Context context, File logsDir, File logFile, Process startedProcess, int mode, String logLevel, long startedAt, int generation, boolean usePidFilter) {
 		Thread thread = new Thread(() -> {
 			int exitCode;
 			try {
@@ -213,9 +217,12 @@ public final class Sts2LogcatCollector {
 					return;
 				}
 				process = null;
-				if (mode == MODE_FULL && elapsed <= FAST_EXIT_RETRY_WINDOW_MS) {
+				if (elapsed <= FAST_EXIT_RETRY_WINDOW_MS && usePidFilter) {
+					appendCollectorLine(logFile, 'W', "retrying without --pid filter");
+					startLocked(context, logsDir, mode, logLevel, false, false);
+				} else if (mode == MODE_FULL && elapsed <= FAST_EXIT_RETRY_WINDOW_MS) {
 					appendCollectorLine(logFile, 'W', "retrying with main log buffer only");
-					startLocked(context, logsDir, MODE_MAIN_ONLY, logLevel, false);
+					startLocked(context, logsDir, MODE_MAIN_ONLY, logLevel, false, false);
 				}
 			}
 		}, "Sts2LogcatCollectorWaiter");

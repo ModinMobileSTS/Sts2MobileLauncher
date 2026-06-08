@@ -14,6 +14,12 @@ add_library(
     workshop_zstd.c
 )
 
+add_library(
+    monomod_android_libc_shim
+    SHARED
+    monomod_android_libc_shim.c
+)
+
 target_link_libraries(
     workshop_zstd
     PRIVATE

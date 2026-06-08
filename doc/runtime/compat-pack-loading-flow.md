@@ -113,6 +113,7 @@ port-mod branch
 - 添加 renderer/display 参数。
 - 默认配置 `--log-file` 到当前 profile 日志目录 `<files>/instances/<profile_id>/logs/godot.log`，没有 profile 时 fallback 到 `<files>/logs/`；若附加设置 `log_level=off`，则不传 `--log-file`，完全禁用新的 `godot.log` 写入。
 - `Sts2Application` 会在主进程早期启动应用内 logcat 采集器，统一写入全局 `<files>/logs/sts2.log`；启动准备和 `GodotApp` 进入当前 profile 后也继续使用同一个全局文件，不再写入 `<files>/instances/<profile_id>/logs/sts2.log`。每次启动游戏会像 `godot.log` 一样把旧全局 `sts2.log` 归档为 `sts2YYYY-MM-DDTHH.mm.ss.log` 并只把最新采集写入 `sts2.log`；输出采用紧凑 `level tag message` 格式，例如 `I DOTNET [STS2Mobile] ...`，采集过滤遵循附加设置 `log_level`（`off`→停止采集、`info`→I/W/E、`debug`→D/I/W/E、`very_debug`→V/D/I/W/E）。该文件用于补充 `godot.log` 抓不到的 Java/Godot/Mono stderr/native 顶层日志（例如 `[STS2Mobile]`），但普通 app 只能读取自身 UID/进程可见 logcat，完整设备级日志仍需 ADB。
+- 固定追加 STS2 原生命令行 `--force-steam off`，让原版 `NGame.InitializePlatform()` 即使在 Harmony/MonoMod detour 失效的 ROM 上也走内置 Steam 跳过分支，避免继续尝试加载桌面 `steam_api64`。
 - 根据附加设置中的 `log_level`（默认 `info`，可选 `off` / `debug` / `very_debug`）追加 STS2 原生命令行 `-log <LogType> <LogLevel>`，覆盖 `Generic`、`Network`、`Actions`、`GameSync`、`VisualSync` 的运行日志等级；`off` 时不追加 STS2 `-log` 参数，Debug/Very Debug 会增加日志量并在下次启动生效。
 - 如果当前 profile payload 的 `SlayTheSpire2.pck` 存在，添加：
 
@@ -138,8 +139,8 @@ STS2Mobile.ModEntry
 
 当前 `ModEntry.Apply()` 主要顺序：
 
-1. temp 目录配置与 build info 日志。
-2. `RenderDiagnosticPatches`。
+1. temp 目录配置、build info 日志与 `HarmonyAndroidCompat` 后端准备。Android 上默认贴近 `../s2` 的 minimal bootstrap：不启用旧 native resolver / `DMDType=cecil` override，但会在真正的 `MonoMod.Utils` / `MonoMod.Core` 程序集上强制 MonoMod 使用 Android/Mono 后端，避免 HarmonyOS 等 ROM 被误判为 Posix/Linux 后在 `HarmonyLib.PatchFunctions.UpdateWrapper()` 中抛 `NotImplementedException`；`monomod_android_libc_shim` 仍由 AndroidSystem 按需提供指令缓存刷新和 `/proc/self/mem` executable-page patch fallback。早期初始化不得调用 Godot C# API（例如 `OS.GetName()` / `ProjectSettings.GlobalizePath()`），避免 Godot `StringName`/JNI 尚未稳定时崩溃；静态/虚方法 Harmony self-test 默认跳过，仅在 `<files>/launcher/enable_harmony_selftest.flag` 存在时运行，旧 bootstrap 仅在 `<files>/launcher/enable_old_harmony_compat_bootstrap.flag` 存在时作为诊断启用。
+2. `PlatformPatches` 与 `SavePathPatches` 作为保命 patch 最先独立应用；前者跳过桌面 Steam 初始化，后者重定向当前 launch profile 的存档/设置路径。两组 patch 分别捕获异常，避免后续诊断或 UI patch 在特定 ROM 上失败时导致原版 `steam_api64` 路径重新执行。
 3. BaseLib/RitsuLib/ModelDb/UnlockState 兼容。
    - 关键时序不变式：MOD 如 YuWanCard/BaseLib 用 `ModelDb.GetEntry` 的 Harmony postfix 给自定义内容 ID 加命名空间前缀（如 `ENCOUNTER.YUWANCARD-KILLER_ELITE`），并按 type **永久缓存**第一次 `GetEntry` 结果。PC 上每个 MOD 的 `PatchAll` 在 `ModManager.Initialize`（`ExecuteVeryEarly`）期间运行，严格早于 `ModelDb.Init`（`ExecuteEssential`），因此 ID 计算时前缀 patch 早已就位。兼容层必须**在 MOD patch 全部应用前，绝不对任何模型类型调用 `ModelDb.GetId`/`GetEntry`**，否则会污染前缀缓存并把模型注册到错误 key。
    - `ModelDbInitPatch` 把 `ModelDb.Init` 替换为干净的 two-phase，并分两层处理占位：
@@ -150,7 +151,7 @@ STS2Mobile.ModEntry
    - 真正的模型构造仍保留在 `OneTimeInitialization.ExecuteEssential -> ModelDb.Init`；用户 MOD 的 `ModelDb.Init` prefix/postfix 仍会执行（prefix `Priority.Last`，跑完后返回 false 跳过原版 one-pass body，postfix 照常运行）；构造前后会清理早期占位枚举产生的 `ModelDb` / 模型实例派生缓存。
    - 自定义模型 ID 完全交给原版 `ModelDb.Init` + MOD 的 `GetEntry` patch 自然产生，不再人为迁移 key 或做动态兜底。
    - `UnlockStateCompatPatches` 会在 `ModelDb` 初始化完成前让 `ModelDb.AllEncounters` 返回空列表，避免 Android/Mono 因 Harmony patch getter 提前运行 `UnlockState..cctor` 时枚举到尚未构造/注册完成的 MOD encounter；初始化完成后会修复可能提前创建的 static readonly `UnlockState.all`，恢复正常“全部 encounter 已见过”的语义。
-4. Platform、release info、save path、settings、display、font/UI scale；其中 `AppPaths` 从 Mono publish 目录或 Android 进程包名推导 `<files>` 后读取 `launcher/selected_instance.json`，`SavePathPatches` 将原版 `UserDataPathProvider` 重定向到当前 launch profile 的 account root。
+4. Release info、settings、display、font/UI scale；其中 `AppPaths` 从 Mono publish 目录或 Android 进程包名推导 `<files>` 后读取 `launcher/selected_instance.json`。
 5. 移动端 layout/input、事件/商店/奖励/战斗背景等 UI 修正。
 6. Android UI safety、游戏内设置入口、shader overlay、transition material 防黑屏、Android back/touch/controller、奖励/商人二次确认、移动端 tooltip 显示策略、tap preview、hand layout。`mobile_tooltip_mode` 默认 `immediate`，保持 PC 端悬停即显示；在附加设置“设置 → 操作 → Tooltip 显示”切到 `long_press` 后，`MobileTooltipPatches` 会在 `NHoverTipSet.CreateAndShow*` 前建立当前 owner 的长按计时，允许原版创建并完成对齐后立即隐藏 tooltip，并通过 tooltip owner 的 `GuiInput` / `MouseExited` 与 `NGame._Input` 共同跟踪触摸，只在同一触点按住约 1 秒且未明显拖动时临时显示，松手或移动过大后再次隐藏（不因单纯 `MouseExited` 取消，以免 hover 动画导致控件在静止手指下移动）。若原版在长按过程中频繁 `Clear()`/重建 hover tips，兼容层会保留当前 owner/计时状态，避免计时被每帧重置；游戏内设置页切换该选项时会刷新 `AndroidSettingsBridge` 缓存并立即移除或显示已有普通 hover tooltip，`hidden` / `long_press` 模式会阻止后续普通 hover tooltip 创建，但不拦截 inspect card/relic/potion 等显式详情页面自己的说明区域。
 7. intent animation、quick restart、lifecycle/performance。`QuickRestartPatches` 在 pause menu 提供 Android 内置“重打/Retry”按钮：快速重开会先等待当前 run save 任务，再读取 autosave；淡出后清理旧 run，并执行原版保存恢复入口（`RunManager.SetUpSavedSinglePlayer()`，`v0.107.0` 为 `SetUpSavedSingleplayer()`；返回 `Task` 的版本会等待完成）以完整初始化 `NetService` / `MapSelectionSynchronizer` 等同步器后才调用 `NGame.LoadRun()`，避免资源预加载关闭或 IO 较慢时新 `RunState` 提前进入地图初始化、触发 `MapSelectionSynchronizer.GetVote()` 越界；若淡出后任一步失败，会先尝试 `FadeIn()` 解除黑屏遮罩，再显示错误弹窗。`LifecycleAndPerformancePatches` 在 `NMainMenu._Ready` 后启动安全 deferred preload，并在需要细分或额外 warmup 时接管原版 `LoadCommonAndMainMenuAssets()`：
@@ -166,8 +167,9 @@ STS2Mobile.ModEntry
 8. LAN bootstrap。`LanMultiplayerBootstrapPatches` 在主菜单就绪后才尝试应用本地 LAN 兼容补丁；若 `settings.save` 中 `lan_multiplayer_enabled=false`，或已加载 `sts2_lan_connect` / STS2 Game Lobby 大厅 MOD，`LanMultiplayerPatches` 会整组跳过，避免其固定消息 ID / LAN host-join 补丁与大厅 MOD 自己的联机协议 profile 冲突。
 9. `ModLoaderPatches`。
 10. save diagnostic。
+11. `RenderDiagnosticPatches` 后置调度；它只用于设备/渲染信息采集，调度异常会记录但不阻断 Steam 跳过和存档路径重定向等核心 patch。
 
-失败时 `ModEntry` 会记录异常；部分 patch 失败可能导致后续游戏启动不完整，因此 `sts2.log`（应用内 logcat 采集）、ADB logcat 和 `godot.log` 是首要诊断来源。
+失败时 `ModEntry` 会按 patch group 记录异常；部分 patch 失败可能导致后续游戏启动不完整，因此 `sts2.log`（应用内 logcat 采集）、ADB logcat 和 `godot.log` 是首要诊断来源。
 
 ## 9. Overlay PCK 加载
 
@@ -237,7 +239,11 @@ adb shell run-as com.megacrit.sts2re cat files/logs/sts2.log
 关键日志关键词：
 
 - `Selected compatibility pack for launch`
+- `Prepared compat entry dll`
+- `Prepared compat overlay`
 - `STS2Mobile Android port compatibility`
+- `Critical platform patches applied`
+- `Critical save path patches applied`
 - `CompatBuildInfo`
 - `Loading imported game PCK`
 - `Shader compatibility overlay pack load`

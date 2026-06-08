@@ -13,7 +13,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -48,14 +51,32 @@ public final class GameLaunchPreparationManager {
 	}
 
 	public void prepareForLaunch() throws Exception {
+		long startedAt = System.currentTimeMillis();
+		Log.i(TAG, "DIAG prepareForLaunch begin versionCode=" + BuildConfig.VERSION_CODE + " versionName=" + BuildConfig.VERSION_NAME + " flavor=" + BuildConfig.FLAVOR + " filesDir=" + context.getFilesDir().getAbsolutePath() + " thread=" + Thread.currentThread().getName());
 		AndroidTempDirectory.configure(context, TAG);
 		Sts2LogcatCollector.startNewLaunchForSelectedProfile(context);
+		logLaunchStateSnapshot("after_logcat_start");
+		logStepBegin("normalize_saved_language");
 		normalizeSavedLanguageIfNeeded();
+		logStepEnd("normalize_saved_language");
+		logStepBegin("refresh_bundled_compat_packs");
 		refreshBundledCompatPacksIfNeeded();
+		logStepEnd("refresh_bundled_compat_packs");
+		logLaunchStateSnapshot("after_bundled_compat_refresh");
+		logStepBegin("log_selected_compat_pack");
 		logSelectedCompatPackForLaunch();
+		logStepEnd("log_selected_compat_pack");
+		logStepBegin("patch_payload_if_needed");
 		patchPayloadIfNeeded();
+		logStepEnd("patch_payload_if_needed");
+		logStepBegin("clear_texture_cache_if_payload_changed");
 		clearTextureCacheIfPayloadChanged();
+		logStepEnd("clear_texture_cache_if_payload_changed");
+		logStepBegin("prepare_assemblies_and_overlay");
 		prepareAssembliesAndOverlay();
+		logStepEnd("prepare_assemblies_and_overlay");
+		logLaunchStateSnapshot("after_prepare_assemblies");
+		Log.i(TAG, "DIAG prepareForLaunch end elapsed_ms=" + (System.currentTimeMillis() - startedAt));
 	}
 
 	private void normalizeSavedLanguageIfNeeded() {
@@ -149,16 +170,155 @@ public final class GameLaunchPreparationManager {
 	private void refreshBundledCompatPacksIfNeeded() {
 		try {
 			CompatPackManager manager = new CompatPackManager(context);
-			if (!manager.isCompatPackEnabled()) {
-				return;
-			}
+			boolean configuredEnabled = manager.isCompatPackEnabled();
+			Log.e(TAG, "DIAG_FORCE refreshBundledCompatPacks configured_enabled=" + configuredEnabled + " forcing_refresh=true");
 			int count = manager.installBundledCompatPacks();
+			Log.e(TAG, "DIAG_FORCE refreshBundledCompatPacks done count=" + count);
 			if (count > 0) {
 				Log.i(TAG, "Bundled compatibility packs refreshed before launch: " + count);
 			}
 		} catch (Exception exception) {
 			Log.w(TAG, "Unable to refresh bundled compatibility packs before launch; continuing with currently selected pack.", exception);
 		}
+	}
+
+	private void logStepBegin(String step) {
+		Log.i(TAG, "DIAG step_begin " + step);
+	}
+
+	private void logStepEnd(String step) {
+		Log.i(TAG, "DIAG step_end " + step);
+	}
+
+	private void logLaunchStateSnapshot(String phase) {
+		try {
+			LaunchProfileManager.LaunchProfile profile = launchProfiles.getSelectedProfile();
+			LaunchProfileManager.GamePayload payload = profile == null ? null : profile.payload;
+			CompatPackManager compatManager = new CompatPackManager(context);
+			boolean compatEnabled = compatManager.isCompatPackEnabled();
+			CompatPackManager.CompatPack selectedPack = null;
+			try {
+				selectedPack = compatManager.getSelectedPack();
+			} catch (Exception exception) {
+				Log.w(TAG, "DIAG snapshot selected_pack_lookup_failed phase=" + phase, exception);
+			}
+			File publishDir = new File(context.getFilesDir(), ".godot/mono/publish/arm64");
+			Log.i(TAG,
+				"DIAG snapshot phase=" + phase
+					+ " selected_profile_id=" + launchProfiles.getSelectedProfileId()
+					+ " profile=" + describeProfile(profile)
+					+ " payload=" + describePayload(payload)
+					+ " compat_enabled=" + compatEnabled
+					+ " selected_compat_id=" + launchProfiles.getSelectedCompatPackId()
+					+ " selected_pack=" + describeCompatPack(selectedPack)
+					+ " game_dir=" + describeFile(launchProfiles.getSelectedGameDir())
+					+ " manifest=" + describeFile(launchProfiles.getSelectedManifestFile())
+					+ " account_root=" + describeFile(launchProfiles.getSelectedAccountRootDir())
+					+ " mods_root=" + describeFile(launchProfiles.getSelectedModsRootDir())
+					+ " logs_root=" + describeFile(launchProfiles.getSelectedLogsRootDir())
+					+ " overlay_stage=" + describeFile(new File(context.getFilesDir(), "port_compat.pck"))
+					+ " publish_dir=" + describeFile(publishDir));
+			logPublishDirectorySnapshot(publishDir, phase);
+		} catch (Exception exception) {
+			Log.w(TAG, "DIAG snapshot failed phase=" + phase, exception);
+		}
+	}
+
+	private String describeProfile(LaunchProfileManager.LaunchProfile profile) {
+		if (profile == null) {
+			return "null";
+		}
+		return "id=" + safe(profile.id)
+			+ ",payload_id=" + safe(profile.payloadId)
+			+ ",compat_pack_id=" + safe(profile.compatPackId)
+			+ ",save_mode=" + safe(profile.saveMode)
+			+ ",mods_mode=" + safe(profile.modsMode)
+			+ ",ready=" + profile.ready
+			+ ",dir=" + describeFile(profile.dir);
+	}
+
+	private String describePayload(LaunchProfileManager.GamePayload payload) {
+		if (payload == null) {
+			return "null";
+		}
+		return "id=" + safe(payload.id)
+			+ ",version=" + safe(payload.version)
+			+ ",commit=" + safe(payload.commit)
+			+ ",ready=" + payload.ready
+			+ ",dll_sha=" + shortSha(payload.sts2DllSha256)
+			+ ",pck_sha=" + shortSha(payload.pckSha256)
+			+ ",game_dir=" + describeFile(payload.gameDir);
+	}
+
+	private String describeCompatPack(CompatPackManager.CompatPack pack) {
+		if (pack == null) {
+			return "null";
+		}
+		return "id=" + safe(pack.packId)
+			+ ",version=" + safe(pack.compatVersion)
+			+ ",channel=" + safe(pack.channel)
+			+ ",target=" + safe(pack.targetLabel())
+			+ ",ready=" + pack.ready
+			+ ",dir=" + describeFile(pack.dir)
+			+ ",dll=" + describeFile(pack.dllFile)
+			+ ",overlay=" + describeFile(pack.overlayPckFile);
+	}
+
+	private void logPublishDirectorySnapshot(File publishDir, String phase) {
+		try {
+			String[] importantNames = {
+				"STS2Mobile.dll",
+				"0Harmony.dll",
+				"MonoMod.Core.dll",
+				"MonoMod.Utils.dll",
+				"MonoMod.Iced.dll",
+				"GodotSharp.dll",
+				"sts2.dll",
+				"sts2.deps.json",
+				"sts2.runtimeconfig.json"
+			};
+			StringBuilder builder = new StringBuilder("DIAG publish_snapshot phase=").append(phase).append(" dir=").append(describeFile(publishDir));
+			for (String name : importantNames) {
+				builder.append("; ").append(name).append("=").append(describeFile(new File(publishDir, name)));
+			}
+			builder.append("; entries=").append(listDirectorySample(publishDir, 30));
+			Log.i(TAG, builder.toString());
+		} catch (Exception exception) {
+			Log.w(TAG, "DIAG publish_snapshot failed phase=" + phase, exception);
+		}
+	}
+
+	private String listDirectorySample(File dir, int limit) {
+		if (dir == null) {
+			return "null";
+		}
+		File[] files = dir.listFiles();
+		if (files == null) {
+			return "list_null";
+		}
+		List<String> names = new ArrayList<>();
+		for (File file : files) {
+			String suffix = file.isDirectory() ? "/" : "(" + file.length() + ")";
+			names.add(file.getName() + suffix);
+		}
+		names.sort(String.CASE_INSENSITIVE_ORDER);
+		if (names.size() > limit) {
+			return names.subList(0, limit).toString() + " ... total=" + names.size();
+		}
+		return names.toString();
+	}
+
+	private String describeFile(File file) {
+		if (file == null) {
+			return "null";
+		}
+		return file.getAbsolutePath()
+			+ "{exists=" + file.exists()
+			+ ",file=" + file.isFile()
+			+ ",dir=" + file.isDirectory()
+			+ ",bytes=" + (file.isFile() ? file.length() : -1L)
+			+ ",mtime=" + (file.exists() ? file.lastModified() : -1L)
+			+ "}";
 	}
 
 	private void logSelectedCompatPackForLaunch() {
@@ -230,20 +390,28 @@ public final class GameLaunchPreparationManager {
 	}
 
 	public void prepareAssembliesAndOverlay() throws Exception {
+		Log.i(TAG, "DIAG prepareAssembliesAndOverlay begin flavor=" + BuildConfig.FLAVOR);
 		if (!BuildConfig.FLAVOR.equals("mono")) {
+			Log.i(TAG, "DIAG prepareAssembliesAndOverlay skipped_non_mono");
 			return;
 		}
 		stageSelectedCompatOverlay();
 		File destDir = new File(context.getFilesDir(), ".godot/mono/publish/arm64");
 		File srcDir = findAssembliesDir();
+		Log.i(TAG, "DIAG assembly_dirs src=" + describeFile(srcDir) + " dest=" + describeFile(destDir));
 		Set<String> protectedBclNames = new HashSet<>();
 		copyBclAssembliesIfNeeded(destDir, protectedBclNames);
 		SharedPreferences preferences = context.getSharedPreferences(ASSEMBLY_SETUP_PREFERENCES_NAME, Context.MODE_PRIVATE);
 		String payloadStamp = buildPayloadStamp();
-		boolean forceGameAssemblyCopy = !payloadStamp.equals(preferences.getString(KEY_ASSEMBLY_SETUP_PAYLOAD_STAMP, ""));
+		String previousPayloadStamp = preferences.getString(KEY_ASSEMBLY_SETUP_PAYLOAD_STAMP, "");
+		boolean forceGameAssemblyCopy = !payloadStamp.equals(previousPayloadStamp);
+		Log.i(TAG, "DIAG payload_stamp current=" + payloadStamp + " previous=" + previousPayloadStamp + " force_game_copy=" + forceGameAssemblyCopy);
 		if (copyGameAssembliesIfNeeded(srcDir, destDir, protectedBclNames, forceGameAssemblyCopy)) {
 			preferences.edit().putString(KEY_ASSEMBLY_SETUP_PAYLOAD_STAMP, payloadStamp).apply();
+			Log.i(TAG, "DIAG payload_stamp stored=" + payloadStamp);
 		}
+		logPublishDirectorySnapshot(destDir, "after_copy_game_assemblies");
+		Log.i(TAG, "DIAG prepareAssembliesAndOverlay end");
 	}
 
 	private void patchPayloadIfNeeded() {
@@ -344,16 +512,17 @@ public final class GameLaunchPreparationManager {
 	private void stageSelectedCompatOverlay() throws IOException {
 		CompatPackManager manager = new CompatPackManager(context);
 		File dest = new File(context.getFilesDir(), "port_compat.pck");
-		if (!manager.isCompatPackEnabled()) {
-			deleteFileIfExists(dest);
-			return;
-		}
-		File overlay = manager.getSelectedCompatOverlayPck();
+		boolean configuredEnabled = manager.isCompatPackEnabled();
+		Log.e(TAG, "DIAG_FORCE stageSelectedCompatOverlay configured_enabled=" + configuredEnabled + " forcing_entry=true dest_before=" + describeFile(dest));
+		File overlay = manager.getSelectedCompatOverlayPckIgnoringEnabled();
+		Log.e(TAG, "DIAG_FORCE stageSelectedCompatOverlay selected_overlay=" + describeFile(overlay));
 		if (overlay != null && overlay.isFile()) {
 			copyFile(overlay, dest);
+			logPreparedFile("compat overlay", "selected_pack", overlay, dest);
 			return;
 		}
 		extractAssetIfChanged("port_compat.pck", dest);
+		logPreparedFile("compat overlay", "asset_fallback", null, dest);
 	}
 
 	private void copyBclAssembliesIfNeeded(File destDir, Set<String> copiedNames) throws IOException {
@@ -364,22 +533,23 @@ public final class GameLaunchPreparationManager {
 		}
 		FileBrowserSupport.ensureDirectory(destDir);
 		CompatPackManager compatPackManager = new CompatPackManager(context);
-		boolean compatEnabled = compatPackManager.isCompatPackEnabled();
-		File selectedCompatDll = compatPackManager.getSelectedCompatDll();
+		boolean configuredCompatEnabled = compatPackManager.isCompatPackEnabled();
+		boolean stageCompatEntry = true;
+		File selectedCompatDll = compatPackManager.getSelectedCompatDllIgnoringEnabled();
+		Log.e(TAG, "DIAG_FORCE copyBclAssemblies assets_count=" + bclFiles.length + " configured_compat_enabled=" + configuredCompatEnabled + " stage_compat_entry=" + stageCompatEntry + " selected_compat_dll=" + describeFile(selectedCompatDll));
 		for (String name : bclFiles) {
-			if ("STS2Mobile.dll".equals(name) && !compatEnabled) {
-				continue;
-			}
 			copiedNames.add(name);
 		}
-		syncCompatEntryDll(destDir, compatEnabled, selectedCompatDll);
+		syncCompatEntryDll(destDir, stageCompatEntry, selectedCompatDll);
 		String compatStamp = compatPackManager.buildSelectedCompatStamp();
 		SharedPreferences preferences = context.getSharedPreferences(ASSEMBLY_SETUP_PREFERENCES_NAME, Context.MODE_PRIVATE);
 		int previousVersion = preferences.getInt(KEY_ASSEMBLY_SETUP_VERSION_CODE, -1);
 		String previousCompatStamp = preferences.getString(KEY_ASSEMBLY_SETUP_COMPAT_STAMP, "");
 		boolean bclReady = new File(destDir, "GodotSharp.dll").isFile()
-			&& (!compatEnabled || new File(destDir, "STS2Mobile.dll").isFile());
+			&& (!stageCompatEntry || new File(destDir, "STS2Mobile.dll").isFile());
+		Log.i(TAG, "DIAG bcl_state previous_version=" + previousVersion + " current_version=" + BuildConfig.VERSION_CODE + " previous_compat_stamp=" + previousCompatStamp + " current_compat_stamp=" + compatStamp + " bcl_ready=" + bclReady + " godotsharp=" + describeFile(new File(destDir, "GodotSharp.dll")) + " sts2mobile=" + describeFile(new File(destDir, "STS2Mobile.dll")));
 		if (previousVersion == BuildConfig.VERSION_CODE && compatStamp.equals(previousCompatStamp) && bclReady) {
+			Log.i(TAG, "DIAG copyBclAssemblies skipped_cache_hit");
 			return;
 		}
 
@@ -395,16 +565,20 @@ public final class GameLaunchPreparationManager {
 			.putInt(KEY_ASSEMBLY_SETUP_VERSION_CODE, BuildConfig.VERSION_CODE)
 			.putString(KEY_ASSEMBLY_SETUP_COMPAT_STAMP, compatStamp)
 			.apply();
+		Log.i(TAG, "DIAG copyBclAssemblies copied_bcl_assets protected_count=" + copiedNames.size() + " dest=" + describeFile(destDir));
 	}
 
 	private void syncCompatEntryDll(File destDir, boolean compatEnabled, File selectedCompatDll) throws IOException {
 		File dest = new File(destDir, "STS2Mobile.dll");
+		Log.e(TAG, "DIAG_FORCE syncCompatEntryDll begin compat_enabled=" + compatEnabled + " selected=" + describeFile(selectedCompatDll) + " dest_before=" + describeFile(dest));
 		if (!compatEnabled) {
 			deleteFileIfExists(dest);
+			Log.e(TAG, "DIAG_FORCE syncCompatEntryDll deleted_because_disabled dest_after=" + describeFile(dest));
 			return;
 		}
 		if (selectedCompatDll != null && selectedCompatDll.isFile()) {
 			copyFileIfDifferent(selectedCompatDll, dest);
+			logPreparedFile("compat entry dll", "selected_pack", selectedCompatDll, dest);
 			return;
 		}
 		try (InputStream inputStream = assets.open("dotnet_bcl/STS2Mobile.dll")) {
@@ -412,13 +586,58 @@ public final class GameLaunchPreparationManager {
 			// on every launch so sideloaded APK hotfixes replace stale files even when
 			// versionCode and selected compat-pack stamp did not change.
 			copyStreamToFile(inputStream, dest);
+			logPreparedFile("compat entry dll", "asset_fallback", null, dest);
 		} catch (IOException exception) {
 			Log.w(TAG, "No fallback STS2Mobile.dll asset found; Android compatibility patcher will be unavailable.", exception);
 			deleteFileIfExists(dest);
+			Log.w(TAG, "Prepared compat entry dll missing after fallback failure: dest=" + dest.getAbsolutePath());
 		}
 	}
 
+	private void logPreparedFile(String label, String sourceKind, File source, File dest) {
+		try {
+			StringBuilder builder = new StringBuilder();
+			builder.append("Prepared ").append(label)
+				.append(": source=").append(sourceKind)
+				.append("; dest=").append(dest == null ? "null" : dest.getAbsolutePath());
+			if (source != null) {
+				builder.append("; source_path=").append(source.getAbsolutePath())
+					.append("; source_exists=").append(source.isFile())
+					.append("; source_bytes=").append(source.isFile() ? source.length() : -1L)
+					.append("; source_mtime=").append(source.isFile() ? source.lastModified() : -1L)
+					.append("; source_sha256=").append(source.isFile() ? sha256(source) : "missing");
+			}
+			if (dest != null) {
+				builder.append("; dest_exists=").append(dest.isFile())
+					.append("; dest_bytes=").append(dest.isFile() ? dest.length() : -1L)
+					.append("; dest_mtime=").append(dest.isFile() ? dest.lastModified() : -1L)
+					.append("; dest_sha256=").append(dest.isFile() ? sha256(dest) : "missing");
+			}
+			Log.i(TAG, builder.toString());
+		} catch (Exception exception) {
+			Log.w(TAG, "Unable to log prepared " + label + ".", exception);
+		}
+	}
+
+	private String sha256(File file) throws Exception {
+		MessageDigest digest = MessageDigest.getInstance("SHA-256");
+		try (InputStream inputStream = new BufferedInputStream(new FileInputStream(file))) {
+			byte[] buffer = new byte[64 * 1024];
+			int read;
+			while ((read = inputStream.read(buffer)) != -1) {
+				digest.update(buffer, 0, read);
+			}
+		}
+		byte[] hash = digest.digest();
+		StringBuilder builder = new StringBuilder(hash.length * 2);
+		for (byte value : hash) {
+			builder.append(String.format(Locale.ROOT, "%02x", value & 0xff));
+		}
+		return builder.toString();
+	}
+
 	private boolean copyGameAssembliesIfNeeded(File srcDir, File destDir, Set<String> protectedBclNames, boolean forceCopy) throws IOException {
+		Log.i(TAG, "DIAG copyGameAssemblies begin forceCopy=" + forceCopy + " src=" + describeFile(srcDir) + " dest=" + describeFile(destDir));
 		if (!srcDir.isDirectory()) {
 			Log.w(TAG, "Game assembly source directory is missing: " + srcDir.getAbsolutePath());
 			return false;
@@ -426,6 +645,7 @@ public final class GameLaunchPreparationManager {
 		FileBrowserSupport.ensureDirectory(destDir);
 		File[] files = srcDir.listFiles();
 		if (files == null) {
+			Log.w(TAG, "DIAG copyGameAssemblies source_list_null src=" + srcDir.getAbsolutePath());
 			return false;
 		}
 		Set<String> sourceNames = new HashSet<>();
@@ -442,6 +662,7 @@ public final class GameLaunchPreparationManager {
 		if (forceCopy) {
 			deleteStaleGameAssemblies(destDir, protectedBclNames, sourceNames);
 		}
+		int copiedOrChecked = 0;
 		for (File src : files) {
 			if (!src.isFile() || src.getName().endsWith(".so")) {
 				continue;
@@ -456,7 +677,9 @@ public final class GameLaunchPreparationManager {
 			} else {
 				copyFileIfDifferent(src, dest);
 			}
+			copiedOrChecked++;
 		}
+		Log.i(TAG, "DIAG copyGameAssemblies end source_candidates=" + sourceNames.size() + " copied_or_checked=" + copiedOrChecked + " sts2_dll=" + describeFile(new File(destDir, "sts2.dll")) + " deps=" + describeFile(new File(destDir, "sts2.deps.json")) + " runtimeconfig=" + describeFile(new File(destDir, "sts2.runtimeconfig.json")));
 		return true;
 	}
 

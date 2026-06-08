@@ -85,11 +85,18 @@ public class GodotApp extends GodotActivity {
 	private File gameDir;
 
 	static {
+		Log.i(TAG, "DIAG GodotApp static init begin versionCode=" + BuildConfig.VERSION_CODE + " versionName=" + BuildConfig.VERSION_NAME + " flavor=" + BuildConfig.FLAVOR);
 		try {
 			System.loadLibrary("fmod");
 			System.loadLibrary("fmodstudio");
 		} catch (UnsatisfiedLinkError error) {
 			Log.w(TAG, "Unable to preload FMOD libraries; continuing so settings/diagnostics can still open.", error);
+		}
+		try {
+			System.loadLibrary("monomod_android_libc_shim");
+			Log.i(TAG, "Loaded MonoMod Android libc shim.");
+		} catch (UnsatisfiedLinkError error) {
+			Log.w(TAG, "Unable to preload MonoMod Android libc shim; Harmony may fail on ROMs requiring executable-page patch fallback.", error);
 		}
 		if (BuildConfig.FLAVOR.equals("mono")) {
 			try {
@@ -99,6 +106,7 @@ public class GodotApp extends GodotActivity {
 				Log.e(TAG, "Unable to load System.Security.Cryptography.Native.Android library", error);
 			}
 		}
+		Log.i(TAG, "DIAG GodotApp static init end");
 	}
 
 	private final Runnable updateWindowAppearance = () -> {
@@ -128,9 +136,11 @@ public class GodotApp extends GodotActivity {
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
+		Log.i(TAG, "DIAG GodotApp.onCreate begin savedInstanceState=" + (savedInstanceState != null) + " intent=" + describeIntent(getIntent()));
 		AndroidTempDirectory.configure(this, TAG);
 		Sts2LogcatCollector.startForSelectedProfile(this);
 		gameDir = new LaunchProfileManager(this).getSelectedGameDir();
+		logGodotAppLaunchSnapshot("onCreate_after_logcat_start");
 		SplashScreen.installSplashScreen(this);
 		if (!ExtraSettingsPreferences.isFirstRunSetupCompleted(this)) {
 			// Even when redirecting away from the game activity, Android requires every
@@ -156,19 +166,190 @@ public class GodotApp extends GodotActivity {
 		} catch (Throwable throwable) {
 			Log.w(TAG, "FMOD init failed; continuing so launcher diagnostics remain available.", throwable);
 		}
-		if (!getIntent().getBooleanExtra("launch_prepared", false)) {
-			prepareLaunchFallback();
-		}
+		boolean launchPrepared = getIntent().getBooleanExtra("launch_prepared", false);
+		Log.e(TAG, "DIAG_FORCE GodotApp.onCreate launch_prepared=" + launchPrepared + " forcing_pre_super_prepare=true");
+		ensureLaunchPreparedBeforeGodot(launchPrepared);
+		logGodotAppLaunchSnapshot("onCreate_before_super");
 		super.onCreate(savedInstanceState);
 		currentInstance = this;
 		currentWindowFocused = hasWindowFocus();
+		logGodotAppLaunchSnapshot("onCreate_after_super");
+		Log.i(TAG, "DIAG GodotApp.onCreate end windowFocused=" + currentWindowFocused);
+	}
+
+	private String describeIntent(Intent intent) {
+		if (intent == null) {
+			return "null";
+		}
+		Bundle extras = intent.getExtras();
+		return "action=" + intent.getAction()
+			+ "; data=" + intent.getDataString()
+			+ "; flags=0x" + Integer.toHexString(intent.getFlags())
+			+ "; extras=" + (extras == null ? "null" : extras.keySet().toString());
+	}
+
+	private void logGodotAppLaunchSnapshot(String phase) {
+		try {
+			LaunchProfileManager manager = new LaunchProfileManager(this);
+			LaunchProfileManager.LaunchProfile profile = manager.getSelectedProfile();
+			LaunchProfileManager.GamePayload payload = profile == null ? null : profile.payload;
+			CompatPackManager compatManager = new CompatPackManager(this);
+			CompatPackManager.CompatPack pack = null;
+			try {
+				pack = compatManager.getSelectedPack();
+			} catch (Exception exception) {
+				Log.w(TAG, "DIAG GodotApp selected pack lookup failed phase=" + phase, exception);
+			}
+			File publishDir = new File(getFilesDir(), ".godot/mono/publish/arm64");
+			Log.i(TAG,
+				"DIAG GodotApp snapshot phase=" + phase
+					+ " filesDir=" + getFilesDir().getAbsolutePath()
+					+ " selectedProfileId=" + manager.getSelectedProfileId()
+					+ " profile=" + describeProfile(profile)
+					+ " payload=" + describePayload(payload)
+					+ " compatEnabled=" + compatManager.isCompatPackEnabled()
+					+ " selectedCompatId=" + manager.getSelectedCompatPackId()
+					+ " selectedPack=" + describeCompatPack(pack)
+					+ " gameDir=" + describeFile(manager.getSelectedGameDir())
+					+ " selectedInstanceJson=" + describeFile(new File(getFilesDir(), "launcher/selected_instance.json"))
+					+ " selectedCompatJson=" + describeFile(new File(getFilesDir(), "launcher/selected_compat_pack.json"))
+					+ " stagedOverlay=" + describeFile(new File(getFilesDir(), "port_compat.pck"))
+					+ " publishDir=" + describeFile(publishDir));
+			logPublishSnapshot(publishDir, phase);
+			logSmallFileText(new File(getFilesDir(), "launcher/selected_instance.json"), phase, "selected_instance_json");
+			logSmallFileText(new File(getFilesDir(), "launcher/selected_compat_pack.json"), phase, "selected_compat_json");
+		} catch (Exception exception) {
+			Log.w(TAG, "DIAG GodotApp snapshot failed phase=" + phase, exception);
+		}
+	}
+
+	private String describeProfile(LaunchProfileManager.LaunchProfile profile) {
+		if (profile == null) {
+			return "null";
+		}
+		return "id=" + safe(profile.id)
+			+ ",payloadId=" + safe(profile.payloadId)
+			+ ",compatPackId=" + safe(profile.compatPackId)
+			+ ",saveMode=" + safe(profile.saveMode)
+			+ ",modsMode=" + safe(profile.modsMode)
+			+ ",ready=" + profile.ready
+			+ ",dir=" + describeFile(profile.dir);
+	}
+
+	private String describePayload(LaunchProfileManager.GamePayload payload) {
+		if (payload == null) {
+			return "null";
+		}
+		return "id=" + safe(payload.id)
+			+ ",version=" + safe(payload.version)
+			+ ",commit=" + safe(payload.commit)
+			+ ",ready=" + payload.ready
+			+ ",dllSha=" + shortText(payload.sts2DllSha256)
+			+ ",pckSha=" + shortText(payload.pckSha256)
+			+ ",gameDir=" + describeFile(payload.gameDir);
+	}
+
+	private String describeCompatPack(CompatPackManager.CompatPack pack) {
+		if (pack == null) {
+			return "null";
+		}
+		return "id=" + safe(pack.packId)
+			+ ",version=" + safe(pack.compatVersion)
+			+ ",target=" + safe(pack.targetLabel())
+			+ ",ready=" + pack.ready
+			+ ",dir=" + describeFile(pack.dir)
+			+ ",dll=" + describeFile(pack.dllFile)
+			+ ",overlay=" + describeFile(pack.overlayPckFile);
+	}
+
+	private void logPublishSnapshot(File publishDir, String phase) {
+		String[] importantNames = new String[] {
+			"STS2Mobile.dll",
+			"0Harmony.dll",
+			"MonoMod.Core.dll",
+			"MonoMod.Utils.dll",
+			"MonoMod.Iced.dll",
+			"GodotSharp.dll",
+			"sts2.dll",
+			"sts2.deps.json",
+			"sts2.runtimeconfig.json"
+		};
+		StringBuilder builder = new StringBuilder("DIAG GodotApp publish_snapshot phase=").append(phase).append(" dir=").append(describeFile(publishDir));
+		for (String name : importantNames) {
+			builder.append("; ").append(name).append("=").append(describeFile(new File(publishDir, name)));
+		}
+		builder.append("; entries=").append(listDirectorySample(publishDir, 40));
+		Log.i(TAG, builder.toString());
+	}
+
+	private void logSmallFileText(File file, String phase, String label) {
+		try {
+			if (file == null || !file.isFile()) {
+				Log.i(TAG, "DIAG GodotApp " + label + " phase=" + phase + " file=" + describeFile(file));
+				return;
+			}
+			String text = readTextFile(file);
+			if (text.length() > 4000) {
+				text = text.substring(0, 4000) + "...<truncated>";
+			}
+			Log.i(TAG, "DIAG GodotApp " + label + " phase=" + phase + " file=" + describeFile(file) + " text=" + text.replace('\n', ' '));
+		} catch (Exception exception) {
+			Log.w(TAG, "DIAG GodotApp failed to read " + label + " phase=" + phase, exception);
+		}
+	}
+
+	private String listDirectorySample(File dir, int limit) {
+		if (dir == null) {
+			return "null";
+		}
+		File[] files = dir.listFiles();
+		if (files == null) {
+			return "list_null";
+		}
+		List<String> names = new ArrayList<>();
+		for (File file : files) {
+			String suffix = file.isDirectory() ? "/" : "(" + file.length() + ")";
+			names.add(file.getName() + suffix);
+		}
+		names.sort(String.CASE_INSENSITIVE_ORDER);
+		if (names.size() > limit) {
+			return names.subList(0, limit).toString() + " ... total=" + names.size();
+		}
+		return names.toString();
+	}
+
+	private String describeFile(File file) {
+		if (file == null) {
+			return "null";
+		}
+		return file.getAbsolutePath()
+			+ "{exists=" + file.exists()
+			+ ",file=" + file.isFile()
+			+ ",dir=" + file.isDirectory()
+			+ ",bytes=" + (file.isFile() ? file.length() : -1L)
+			+ ",mtime=" + (file.exists() ? file.lastModified() : -1L)
+			+ "}";
+	}
+
+	private String safe(String value) {
+		return value == null ? "" : value.replace('\n', ' ').replace('\r', ' ');
+	}
+
+	private String shortText(String value) {
+		if (value == null || value.isEmpty()) {
+			return "";
+		}
+		return value.substring(0, Math.min(12, value.length()));
 	}
 
 	@Override
 	public List<String> getCommandLine() {
-		List<String> commandLine = new ArrayList<>(super.getCommandLine());
+		List<String> superCommandLine = super.getCommandLine();
+		Log.i(TAG, "DIAG GodotApp.getCommandLine super=" + superCommandLine);
+		List<String> commandLine = new ArrayList<>(superCommandLine);
 		Collections.addAll(commandLine, RendererPreference.buildGodotCommandLineArgs(this));
 		appendGodotLogFileCommandLineArgs(commandLine);
+		appendSts2PlatformCommandLineArgs(commandLine);
 		appendSts2LogLevelCommandLineArgs(commandLine);
 		appendAndroidDisplayCommandLineArgs(commandLine);
 		File pckFile = new File(getGameDir(), PCK_FILE_NAME);
@@ -189,6 +370,9 @@ public class GodotApp extends GodotActivity {
 				appendAndroidLaunchLog("No imported PCK and no bootstrap PCK asset available.");
 			}
 		}
+		Log.i(TAG, "DIAG GodotApp.getCommandLine final=" + commandLine);
+		appendAndroidLaunchLog("Final Godot command line: " + commandLine);
+		logGodotAppLaunchSnapshot("getCommandLine_final");
 		return commandLine;
 	}
 
@@ -210,6 +394,13 @@ public class GodotApp extends GodotActivity {
 		} catch (Exception exception) {
 			Log.w(TAG, "Unable to configure Godot runtime log file.", exception);
 		}
+	}
+
+	private void appendSts2PlatformCommandLineArgs(List<String> commandLine) {
+		commandLine.add("--force-steam");
+		commandLine.add("off");
+		Log.i(TAG, "Configured STS2 platform command line: --force-steam off");
+		appendAndroidLaunchLog("Configured STS2 platform command line: --force-steam off");
 	}
 
 	private void appendSts2LogLevelCommandLineArgs(List<String> commandLine) {
@@ -322,12 +513,47 @@ public class GodotApp extends GodotActivity {
 		return gameDir;
 	}
 
+	private void ensureLaunchPreparedBeforeGodot(boolean launchPrepared) {
+		File publishDir = new File(getFilesDir(), ".godot/mono/publish/arm64");
+		File entryDll = new File(publishDir, "STS2Mobile.dll");
+		File gameDll = new File(publishDir, "sts2.dll");
+		boolean needsPrepare = !launchPrepared || !entryDll.isFile() || !gameDll.isFile();
+		Log.e(TAG, "DIAG_FORCE GodotApp.ensureLaunchPrepared before launch_prepared=" + launchPrepared + " needs_prepare=" + needsPrepare + " entry=" + describeFile(entryDll) + " game_dll=" + describeFile(gameDll));
+		if (needsPrepare) {
+			prepareLaunchFallback();
+		}
+		forceStageCompatEntryDllIfMissing(publishDir, entryDll);
+		Log.e(TAG, "DIAG_FORCE GodotApp.ensureLaunchPrepared after entry=" + describeFile(entryDll) + " game_dll=" + describeFile(gameDll) + " publish=" + describeFile(publishDir));
+	}
+
 	private void prepareLaunchFallback() {
 		try {
 			new GameLaunchPreparationManager(this).prepareForLaunch();
-			Log.i(TAG, "Launch preparation complete via Activity fallback.");
+			Log.e(TAG, "DIAG_FORCE Launch preparation complete via Activity pre-super fallback.");
 		} catch (Exception exception) {
-			Log.e(TAG, "Failed to prepare launch before Godot startup.", exception);
+			Log.e(TAG, "DIAG_FORCE Failed to prepare launch before Godot startup.", exception);
+		}
+	}
+
+	private void forceStageCompatEntryDllIfMissing(File publishDir, File entryDll) {
+		if (entryDll != null && entryDll.isFile()) {
+			return;
+		}
+		try {
+			ensureDirectory(publishDir);
+			CompatPackManager compatPackManager = new CompatPackManager(this);
+			File selected = compatPackManager.getSelectedCompatDllIgnoringEnabled();
+			if (selected != null && selected.isFile()) {
+				copyFile(selected, entryDll);
+				Log.e(TAG, "DIAG_FORCE forceStageCompatEntryDll selected_pack source=" + describeFile(selected) + " dest=" + describeFile(entryDll));
+				return;
+			}
+			try (InputStream inputStream = getAssets().open("dotnet_bcl/STS2Mobile.dll")) {
+				copyStreamToFile(inputStream, entryDll);
+				Log.e(TAG, "DIAG_FORCE forceStageCompatEntryDll asset_fallback dest=" + describeFile(entryDll));
+			}
+		} catch (Exception exception) {
+			Log.e(TAG, "DIAG_FORCE forceStageCompatEntryDll failed dest=" + describeFile(entryDll), exception);
 		}
 	}
 
@@ -370,6 +596,26 @@ public class GodotApp extends GodotActivity {
 				outputStream.write(buffer, 0, read);
 			}
 			return outputStream.toByteArray();
+		}
+	}
+
+	private void copyFile(File src, File dest) throws IOException {
+		try (InputStream inputStream = new FileInputStream(src)) {
+			copyStreamToFile(inputStream, dest);
+		}
+	}
+
+	private void copyStreamToFile(InputStream inputStream, File dest) throws IOException {
+		File parent = dest.getParentFile();
+		if (parent != null) {
+			ensureDirectory(parent);
+		}
+		try (OutputStream outputStream = new FileOutputStream(dest)) {
+			byte[] buffer = new byte[8192];
+			int read;
+			while ((read = inputStream.read(buffer)) != -1) {
+				outputStream.write(buffer, 0, read);
+			}
 		}
 	}
 

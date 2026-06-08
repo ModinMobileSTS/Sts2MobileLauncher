@@ -37,12 +37,15 @@ apply_build_info_patch() {
   local source_root="${COMPAT_PACK_BUILD_INFO_SOURCE:-$COMPAT_ROOT}"
   local rel
   for rel in \
+    "STS2AndroidPortCompat/ModEntry.cs" \
+    "STS2AndroidPortCompat/HarmonyAndroidCompat.cs" \
     "STS2AndroidPortCompat/Patches/CompatBuildInfo.cs" \
     "STS2AndroidPortCompat/Directory.Build.targets" \
     "STS2AndroidPortCompat/Android/AppPaths.cs" \
     "STS2AndroidPortCompat/Patches/ModelDbInitPatch.cs" \
     "STS2AndroidPortCompat/Patches/ModLoaderPatches.cs" \
     "STS2AndroidPortCompat/Patches/SavePathPatches.cs" \
+    "STS2AndroidPortCompat/Patches/RenderDiagnosticPatches.cs" \
     "STS2AndroidPortCompat/Patches/LifecycleAndPerformancePatches.cs" \
     "STS2AndroidPortCompat/Patches/ShaderCompatibilityPatches.cs" \
     "STS2AndroidPortCompat/Patches/AndroidStartupLoadingScreen.cs" \
