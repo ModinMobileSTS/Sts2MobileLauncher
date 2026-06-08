@@ -191,9 +191,10 @@ s2_re/
   - 维护当前 profile 的 `logs/godot.log` 与 `logs/android-launch.log`；应用内 logcat 统一采集到全局 `<files>/logs/sts2.log`，每次启动游戏时像 `godot.log` 一样归档旧 `sts2.log`。`sts2.log` 使用紧凑 `level tag message` 格式并遵循附加设置 `log_level`（off/info/debug/very_debug）；选择 `off` 时完全禁用 `godot.log` 与 `sts2.log`。`sts2.log` 只能抓到普通 app 可见的自身 UID/进程相关 logcat，完整设备级日志仍需 ADB。
 - 启动路径：
   1. `GameSettingsActivity.launchGame()` 检查当前启动配置绑定的 payload 是否 ready；配置存在但本体缺失时不 fallback 到旧 `<files>/game/`，而是提示用户重新导入、下载、切换或编辑启动配置。
-  2. 如果兼容包开关启用，只读取当前启动配置的 `compat_pack_id`；无包/包已删除则阻止启动并提示编辑启动配置，版本不匹配则弹窗提示。
-  3. 后台执行 `GameLaunchPreparationManager.prepareForLaunch()`。
-  4. 以 `launch_prepared=true` 启动 `GodotApp`；`GodotApp` 仍保留 fallback 准备路径防止直接启动遗漏。
+  2. 如果兼容包开关关闭，启动前弹出风险确认；用户选择继续后，准备流程会删除 staged `STS2Mobile.dll` 与 `<files>/port_compat.pck`，真正按无兼容层路径启动。若用户选择开启，则写回 `android_compat_pack_enabled=true` 后取消本次启动。
+  3. 如果兼容包开关启用，只读取当前启动配置的 `compat_pack_id`；无包/包已删除则阻止启动并提示编辑启动配置，版本不匹配则弹窗提示。
+  4. 后台执行 `GameLaunchPreparationManager.prepareForLaunch()`。
+  5. 以 `launch_prepared=true` 启动 `GodotApp`；`GodotApp` 仍保留 fallback 准备路径防止直接启动遗漏，但同样尊重兼容包开关，关闭时不会 fallback 复制 `STS2Mobile.dll`。
 
 ## 7. Payload / 版本管理
 
@@ -312,8 +313,8 @@ REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
 正常启动前，Java shell 会：
 
 1. 复制 APK `dotnet_bcl` runtime 到 `<files>/.godot/mono/publish/arm64/`。
-2. 按当前启动配置的 `compat_pack_id` 复制 `STS2Mobile.dll` 到 publish 目录；关闭兼容包开关时删除该 dll。
-3. 复制当前启动配置兼容包的 `port_compat.pck` 到 `<files>/port_compat.pck`；无选择时使用 `android/assets/port_compat.pck` fallback（正常 launcher 启动会先阻止缺包场景）。
+2. 兼容包开关开启时按当前启动配置的 `compat_pack_id` 复制 `STS2Mobile.dll` 到 publish 目录；关闭兼容包开关时删除该 dll，且 `GodotApp` fallback 不会再从 selected pack 或 APK asset 强制补回。
+3. 兼容包开关开启时复制当前启动配置兼容包的 `port_compat.pck` 到 `<files>/port_compat.pck`；关闭时删除 `<files>/port_compat.pck`。无选择时使用 `android/assets/port_compat.pck` fallback（正常 launcher 启动会先阻止缺包场景）。
 4. 复制当前 launch profile payload 目录 `<files>/payloads/<payload_id>/game/data_*/*` 到 publish 目录，但保护 BCL/System/GodotSharp 等 runtime DLL 不被 payload 覆盖；profile/payload 切换时会清理旧游戏 assembly 残留。
 5. patched Godot runtime 加载 `STS2Mobile.dll` / `STS2Mobile.ModEntry`，调用 `InitializeGodotSharp` 与 `Apply`；`Apply` 会先配置 Android 私有 temp，并通过 `HarmonyAndroidCompat` 在真正的 `MonoMod.Utils` / `MonoMod.Core` 程序集上强制 Android/Mono 后端，避免 HarmonyOS 等 ROM 被 MonoMod 误判为 Posix/Linux 后在 Harmony `UpdateWrapper` 中抛 `NotImplementedException`。默认路径贴近 `../s2` 的 minimal bootstrap，不启用旧 native resolver / `DMDType=cecil` override；`monomod_android_libc_shim` 仍由 AndroidSystem 按需用于指令缓存刷新和 `/proc/self/mem` executable-page patch fallback。早期初始化不得调用 Godot C# API；Harmony self-test 仅在 `<files>/launcher/enable_harmony_selftest.flag` 存在时运行，旧 bootstrap 仅在 `<files>/launcher/enable_old_harmony_compat_bootstrap.flag` 存在时作为诊断启用。
 6. `ModEntry.Apply()` 先独立保护并应用保命 patch：`PlatformPatches` 跳过桌面 Steam 初始化、`SavePathPatches` 把原版 `UserDataPathProvider` 重定向到当前 launch profile 的 account root；即使后续诊断或 UI/性能 patch 在特定 ROM 上失败，也不能阻断这两组核心 patch。随后分组应用 BaseLib/RitsuLib、ModelDb/UnlockState、release/settings/display/layout/input、shader、LAN、ModLoader 等；每组单独捕获异常并写入 `[STS2Mobile]` 日志。`AppPaths` 从 publish 目录或 Android 进程包名推导 `<files>` 并读取 `<files>/launcher/selected_instance.json`（避免兼容层早期初始化调用 Godot API/Java bridge）。`RenderDiagnosticPatches` 后置且仅作诊断，不得阻断核心 patch。`ShaderCompatibilityPatches` 只替换已知高风险桌面特效 shader；不要再替换 `res://shaders/blur/canvas_group_mask_blur.gdshader`，该 shader 用于卡面/先古卡遮罩，旧移动替代版会导致先古卡面纯白且不应随 overlay/兼容包发布。

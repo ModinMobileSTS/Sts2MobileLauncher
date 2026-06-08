@@ -93,18 +93,18 @@ port-mod branch
 5. 对旧安装的 payload 补做 PCK patch 记录。
 6. payload PCK stamp 变化时清理 Godot texture import cache。
 7. Stage overlay：
-   - 兼容包开关关闭：删除 `<files>/port_compat.pck`。
+   - 兼容包开关关闭：删除 `<files>/port_compat.pck`；启动前会先弹风险确认，用户选择继续才进入无兼容层准备流程。
    - 有 selected pack：复制 `<files>/compat-packs/<pack_id>/port_compat.pck` 到 `<files>/port_compat.pck`。
-   - 无 selected pack：仅在绕过 launcher 检查的 fallback 准备路径中使用 APK assets `port_compat.pck` fallback。
+   - 无 selected pack：仅在兼容包开关开启但绕过 launcher 检查的 fallback 准备路径中使用 APK assets `port_compat.pck` fallback。
 8. 准备 Mono publish 目录 `<files>/.godot/mono/publish/arm64/`：
    - 复制 APK assets `dotnet_bcl/*`，但 `STS2Mobile.dll` 由 selected pack 决定。
-   - 兼容包开关关闭：删除 publish 目录中的 `STS2Mobile.dll`。
+   - 兼容包开关关闭：删除 publish 目录中的 `STS2Mobile.dll`；`GodotApp` 的直接启动 fallback 也不会再从 selected pack 或 APK asset 强制补回。
    - 有 selected pack：复制 selected `STS2Mobile.dll`。
-   - 无 selected pack：仅在绕过 launcher 检查的 fallback 准备路径中尝试复制 fallback `dotnet_bcl/STS2Mobile.dll`。
+   - 无 selected pack：仅在兼容包开关开启但绕过 launcher 检查的 fallback 准备路径中尝试复制 fallback `dotnet_bcl/STS2Mobile.dll`。
    - 复制当前 profile payload 目录中 `data_*/*` 的游戏 assemblies，跳过 `.so`，并保护 BCL/System/GodotSharp 等 runtime DLL。
    - 使用 SharedPreferences stamp 避免不必要的大文件重复复制；payload/profile 变化时强制刷新游戏 assemblies，并清理 publish 目录里旧 payload 遗留的游戏 DLL/JSON。
 
-`GodotApp` 仍保留 fallback：如果不是从设置页 prepared 启动，会自己调用同一准备流程。游戏通过 Android 兼容层的退出回设置路径触发 `GodotApp.restartToSettingsFromGame()` 时，会写入 `<files>/launcher/expected_clean_game_exit.json`；下次设置页启动时，如 Steam Cloud 模式为完整自动，会尝试上传当前 launch profile account root 的本地变化。
+`GodotApp` 仍保留 fallback：如果不是从设置页 prepared 启动，会自己调用同一准备流程；该 fallback 同样尊重兼容包开关，关闭时不会补回 `STS2Mobile.dll`。游戏通过 Android 兼容层的退出回设置路径触发 `GodotApp.restartToSettingsFromGame()` 时，会写入 `<files>/launcher/expected_clean_game_exit.json`；下次设置页启动时，如 Steam Cloud 模式为完整自动，会尝试上传当前 launch profile account root 的本地变化。
 
 ## 7. Godot 启动与 runtime 入口
 

@@ -249,16 +249,18 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				}
 				return;
 			}
-			if (compatPackManager.isCompatPackEnabled()) {
-				CompatPackManager.CompatPack selectedCompatPack = compatPackManager.getSelectedPack();
-				if (selectedCompatPack == null) {
-					showMessage(getString(R.string.launch_requires_compat_pack));
-					return;
-				}
-				if (!compatPackManager.isPackCompatibleWithPayload(selectedCompatPack, payloadStatus.manifest)) {
-					showCompatMismatchDialog(payloadStatus, selectedCompatPack);
-					return;
-				}
+			if (!compatPackManager.isCompatPackEnabled()) {
+				showCompatDisabledLaunchWarning();
+				return;
+			}
+			CompatPackManager.CompatPack selectedCompatPack = compatPackManager.getSelectedPack();
+			if (selectedCompatPack == null) {
+				showMessage(getString(R.string.launch_requires_compat_pack));
+				return;
+			}
+			if (!compatPackManager.isPackCompatibleWithPayload(selectedCompatPack, payloadStatus.manifest)) {
+				showCompatMismatchDialog(payloadStatus, selectedCompatPack);
+				return;
 			}
 			prepareAndStartGameAfterOptionalSteamCloudPull();
 		} catch (Exception exception) {
@@ -988,6 +990,21 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				openVersionsTab();
 			})
 			.setPositiveButton(R.string.import_game_payload, (dialog, which) -> requestImportGamePayload())
+			.show();
+	}
+
+	private void showCompatDisabledLaunchWarning() {
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.launch_compat_disabled_dialog_title)
+			.setMessage(R.string.launch_compat_disabled_dialog_message)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setNeutralButton(R.string.enable_compat_pack, (dialog, which) -> {
+				runAsyncOperation(getString(R.string.status_settings_saved), () -> {
+					repository.saveSetting(root -> root.put(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, true));
+					return getString(R.string.status_settings_saved);
+				});
+			})
+			.setPositiveButton(R.string.launch_anyway, (dialog, which) -> prepareAndStartGameAfterOptionalSteamCloudPull())
 			.show();
 	}
 

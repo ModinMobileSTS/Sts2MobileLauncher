@@ -170,10 +170,11 @@ public final class GameLaunchPreparationManager {
 	private void refreshBundledCompatPacksIfNeeded() {
 		try {
 			CompatPackManager manager = new CompatPackManager(context);
-			boolean configuredEnabled = manager.isCompatPackEnabled();
-			Log.e(TAG, "DIAG_FORCE refreshBundledCompatPacks configured_enabled=" + configuredEnabled + " forcing_refresh=true");
+			if (!manager.isCompatPackEnabled()) {
+				Log.i(TAG, "Bundled compatibility pack refresh skipped because compatibility pack is disabled.");
+				return;
+			}
 			int count = manager.installBundledCompatPacks();
-			Log.e(TAG, "DIAG_FORCE refreshBundledCompatPacks done count=" + count);
 			if (count > 0) {
 				Log.i(TAG, "Bundled compatibility packs refreshed before launch: " + count);
 			}
@@ -512,10 +513,15 @@ public final class GameLaunchPreparationManager {
 	private void stageSelectedCompatOverlay() throws IOException {
 		CompatPackManager manager = new CompatPackManager(context);
 		File dest = new File(context.getFilesDir(), "port_compat.pck");
-		boolean configuredEnabled = manager.isCompatPackEnabled();
-		Log.e(TAG, "DIAG_FORCE stageSelectedCompatOverlay configured_enabled=" + configuredEnabled + " forcing_entry=true dest_before=" + describeFile(dest));
-		File overlay = manager.getSelectedCompatOverlayPckIgnoringEnabled();
-		Log.e(TAG, "DIAG_FORCE stageSelectedCompatOverlay selected_overlay=" + describeFile(overlay));
+		boolean compatEnabled = manager.isCompatPackEnabled();
+		Log.i(TAG, "DIAG stageSelectedCompatOverlay compat_enabled=" + compatEnabled + " dest_before=" + describeFile(dest));
+		if (!compatEnabled) {
+			deleteFileIfExists(dest);
+			Log.i(TAG, "DIAG stageSelectedCompatOverlay deleted_because_disabled dest_after=" + describeFile(dest));
+			return;
+		}
+		File overlay = manager.getSelectedCompatOverlayPck();
+		Log.i(TAG, "DIAG stageSelectedCompatOverlay selected_overlay=" + describeFile(overlay));
 		if (overlay != null && overlay.isFile()) {
 			copyFile(overlay, dest);
 			logPreparedFile("compat overlay", "selected_pack", overlay, dest);
@@ -533,10 +539,9 @@ public final class GameLaunchPreparationManager {
 		}
 		FileBrowserSupport.ensureDirectory(destDir);
 		CompatPackManager compatPackManager = new CompatPackManager(context);
-		boolean configuredCompatEnabled = compatPackManager.isCompatPackEnabled();
-		boolean stageCompatEntry = true;
-		File selectedCompatDll = compatPackManager.getSelectedCompatDllIgnoringEnabled();
-		Log.e(TAG, "DIAG_FORCE copyBclAssemblies assets_count=" + bclFiles.length + " configured_compat_enabled=" + configuredCompatEnabled + " stage_compat_entry=" + stageCompatEntry + " selected_compat_dll=" + describeFile(selectedCompatDll));
+		boolean stageCompatEntry = compatPackManager.isCompatPackEnabled();
+		File selectedCompatDll = compatPackManager.getSelectedCompatDll();
+		Log.i(TAG, "DIAG copyBclAssemblies assets_count=" + bclFiles.length + " compat_enabled=" + stageCompatEntry + " selected_compat_dll=" + describeFile(selectedCompatDll));
 		for (String name : bclFiles) {
 			copiedNames.add(name);
 		}
@@ -570,10 +575,10 @@ public final class GameLaunchPreparationManager {
 
 	private void syncCompatEntryDll(File destDir, boolean compatEnabled, File selectedCompatDll) throws IOException {
 		File dest = new File(destDir, "STS2Mobile.dll");
-		Log.e(TAG, "DIAG_FORCE syncCompatEntryDll begin compat_enabled=" + compatEnabled + " selected=" + describeFile(selectedCompatDll) + " dest_before=" + describeFile(dest));
+		Log.i(TAG, "DIAG syncCompatEntryDll begin compat_enabled=" + compatEnabled + " selected=" + describeFile(selectedCompatDll) + " dest_before=" + describeFile(dest));
 		if (!compatEnabled) {
 			deleteFileIfExists(dest);
-			Log.e(TAG, "DIAG_FORCE syncCompatEntryDll deleted_because_disabled dest_after=" + describeFile(dest));
+			Log.i(TAG, "DIAG syncCompatEntryDll deleted_because_disabled dest_after=" + describeFile(dest));
 			return;
 		}
 		if (selectedCompatDll != null && selectedCompatDll.isFile()) {

@@ -632,6 +632,9 @@
     <string name="launch_requires_compat_pack">Edit the current launch profile and choose a compatible mobile compatibility pack before launching.</string>
     <string name="launch_incompatible_compat_pack_dialog_title">Compatibility pack version mismatch</string>
     <string name="launch_incompatible_compat_pack_dialog_message">Selected pack: %1$s\nPack support: %2$s\nCurrent game: %3$s\n\nThis check only compares game version labels/support lists. Edit the current launch profile to switch packs, or continue anyway.</string>
+    <string name="launch_compat_disabled_dialog_title">Android compatibility pack is disabled</string>
+    <string name="launch_compat_disabled_dialog_message">Launching without the Android compatibility pack removes STS2Mobile.dll and the mobile overlay for this run. Steam skipping, save path redirection, MOD loading, mobile input/UI fixes and Harmony patches may be unavailable, so the game may fail to start or MODs may not load.\n\nEnable the compatibility pack for the recommended Android path, or continue only for diagnostics.</string>
+    <string name="enable_compat_pack">Enable pack</string>
     <string name="launch_anyway">Launch anyway</string>
     <string name="status_busy_prepare_launch">Preparing game files…</string>
     <string name="import_game_payload">Import game zip</string>

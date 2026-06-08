@@ -517,8 +517,9 @@ public class GodotApp extends GodotActivity {
 		File publishDir = new File(getFilesDir(), ".godot/mono/publish/arm64");
 		File entryDll = new File(publishDir, "STS2Mobile.dll");
 		File gameDll = new File(publishDir, "sts2.dll");
-		boolean needsPrepare = !launchPrepared || !entryDll.isFile() || !gameDll.isFile();
-		Log.e(TAG, "DIAG_FORCE GodotApp.ensureLaunchPrepared before launch_prepared=" + launchPrepared + " needs_prepare=" + needsPrepare + " entry=" + describeFile(entryDll) + " game_dll=" + describeFile(gameDll));
+		boolean compatEnabled = new CompatPackManager(this).isCompatPackEnabled();
+		boolean needsPrepare = !launchPrepared || (compatEnabled && !entryDll.isFile()) || !gameDll.isFile();
+		Log.e(TAG, "DIAG_FORCE GodotApp.ensureLaunchPrepared before launch_prepared=" + launchPrepared + " compat_enabled=" + compatEnabled + " needs_prepare=" + needsPrepare + " entry=" + describeFile(entryDll) + " game_dll=" + describeFile(gameDll));
 		if (needsPrepare) {
 			prepareLaunchFallback();
 		}
@@ -536,13 +537,20 @@ public class GodotApp extends GodotActivity {
 	}
 
 	private void forceStageCompatEntryDllIfMissing(File publishDir, File entryDll) {
+		CompatPackManager compatPackManager = new CompatPackManager(this);
+		if (!compatPackManager.isCompatPackEnabled()) {
+			File overlay = new File(getFilesDir(), "port_compat.pck");
+			deleteFileQuietly(entryDll);
+			deleteFileQuietly(overlay);
+			Log.e(TAG, "DIAG_FORCE forceStageCompatEntryDll skipped_because_disabled dest=" + describeFile(entryDll) + " overlay=" + describeFile(overlay));
+			return;
+		}
 		if (entryDll != null && entryDll.isFile()) {
 			return;
 		}
 		try {
 			ensureDirectory(publishDir);
-			CompatPackManager compatPackManager = new CompatPackManager(this);
-			File selected = compatPackManager.getSelectedCompatDllIgnoringEnabled();
+			File selected = compatPackManager.getSelectedCompatDll();
 			if (selected != null && selected.isFile()) {
 				copyFile(selected, entryDll);
 				Log.e(TAG, "DIAG_FORCE forceStageCompatEntryDll selected_pack source=" + describeFile(selected) + " dest=" + describeFile(entryDll));
@@ -554,6 +562,15 @@ public class GodotApp extends GodotActivity {
 			}
 		} catch (Exception exception) {
 			Log.e(TAG, "DIAG_FORCE forceStageCompatEntryDll failed dest=" + describeFile(entryDll), exception);
+		}
+	}
+
+	private void deleteFileQuietly(File file) {
+		if (file == null || !file.exists()) {
+			return;
+		}
+		if (!file.delete() && file.exists()) {
+			Log.w(TAG, "Unable to delete file: " + file.getAbsolutePath());
 		}
 	}
 
