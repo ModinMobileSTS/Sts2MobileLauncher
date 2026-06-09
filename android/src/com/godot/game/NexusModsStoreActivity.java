@@ -43,6 +43,7 @@ public class NexusModsStoreActivity extends AppCompatActivity {
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
 		repository = new ExtraSettingsRepository(this);
 		repository.ensureAppDirectories();
 		setContentView(buildContent());
@@ -62,9 +63,8 @@ public class NexusModsStoreActivity extends AppCompatActivity {
 		scrollView.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 
 		LinearLayout root = ExtraSettingsUi.vertical(this);
-		int padding = ExtraSettingsUi.dp(this, 20);
-		root.setPadding(padding, ExtraSettingsUi.dp(this, 24), padding, ExtraSettingsUi.dp(this, 40));
-		scrollView.addView(root, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		root.setPadding(0, ExtraSettingsUi.dp(this, 24), 0, ExtraSettingsUi.dp(this, 40));
+		ExtraSettingsUi.addResponsiveScrollContent(this, scrollView, root);
 
 		root.addView(buildTopBar());
 		ExtraSettingsUi.addCardSpacing(root, buildApiKeyCard());

@@ -35,6 +35,7 @@ public class LogFileViewerActivity extends AppCompatActivity {
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
 		setContentView(R.layout.activity_log_file_viewer);
 
 		titleText = findViewById(R.id.text_log_content_title);

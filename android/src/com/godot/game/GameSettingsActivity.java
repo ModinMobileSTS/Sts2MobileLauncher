@@ -29,6 +29,8 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
+import com.google.android.material.navigation.NavigationBarView;
+import com.google.android.material.navigationrail.NavigationRailView;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -61,6 +63,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	private LaunchProfileManager launchProfileManager;
 	private FrameLayout contentFrame;
 	private BottomNavigationView bottomNavigationView;
+	private NavigationRailView navigationRailView;
 	private boolean busy;
 	private boolean launchUpdateCheckRequested;
 	private boolean bundledPayloadAutoExtractRequested;
@@ -73,6 +76,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
 		repository = new ExtraSettingsRepository(this);
 		payloadManager = new PayloadManager(this);
 		compatPackManager = new CompatPackManager(this);
@@ -110,16 +114,46 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	}
 
 	private void showMainShell() {
+		boolean wideLayout = ExtraSettingsUi.isWideLayout(this);
 		LinearLayout shell = new LinearLayout(this);
-		shell.setOrientation(LinearLayout.VERTICAL);
+		shell.setOrientation(wideLayout ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
 		shell.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 
 		contentFrame = new FrameLayout(this);
-		shell.addView(contentFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+		bottomNavigationView = null;
+		navigationRailView = null;
+		if (wideLayout) {
+			navigationRailView = new NavigationRailView(this);
+			navigationRailView.inflateMenu(R.menu.menu_extra_settings_nav);
+			configureNavigationBar(navigationRailView, ExtraSettingsUi.dp(this, 72));
+			navigationRailView.setLabelVisibilityMode(NavigationBarView.LABEL_VISIBILITY_LABELED);
+			navigationRailView.setItemMinimumHeight(ExtraSettingsUi.dp(this, 64));
+			navigationRailView.setPadding(0, ExtraSettingsUi.dp(this, 12), 0, ExtraSettingsUi.dp(this, 12));
+			shell.addView(navigationRailView, new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 96), ViewGroup.LayoutParams.MATCH_PARENT));
+			shell.addView(contentFrame, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+		} else {
+			shell.addView(contentFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+			bottomNavigationView = new BottomNavigationView(this);
+			bottomNavigationView.inflateMenu(R.menu.menu_extra_settings_nav);
+			configureNavigationBar(bottomNavigationView, ExtraSettingsUi.dp(this, 64));
+			bottomNavigationView.setLabelVisibilityMode(NavigationBarView.LABEL_VISIBILITY_LABELED);
+			shell.addView(bottomNavigationView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		}
 
-		bottomNavigationView = new BottomNavigationView(this);
-		bottomNavigationView.inflateMenu(R.menu.menu_extra_settings_nav);
-		bottomNavigationView.setBackgroundColor(Color.rgb(30, 35, 31));
+		setContentView(shell);
+		int savedTab = ExtraSettingsPreferences.getLastSelectedMainTab(this, R.id.nav_game);
+		if (savedTab != R.id.nav_game && savedTab != R.id.nav_mods && savedTab != R.id.nav_versions && savedTab != R.id.nav_settings && savedTab != R.id.nav_about) {
+			savedTab = R.id.nav_game;
+		}
+		selectNavigationItem(savedTab);
+		openTab(savedTab);
+		maybeRunLaunchUpdateCheck();
+		maybeAutoExtractBundledPayload();
+		maybeRunCleanExitSteamCloudPush();
+	}
+
+	private void configureNavigationBar(NavigationBarView navigationBar, int activeIndicatorWidth) {
+		navigationBar.setBackgroundColor(Color.rgb(30, 35, 31));
 		ColorStateList itemIconColors = new ColorStateList(
 			new int[][] { new int[] { android.R.attr.state_checked }, new int[] {} },
 			new int[] { Color.rgb(207, 233, 214), Color.rgb(193, 201, 193) }
@@ -128,41 +162,37 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			new int[][] { new int[] { android.R.attr.state_checked }, new int[] {} },
 			new int[] { Color.rgb(225, 227, 223), Color.rgb(193, 201, 193) }
 		);
-		bottomNavigationView.getMenu().findItem(R.id.nav_game).setIcon(MaterialSymbols.drawable(this, "stadia_controller", itemIconColors, 24));
-		bottomNavigationView.getMenu().findItem(R.id.nav_mods).setIcon(MaterialSymbols.drawable(this, "extension", itemIconColors, 24));
-		bottomNavigationView.getMenu().findItem(R.id.nav_versions).setIcon(MaterialSymbols.drawable(this, "layers", itemIconColors, 24));
-		bottomNavigationView.getMenu().findItem(R.id.nav_settings).setIcon(MaterialSymbols.drawable(this, "settings", itemIconColors, 24));
-		bottomNavigationView.getMenu().findItem(R.id.nav_about).setIcon(MaterialSymbols.drawable(this, "info", itemIconColors, 24));
-		bottomNavigationView.setItemIconTintList(itemIconColors);
-		bottomNavigationView.setItemTextColor(itemTextColors);
-		bottomNavigationView.setItemRippleColor(ColorStateList.valueOf(Color.argb(72, 129, 217, 154)));
-		bottomNavigationView.setItemActiveIndicatorEnabled(true);
-		bottomNavigationView.setItemActiveIndicatorColor(ColorStateList.valueOf(Color.rgb(51, 75, 59)));
-		bottomNavigationView.setItemActiveIndicatorWidth(ExtraSettingsUi.dp(this, 64));
-		bottomNavigationView.setItemActiveIndicatorHeight(ExtraSettingsUi.dp(this, 32));
-		bottomNavigationView.setItemActiveIndicatorShapeAppearance(
+		navigationBar.getMenu().findItem(R.id.nav_game).setIcon(MaterialSymbols.drawable(this, "stadia_controller", itemIconColors, 24));
+		navigationBar.getMenu().findItem(R.id.nav_mods).setIcon(MaterialSymbols.drawable(this, "extension", itemIconColors, 24));
+		navigationBar.getMenu().findItem(R.id.nav_versions).setIcon(MaterialSymbols.drawable(this, "layers", itemIconColors, 24));
+		navigationBar.getMenu().findItem(R.id.nav_settings).setIcon(MaterialSymbols.drawable(this, "settings", itemIconColors, 24));
+		navigationBar.getMenu().findItem(R.id.nav_about).setIcon(MaterialSymbols.drawable(this, "info", itemIconColors, 24));
+		navigationBar.setItemIconTintList(itemIconColors);
+		navigationBar.setItemTextColor(itemTextColors);
+		navigationBar.setItemRippleColor(ColorStateList.valueOf(Color.argb(72, 129, 217, 154)));
+		navigationBar.setItemActiveIndicatorEnabled(true);
+		navigationBar.setItemActiveIndicatorColor(ColorStateList.valueOf(Color.rgb(51, 75, 59)));
+		navigationBar.setItemActiveIndicatorWidth(activeIndicatorWidth);
+		navigationBar.setItemActiveIndicatorHeight(ExtraSettingsUi.dp(this, 32));
+		navigationBar.setItemActiveIndicatorShapeAppearance(
 			com.google.android.material.shape.ShapeAppearanceModel.builder()
 				.setAllCornerSizes(ExtraSettingsUi.dp(this, 16))
 				.build()
 		);
-		bottomNavigationView.setItemTextAppearanceActiveBoldEnabled(true);
-		bottomNavigationView.setLabelVisibilityMode(com.google.android.material.navigation.NavigationBarView.LABEL_VISIBILITY_LABELED);
-		bottomNavigationView.setOnItemSelectedListener(item -> {
+		navigationBar.setItemTextAppearanceActiveBoldEnabled(true);
+		navigationBar.setOnItemSelectedListener(item -> {
 			openTab(item.getItemId());
 			return true;
 		});
-		shell.addView(bottomNavigationView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+	}
 
-		setContentView(shell);
-		int savedTab = ExtraSettingsPreferences.getLastSelectedMainTab(this, R.id.nav_game);
-		if (savedTab != R.id.nav_game && savedTab != R.id.nav_mods && savedTab != R.id.nav_versions && savedTab != R.id.nav_settings && savedTab != R.id.nav_about) {
-			savedTab = R.id.nav_game;
+	private void selectNavigationItem(int itemId) {
+		if (bottomNavigationView != null) {
+			bottomNavigationView.setSelectedItemId(itemId);
 		}
-		bottomNavigationView.setSelectedItemId(savedTab);
-		openTab(savedTab);
-		maybeRunLaunchUpdateCheck();
-		maybeAutoExtractBundledPayload();
-		maybeRunCleanExitSteamCloudPush();
+		if (navigationRailView != null) {
+			navigationRailView.setSelectedItemId(itemId);
+		}
 	}
 
 	private void maybeRunLaunchUpdateCheck() {
@@ -1619,20 +1649,12 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 	@Override
 	public void openModsTab() {
-		if (bottomNavigationView != null) {
-			bottomNavigationView.setSelectedItemId(R.id.nav_mods);
-		} else {
-			openTab(R.id.nav_mods);
-		}
+		selectNavigationItem(R.id.nav_mods);
 	}
 
 	@Override
 	public void openSettingsTab() {
-		if (bottomNavigationView != null) {
-			bottomNavigationView.setSelectedItemId(R.id.nav_settings);
-		} else {
-			openTab(R.id.nav_settings);
-		}
+		selectNavigationItem(R.id.nav_settings);
 	}
 
 	@Override
@@ -1643,11 +1665,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 	@Override
 	public void openVersionsTab() {
-		if (bottomNavigationView != null) {
-			bottomNavigationView.setSelectedItemId(R.id.nav_versions);
-		} else {
-			openTab(R.id.nav_versions);
-		}
+		selectNavigationItem(R.id.nav_versions);
 	}
 
 	@Override

@@ -42,7 +42,7 @@
             android:theme="@style/Theme.Sts2ExtraSettings"
             android:icon="@mipmap/icon"
             android:exported="true"
-            android:screenOrientation="portrait"
+            android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
             android:resizeableActivity="true">
 
@@ -81,7 +81,7 @@
             android:theme="@style/Theme.Sts2Crash"
             android:exported="false"
             android:process=":error_activity"
-            android:screenOrientation="portrait"
+            android:screenOrientation="unspecified"
             android:excludeFromRecents="true">
             <intent-filter>
                 <action android:name="cat.ereza.customactivityoncrash.ERROR" />
@@ -93,7 +93,7 @@
             android:label="@string/nexus_mod_store_title"
             android:theme="@style/Theme.Sts2ExtraSettings"
             android:exported="false"
-            android:screenOrientation="portrait"
+            android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
             android:resizeableActivity="true" />
 
@@ -102,7 +102,7 @@
             android:label="@string/steam_account_title"
             android:theme="@style/Theme.Sts2ExtraSettings"
             android:exported="false"
-            android:screenOrientation="portrait"
+            android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
             android:resizeableActivity="true" />
 
@@ -111,7 +111,7 @@
             android:label="@string/webdav_cloud_title"
             android:theme="@style/Theme.Sts2ExtraSettings"
             android:exported="false"
-            android:screenOrientation="portrait"
+            android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
             android:resizeableActivity="true" />
 
@@ -120,7 +120,7 @@
             android:label="@string/log_viewer_title"
             android:theme="@style/Theme.Sts2Crash.AppBar"
             android:exported="false"
-            android:screenOrientation="portrait"
+            android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
             android:resizeableActivity="true" />
 
@@ -129,7 +129,7 @@
             android:label="@string/log_file_viewer_title"
             android:theme="@style/Theme.Sts2Crash.AppBar"
             android:exported="false"
-            android:screenOrientation="portrait"
+            android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
             android:resizeableActivity="true" />
 
@@ -138,7 +138,7 @@
             android:label="@string/file_browser_title"
             android:theme="@style/Theme.Sts2Crash.AppBar"
             android:exported="false"
-            android:screenOrientation="portrait"
+            android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
             android:resizeableActivity="true" />
 
@@ -147,7 +147,7 @@
             android:label="@string/text_editor_title"
             android:theme="@style/Theme.Sts2Crash.AppBar"
             android:exported="false"
-            android:screenOrientation="portrait"
+            android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
             android:resizeableActivity="true" />
 

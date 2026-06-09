@@ -97,21 +97,23 @@ public final class SettingsPage {
 	public View build() {
 		LinearLayout shell = ExtraSettingsUi.vertical(context);
 		shell.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
-		int padding = ExtraSettingsUi.dp(context, 20);
+		int padding = ExtraSettingsUi.pageHorizontalPadding(context);
 		shell.setPadding(padding, ExtraSettingsUi.dp(context, 18), padding, 0);
-		shell.addView(ExtraSettingsUi.title(context, R.string.tab_settings));
+		LinearLayout header = ExtraSettingsUi.vertical(context);
+		header.addView(ExtraSettingsUi.title(context, R.string.tab_settings));
 
 		LinearLayout tabContent = ExtraSettingsUi.vertical(context);
 		View tabs = buildSettingsSegmentedTabs(tabContent);
 		LinearLayout.LayoutParams tabsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
 		tabsParams.topMargin = ExtraSettingsUi.dp(context, 12);
-		shell.addView(tabs, tabsParams);
+		header.addView(tabs, tabsParams);
+		shell.addView(header, ExtraSettingsUi.centeredContentParams(context));
 
 		ScrollView scrollView = new ScrollView(context);
 		scrollView.setFillViewport(false);
 		scrollView.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 		tabContent.setPadding(0, ExtraSettingsUi.dp(context, 8), 0, ExtraSettingsUi.dp(context, 32));
-		scrollView.addView(tabContent, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		ExtraSettingsUi.addResponsiveScrollContent(context, scrollView, tabContent);
 		shell.addView(scrollView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 		if (tabContent.getChildCount() == 0) {
 			showSettingsSegment(lastSelectedSegment, tabContent);
@@ -199,24 +201,32 @@ public final class SettingsPage {
 		try {
 			JSONObject settings = repository.loadSettingsJson();
 			if (segment == SettingsSegment.INPUT) {
-				ExtraSettingsUi.addCardSpacing(root, buildInputPresetCard(settings));
-				ExtraSettingsUi.addCardSpacing(root, buildInputDetailsCard(settings));
+				addResponsiveCards(root, buildInputPresetCard(settings), buildInputDetailsCard(settings));
 			} else if (segment == SettingsSegment.SAVE) {
-				ExtraSettingsUi.addCardSpacing(root, buildSaveCard());
-				ExtraSettingsUi.addCardSpacing(root, buildLocalSaveSnapshotCard());
-				ExtraSettingsUi.addCardSpacing(root, buildSteamCloudCard());
-				ExtraSettingsUi.addCardSpacing(root, buildWebDavCloudCard());
-				ExtraSettingsUi.addCardSpacing(root, buildFullDataBackupCard());
+				addResponsiveCards(root, buildSaveCard(), buildLocalSaveSnapshotCard(), buildSteamCloudCard(), buildWebDavCloudCard(), buildFullDataBackupCard());
 			} else if (segment == SettingsSegment.SYSTEM) {
-				ExtraSettingsUi.addCardSpacing(root, buildSystemCard(settings));
-				ExtraSettingsUi.addCardSpacing(root, buildLanCard(settings));
-				ExtraSettingsUi.addCardSpacing(root, buildLogCard(settings));
+				addResponsiveCards(root, buildSystemCard(settings), buildLanCard(settings), buildLogCard(settings));
 			} else {
-				ExtraSettingsUi.addCardSpacing(root, buildPresetCard(settings));
-				ExtraSettingsUi.addCardSpacing(root, buildGraphicsAdvancedCard(settings));
+				addResponsiveCards(root, buildPresetCard(settings), buildGraphicsAdvancedCard(settings));
 			}
 		} catch (Exception exception) {
 			ExtraSettingsUi.addCardSpacing(root, errorCard(exception));
+		}
+	}
+
+	private void addResponsiveCards(LinearLayout root, View... cards) {
+		if (!ExtraSettingsUi.isWideLayout(context)) {
+			for (View card : cards) {
+				ExtraSettingsUi.addCardSpacing(root, card);
+			}
+			return;
+		}
+		for (int i = 0; i < cards.length; i += 2) {
+			if (i + 1 < cards.length) {
+				ExtraSettingsUi.addResponsivePair(context, root, cards[i], cards[i + 1]);
+			} else {
+				ExtraSettingsUi.addCardSpacing(root, cards[i]);
+			}
 		}
 	}
 

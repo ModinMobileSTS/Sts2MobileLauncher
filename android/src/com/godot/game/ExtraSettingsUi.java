@@ -1,7 +1,10 @@
 package com.godot.game;
 
+import android.app.Activity;
 import android.content.Context;
+import android.content.pm.ActivityInfo;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -12,6 +15,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.appcompat.content.res.AppCompatResources;
@@ -43,6 +47,131 @@ public final class ExtraSettingsUi {
 
 	public static int dp(Context context, float value) {
 		return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, context.getResources().getDisplayMetrics()));
+	}
+
+	public static boolean isTablet(Context context) {
+		return context.getResources().getConfiguration().smallestScreenWidthDp >= 600;
+	}
+
+	public static boolean isWideLayout(Context context) {
+		Configuration configuration = context.getResources().getConfiguration();
+		return configuration.screenWidthDp >= 720 && configuration.screenWidthDp > configuration.screenHeightDp;
+	}
+
+	public static void applyPhonePortraitTabletFreeOrientation(Activity activity) {
+		activity.setRequestedOrientation(isTablet(activity) ? ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+	}
+
+	public static int contentMaxWidth(Context context) {
+		return dp(context, isWideLayout(context) ? 1180 : 640);
+	}
+
+	public static int pageHorizontalPadding(Context context) {
+		return dp(context, isWideLayout(context) ? 28 : 20);
+	}
+
+	public static void addResponsiveScrollContent(Context context, ScrollView scrollView, View content) {
+		MaxWidthFrameLayout container = new MaxWidthFrameLayout(context, contentMaxWidth(context));
+		int horizontalPadding = pageHorizontalPadding(context);
+		container.setPadding(horizontalPadding, 0, horizontalPadding, 0);
+		container.addView(content, centeredContentParams(context));
+		scrollView.addView(container, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+	}
+
+	public static FrameLayout.LayoutParams centeredContentParams(Context context) {
+		return new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+	}
+
+	public static LinearLayout responsiveRow(Context context) {
+		LinearLayout row = isWideLayout(context) ? horizontal(context) : vertical(context);
+		row.setBaselineAligned(false);
+		row.setGravity(Gravity.TOP);
+		return row;
+	}
+
+	public static LinearLayout.LayoutParams responsiveItemParams(Context context, int index) {
+		if (isWideLayout(context)) {
+			LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+			if (index > 0) {
+				params.setMarginStart(dp(context, 16));
+			}
+			return params;
+		}
+		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		if (index > 0) {
+			params.topMargin = dp(context, 14);
+		}
+		return params;
+	}
+
+	public static void addResponsivePair(Context context, LinearLayout parent, View first, View second) {
+		LinearLayout row = responsiveRow(context);
+		row.addView(first, responsiveItemParams(context, 0));
+		row.addView(second, responsiveItemParams(context, 1));
+		addCardSpacing(parent, row);
+	}
+
+	private static final class MaxWidthFrameLayout extends FrameLayout {
+		private final int maxContentWidth;
+
+		MaxWidthFrameLayout(Context context, int maxContentWidth) {
+			super(context);
+			this.maxContentWidth = maxContentWidth;
+			setClipToPadding(false);
+		}
+
+		@Override
+		protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+			int widthMode = View.MeasureSpec.getMode(widthMeasureSpec);
+			int widthSize = View.MeasureSpec.getSize(widthMeasureSpec);
+			int availableWidth = widthMode == View.MeasureSpec.UNSPECIFIED
+				? maxContentWidth
+				: Math.max(0, widthSize - getPaddingLeft() - getPaddingRight());
+			int contentWidth = Math.min(availableWidth, maxContentWidth);
+			int desiredHeight = getPaddingTop() + getPaddingBottom();
+			int desiredWidth = getPaddingLeft() + getPaddingRight() + contentWidth;
+			for (int i = 0; i < getChildCount(); i++) {
+				View child = getChildAt(i);
+				if (child.getVisibility() == GONE) {
+					continue;
+				}
+				FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) child.getLayoutParams();
+				int childAvailableWidth = Math.max(0, contentWidth - params.leftMargin - params.rightMargin);
+				int childWidthMode = params.width == ViewGroup.LayoutParams.WRAP_CONTENT ? View.MeasureSpec.AT_MOST : View.MeasureSpec.EXACTLY;
+				int childWidthSpec = View.MeasureSpec.makeMeasureSpec(childAvailableWidth, childWidthMode);
+				int childHeightSpec = getChildMeasureSpec(
+					heightMeasureSpec,
+					getPaddingTop() + getPaddingBottom() + params.topMargin + params.bottomMargin,
+					params.height
+				);
+				child.measure(childWidthSpec, childHeightSpec);
+				desiredWidth = Math.max(desiredWidth, getPaddingLeft() + getPaddingRight() + params.leftMargin + params.rightMargin + child.getMeasuredWidth());
+				desiredHeight = Math.max(desiredHeight, getPaddingTop() + getPaddingBottom() + params.topMargin + params.bottomMargin + child.getMeasuredHeight());
+			}
+			setMeasuredDimension(
+				resolveSize(Math.max(desiredWidth, getSuggestedMinimumWidth()), widthMeasureSpec),
+				resolveSize(Math.max(desiredHeight, getSuggestedMinimumHeight()), heightMeasureSpec)
+			);
+		}
+
+		@Override
+		protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+			int availableLeft = getPaddingLeft();
+			int availableRight = right - left - getPaddingRight();
+			for (int i = 0; i < getChildCount(); i++) {
+				View child = getChildAt(i);
+				if (child.getVisibility() == GONE) {
+					continue;
+				}
+				FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) child.getLayoutParams();
+				int childAvailableLeft = availableLeft + params.leftMargin;
+				int childAvailableRight = availableRight - params.rightMargin;
+				int childWidth = child.getMeasuredWidth();
+				int childLeft = childAvailableLeft + Math.max(0, (childAvailableRight - childAvailableLeft - childWidth) / 2);
+				int childTop = getPaddingTop() + params.topMargin;
+				child.layout(childLeft, childTop, childLeft + childWidth, childTop + child.getMeasuredHeight());
+			}
+		}
 	}
 
 	public static LinearLayout vertical(Context context) {

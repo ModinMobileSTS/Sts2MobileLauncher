@@ -79,37 +79,71 @@ public final class GamePage {
 
 		LinearLayout content = ExtraSettingsUi.vertical(context);
 		content.setClipToPadding(false);
-		int horizontalPadding = dp(20);
-		content.setPadding(horizontalPadding, 0, horizontalPadding, dp(32));
-		scrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		content.setPadding(0, 0, 0, dp(32));
+		ExtraSettingsUi.addResponsiveScrollContent(context, scrollView, content);
 		shell.addView(scrollView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
 		try {
 			DashboardState state = loadDashboardState();
-			content.addView(buildHeroCard(state), matchWrapParams(0));
-			content.addView(buildStatusRow(state), matchWrapParams(20));
-			content.addView(sectionTitle(R.string.game_maintenance_section), matchWrapParams(20));
-			content.addView(buildActionRow(new ActionSpec[] {
-				new ActionSpec("unarchive", R.string.game_action_import_body, !state.payloadReady, v -> actions.requestImportGamePayload()),
-				new ActionSpec("file_download", R.string.import_save, false, v -> actions.requestImportSave()),
-				new ActionSpec("file_upload", R.string.export_save, false, v -> actions.requestExportSave()),
-				new ActionSpec("lock_open", R.string.game_action_unlock_all, false, v -> confirmUnlockAll())
-			}), matchWrapParams(12));
-			content.addView(sectionTitle(R.string.game_advanced_tools_section), matchWrapParams(20));
-			content.addView(buildActionRow(new ActionSpec[] {
-				new ActionSpec("folder_open", R.string.game_action_browse_files, false, v -> actions.openFileBrowser()),
-				new ActionSpec("receipt_long", R.string.view_logs, false, v -> actions.openLogViewer()),
-				new ActionSpec("gamepad", R.string.game_action_launch_profiles, false, v -> {
-					GameVersionManagerPage.selectProfilesTab();
-					actions.openVersionsTab();
-				}),
-				new ActionSpec("settings", R.string.tab_settings, false, v -> actions.openSettingsTab())
-			}), matchWrapParams(12));
+			if (ExtraSettingsUi.isWideLayout(context)) {
+				populateWideContent(content, state);
+			} else {
+				populateCompactContent(content, state);
+			}
 		} catch (Exception exception) {
 			content.addView(buildErrorCard(exception), matchWrapParams(0));
 		}
 
 		return shell;
+	}
+
+	private void populateCompactContent(LinearLayout content, DashboardState state) {
+		content.addView(buildHeroCard(state), matchWrapParams(0));
+		content.addView(buildStatusRow(state), matchWrapParams(20));
+		content.addView(sectionTitle(R.string.game_maintenance_section), matchWrapParams(20));
+		content.addView(buildActionRow(maintenanceActions(state), 4), matchWrapParams(12));
+		content.addView(sectionTitle(R.string.game_advanced_tools_section), matchWrapParams(20));
+		content.addView(buildActionRow(advancedActions(), 4), matchWrapParams(12));
+	}
+
+	private void populateWideContent(LinearLayout content, DashboardState state) {
+		LinearLayout columns = ExtraSettingsUi.horizontal(context);
+		columns.setGravity(Gravity.TOP);
+		columns.setBaselineAligned(false);
+		LinearLayout left = ExtraSettingsUi.vertical(context);
+		LinearLayout right = ExtraSettingsUi.vertical(context);
+		columns.addView(left, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.15f));
+		LinearLayout.LayoutParams rightParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		rightParams.setMarginStart(dp(20));
+		columns.addView(right, rightParams);
+		left.addView(buildHeroCard(state), matchWrapParams(0));
+		right.addView(buildStatusRow(state), matchWrapParams(0));
+		right.addView(sectionTitle(R.string.game_maintenance_section), matchWrapParams(20));
+		right.addView(buildActionRow(maintenanceActions(state), 2), matchWrapParams(12));
+		right.addView(sectionTitle(R.string.game_advanced_tools_section), matchWrapParams(20));
+		right.addView(buildActionRow(advancedActions(), 2), matchWrapParams(12));
+		content.addView(columns, matchWrapParams(0));
+	}
+
+	private ActionSpec[] maintenanceActions(DashboardState state) {
+		return new ActionSpec[] {
+			new ActionSpec("unarchive", R.string.game_action_import_body, !state.payloadReady, v -> actions.requestImportGamePayload()),
+			new ActionSpec("file_download", R.string.import_save, false, v -> actions.requestImportSave()),
+			new ActionSpec("file_upload", R.string.export_save, false, v -> actions.requestExportSave()),
+			new ActionSpec("lock_open", R.string.game_action_unlock_all, false, v -> confirmUnlockAll())
+		};
+	}
+
+	private ActionSpec[] advancedActions() {
+		return new ActionSpec[] {
+			new ActionSpec("folder_open", R.string.game_action_browse_files, false, v -> actions.openFileBrowser()),
+			new ActionSpec("receipt_long", R.string.view_logs, false, v -> actions.openLogViewer()),
+			new ActionSpec("gamepad", R.string.game_action_launch_profiles, false, v -> {
+				GameVersionManagerPage.selectProfilesTab();
+				actions.openVersionsTab();
+			}),
+			new ActionSpec("settings", R.string.tab_settings, false, v -> actions.openSettingsTab())
+		};
 	}
 
 	private View buildTopAppBar() {
@@ -322,20 +356,28 @@ public final class GamePage {
 		return text(context.getString(stringRes), 16, COLOR_ON_SURFACE, Typeface.BOLD);
 	}
 
-	private View buildActionRow(ActionSpec[] specs) {
-		LinearLayout row = ExtraSettingsUi.horizontal(context);
-		row.setBaselineAligned(false);
-		row.setGravity(Gravity.CENTER_VERTICAL);
-		for (int i = 0; i < specs.length; i++) {
-			ActionSpec spec = specs[i];
-			View item = actionItem(spec);
-			LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-			if (i > 0) {
-				params.setMarginStart(dp(12));
+	private View buildActionRow(ActionSpec[] specs, int columns) {
+		LinearLayout container = ExtraSettingsUi.vertical(context);
+		for (int start = 0; start < specs.length; start += columns) {
+			LinearLayout row = ExtraSettingsUi.horizontal(context);
+			row.setBaselineAligned(false);
+			row.setGravity(Gravity.CENTER_VERTICAL);
+			for (int i = 0; i < columns; i++) {
+				int index = start + i;
+				View item = index < specs.length ? actionItem(specs[index]) : new View(context);
+				LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+				if (i > 0) {
+					params.setMarginStart(dp(12));
+				}
+				row.addView(item, params);
 			}
-			row.addView(item, params);
+			LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			if (start > 0) {
+				rowParams.topMargin = dp(12);
+			}
+			container.addView(row, rowParams);
 		}
-		return row;
+		return container;
 	}
 
 	private View actionItem(ActionSpec spec) {

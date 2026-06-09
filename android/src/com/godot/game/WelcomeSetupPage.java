@@ -70,10 +70,10 @@ public final class WelcomeSetupPage {
 		contentFrame = new FrameLayout(context);
 		shell.addView(contentFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
+		FrameLayout bottomFrame = new FrameLayout(context);
+		bottomFrame.setBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
 		LinearLayout bottom = ExtraSettingsUi.vertical(context);
-		bottom.setBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
-		int horizontalPadding = ExtraSettingsUi.dp(context, 20);
-		bottom.setPadding(horizontalPadding, ExtraSettingsUi.dp(context, 12), horizontalPadding, ExtraSettingsUi.dp(context, 16));
+		bottom.setPadding(0, ExtraSettingsUi.dp(context, 12), 0, ExtraSettingsUi.dp(context, 16));
 		progressText = ExtraSettingsUi.caption(context, "");
 		bottom.addView(progressText);
 		LinearLayout buttons = ExtraSettingsUi.horizontal(context);
@@ -87,7 +87,9 @@ public final class WelcomeSetupPage {
 		buttons.addView(backButton, backParams);
 		buttons.addView(nextButton, nextParams);
 		ExtraSettingsUi.addSmallSpacing(bottom, buttons);
-		shell.addView(bottom, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		bottomFrame.setPadding(ExtraSettingsUi.pageHorizontalPadding(context), 0, ExtraSettingsUi.pageHorizontalPadding(context), 0);
+		bottomFrame.addView(bottom, ExtraSettingsUi.centeredContentParams(context));
+		shell.addView(bottomFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
 		renderCurrentStep();
 		return shell;
@@ -131,9 +133,8 @@ public final class WelcomeSetupPage {
 		scrollView.setFillViewport(false);
 		scrollView.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 		LinearLayout root = ExtraSettingsUi.vertical(context);
-		int padding = ExtraSettingsUi.dp(context, 20);
-		root.setPadding(padding, ExtraSettingsUi.dp(context, 28), padding, ExtraSettingsUi.dp(context, 28));
-		scrollView.addView(root, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		root.setPadding(0, ExtraSettingsUi.dp(context, 28), 0, ExtraSettingsUi.dp(context, 28));
+		ExtraSettingsUi.addResponsiveScrollContent(context, scrollView, root);
 		switch (stepIndex) {
 			case STEP_RENDER -> buildRenderStep(root);
 			case STEP_DISPLAY -> buildDisplayStep(root);

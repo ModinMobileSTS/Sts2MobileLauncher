@@ -121,8 +121,8 @@ public final class ModsPage {
 		scrollView.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 
 		rootContent = ExtraSettingsUi.vertical(context);
-		rootContent.setPadding(0, ExtraSettingsUi.dp(context, 10), 0, ExtraSettingsUi.dp(context, 122));
-		scrollView.addView(rootContent, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		rootContent.setPadding(0, ExtraSettingsUi.dp(context, 10), 0, ExtraSettingsUi.dp(context, ExtraSettingsUi.isWideLayout(context) ? 96 : 122));
+		ExtraSettingsUi.addResponsiveScrollContent(context, scrollView, rootContent);
 
 		rootContent.addView(buildTopBar());
 		rootContent.addView(buildCompactActions());
@@ -327,9 +327,9 @@ public final class ModsPage {
 	}
 
 	private FrameLayout.LayoutParams bottomPanelParams() {
-		FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
-		int horizontal = ExtraSettingsUi.dp(context, 10);
-		params.setMargins(horizontal, 0, horizontal, 0);
+		FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+		int horizontal = ExtraSettingsUi.dp(context, ExtraSettingsUi.isWideLayout(context) ? 28 : 10);
+		params.setMargins(horizontal, 0, horizontal, ExtraSettingsUi.isWideLayout(context) ? ExtraSettingsUi.dp(context, 12) : 0);
 		return params;
 	}
 

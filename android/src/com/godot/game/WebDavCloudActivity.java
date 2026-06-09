@@ -39,6 +39,7 @@ public class WebDavCloudActivity extends AppCompatActivity {
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
 		buildUi();
 		refreshStatus();
 	}
@@ -48,9 +49,8 @@ public class WebDavCloudActivity extends AppCompatActivity {
 		scroll.setFillViewport(false);
 		scroll.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 		root = ExtraSettingsUi.vertical(this);
-		int padding = ExtraSettingsUi.dp(this, 20);
-		root.setPadding(padding, ExtraSettingsUi.dp(this, 24), padding, ExtraSettingsUi.dp(this, 32));
-		scroll.addView(root, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		root.setPadding(0, ExtraSettingsUi.dp(this, 24), 0, ExtraSettingsUi.dp(this, 32));
+		ExtraSettingsUi.addResponsiveScrollContent(this, scroll, root);
 		setContentView(scroll);
 		populateRoot();
 	}

@@ -23,6 +23,7 @@ public class Sts2CrashActivity extends AppCompatActivity {
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
 		StartupHealthTracker.clearPendingLaunchState(this);
 		setContentView(R.layout.activity_sts2_crash);
 

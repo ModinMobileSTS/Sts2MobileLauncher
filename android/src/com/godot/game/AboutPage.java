@@ -35,23 +35,27 @@ public final class AboutPage {
 		scrollView.setFillViewport(false);
 		scrollView.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 		LinearLayout root = ExtraSettingsUi.vertical(context);
-		int padding = ExtraSettingsUi.dp(context, 20);
-		root.setPadding(padding, ExtraSettingsUi.dp(context, 24), padding, ExtraSettingsUi.dp(context, 32));
-		scrollView.addView(root, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		root.setPadding(0, ExtraSettingsUi.dp(context, 24), 0, ExtraSettingsUi.dp(context, 32));
+		ExtraSettingsUi.addResponsiveScrollContent(context, scrollView, root);
 
 		root.addView(ExtraSettingsUi.title(context, R.string.tab_about));
 
-		ExtraSettingsUi.addCardSpacing(root, authorCard());
-		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_desktop_windows_24, R.string.steam_link_title, R.string.steam_link_desc, STEAM_URL));
-		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_download_24, R.string.download_link_title, R.string.download_link_desc, GAME_DOWNLOAD_URL));
-		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_error_outline_24, R.string.issue_feedback_title, R.string.issue_feedback_desc, LAUNCHER_NEW_ISSUE_URL));
+		addResponsiveCards(root, authorCard(), linkCard(R.drawable.ic_desktop_windows_24, R.string.steam_link_title, R.string.steam_link_desc, STEAM_URL));
+		addResponsiveCards(root, linkCard(R.drawable.ic_download_24, R.string.download_link_title, R.string.download_link_desc, GAME_DOWNLOAD_URL), linkCard(R.drawable.ic_error_outline_24, R.string.issue_feedback_title, R.string.issue_feedback_desc, LAUNCHER_NEW_ISSUE_URL));
 		ExtraSettingsUi.addCardSpacing(root, updateCheckCard());
 		ExtraSettingsUi.addCardSpacing(root, friendHeader());
-		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_extension_24, R.string.friend_link_amethyst_title, R.string.friend_link_amethyst_desc, SLAY_AMETHYST_URL));
-		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_restart_alt_24, R.string.friend_link_quick_restart_title, R.string.friend_link_quick_restart_desc, QUICK_RESTART_URL));
-		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_code_24, R.string.friend_link_ritsu_lib_title, R.string.friend_link_ritsu_lib_desc, RITSU_LIB_URL));
-		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_settings_24, R.string.friend_link_sts2_launcher_mod_manager_title, R.string.friend_link_sts2_launcher_mod_manager_desc, STS2_LAUNCHER_MOD_MANAGER_URL));
+		addResponsiveCards(root, linkCard(R.drawable.ic_extension_24, R.string.friend_link_amethyst_title, R.string.friend_link_amethyst_desc, SLAY_AMETHYST_URL), linkCard(R.drawable.ic_restart_alt_24, R.string.friend_link_quick_restart_title, R.string.friend_link_quick_restart_desc, QUICK_RESTART_URL));
+		addResponsiveCards(root, linkCard(R.drawable.ic_code_24, R.string.friend_link_ritsu_lib_title, R.string.friend_link_ritsu_lib_desc, RITSU_LIB_URL), linkCard(R.drawable.ic_settings_24, R.string.friend_link_sts2_launcher_mod_manager_title, R.string.friend_link_sts2_launcher_mod_manager_desc, STS2_LAUNCHER_MOD_MANAGER_URL));
 		return scrollView;
+	}
+
+	private void addResponsiveCards(LinearLayout root, View first, View second) {
+		if (ExtraSettingsUi.isWideLayout(context)) {
+			ExtraSettingsUi.addResponsivePair(context, root, first, second);
+		} else {
+			ExtraSettingsUi.addCardSpacing(root, first);
+			ExtraSettingsUi.addCardSpacing(root, second);
+		}
 	}
 
 	private View authorCard() {
