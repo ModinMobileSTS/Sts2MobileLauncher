@@ -66,8 +66,8 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	private boolean bundledPayloadAutoExtractRequested;
 	private boolean bundledCompatPackBootstrapFinished;
 	private boolean pendingLauncherDirectLaunch;
-	private boolean cleanExitSteamCloudPushChecked;
-	private boolean cleanExitWebDavCloudPushChecked;
+	private boolean preLaunchLocalSnapshotCreated;
+	private boolean cleanExitMaintenanceChecked;
 	private int currentTabId = R.id.nav_game;
 
 	@Override
@@ -237,6 +237,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 	@Override
 	public void launchGame() {
+		preLaunchLocalSnapshotCreated = false;
 		try {
 			LaunchProfileManager.LaunchProfile selectedProfile = launchProfileManager.getSelectedProfile();
 			if (selectedProfile != null && !selectedProfile.ready) {
@@ -1055,6 +1056,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		progressDialog.show();
 		new Thread(() -> {
 			try {
+				createPreLaunchLocalSaveSnapshotIfNeeded();
 				String result = new Sts2SteamCloudSyncManager(this).pullAll((percent, message) -> runOnUiThread(() -> progressDialog.setProgress(percent, message)));
 				runOnUiThread(() -> {
 					busy = false;
@@ -1090,6 +1092,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		progressDialog.show();
 		new Thread(() -> {
 			try {
+				createPreLaunchLocalSaveSnapshotIfNeeded();
 				String result = new WebDavSyncManager(this).pullAll((percent, message) -> runOnUiThread(() -> progressDialog.setProgress(percent, message)));
 				runOnUiThread(() -> {
 					busy = false;
@@ -1110,6 +1113,20 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				});
 			}
 		}, "sts2-webdav-cloud-prelaunch").start();
+	}
+
+	private void createPreLaunchLocalSaveSnapshotIfNeeded() {
+		synchronized (this) {
+			if (preLaunchLocalSnapshotCreated) {
+				return;
+			}
+			preLaunchLocalSnapshotCreated = true;
+		}
+		try {
+			new LocalSaveSnapshotManager(this).createAutomaticSnapshot("before-launch");
+		} catch (Exception exception) {
+			Log.w(TAG, "Unable to create pre-launch local save snapshot.", exception);
+		}
 	}
 
 	private void showSteamCloudLaunchConflictDialog(Sts2SteamCloudSyncManager.CloudConflictException conflict) {
@@ -1217,33 +1234,35 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	}
 
 	private void maybeRunCleanExitSteamCloudPush() {
-		if (busy || cleanExitSteamCloudPushChecked || cleanExitWebDavCloudPushChecked) {
+		if (busy || cleanExitMaintenanceChecked) {
 			return;
 		}
 		boolean shouldPushSteam = SteamSettings.shouldPushAfterCleanExit(this) && SteamAuthStore.readAuthMaterial(this) != null;
 		boolean shouldPushWebDav = WebDavSettings.shouldPushAfterCleanExit(this) && WebDavSettings.isConfigured(this);
-		if (!shouldPushSteam && !shouldPushWebDav) {
-			return;
-		}
-		cleanExitSteamCloudPushChecked = true;
-		cleanExitWebDavCloudPushChecked = true;
 		if (!SteamCleanExitTracker.consumeIfRecent(this)) {
+			cleanExitMaintenanceChecked = true;
 			return;
 		}
-		runCleanExitCloudPushes(shouldPushSteam, shouldPushWebDav);
+		cleanExitMaintenanceChecked = true;
+		runCleanExitSaveMaintenance(shouldPushSteam, shouldPushWebDav);
 	}
 
-	private void runCleanExitCloudPushes(boolean shouldPushSteam, boolean shouldPushWebDav) {
+	private void runCleanExitSaveMaintenance(boolean shouldPushSteam, boolean shouldPushWebDav) {
 		if (busy) {
 			return;
 		}
 		busy = true;
-		String initialMessage = shouldPushSteam ? getString(R.string.steam_cloud_auto_push_busy) : getString(R.string.webdav_cloud_auto_push_busy);
+		String initialMessage = getString(R.string.status_busy_create_local_save_snapshot);
 		SteamOperationProgressDialog progressDialog = new SteamOperationProgressDialog(this, getString(R.string.cloud_operation_progress_title), initialMessage);
 		progressDialog.show();
 		new Thread(() -> {
 			List<String> results = new ArrayList<>();
 			try {
+				runOnUiThread(() -> progressDialog.setProgress(0, getString(R.string.status_busy_create_local_save_snapshot)));
+				LocalSaveSnapshotManager.Snapshot snapshot = new LocalSaveSnapshotManager(this).createAutomaticSnapshot("clean-exit");
+				if (snapshot != null) {
+					results.add(getString(R.string.status_local_save_snapshot_created, snapshot.id));
+				}
 				if (shouldPushSteam) {
 					String result = new Sts2SteamCloudSyncManager(this).pushLocalChanges(false, (percent, message) -> runOnUiThread(() -> progressDialog.setProgress(percent, message)));
 					results.add(result);
@@ -1266,7 +1285,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 					showError(exception);
 				});
 			}
-		}, "sts2-clean-exit-cloud-push").start();
+		}, "sts2-clean-exit-save-maintenance").start();
 	}
 
 	private void runSteamCloudOperationWithDialog(String busyMessage, boolean refreshAfterSuccess, SteamCloudOperation operation) {
@@ -1403,6 +1422,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		showMessage(getString(R.string.status_busy_prepare_launch));
 		new Thread(() -> {
 			try {
+				createPreLaunchLocalSaveSnapshotIfNeeded();
 				new GameLaunchPreparationManager(this).prepareForLaunch();
 				runOnUiThread(() -> {
 					busy = false;

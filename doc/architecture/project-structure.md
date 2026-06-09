@@ -34,7 +34,8 @@ s2_re/
 - `GameSettingsActivity`：默认 launcher，承载欢迎向导、游戏主页、设置页、版本页、MOD 页，负责启动前检查；桌面图标默认打开附加设置，也可在设置页切换为完成向导后自动直接启动游戏。游戏主页采用 MD3 深色仪表盘：顶部 Steam chip、动态渐变启动卡、未导入空状态、MOD/存档双状态卡和 4 列维护/高级工具快捷入口；启动器图标统一通过 bundled Material Symbols Rounded 字体渲染。
 - `SteamAccountActivity`：Steam 中心，负责 Steam 登录/Guard/refresh token 验证、SteamPipe 下载 STS2 payload，以及当前 launch profile account root 的 Steam Cloud 手动/自动同步。
 - `WebDavCloudActivity`：WebDAV 云存档中心，负责 WebDAV URL/用户名/密码/远端槽位配置、连接测试，以及当前 launch profile account root 的 WebDAV 手动/自动同步。
-- `GodotApp`：真正的 Godot Activity，拼接 Godot 命令行，加载 imported PCK 或 bootstrap PCK，暴露 Java bridge 给 C#；干净退出回设置时写入云存档自动上传 marker。
+- `LocalSaveSnapshotManager`：本地存档快照管理，启动前和干净退出后自动创建当前 launch profile account root 的 zip 快照，默认保留最近 5 个；设置页“存档”分区可手动创建和恢复。
+- `GodotApp`：真正的 Godot Activity，拼接 Godot 命令行，加载 imported PCK 或 bootstrap PCK，暴露 Java bridge 给 C#；干净退出回设置时写入云存档/本地快照自动处理 marker。
 - `PayloadManager`：导入 PC zip 或 SteamPipe 下载目录、校验必需文件、patch 私有 PCK copy、写 `.payload_manifest.json` 并安装到 payload store。
 - `LaunchProfileManager`：维护 payload store 与 launch profile，支持同一游戏本体多套全局/隔离存档和 MOD 配置，切换时不复制 PCK。
 - `GameBodyVersionManager`：legacy facade，版本选择委托给 `LaunchProfileManager`。
@@ -82,6 +83,7 @@ android/steam-content/                        # SteamPipe depot manifest/chunk �
 <files>/steam/downloads/                    # SteamPipe 下载 staging / 任务诊断
 <files>/steam/cloud/<profile_id>/           # Steam Cloud manifest、baseline、备份与诊断
 <files>/webdav/cloud/<slot>/                # WebDAV manifest、baseline、备份与诊断
+<files>/save-snapshots/profiles/<profile_id>/ # 本地存档快照 zip，默认保留最近 5 个
 <files>/compat-packs/<pack_id>/             # 已安装兼容包
 <files>/launcher/selected_instance.json     # 当前启动配置与解析后的运行路径
 <files>/launcher/selected_game_version.json # legacy 兼容诊断记录，指向当前 payload

@@ -8,6 +8,7 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.text.format.Formatter;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -38,9 +39,11 @@ import com.godot.game.webdav.WebDavSyncManager;
 
 import org.json.JSONObject;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Date;
 import java.util.Locale;
 
 public final class SettingsPage {
@@ -200,6 +203,7 @@ public final class SettingsPage {
 				ExtraSettingsUi.addCardSpacing(root, buildInputDetailsCard(settings));
 			} else if (segment == SettingsSegment.SAVE) {
 				ExtraSettingsUi.addCardSpacing(root, buildSaveCard());
+				ExtraSettingsUi.addCardSpacing(root, buildLocalSaveSnapshotCard());
 				ExtraSettingsUi.addCardSpacing(root, buildSteamCloudCard());
 				ExtraSettingsUi.addCardSpacing(root, buildWebDavCloudCard());
 				ExtraSettingsUi.addCardSpacing(root, buildFullDataBackupCard());
@@ -404,6 +408,89 @@ public final class SettingsPage {
 		ExtraSettingsUi.addSmallSpacing(content, toModded);
 		ExtraSettingsUi.addSmallSpacing(content, toNormal);
 		return card;
+	}
+
+	private View buildLocalSaveSnapshotCard() {
+		MaterialCardView card = ExtraSettingsUi.card(context);
+		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
+		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_ms_photo_camera_24, R.string.local_save_snapshot_title, R.string.local_save_snapshot_subtitle, null));
+		LocalSaveSnapshotManager.Status status = new LocalSaveSnapshotManager(context).getStatus();
+		LocalSaveSnapshotManager.Snapshot latest = status.snapshots.isEmpty() ? null : status.snapshots.get(0);
+		String latestLabel = latest == null ? context.getString(R.string.local_save_snapshot_none) : snapshotDisplayText(latest);
+		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_ms_photo_camera_24, context.getString(R.string.local_save_snapshot_status, status.snapshots.size(), status.retentionLimit, latestLabel)));
+		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(context, status.snapshotRoot.getAbsolutePath()));
+		LinearLayout row = ExtraSettingsUi.horizontal(context);
+		MaterialButton create = ExtraSettingsUi.outlineButton(context, R.string.local_save_snapshot_create_now, R.drawable.ic_ms_photo_camera_24);
+		MaterialButton restore = ExtraSettingsUi.tonalButton(context, R.string.local_save_snapshot_restore, R.drawable.ic_download_24);
+		create.setOnClickListener(v -> actions.runAsyncOperation(context.getString(R.string.status_busy_create_local_save_snapshot), () -> {
+			LocalSaveSnapshotManager.Snapshot snapshot = new LocalSaveSnapshotManager(context).createManualSnapshot();
+			return context.getString(R.string.status_local_save_snapshot_created, snapshotDisplayText(snapshot));
+		}));
+		restore.setOnClickListener(v -> showLocalSaveSnapshotRestoreDialog(status.snapshots));
+		row.addView(create, weighted(0));
+		row.addView(restore, weighted(10));
+		ExtraSettingsUi.addSmallSpacing(content, row);
+		return card;
+	}
+
+	private void showLocalSaveSnapshotRestoreDialog(List<LocalSaveSnapshotManager.Snapshot> snapshots) {
+		if (snapshots == null || snapshots.isEmpty()) {
+			actions.showMessage(context.getString(R.string.local_save_snapshot_no_snapshots));
+			return;
+		}
+		String[] labels = new String[snapshots.size()];
+		for (int i = 0; i < snapshots.size(); i++) {
+			LocalSaveSnapshotManager.Snapshot snapshot = snapshots.get(i);
+			labels[i] = context.getString(
+				R.string.local_save_snapshot_picker_item,
+				snapshotDisplayText(snapshot),
+				Formatter.formatFileSize(context, snapshot.sizeBytes)
+			);
+		}
+		new MaterialAlertDialogBuilder(context)
+			.setTitle(R.string.local_save_snapshot_restore)
+			.setItems(labels, (dialog, which) -> confirmRestoreLocalSaveSnapshot(snapshots.get(which)))
+			.setNegativeButton(android.R.string.cancel, null)
+			.show();
+	}
+
+	private void confirmRestoreLocalSaveSnapshot(LocalSaveSnapshotManager.Snapshot snapshot) {
+		new MaterialAlertDialogBuilder(context)
+			.setTitle(R.string.local_save_snapshot_restore_confirm_title)
+			.setMessage(context.getString(R.string.local_save_snapshot_restore_confirm_message, snapshotDisplayText(snapshot)))
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(android.R.string.ok, (dialog, which) -> actions.runAsyncOperation(context.getString(R.string.status_busy_restore_local_save_snapshot), () -> {
+				LocalSaveSnapshotManager.Snapshot restored = new LocalSaveSnapshotManager(context).restoreSnapshot(snapshot.id);
+				return context.getString(R.string.status_local_save_snapshot_restored, snapshotDisplayText(restored));
+			}))
+			.show();
+	}
+
+	private String snapshotDisplayText(LocalSaveSnapshotManager.Snapshot snapshot) {
+		if (snapshot == null) {
+			return context.getString(R.string.local_save_snapshot_none);
+		}
+		String reason = snapshotReasonLabel(snapshot.reason);
+		String time = snapshot.createdAtMs <= 0L ? context.getString(R.string.unknown) : new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(new Date(snapshot.createdAtMs));
+		String fileCount = snapshot.fileCount < 0 ? "?" : String.valueOf(snapshot.fileCount);
+		return context.getString(R.string.local_save_snapshot_display, time, reason, fileCount);
+	}
+
+	private String snapshotReasonLabel(String reason) {
+		String value = reason == null ? "" : reason;
+		if ("before-launch".equals(value)) {
+			return context.getString(R.string.local_save_snapshot_reason_before_launch);
+		}
+		if ("clean-exit".equals(value)) {
+			return context.getString(R.string.local_save_snapshot_reason_clean_exit);
+		}
+		if ("before-restore".equals(value)) {
+			return context.getString(R.string.local_save_snapshot_reason_before_restore);
+		}
+		if ("manual".equals(value)) {
+			return context.getString(R.string.local_save_snapshot_reason_manual);
+		}
+		return value.isEmpty() ? context.getString(R.string.local_save_snapshot_reason_snapshot) : value;
 	}
 
 	private View buildSteamCloudCard() {

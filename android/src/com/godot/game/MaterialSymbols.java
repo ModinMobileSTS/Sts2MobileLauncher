@@ -197,6 +197,7 @@ public final class MaterialSymbols {
 		if ("open_in_new".equals(glyph)) return R.drawable.ic_ms_open_in_new_24;
 		if ("person".equals(glyph)) return R.drawable.ic_ms_person_24;
 		if ("phone_android".equals(glyph)) return R.drawable.ic_ms_phone_android_24;
+		if ("photo_camera".equals(glyph)) return R.drawable.ic_ms_photo_camera_24;
 		if ("play_arrow".equals(glyph)) return R.drawable.ic_ms_play_arrow_24;
 		if ("receipt_long".equals(glyph)) return R.drawable.ic_ms_receipt_long_24;
 		if ("remove_circle".equals(glyph)) return R.drawable.ic_ms_remove_circle_24;
