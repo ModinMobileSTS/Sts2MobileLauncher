@@ -21,7 +21,7 @@ Android 侧拆成三层维护：
 
 1. **Android shell / launcher / 附加设置**
    - APK 默认进入 `GameSettingsActivity`，不是直接进入游戏。
-   - 负责首次向导、本地 PC 游戏 zip 导入、Steam 登录/游戏下载/云存档、私有目录管理、游戏版本/兼容包管理、启动 Godot Activity、日志/文件浏览、存档备份、MOD 管理。
+   - 负责首次向导、本地 PC 游戏 zip 导入、Steam 登录/游戏下载/Steam Cloud 与 WebDAV 云存档、私有目录管理、游戏版本/兼容包管理、启动 Godot Activity、日志/文件浏览、存档备份、MOD 管理。
 2. **原版游戏 payload**
    - 用户本地提供 `SlayTheSpire2.zip`，或使用自己拥有 STS2 的 Steam 账号从 SteamPipe 下载。
    - 导入/下载后安装到 `<files>/payloads/<payload_id>/game/`；版本/配置切换只切换 launch profile 指针，不再复制完整 PCK/解压目录。
@@ -178,6 +178,7 @@ s2_re/
   - `GamePage` / `SettingsPage` / `ModsPage` / `GameVersionManagerPage`：主页、设置、MOD、版本/兼容包管理；启动器图标统一使用 `tools/android/generate-material-symbol-vectors.py` 从 bundled Material Symbols Rounded 字体（`android/res/font/material_symbols_rounded.ttf`）离线生成的官方轮廓 vector drawable（`android/res/drawable/ic_ms_*.xml`），运行时由 `MaterialSymbols` helper 按 glyph 名或旧 `R.drawable.ic_*` 映射加载，避免依赖系统字体 ligature；`GamePage` 按 `propotype_mainpage.html` 的 MD3 深色首页原型实现：顶部 STS2 标题 + Steam 登录/云存档 chip，ready 状态使用动态渐变/光晕 hero 启动卡，未导入状态使用虚线空状态卡，MOD/存档状态卡带 150% 淡色背景大图标、按压缩放与水印放大回正微动效，维护/高级工具为 4 列快捷按钮并保留 Android ripple，其中主页高级工具入口打开“启动配置”而不是全局兼容包选择；`SettingsPage` 内部使用“画面 / 操作 / 存档 / 系统”顶部 Segmented Button 分区，并把下拉类设置改为 Bottom Sheet 单选列表。`ModsPage` 顶部是 MOD 总开关、药丸搜索框和可横向滚动 Chip 操作组；Nexus 商店入口当前在 MOD 页隐藏，排序/筛选/MOD 方案入口位于 Chip 组；MOD 卡片默认折叠，展开后显示完整描述、作者、依赖和“选中/信息/删除”图标按钮；支持前置库/内容模组/用户新建分组，长按左侧手柄拖拽到分组时会震动并显示半透明虚线 ghost 占位。
   - `NexusModsStoreActivity`：实验性 NexusMods 商店 Activity 仍保留但 `ModsPage` 入口暂时隐藏；用户手动保存 Personal API Key 后可浏览热门/最新/近期更新结果、按 URL/数字 ID 精确查询、下载 ZIP 并导入到当前 launch profile 的 MOD 目录（全局 `<files>/mods/` 或隔离 `<files>/instances/<id>/mods/`）。非 Premium 下载若被 NexusMods API 拒绝，可引导用户打开网页并粘贴 NXM 链接中的 `key/expires`。
   - `SteamAccountActivity`：Steam 中心；首次打开会显示带动态倒计时、5 秒后才能关闭的账号安全提示（本地保存 refresh token、可信来源、未知 MOD 风险、云存档备份、国内可能需要加速器），页面底部常驻“安全说明”按钮可再次查看；完成账号密码登录、Steam Guard、refresh token 加密保存、SteamPipe 下载 STS2 payload 到 payload store，以及当前 launch profile account root 的 Steam Cloud 手动拉取/上传和可选自动同步设置。
+  - `WebDavCloudActivity`：WebDAV 云存档中心；保存 WebDAV URL、用户名、密码/应用令牌与可选远端槽位到加密偏好，只同步当前 launch profile account root 的白名单 STS2 存档文件，远端目录为用户配置 base URL 下的 `SlayTheSpire2/saves/<slot>/`，并用 `.sts2re/manifest.json` 记录 SHA-1 manifest；支持测试连接、刷新清单、拉取、上传、强制上传、启动前拉取和干净退出后上传。
   - `PayloadManager`：导入/校验/安装 PC 游戏 zip 或 SteamPipe 下载目录到 payload store。
   - `LaunchProfileManager`：维护 `<files>/payloads/<payload_id>/game/` 与 `<files>/instances/<profile_id>/instance.json`，支持同一游戏本体创建多个全局/隔离存档和 MOD 的启动配置，并把 `compat_pack_id` 作为每个配置自己的选择；切换配置不复制 PCK。游戏本体缺失时配置仍保留且可选择/编辑，启动时提示用户重新导入、下载或重新绑定。
   - `GameBodyVersionManager`：legacy facade，版本选择委托给 `LaunchProfileManager`，不再执行 active/归档目录复制。
@@ -225,6 +226,7 @@ s2_re/
 <files>/instances/<profile_id>/logs/        # profile 日志目录：godot.log / android-launch.log
 <files>/steam/downloads/                    # SteamPipe 下载 staging / 任务诊断
 <files>/steam/cloud/<profile_id>/           # Steam Cloud manifest、baseline、备份与诊断
+<files>/webdav/cloud/<slot>/                # WebDAV manifest、baseline、备份与诊断
 <files>/compat-packs/<pack_id>/             # 已安装 Android 兼容包
 <files>/launcher/selected_instance.json     # 当前启动配置解析结果
 <files>/launcher/selected_game_version.json # legacy 兼容诊断记录，指向当前 payload
@@ -518,7 +520,7 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 8. 从游戏内打开附加设置、退出回设置、crash/log/file browser 页面不崩溃。
 9. MOD master switch / 单 MOD disable 能在启动日志或游戏内 MOD 状态中反映；普通 MOD 从当前 profile 的 MOD 目录扫描（全局 `files/mods` 或隔离 `files/instances/<profile_id>/mods`），不走 Steam Workshop。
 10. Beta `v0.107.0` payload 应使用 `sts2-android-compat-v0.107.0-beta`，正式 `v0.103.2` / `v0.103.3` payload 应使用 `sts2-android-compat-v0.103.x`。
-11. Steam 中心可登录/验证 refresh token；Steam Cloud 手动刷新/拉取/上传使用当前 launch profile 的 account root，拉取前在 `files/steam/cloud/<profile_id>/backups/` 创建备份。
+11. Steam 中心可登录/验证 refresh token；Steam Cloud 手动刷新/拉取/上传使用当前 launch profile 的 account root，拉取前在 `files/steam/cloud/<profile_id>/backups/` 创建备份。WebDAV 中心可配置 URL/用户名/密码/槽位、测试连接，并把同一 account root 的白名单存档同步到远端 `SlayTheSpire2/saves/<slot>/`；拉取前在 `files/webdav/cloud/<slot>/backups/` 创建备份。
 
 ## 12. 维护提醒
 
@@ -528,7 +530,7 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 - `settings.save` 的 Android-only key 是 Java 附加设置与 Harmony patcher/Java 启动参数的协议；改 key 要同步 `ExtraSettingsRepository`、页面 UI、`AndroidSettingsBridge` 或 `GodotApp.getCommandLine()` 等消费者、相关 patches，并记录到 `.agent/agent-docs/changelog/`。`log_level` 额外同步到 SharedPreferences，避免原版游戏保存 settings 时丢失该 Android 字段。
 - `<files>/default/<account>` 的账号选择逻辑与旧移植版兼容但较脆弱，多账号/自定义 platform player id 改动要同时检查 Java 与兼容 MOD。
 - 当前普通 MOD 目录由 launch profile 决定：`mods_mode=global` 使用 `<files>/mods`，`mods_mode=isolated` 使用 `<files>/instances/<profile_id>/mods`；MOD 导入先进入 cache staging 并按 manifest `id` 检测同 ID 冲突，用户选择“使用新 MOD”时才删除同 ID 原 MOD 后提交，避免两个同 ID 项目开关连体；MOD 分组通过目录和 `.sts2_mod_group` 标记维护，拖拽移动会改动 MOD 文件位置。新增路径相关功能必须同步 Java 管理页、C# `AppPaths`、ModLoader patches 和迁移/备份逻辑。
-- Steam Cloud 同步必须使用当前 launch profile 的 account root：`save_mode=global` 使用 `<files>/default/<account>`，`save_mode=isolated` 使用 `<files>/instances/<profile_id>/default/<account>`；不要把云存档固定写死到全局 `<files>/default/1`。
+- Steam Cloud 与 WebDAV 云存档同步必须使用当前 launch profile 的 account root：`save_mode=global` 使用 `<files>/default/<account>`，`save_mode=isolated` 使用 `<files>/instances/<profile_id>/default/<account>`；不要把云存档固定写死到全局 `<files>/default/1`。WebDAV 只同步白名单 STS2 存档文件，远端不做删除镜像；`settings.save` 默认不同步，除非用户显式开启实验性开关。
 - 多版本兼容包的长期方向是 manifest 化、可安装、可诊断，并作为启动配置属性选择；不要把某一游戏版本的兼容 patch 直接写死到 Android shell，也不要恢复全局兼容包 fallback 选择。
 - 对当前 beta 分支改动时务必用 `ReferenceFlavor=original-v0.107.0` 编译；维护旧 beta `v0.106.1` 时用 `original-v0.106.1`；对正式 `v0.103.x` 分支改动时务必用 `ReferenceFlavor=original` 编译。
 - 新增兼容分支时需要同时增加：submodule 分支、`.env.example` 中的 original reference 配置说明或 `ReferenceFlavor` 映射、compat manifest（一个包覆盖多版本时填写 `target_game.supported_versions`）、`tools/android/bundled-compat-packs.json` 条目、文档版本矩阵、至少一次 importer APK 构建验证。

@@ -78,7 +78,7 @@ port-mod branch
    - 只读取当前 launch profile 的 `compat_pack_id` 并解析已安装包。
    - 若配置未选择兼容包或引用的包已删除，阻止启动并提示编辑启动配置。
    - 若选中包 manifest 支持版本列表与 payload version 不一致，弹出风险对话框，用户可取消、去启动配置页或强制启动。
-3. 若 Steam Cloud 模式配置为“启动前拉取”或“完整自动”，且已保存 Steam refresh token，则先由 launcher 侧拉取当前 launch profile account root 的 Steam Cloud 文件；失败时弹窗允许取消、打开 Steam 中心或跳过同步继续启动。
+3. 若 Steam Cloud 模式配置为“启动前拉取”或“完整自动”，且已保存 Steam refresh token，则先由 launcher 侧拉取当前 launch profile account root 的 Steam Cloud 文件；若 WebDAV 模式配置为“启动前拉取”或“完整自动”，且已配置 WebDAV URL，则随后拉取同一 account root 的 WebDAV 文件。任一同步失败时会弹窗允许取消、打开对应云存档中心或跳过同步继续启动。
 4. 启动后台线程执行 `GameLaunchPreparationManager.prepareForLaunch()`。
 5. 准备完成后启动 `GodotApp` 并附加 `launch_prepared=true`。
 
@@ -104,7 +104,7 @@ port-mod branch
    - 复制当前 profile payload 目录中 `data_*/*` 的游戏 assemblies，跳过 `.so`，并保护 BCL/System/GodotSharp 等 runtime DLL。
    - 使用 SharedPreferences stamp 避免不必要的大文件重复复制；payload/profile 变化时强制刷新游戏 assemblies，并清理 publish 目录里旧 payload 遗留的游戏 DLL/JSON。
 
-`GodotApp` 仍保留 fallback：如果不是从设置页 prepared 启动，会自己调用同一准备流程；该 fallback 同样尊重兼容包开关，关闭时不会补回 `STS2Mobile.dll`。游戏通过 Android 兼容层的退出回设置路径触发 `GodotApp.restartToSettingsFromGame()` 时，会写入 `<files>/launcher/expected_clean_game_exit.json`；下次设置页启动时，如 Steam Cloud 模式为完整自动，会尝试上传当前 launch profile account root 的本地变化。
+`GodotApp` 仍保留 fallback：如果不是从设置页 prepared 启动，会自己调用同一准备流程；该 fallback 同样尊重兼容包开关，关闭时不会补回 `STS2Mobile.dll`。游戏通过 Android 兼容层的退出回设置路径触发 `GodotApp.restartToSettingsFromGame()` 时，会写入 `<files>/launcher/expected_clean_game_exit.json`；下次设置页启动时，如 Steam Cloud 或 WebDAV 模式为完整自动，会尝试上传当前 launch profile account root 的本地变化。
 
 ## 7. Godot 启动与 runtime 入口
 
@@ -207,7 +207,7 @@ OS.GetDataDir()/port_compat.pck
 <files>/instances/<profile_id>/mods
 ```
 
-- 跳过 `ReadSteamMods()`，不枚举 Steam Workshop。Steam 登录、游戏 depot 下载和 Steam Cloud 存档同步均在 Android launcher 侧完成，不恢复桌面 Steamworks 到游戏进程内。
+- 跳过 `ReadSteamMods()`，不枚举 Steam Workshop。Steam 登录、游戏 depot 下载、Steam Cloud 与 WebDAV 存档同步均在 Android launcher 侧完成，不恢复桌面 Steamworks 到游戏进程内。
 - 递归读取本地 MOD manifest，调用游戏原本的私有 scanner、dependency sort、TryLoadMod。
 - 对 `mod_manifest.json` 自动生成 `<ModId>.json` alias，以兼容当前 PC scanner 期望。
 - 将 companion settings 中的启用/禁用状态投影回运行时 `ModSettings`。

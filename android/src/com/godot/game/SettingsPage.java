@@ -33,6 +33,8 @@ import com.google.android.material.materialswitch.MaterialSwitch;
 import com.godot.game.steam.auth.SteamAuthStore;
 import com.godot.game.steam.cloud.Sts2SteamCloudSyncManager;
 import com.godot.game.steam.core.SteamSettings;
+import com.godot.game.webdav.WebDavSettings;
+import com.godot.game.webdav.WebDavSyncManager;
 
 import org.json.JSONObject;
 
@@ -199,6 +201,7 @@ public final class SettingsPage {
 			} else if (segment == SettingsSegment.SAVE) {
 				ExtraSettingsUi.addCardSpacing(root, buildSaveCard());
 				ExtraSettingsUi.addCardSpacing(root, buildSteamCloudCard());
+				ExtraSettingsUi.addCardSpacing(root, buildWebDavCloudCard());
 				ExtraSettingsUi.addCardSpacing(root, buildFullDataBackupCard());
 			} else if (segment == SettingsSegment.SYSTEM) {
 				ExtraSettingsUi.addCardSpacing(root, buildSystemCard(settings));
@@ -414,6 +417,20 @@ public final class SettingsPage {
 		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(context, status.accountRoot.getAbsolutePath()));
 		MaterialButton open = ExtraSettingsUi.tonalButton(context, R.string.steam_account_open, R.drawable.ic_download_24);
 		open.setOnClickListener(v -> actions.openSteamAccount());
+		ExtraSettingsUi.addSmallSpacing(content, open);
+		return card;
+	}
+
+	private View buildWebDavCloudCard() {
+		MaterialCardView card = ExtraSettingsUi.card(context);
+		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
+		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_cloud_sync_24, R.string.webdav_cloud_title, R.string.webdav_cloud_subtitle, null));
+		WebDavSyncManager.Status status = new WebDavSyncManager(context).getStatus();
+		String endpoint = status.config.isConfigured() ? status.config.baseUrl : context.getString(R.string.webdav_not_configured);
+		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_cloud_sync_24, context.getString(R.string.webdav_cloud_settings_status, endpoint, status.config.cloudMode, status.remoteFileCount)));
+		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(context, status.accountRoot.getAbsolutePath()));
+		MaterialButton open = ExtraSettingsUi.tonalButton(context, R.string.webdav_open_center, R.drawable.ic_cloud_sync_24);
+		open.setOnClickListener(v -> actions.openWebDavCloud());
 		ExtraSettingsUi.addSmallSpacing(content, open);
 		return card;
 	}
