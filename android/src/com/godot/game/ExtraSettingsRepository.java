@@ -443,12 +443,12 @@ public final class ExtraSettingsRepository {
 
 	public String importMod(Uri inputUri) throws Exception {
 		PreparedModImport preparedImport = prepareModImport(inputUri);
-		return commitPreparedModImport(preparedImport, true);
+		return commitPreparedModImport(preparedImport, true, false);
 	}
 
 	public String importDownloadedModFile(File sourceFile, String displayName) throws Exception {
 		PreparedModImport preparedImport = prepareDownloadedModImport(sourceFile, displayName);
-		return commitPreparedModImport(preparedImport, true);
+		return commitPreparedModImport(preparedImport, true, false);
 	}
 
 	public PreparedModImport prepareModImport(Uri inputUri) throws Exception {
@@ -500,16 +500,27 @@ public final class ExtraSettingsRepository {
 		List<ModEntry> incomingEntries = new ArrayList<>();
 		collectManifestFiles(stagingRoot, stagingRoot, incomingEntries);
 		List<ModImportConflict> conflicts = findImportConflicts(incomingEntries);
-		return new PreparedModImport(stagingRoot, displayName, normalizedName, incomingEntries, conflicts);
+		PreparedModImport preparedImport = new PreparedModImport(stagingRoot, displayName, normalizedName, incomingEntries, conflicts, Collections.emptyList());
+		List<ModImportPathConflict> pathConflicts = findImportPathConflicts(preparedImport, conflicts);
+		return new PreparedModImport(stagingRoot, displayName, normalizedName, incomingEntries, conflicts, pathConflicts);
 	}
 
 	public String commitPreparedModImport(PreparedModImport preparedImport, boolean replaceExistingConflicts) throws Exception {
+		return commitPreparedModImport(preparedImport, replaceExistingConflicts, false);
+	}
+
+	public String commitPreparedModImport(PreparedModImport preparedImport, boolean replaceExistingConflicts, boolean allowPathConflicts) throws Exception {
 		if (preparedImport == null || preparedImport.stagingRoot == null || !preparedImport.stagingRoot.isDirectory()) {
 			throw new IOException("Prepared MOD import is no longer available.");
 		}
 		try {
+			List<ModImportConflict> idConflicts = replaceExistingConflicts ? findCurrentImportConflicts(preparedImport) : Collections.emptyList();
+			List<ModImportPathConflict> pathConflicts = findCurrentImportPathConflicts(preparedImport, idConflicts);
+			if (!allowPathConflicts && !pathConflicts.isEmpty()) {
+				throw new ModImportPathConflictException(pathConflicts);
+			}
 			if (replaceExistingConflicts) {
-				deleteExistingImportConflicts(findCurrentImportConflicts(preparedImport));
+				deleteExistingImportConflicts(idConflicts);
 			}
 			File modsRoot = getModsRootDir();
 			ensureDirectory(modsRoot);
@@ -537,6 +548,13 @@ public final class ExtraSettingsRepository {
 		return findImportConflicts(preparedImport.incomingEntries);
 	}
 
+	public List<ModImportPathConflict> findCurrentImportPathConflicts(PreparedModImport preparedImport, List<ModImportConflict> confirmedIdConflicts) {
+		if (preparedImport == null || preparedImport.stagingRoot == null || !preparedImport.stagingRoot.isDirectory()) {
+			return Collections.emptyList();
+		}
+		return findImportPathConflicts(preparedImport, confirmedIdConflicts);
+	}
+
 	private List<ModImportConflict> findImportConflicts(List<ModEntry> incomingEntries) {
 		if (incomingEntries == null || incomingEntries.isEmpty()) {
 			return Collections.emptyList();
@@ -555,6 +573,131 @@ public final class ExtraSettingsRepository {
 			conflicts.add(new ModImportConflict(incomingEntry.modId, existingEntries, incomingEntry));
 		}
 		return conflicts;
+	}
+
+	private List<ModImportPathConflict> findImportPathConflicts(PreparedModImport preparedImport, List<ModImportConflict> confirmedIdConflicts) {
+		File modsRoot = getModsRootDir();
+		try {
+			ensureDirectory(modsRoot);
+		} catch (RuntimeException ignored) {
+		}
+		Set<String> ignoredExistingPaths = collectConfirmedConflictPaths(confirmedIdConflicts);
+		List<File> incomingFiles = new ArrayList<>();
+		collectRegularFiles(preparedImport.stagingRoot, incomingFiles);
+		List<ModImportPathConflict> conflicts = new ArrayList<>();
+		Set<String> seenTargets = new LinkedHashSet<>();
+		for (File incomingFile : incomingFiles) {
+			String relativePath = getRelativePath(preparedImport.stagingRoot, incomingFile);
+			if (TextUtils.isEmpty(relativePath)) {
+				continue;
+			}
+			File targetFile = new File(modsRoot, relativePath.replace('/', File.separatorChar));
+			if (!targetFile.isFile()) {
+				continue;
+			}
+			String canonicalTarget = safeCanonicalPath(targetFile);
+			if (ignoredExistingPaths.contains(canonicalTarget) || !seenTargets.add(canonicalTarget)) {
+				continue;
+			}
+			conflicts.add(new ModImportPathConflict(relativePath, describeModFileOwner(targetFile)));
+		}
+		return conflicts;
+	}
+
+	private Set<String> collectConfirmedConflictPaths(List<ModImportConflict> confirmedIdConflicts) {
+		if (confirmedIdConflicts == null || confirmedIdConflicts.isEmpty()) {
+			return Collections.emptySet();
+		}
+		Set<String> paths = new LinkedHashSet<>();
+		for (ModImportConflict conflict : confirmedIdConflicts) {
+			for (ModEntry existingEntry : conflict.existingEntries) {
+				collectModEntryFiles(existingEntry, paths);
+			}
+		}
+		return paths;
+	}
+
+	private void collectModEntryFiles(ModEntry modEntry, Set<String> targetPaths) {
+		if (modEntry == null || targetPaths == null) {
+			return;
+		}
+		addCanonicalIfFile(targetPaths, modEntry.manifestFile);
+		File parent = modEntry.manifestFile.getParentFile();
+		if (parent == null) {
+			return;
+		}
+		addCanonicalIfFile(targetPaths, new File(parent, modEntry.modId + ".json"));
+		addCanonicalIfFile(targetPaths, new File(parent, modEntry.modId + ".pck"));
+		addCanonicalIfFile(targetPaths, new File(parent, modEntry.modId + ".dll"));
+		if (!modEntry.modId.equals(modEntry.pckName)) {
+			addCanonicalIfFile(targetPaths, new File(parent, modEntry.pckName + ".pck"));
+			addCanonicalIfFile(targetPaths, new File(parent, modEntry.pckName + ".dll"));
+		}
+	}
+
+	private void addCanonicalIfFile(Set<String> paths, File file) {
+		if (file != null && file.isFile()) {
+			paths.add(safeCanonicalPath(file));
+		}
+	}
+
+	private void collectRegularFiles(File root, List<File> files) {
+		if (root == null || !root.exists() || isSymbolicLink(root)) {
+			return;
+		}
+		if (root.isFile()) {
+			files.add(root);
+			return;
+		}
+		File[] children = root.listFiles();
+		if (children == null) {
+			return;
+		}
+		Arrays.sort(children, Comparator.comparing(File::getName, String::compareToIgnoreCase));
+		for (File child : children) {
+			collectRegularFiles(child, files);
+		}
+	}
+
+	private String describeModFileOwner(File targetFile) {
+		File parent = targetFile == null ? null : targetFile.getParentFile();
+		if (parent == null) {
+			return "";
+		}
+		List<ModEntry> entries = new ArrayList<>();
+		collectManifestFiles(getModsRootDir(), parent, entries);
+		String targetName = targetFile.getName();
+		for (ModEntry entry : entries) {
+			if (isKnownModEntryFile(entry, targetFile)) {
+				return entry.displayName + " (" + entry.modId + ")";
+			}
+		}
+		return getRelativePath(getModsRootDir(), parent);
+	}
+
+	private boolean isKnownModEntryFile(ModEntry entry, File targetFile) {
+		if (entry == null || targetFile == null) {
+			return false;
+		}
+		File parent = entry.manifestFile.getParentFile();
+		if (parent == null || !safeCanonicalPath(parent).equals(safeCanonicalPath(targetFile.getParentFile()))) {
+			return false;
+		}
+		String fileName = targetFile.getName();
+		return fileName.equals(entry.manifestFile.getName())
+			|| fileName.equals(entry.modId + ".json")
+			|| fileName.equals(entry.modId + ".pck")
+			|| fileName.equals(entry.modId + ".dll")
+			|| fileName.equals(entry.pckName + ".pck")
+			|| fileName.equals(entry.pckName + ".dll");
+	}
+
+	private String safeCanonicalPath(File file) {
+		try {
+			return file.getCanonicalPath();
+		} catch (IOException ignored) {
+			return file.getAbsolutePath();
+		}
 	}
 
 	private void deleteExistingImportConflicts(List<ModImportConflict> conflicts) throws Exception {
@@ -2090,13 +2233,15 @@ public final class ExtraSettingsRepository {
 		public final String normalizedName;
 		public final List<ModEntry> incomingEntries;
 		public final List<ModImportConflict> conflicts;
+		public final List<ModImportPathConflict> pathConflicts;
 
-		PreparedModImport(File stagingRoot, String displayName, String normalizedName, List<ModEntry> incomingEntries, List<ModImportConflict> conflicts) {
+		PreparedModImport(File stagingRoot, String displayName, String normalizedName, List<ModEntry> incomingEntries, List<ModImportConflict> conflicts, List<ModImportPathConflict> pathConflicts) {
 			this.stagingRoot = stagingRoot;
 			this.displayName = displayName == null ? normalizedName : displayName;
 			this.normalizedName = normalizedName;
 			this.incomingEntries = Collections.unmodifiableList(new ArrayList<>(incomingEntries));
 			this.conflicts = Collections.unmodifiableList(new ArrayList<>(conflicts));
+			this.pathConflicts = Collections.unmodifiableList(new ArrayList<>(pathConflicts));
 		}
 	}
 
@@ -2109,6 +2254,45 @@ public final class ExtraSettingsRepository {
 			this.modId = modId;
 			this.existingEntries = Collections.unmodifiableList(new ArrayList<>(existingEntries));
 			this.incomingEntry = incomingEntry;
+		}
+	}
+
+	public static final class ModImportPathConflict {
+		public final String relativePath;
+		public final String existingOwnerLabel;
+
+		ModImportPathConflict(String relativePath, String existingOwnerLabel) {
+			this.relativePath = relativePath == null ? "" : relativePath;
+			this.existingOwnerLabel = existingOwnerLabel == null ? "" : existingOwnerLabel;
+		}
+	}
+
+	public static final class ModImportPathConflictException extends IOException {
+		private final List<ModImportPathConflict> conflicts;
+
+		ModImportPathConflictException(List<ModImportPathConflict> conflicts) {
+			super("MOD import would overwrite installed file(s): " + summarizePathConflicts(conflicts));
+			this.conflicts = Collections.unmodifiableList(new ArrayList<>(conflicts == null ? Collections.emptyList() : conflicts));
+		}
+
+		public List<ModImportPathConflict> getConflicts() {
+			return conflicts;
+		}
+
+		private static String summarizePathConflicts(List<ModImportPathConflict> conflicts) {
+			if (conflicts == null || conflicts.isEmpty()) {
+				return "unknown";
+			}
+			int count = Math.min(6, conflicts.size());
+			List<String> paths = new ArrayList<>();
+			for (int i = 0; i < count; i++) {
+				paths.add(conflicts.get(i).relativePath);
+			}
+			String summary = String.join(", ", paths);
+			if (conflicts.size() > count) {
+				summary += ", … +" + (conflicts.size() - count);
+			}
+			return summary;
 		}
 	}
 

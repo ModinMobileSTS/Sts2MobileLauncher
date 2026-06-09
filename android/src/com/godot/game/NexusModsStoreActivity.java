@@ -26,6 +26,7 @@ import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -560,15 +561,15 @@ public class NexusModsStoreActivity extends AppCompatActivity {
 				NexusModsApiClient.DownloadLink link = links.get(0);
 				runOnUiThread(() -> updateProgress(0, getString(R.string.nexus_mod_store_status_downloading_from, link.name)));
 				downloadedFile = client.downloadToCache(link.uri, fallbackDownloadFileName(mod, file), (percent, copied, total) -> runOnUiThread(() -> updateProgress(percent, getString(R.string.nexus_mod_store_status_downloading_percent, percent))));
-				String importedName = repository.importDownloadedModFile(downloadedFile, downloadedFile.getName());
+				ExtraSettingsRepository.PreparedModImport preparedImport = repository.prepareDownloadedModImport(downloadedFile, downloadedFile.getName());
 				File finalDownloadedFile = downloadedFile;
 				runOnUiThread(() -> {
-					finishBusy(getString(R.string.nexus_mod_store_status_download_done, importedName));
-					showMessage(getString(R.string.nexus_mod_store_status_download_done, importedName));
+					finishBusy(getString(R.string.nexus_mod_store_status_idle));
 					if (finalDownloadedFile != null && finalDownloadedFile.exists()) {
-						// Best effort cleanup of the cache copy after the MOD is imported.
+						// Best effort cleanup of the cache copy after staging is prepared.
 						finalDownloadedFile.delete();
 					}
+					handlePreparedDownloadedModImport(preparedImport);
 				});
 			} catch (NexusModsApiClient.NexusApiException exception) {
 				File finalDownloadedFile = downloadedFile;
@@ -590,6 +591,152 @@ public class NexusModsStoreActivity extends AppCompatActivity {
 				});
 			}
 		}, "sts2-nexus-download").start();
+	}
+
+	private void handlePreparedDownloadedModImport(ExtraSettingsRepository.PreparedModImport preparedImport) {
+		List<ExtraSettingsRepository.ModImportConflict> idConflicts = repository.findCurrentImportConflicts(preparedImport);
+		if (!idConflicts.isEmpty()) {
+			showModImportConflictDialog(preparedImport, idConflicts,
+				() -> {
+					repository.discardPreparedModImport(preparedImport);
+					showMessage(getString(R.string.status_import_mod_cancelled));
+				},
+				() -> handlePreparedDownloadedModPathConflicts(preparedImport, true, idConflicts),
+				() -> {
+					repository.discardPreparedModImport(preparedImport);
+					showMessage(getString(R.string.status_import_mod_cancelled));
+				});
+			return;
+		}
+		handlePreparedDownloadedModPathConflicts(preparedImport, false, idConflicts);
+	}
+
+	private void handlePreparedDownloadedModPathConflicts(ExtraSettingsRepository.PreparedModImport preparedImport, boolean replaceExistingConflicts, List<ExtraSettingsRepository.ModImportConflict> confirmedIdConflicts) {
+		List<ExtraSettingsRepository.ModImportPathConflict> pathConflicts = repository.findCurrentImportPathConflicts(preparedImport, replaceExistingConflicts ? confirmedIdConflicts : new ArrayList<>());
+		if (!pathConflicts.isEmpty()) {
+			showModImportPathConflictDialog(preparedImport, pathConflicts,
+				() -> {
+					repository.discardPreparedModImport(preparedImport);
+					showMessage(getString(R.string.status_import_mod_cancelled));
+				},
+				() -> commitPreparedDownloadedModImport(preparedImport, replaceExistingConflicts, true),
+				() -> {
+					repository.discardPreparedModImport(preparedImport);
+					showMessage(getString(R.string.status_import_mod_cancelled));
+				});
+			return;
+		}
+		commitPreparedDownloadedModImport(preparedImport, replaceExistingConflicts, false);
+	}
+
+	private void commitPreparedDownloadedModImport(ExtraSettingsRepository.PreparedModImport preparedImport, boolean replaceExistingConflicts, boolean allowPathConflicts) {
+		if (busy) {
+			return;
+		}
+		beginBusy(getString(R.string.status_busy_import_mod));
+		new Thread(() -> {
+			try {
+				String importedName = repository.commitPreparedModImport(preparedImport, replaceExistingConflicts, allowPathConflicts);
+				runOnUiThread(() -> {
+					finishBusy(getString(R.string.nexus_mod_store_status_download_done, importedName));
+					showMessage(getString(R.string.nexus_mod_store_status_download_done, importedName));
+				});
+			} catch (Exception exception) {
+				runOnUiThread(() -> {
+					finishBusy(getString(R.string.nexus_mod_store_status_idle));
+					showError(exception);
+				});
+			}
+		}, "sts2-nexus-mod-import-commit").start();
+	}
+
+	private void showModImportConflictDialog(ExtraSettingsRepository.PreparedModImport preparedImport, List<ExtraSettingsRepository.ModImportConflict> conflicts, Runnable keepOriginal, Runnable useNew, Runnable cancelImport) {
+		LinearLayout content = new LinearLayout(this);
+		content.setOrientation(LinearLayout.VERTICAL);
+		content.setPadding(ExtraSettingsUi.dp(this, 4), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 4), 0);
+		content.addView(ExtraSettingsUi.body(this, getString(R.string.mod_import_conflict_message)));
+		for (ExtraSettingsRepository.ModImportConflict conflict : conflicts) {
+			TextView conflictTitle = ExtraSettingsUi.text(this, getString(R.string.mod_import_conflict_id_format, conflict.modId), 15, ExtraSettingsUi.COLOR_ON_SURFACE, android.graphics.Typeface.BOLD);
+			LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			titleParams.topMargin = ExtraSettingsUi.dp(this, 12);
+			content.addView(conflictTitle, titleParams);
+			if (!conflict.existingEntries.isEmpty()) {
+				content.addView(buildImportConflictInfoCard(getString(R.string.mod_import_conflict_original), conflict.existingEntries.get(0)));
+			}
+			content.addView(buildImportConflictInfoCard(getString(R.string.mod_import_conflict_incoming), conflict.incomingEntry));
+		}
+		ScrollView scrollView = new ScrollView(this);
+		scrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.mod_import_conflict_title)
+			.setView(scrollView)
+			.setNegativeButton(R.string.mod_import_conflict_keep_original, (dialog, which) -> keepOriginal.run())
+			.setNeutralButton(android.R.string.cancel, (dialog, which) -> cancelImport.run())
+			.setPositiveButton(R.string.mod_import_conflict_use_new, (dialog, which) -> useNew.run())
+			.setOnCancelListener(dialog -> cancelImport.run())
+			.show();
+	}
+
+	private void showModImportPathConflictDialog(ExtraSettingsRepository.PreparedModImport preparedImport, List<ExtraSettingsRepository.ModImportPathConflict> conflicts, Runnable keepInstalled, Runnable replaceFiles, Runnable cancelImport) {
+		LinearLayout content = new LinearLayout(this);
+		content.setOrientation(LinearLayout.VERTICAL);
+		content.setPadding(ExtraSettingsUi.dp(this, 4), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 4), 0);
+		content.addView(ExtraSettingsUi.body(this, getString(R.string.mod_import_path_conflict_message)));
+		int visibleCount = Math.min(12, conflicts.size());
+		for (int i = 0; i < visibleCount; i++) {
+			ExtraSettingsRepository.ModImportPathConflict conflict = conflicts.get(i);
+			MaterialCardView card = ExtraSettingsUi.card(this);
+			card.setRadius(ExtraSettingsUi.dp(this, 16));
+			card.setCardBackgroundColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
+			card.setStrokeColor(ExtraSettingsUi.COLOR_OUTLINE);
+			card.setStrokeWidth(ExtraSettingsUi.dp(this, 1));
+			LinearLayout cardContent = ExtraSettingsUi.cardContent(this, card);
+			cardContent.setPadding(ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 12), ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 12));
+			cardContent.addView(ExtraSettingsUi.text(this, conflict.relativePath, 14, ExtraSettingsUi.COLOR_ON_SURFACE, android.graphics.Typeface.BOLD));
+			if (!TextUtils.isEmpty(conflict.existingOwnerLabel)) {
+				cardContent.addView(ExtraSettingsUi.caption(this, getString(R.string.mod_import_path_conflict_owner, conflict.existingOwnerLabel)));
+			}
+			LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			params.topMargin = ExtraSettingsUi.dp(this, 8);
+			content.addView(card, params);
+		}
+		if (conflicts.size() > visibleCount) {
+			content.addView(ExtraSettingsUi.caption(this, getString(R.string.mod_import_path_conflict_more, conflicts.size() - visibleCount)));
+		}
+		ScrollView scrollView = new ScrollView(this);
+		scrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.mod_import_path_conflict_title)
+			.setView(scrollView)
+			.setNegativeButton(R.string.mod_import_path_conflict_keep_installed, (dialog, which) -> keepInstalled.run())
+			.setNeutralButton(android.R.string.cancel, (dialog, which) -> cancelImport.run())
+			.setPositiveButton(R.string.mod_import_path_conflict_replace_files, (dialog, which) -> replaceFiles.run())
+			.setOnCancelListener(dialog -> cancelImport.run())
+			.show();
+	}
+
+	private View buildImportConflictInfoCard(String label, ExtraSettingsRepository.ModEntry entry) {
+		MaterialCardView card = ExtraSettingsUi.card(this);
+		card.setRadius(ExtraSettingsUi.dp(this, 16));
+		card.setCardBackgroundColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
+		card.setStrokeColor(ExtraSettingsUi.COLOR_OUTLINE);
+		card.setStrokeWidth(ExtraSettingsUi.dp(this, 1));
+		LinearLayout content = ExtraSettingsUi.cardContent(this, card);
+		content.setPadding(ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 12), ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 12));
+		content.addView(ExtraSettingsUi.text(this, label, 15, ExtraSettingsUi.COLOR_ON_SURFACE, android.graphics.Typeface.BOLD));
+		content.addView(ExtraSettingsUi.body(this, entry.displayName));
+		content.addView(ExtraSettingsUi.caption(this, "ID: " + entry.modId));
+		content.addView(ExtraSettingsUi.caption(this, getString(R.string.mod_detail_version) + ": " + emptyToDash(entry.version)));
+		content.addView(ExtraSettingsUi.caption(this, getString(R.string.mod_detail_author) + ": " + emptyToDash(entry.authors)));
+		content.addView(ExtraSettingsUi.caption(this, getString(R.string.mod_detail_path) + ": " + entry.relativePath));
+		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		params.topMargin = ExtraSettingsUi.dp(this, 8);
+		card.setLayoutParams(params);
+		return card;
+	}
+
+	private String emptyToDash(String value) {
+		return TextUtils.isEmpty(value) ? "—" : value;
 	}
 
 	private String fallbackDownloadFileName(NexusModsApiClient.NexusMod mod, NexusModsApiClient.NexusModFile file) {

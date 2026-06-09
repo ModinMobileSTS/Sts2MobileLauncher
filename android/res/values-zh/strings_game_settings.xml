@@ -497,6 +497,12 @@
     <string name="mod_import_conflict_incoming">新 MOD</string>
     <string name="mod_import_conflict_keep_original">保留原 MOD</string>
     <string name="mod_import_conflict_use_new">使用新 MOD</string>
+    <string name="mod_import_path_conflict_title">MOD 文件覆盖警告</string>
+    <string name="mod_import_path_conflict_message">新导入内容包含当前 MOD 目录里已存在的文件路径。继续可能在不改变界面项目的情况下替换另一个 MOD 的 DLL/PCK/资源文件。仅在信任来源且明确知道受影响 MOD 时才替换。</string>
+    <string name="mod_import_path_conflict_owner">当前归属：%1$s</string>
+    <string name="mod_import_path_conflict_more">…另有 %1$d 个文件。</string>
+    <string name="mod_import_path_conflict_keep_installed">保留已安装文件</string>
+    <string name="mod_import_path_conflict_replace_files">替换文件</string>
     <string name="status_import_mod_cancelled">已取消导入 MOD。</string>
     <string name="settings_page_subtitle">完整附加设置，已重构为 Material 3 卡片布局。</string>
     <string name="settings_segment_graphics">画面</string>

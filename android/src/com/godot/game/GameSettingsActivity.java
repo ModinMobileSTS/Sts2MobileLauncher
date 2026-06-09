@@ -890,7 +890,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		ExtraSettingsRepository.PreparedModImport preparedImport = imports.get(index);
 		List<ExtraSettingsRepository.ModImportConflict> currentConflicts = repository.findCurrentImportConflicts(preparedImport);
 		if (currentConflicts.isEmpty()) {
-			commitPreparedModImport(imports, index, importedCount, lastName, false);
+			handlePreparedModImportPathConflicts(imports, index, importedCount, lastName, false, currentConflicts);
 			return;
 		}
 		showModImportConflictDialog(preparedImport, currentConflicts,
@@ -898,14 +898,33 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				repository.discardPreparedModImport(preparedImport);
 				handlePreparedModImports(imports, index + 1, importedCount, lastName);
 			},
-			() -> commitPreparedModImport(imports, index, importedCount, lastName, true),
+			() -> handlePreparedModImportPathConflicts(imports, index, importedCount, lastName, true, currentConflicts),
 			() -> {
 				repository.discardPreparedModImport(preparedImport);
 				handlePreparedModImports(imports, index + 1, importedCount, lastName);
 			});
 	}
 
-	private void commitPreparedModImport(List<ExtraSettingsRepository.PreparedModImport> imports, int index, int importedCount, String lastName, boolean replaceExistingConflicts) {
+	private void handlePreparedModImportPathConflicts(List<ExtraSettingsRepository.PreparedModImport> imports, int index, int importedCount, String lastName, boolean replaceExistingConflicts, List<ExtraSettingsRepository.ModImportConflict> confirmedIdConflicts) {
+		ExtraSettingsRepository.PreparedModImport preparedImport = imports.get(index);
+		List<ExtraSettingsRepository.ModImportPathConflict> pathConflicts = repository.findCurrentImportPathConflicts(preparedImport, replaceExistingConflicts ? confirmedIdConflicts : new ArrayList<>());
+		if (pathConflicts.isEmpty()) {
+			commitPreparedModImport(imports, index, importedCount, lastName, replaceExistingConflicts, false);
+			return;
+		}
+		showModImportPathConflictDialog(preparedImport, pathConflicts,
+			() -> {
+				repository.discardPreparedModImport(preparedImport);
+				handlePreparedModImports(imports, index + 1, importedCount, lastName);
+			},
+			() -> commitPreparedModImport(imports, index, importedCount, lastName, replaceExistingConflicts, true),
+			() -> {
+				repository.discardPreparedModImport(preparedImport);
+				handlePreparedModImports(imports, index + 1, importedCount, lastName);
+			});
+	}
+
+	private void commitPreparedModImport(List<ExtraSettingsRepository.PreparedModImport> imports, int index, int importedCount, String lastName, boolean replaceExistingConflicts, boolean allowPathConflicts) {
 		if (busy) {
 			return;
 		}
@@ -914,7 +933,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		showMessage(getString(R.string.status_busy_import_mod));
 		new Thread(() -> {
 			try {
-				String importedName = repository.commitPreparedModImport(preparedImport, replaceExistingConflicts);
+				String importedName = repository.commitPreparedModImport(preparedImport, replaceExistingConflicts, allowPathConflicts);
 				runOnUiThread(() -> {
 					busy = false;
 					handlePreparedModImports(imports, index + 1, importedCount + 1, importedName);
@@ -952,6 +971,44 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			.setNegativeButton(R.string.mod_import_conflict_keep_original, (dialog, which) -> keepOriginal.run())
 			.setNeutralButton(android.R.string.cancel, (dialog, which) -> cancelImport.run())
 			.setPositiveButton(R.string.mod_import_conflict_use_new, (dialog, which) -> useNew.run())
+			.setOnCancelListener(dialog -> cancelImport.run())
+			.show();
+	}
+
+	private void showModImportPathConflictDialog(ExtraSettingsRepository.PreparedModImport preparedImport, List<ExtraSettingsRepository.ModImportPathConflict> conflicts, Runnable keepInstalled, Runnable replaceFiles, Runnable cancelImport) {
+		LinearLayout content = new LinearLayout(this);
+		content.setOrientation(LinearLayout.VERTICAL);
+		content.setPadding(ExtraSettingsUi.dp(this, 4), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 4), 0);
+		content.addView(ExtraSettingsUi.body(this, getString(R.string.mod_import_path_conflict_message)));
+		int visibleCount = Math.min(12, conflicts.size());
+		for (int i = 0; i < visibleCount; i++) {
+			ExtraSettingsRepository.ModImportPathConflict conflict = conflicts.get(i);
+			MaterialCardView card = ExtraSettingsUi.card(this);
+			card.setRadius(ExtraSettingsUi.dp(this, 16));
+			card.setCardBackgroundColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
+			card.setStrokeColor(ExtraSettingsUi.COLOR_OUTLINE);
+			card.setStrokeWidth(ExtraSettingsUi.dp(this, 1));
+			LinearLayout cardContent = ExtraSettingsUi.cardContent(this, card);
+			cardContent.setPadding(ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 12), ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 12));
+			cardContent.addView(ExtraSettingsUi.text(this, conflict.relativePath, 14, ExtraSettingsUi.COLOR_ON_SURFACE, android.graphics.Typeface.BOLD));
+			if (!TextUtils.isEmpty(conflict.existingOwnerLabel)) {
+				cardContent.addView(ExtraSettingsUi.caption(this, getString(R.string.mod_import_path_conflict_owner, conflict.existingOwnerLabel)));
+			}
+			LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			params.topMargin = ExtraSettingsUi.dp(this, 8);
+			content.addView(card, params);
+		}
+		if (conflicts.size() > visibleCount) {
+			content.addView(ExtraSettingsUi.caption(this, getString(R.string.mod_import_path_conflict_more, conflicts.size() - visibleCount)));
+		}
+		ScrollView scrollView = new ScrollView(this);
+		scrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.mod_import_path_conflict_title)
+			.setView(scrollView)
+			.setNegativeButton(R.string.mod_import_path_conflict_keep_installed, (dialog, which) -> keepInstalled.run())
+			.setNeutralButton(android.R.string.cancel, (dialog, which) -> cancelImport.run())
+			.setPositiveButton(R.string.mod_import_path_conflict_replace_files, (dialog, which) -> replaceFiles.run())
 			.setOnCancelListener(dialog -> cancelImport.run())
 			.show();
 	}

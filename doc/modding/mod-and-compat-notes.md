@@ -48,6 +48,8 @@ MOD 卡片默认折叠，只显示左侧拖拽手柄、名称、版本/作者和
 
 导入 MOD 时，Android shell 会先把选择的 zip/文件解包到 cache staging 目录并解析 manifest。如果发现新导入 manifest 的 `id` 与已安装 MOD 相同，会弹出冲突 Dialog，说明“连体现象”：界面可能显示两个项目，但任何一个开关都会按同 ID 同时影响两个。Dialog 会用信息卡分别展示原 MOD 和新 MOD，用户可选择保留原 MOD（丢弃本次 staging）或使用新 MOD（删除同 ID 原 MOD 后提交 staging）。该规则同样服务 Nexus 下载导入路径，避免同 ID manifest 在 `<files>/mods` 或隔离 MOD 根中长期并存。
 
+同 ID 冲突处理后，导入流程还会按 staging 到当前 MOD 根目录的实际相对路径预检文件覆盖。如果新导入内容会写入已经存在的 `.dll` / `.pck` / `.json` 或其它资源文件，且这些文件不属于用户刚确认替换的同 ID 旧 MOD，会再次弹出“文件覆盖”警告，列出会被覆盖的相对路径和可推断的现有归属；默认取消/保留已安装文件，只有用户明确选择替换时才继续。底层提交接口默认不允许未确认的路径覆盖，Nexus 下载导入也会先 staging 并复用这两级确认流程，避免把 A MOD 的 DLL/PCK 静默替换成 B MOD 的文件。
+
 ## 4. NexusMods 商店导入
 
 `NexusModsStoreActivity` 仍作为实验性页面保留，但 `ModsPage` 暂时不展示入口。后续重新开放时需继续遵循：
@@ -55,7 +57,7 @@ MOD 卡片默认折叠，只显示左侧拖拽手柄、名称、版本/作者和
 - 用户必须手动输入并保存自己的 NexusMods Personal API Key；获取教程入口指向 <https://www.nexusmods.com/settings/api-keys>，提示用户滑到页面底部并点击 “Request Personal API Key”。
 - API Key 存在 Android 私有 `SharedPreferences`（`sts2_nexus_mod_store`）中，不写入仓库、不导出到构建产物。
 - 默认游戏域名为 `slaythespire2`。官方 API 没有完整全站文本搜索接口，因此关键词搜索会聚合并筛选 trending/latest/updated feed；输入 Nexus MOD URL 或数字 MOD ID 会走精确查询。
-- 下载流程会获取 NexusMods 文件列表，选择文件后尝试生成下载链接并把下载到的 ZIP 交给 `ExtraSettingsRepository.importDownloadedModFile()`，最终进入当前 launch profile 的 MOD 目录并启用 MOD 总开关。
+- 下载流程会获取 NexusMods 文件列表，选择文件后尝试生成下载链接并把下载到的 ZIP 先交给 `ExtraSettingsRepository.prepareDownloadedModImport()` 解包到 staging；若触发同 ID 或路径覆盖冲突，会复用本地导入弹窗，确认后再提交到当前 launch profile 的 MOD 目录并启用 MOD 总开关。
 - NexusMods 对非 Premium 用户可能要求先访问网页；此时界面会引导打开网页并支持粘贴 `nxm://...key=...&expires=...` 链接重试下载。
 
 ## 5. MOD 启用/禁用协议
