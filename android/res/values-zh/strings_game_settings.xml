@@ -551,7 +551,7 @@
     <string name="full_data_backup_info">会备份整个应用私有数据目录，包括游戏存档、游戏选项、附加设置偏好、已导入 MOD、MOD 方案、日志和其它私有文件。恢复时会用备份内容替换当前私有数据；完成后建议完全重启游戏。</string>
     <string name="full_data_backup_size_format">私有数据：%1$s · MOD 清单：%2$d</string>
     <string name="full_data_backup_calculating">私有数据：计算中…</string>
-    <string name="full_data_backup_export">导出完整备份</string>
+    <string name="full_data_backup_export">导出</string>
     <string name="full_data_backup_import">恢复完整备份</string>
     <string name="full_data_backup_import_confirm_title">恢复完整应用数据？</string>
     <string name="full_data_backup_import_confirm_message">这会用所选备份替换当前应用私有数据，包括存档、选项、附加设置偏好和 MOD。当前私有数据可能被覆盖或删除。是否继续？</string>

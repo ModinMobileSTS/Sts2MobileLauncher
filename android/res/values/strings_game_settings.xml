@@ -551,7 +551,7 @@
     <string name="full_data_backup_info">Backs up the whole app private data directory, including game saves, game options, Extra Settings preferences, imported MODs, MOD profiles, logs and other private files. Importing replaces current private data with the backup contents; fully restart the game afterwards.</string>
     <string name="full_data_backup_size_format">Private data: %1$s · MOD manifests: %2$d</string>
     <string name="full_data_backup_calculating">Private data: calculating…</string>
-    <string name="full_data_backup_export">Export full backup</string>
+    <string name="full_data_backup_export">Export</string>
     <string name="full_data_backup_import">Restore full backup</string>
     <string name="full_data_backup_import_confirm_title">Restore full app data?</string>
     <string name="full_data_backup_import_confirm_message">This will replace the current app private data with the selected backup, including saves, options, Extra Settings preferences and MODs. Current private data may be overwritten or deleted. Continue?</string>

@@ -190,7 +190,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 	private View buildCloudCard() {
 		MaterialCardView card = ExtraSettingsUi.card(this);
 		LinearLayout content = ExtraSettingsUi.cardContent(this, card);
-		content.addView(ExtraSettingsUi.iconTitleRow(this, R.drawable.ic_save_24, R.string.steam_cloud_title, R.string.steam_cloud_subtitle, null));
+		content.addView(ExtraSettingsUi.iconTitleRow(this, R.drawable.ic_steam_24, R.string.steam_cloud_title, R.string.steam_cloud_subtitle, null));
 		Sts2SteamCloudSyncManager.Status status = new Sts2SteamCloudSyncManager(this).getStatus();
 		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.body(this, getString(R.string.steam_cloud_profile_status, status.profileId, status.remoteFileCount, status.hasBaseline ? getString(R.string.yes) : getString(R.string.no))));
 		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(this, status.accountRoot.getAbsolutePath()));

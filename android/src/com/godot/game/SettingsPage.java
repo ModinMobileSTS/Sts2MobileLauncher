@@ -496,11 +496,11 @@ public final class SettingsPage {
 	private View buildSteamCloudCard() {
 		MaterialCardView card = ExtraSettingsUi.card(context);
 		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
-		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_save_24, R.string.steam_cloud_title, R.string.steam_cloud_subtitle, null));
+		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_steam_24, R.string.steam_cloud_title, R.string.steam_cloud_subtitle, null));
 		SteamAuthStore.AuthSnapshot auth = SteamAuthStore.readSnapshot(context);
 		Sts2SteamCloudSyncManager.Status status = new Sts2SteamCloudSyncManager(context).getStatus();
 		String account = auth.refreshTokenConfigured ? auth.accountName : context.getString(R.string.steam_not_logged_in);
-		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_badge_24, context.getString(R.string.steam_cloud_settings_status, account, SteamSettings.getCloudMode(context), status.remoteFileCount)));
+		ExtraSettingsUi.addSmallSpacing(content, metricRow(R.drawable.ic_steam_24, context.getString(R.string.steam_cloud_settings_status, account, SteamSettings.getCloudMode(context), status.remoteFileCount)));
 		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(context, status.accountRoot.getAbsolutePath()));
 		MaterialButton open = ExtraSettingsUi.tonalButton(context, R.string.steam_account_open, R.drawable.ic_download_24);
 		open.setOnClickListener(v -> actions.openSteamAccount());
