@@ -30,6 +30,7 @@ sts2_require_executable "$DOTNET_BIN" "dotnet"
 
 apply_build_info_patch() {
   local target_root="$1"
+  local target_branch="${2:-}"
   if [[ "${COMPAT_PACK_APPLY_BUILD_INFO_PATCHES:-1}" == "0" ]]; then
     return 0
   fi
@@ -64,11 +65,12 @@ apply_build_info_patch() {
     fi
   done
 
-  python3 - "$target_root" <<'PY'
+  python3 - "$target_root" "$target_branch" <<'PY'
 from pathlib import Path
 import sys
 
 root = Path(sys.argv[1])
+target_branch = sys.argv[2] if len(sys.argv) > 2 else ""
 
 # Older compat branches predate the runtime build-info log. Only inject the
 # version/commit logger; do not alter startup, preload, mod-loader, or diagnostic
@@ -86,6 +88,9 @@ if mod_entry.is_file():
     shader_compat_line = '            ShaderCompatibilityPatches.Apply(_harmony);\n'
     if "TransitionMaterialPatches.Apply(_harmony);" not in text and shader_compat_line in text:
         text = text.replace(shader_compat_line, shader_compat_line + "            TransitionMaterialPatches.Apply(_harmony);\n", 1)
+    map_drawing_line = '            MapDrawingSceneCachePatches.Apply(_harmony);\n'
+    if "v0.107.0" not in target_branch and "1070" not in target_branch:
+        text = text.replace(map_drawing_line, "")
     merchant_confirm_line = '            MerchantSelectionConfirmationPatches.Apply(_harmony);\n'
     if "MobileTooltipPatches.Apply(_harmony);" not in text and merchant_confirm_line in text:
         text = text.replace(merchant_confirm_line, merchant_confirm_line + "            MobileTooltipPatches.Apply(_harmony);\n", 1)
@@ -247,7 +252,7 @@ PY
       echo "Missing compat build script in current worktree: tools/build-compat-pack.sh" >&2
       exit 1
     fi
-    apply_build_info_patch "$COMPAT_ROOT"
+    apply_build_info_patch "$COMPAT_ROOT" "$branch"
     (
       cd "$COMPAT_ROOT"
       DOTNET_BIN="$DOTNET_BIN" \
@@ -270,7 +275,7 @@ PY
   git -C "$COMPAT_ROOT" worktree remove --force "$worktree" >/dev/null 2>&1 || true
   rm -rf "$worktree"
   git -C "$COMPAT_ROOT" worktree add --detach "$worktree" "$resolved_ref"
-  apply_build_info_patch "$worktree"
+  apply_build_info_patch "$worktree" "$branch"
   if [[ ! -x "$worktree/tools/build-compat-pack.sh" ]]; then
     echo "Missing compat build script on $resolved_ref: tools/build-compat-pack.sh" >&2
     exit 1

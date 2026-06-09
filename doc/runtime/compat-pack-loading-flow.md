@@ -185,6 +185,8 @@ OS.GetDataDir()/port_compat.pck
 
 另外 `TransitionMaterialPatches` 会在 `NTransition._Ready` 后复制场景默认 `ShaderMaterial`，并在原版 `AssetCache.GetMaterial()` 返回 `fade_transition_mat.tres` / `fight_transition_mat.tres` 时返回缓存材质的副本。这样关闭预加载时，原版 `LoadCommonAndMainMenuAssets()` 触发的 missed-cache 清理即使 dispose 了缓存条目，也不会把正在执行主菜单 `FadeIn()` 的 transition 材质一并释放，避免 `ObjectDisposedException: Godot.ShaderMaterial` 后黑屏。
 
+`compat/v0.107.0-beta` 的 `MapDrawingSceneCachePatches` 同样规避资源缓存生命周期问题：它拦截 `NMapDrawings.CreateLineForPlayer()`，让 v107 地图画笔绘制/橡皮线条从 Android 兼容层自持有的 `PackedScene` 实例化，而不是继续使用 `NMapDrawings._lineDrawScene` / `_lineEraseScene` 中可能已被 preload cleanup dispose 的缓存资源；橡皮线条会同步刷新 `_eraserMaterial`，保留原版保存时通过材质判断 eraser line 的行为。
+
 是否启用由附加设置中的 `shader_compatibility_mode` 控制。
 
 ## 10. 普通用户 MOD 加载
