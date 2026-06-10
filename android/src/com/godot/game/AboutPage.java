@@ -100,7 +100,7 @@ public final class AboutPage {
 
 		MaterialButton check = ExtraSettingsUi.iconButton(context, R.drawable.ic_sync_24);
 		check.setContentDescription(context.getString(R.string.update_check_manual));
-		check.setOnClickListener(v -> actions.requestUpdateCheck());
+		check.setOnClickListener(v -> actions.requestManualUpdateCheck());
 		row.addView(check);
 
 		MaterialSwitch enabled = new MaterialSwitch(context);

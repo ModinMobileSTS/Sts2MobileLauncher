@@ -34,7 +34,7 @@
 
 ## About the Project
 
-This project is an experimental, unofficial Android port and launcher framework for *Slay the Spire 2*. It **DOES NOT** contain any base game files. Instead, it provides an Android shell that allows players to import and run their legally owned PC game files on mobile devices, featuring support for Mod loading, local save snapshots, plus Steam Cloud and WebDAV save synchronization.
+This project is an experimental, unofficial Android port and launcher framework for *Slay the Spire 2*. It **DOES NOT** contain any base game files. Instead, it provides an Android shell that allows players to import and run their legally owned PC game files on mobile devices, featuring support for Mod loading, local save snapshots, Steam Cloud and WebDAV save synchronization, and launcher update checks from the About page.
 
 **The core architecture consists of three layers:**
 1. **Android Launcher Shell (`android/`):** Handles game data importing, Steam login and game downloading, local save snapshots, Steam Cloud/WebDAV save syncing, and local file/MOD management. Once everything is ready, it boots up the Godot game process.

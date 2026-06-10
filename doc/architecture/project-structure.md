@@ -31,7 +31,7 @@ s2_re/
 
 ## 3. Android shell 主要组件
 
-- `GameSettingsActivity`：默认 launcher，承载欢迎向导、游戏主页、设置页、版本页、MOD 页，负责启动前检查；桌面图标默认打开附加设置，也可在设置页切换为完成向导后自动直接启动游戏。手机保持竖屏启动器，平板/大屏允许系统方向并在横屏时使用左侧 Navigation Rail、居中最大宽度内容、首页双栏与设置/关于双列卡片；游戏本体 `GodotApp` 仍固定横屏。游戏主页采用 MD3 深色仪表盘：顶部 Steam chip、动态渐变启动卡、未导入空状态、MOD/存档双状态卡和 4 列维护/高级工具快捷入口；启动器图标统一通过 bundled Material Symbols Rounded 字体渲染。
+- `GameSettingsActivity`：默认 launcher，承载欢迎向导、游戏主页、设置页、版本页、MOD 页，负责启动前检查；桌面图标默认打开附加设置，也可在设置页切换为完成向导后自动直接启动游戏；启动器更新检查可在关于页手动触发，手动无新版本时用 snackbar 提示，手动失败会弹窗显示原因，启动时自动检查无更新或失败仍保持静默日志。手机保持竖屏启动器，平板/大屏允许系统方向并在横屏时使用左侧 Navigation Rail、居中最大宽度内容、首页双栏与设置/关于双列卡片；游戏本体 `GodotApp` 仍固定横屏。游戏主页采用 MD3 深色仪表盘：顶部 Steam chip、动态渐变启动卡、未导入空状态、MOD/存档双状态卡和 4 列维护/高级工具快捷入口；启动器图标统一通过 bundled Material Symbols Rounded 字体渲染。
 - `SteamAccountActivity`：Steam 中心，负责 Steam 登录/Guard/refresh token 验证、SteamPipe 下载 STS2 payload，以及当前 launch profile account root 的 Steam Cloud 手动/自动同步。
 - `WebDavCloudActivity`：WebDAV 云存档中心，负责 WebDAV URL/用户名/密码/远端槽位配置、连接测试，以及当前 launch profile account root 的 WebDAV 手动/自动同步。
 - `LocalSaveSnapshotManager`：本地存档快照管理，启动前和干净退出后自动创建当前 launch profile account root 的 zip 快照，默认保留最近 5 个；设置页“存档”分区可手动创建和恢复。

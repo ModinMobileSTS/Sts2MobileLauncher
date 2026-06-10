@@ -30,31 +30,38 @@ public final class ExtraSettingsUpdateChecker {
 	}
 
 	public static UpdateInfo checkForUpdate(Context context) throws Exception {
+		UpdateCheckResult result = check(context);
+		return result.updateInfo;
+	}
+
+	public static UpdateCheckResult check(Context context) throws Exception {
 		JSONObject latestRelease = requestLatestRelease();
 		if (latestRelease == null) {
 			Log.d(TAG, "No GitHub release entry found.");
-			return null;
+			return UpdateCheckResult.unavailable("No GitHub release entry found.");
 		}
 
 		String latestVersionName = firstNonEmpty(latestRelease.optString("tag_name", ""), latestRelease.optString("name", ""));
 		if (latestVersionName.isEmpty()) {
 			Log.d(TAG, "Latest GitHub release has no tag/name.");
-			return null;
+			return UpdateCheckResult.unavailable("Latest GitHub release has no tag/name.");
 		}
 
 		String currentVersionName = BuildConfig.VERSION_NAME;
 		int comparison = compareVersions(latestVersionName, currentVersionName);
 		Log.d(TAG, "Current launcher version=" + currentVersionName + ", latest release=" + latestVersionName + ", compare=" + comparison);
 		if (comparison <= 0) {
-			return null;
+			return UpdateCheckResult.alreadyLatest(latestVersionName);
 		}
 
-		return new UpdateInfo(
-			latestVersionName,
-			latestRelease.optString("name", ""),
-			latestRelease.optString("body", ""),
-			firstNonEmpty(latestRelease.optString("html_url", ""), RELEASES_URL),
-			latestRelease.optBoolean("prerelease", false)
+		return UpdateCheckResult.updateAvailable(
+			new UpdateInfo(
+				latestVersionName,
+				latestRelease.optString("name", ""),
+				latestRelease.optString("body", ""),
+				firstNonEmpty(latestRelease.optString("html_url", ""), RELEASES_URL),
+				latestRelease.optBoolean("prerelease", false)
+			)
 		);
 	}
 
@@ -180,6 +187,32 @@ public final class ExtraSettingsUpdateChecker {
 			}
 			String suffix = matcher.group(2);
 			return new Version(parts, suffix != null && suffix.startsWith("-"));
+		}
+	}
+
+	public static final class UpdateCheckResult {
+		public final UpdateInfo updateInfo;
+		public final boolean alreadyLatest;
+		public final String latestVersionName;
+		public final String unavailableReason;
+
+		private UpdateCheckResult(UpdateInfo updateInfo, boolean alreadyLatest, String latestVersionName, String unavailableReason) {
+			this.updateInfo = updateInfo;
+			this.alreadyLatest = alreadyLatest;
+			this.latestVersionName = latestVersionName;
+			this.unavailableReason = unavailableReason;
+		}
+
+		static UpdateCheckResult updateAvailable(UpdateInfo updateInfo) {
+			return new UpdateCheckResult(updateInfo, false, updateInfo.versionName, null);
+		}
+
+		static UpdateCheckResult alreadyLatest(String latestVersionName) {
+			return new UpdateCheckResult(null, true, latestVersionName, null);
+		}
+
+		static UpdateCheckResult unavailable(String reason) {
+			return new UpdateCheckResult(null, false, null, reason);
 		}
 	}
 

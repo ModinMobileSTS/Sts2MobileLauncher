@@ -633,6 +633,9 @@
     <string name="update_check_manual">Check now</string>
     <string name="update_check_auto">Auto check</string>
     <string name="update_check_current_version_format">Current launcher: %1$s</string>
+    <string name="update_check_already_latest_message">Already up to date: %1$s</string>
+    <string name="update_check_failed_title">Update check failed</string>
+    <string name="update_check_failed_message">Unable to check for launcher updates.\n\n%1$s</string>
     <string name="update_available_title">Launcher update available</string>
     <string name="update_available_message">Current launcher: %1$s\nLatest launcher: %2$s\n\n%3$s</string>
     <string name="update_download">Open release</string>

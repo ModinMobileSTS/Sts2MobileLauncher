@@ -1674,16 +1674,57 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 	@Override
 	public void requestUpdateCheck() {
+		requestUpdateCheck(false);
+	}
+
+	@Override
+	public void requestManualUpdateCheck() {
+		requestUpdateCheck(true);
+	}
+
+	private void requestUpdateCheck(boolean manualCheck) {
 		new Thread(() -> {
 			try {
-				ExtraSettingsUpdateChecker.UpdateInfo updateInfo = ExtraSettingsUpdateChecker.checkForUpdate(this);
-				if (updateInfo != null) {
-					runOnUiThread(() -> showUpdateDialog(updateInfo));
+				ExtraSettingsUpdateChecker.UpdateCheckResult result = ExtraSettingsUpdateChecker.check(this);
+				if (result.updateInfo != null) {
+					runOnUiThread(() -> showUpdateDialog(result.updateInfo));
+				} else if (manualCheck && result.alreadyLatest) {
+					runOnUiThread(() -> showUpdateCheckAlreadyLatestMessage());
+				} else if (manualCheck && result.unavailableReason != null) {
+					Log.w(TAG, "Manual update check unavailable: " + result.unavailableReason);
+					runOnUiThread(() -> showUpdateCheckFailedDialog(result.unavailableReason));
 				}
 			} catch (Exception exception) {
-				Log.w(TAG, "Update check failed silently.", exception);
+				if (manualCheck) {
+					Log.w(TAG, "Manual update check failed.", exception);
+					runOnUiThread(() -> showUpdateCheckFailedDialog(exception));
+				} else {
+					Log.w(TAG, "Update check failed silently.", exception);
+				}
 			}
 		}, "sts2-update-check").start();
+	}
+
+	private void showUpdateCheckAlreadyLatestMessage() {
+		if (isFinishing() || isDestroyed()) {
+			return;
+		}
+		showSnackbar(getString(R.string.update_check_already_latest_message, BuildConfig.VERSION_NAME), Snackbar.LENGTH_SHORT);
+	}
+
+	private void showUpdateCheckFailedDialog(Exception exception) {
+		showUpdateCheckFailedDialog(exception.getMessage() == null ? exception.toString() : exception.getMessage());
+	}
+
+	private void showUpdateCheckFailedDialog(String detail) {
+		if (isFinishing() || isDestroyed()) {
+			return;
+		}
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.update_check_failed_title)
+			.setMessage(getString(R.string.update_check_failed_message, detail))
+			.setPositiveButton(android.R.string.ok, null)
+			.show();
 	}
 
 	private void showUpdateDialog(ExtraSettingsUpdateChecker.UpdateInfo updateInfo) {

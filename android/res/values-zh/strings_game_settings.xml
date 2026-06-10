@@ -633,6 +633,9 @@
     <string name="update_check_manual">立即检查</string>
     <string name="update_check_auto">自动检查</string>
     <string name="update_check_current_version_format">当前启动器：%1$s</string>
+    <string name="update_check_already_latest_message">已是最新版：%1$s</string>
+    <string name="update_check_failed_title">检查更新失败</string>
+    <string name="update_check_failed_message">无法检查启动器更新。\n\n%1$s</string>
     <string name="update_available_title">发现启动器新版本</string>
     <string name="update_available_message">当前启动器：%1$s\n最新启动器：%2$s\n\n%3$s</string>
     <string name="update_download">打开 Release</string>
