@@ -122,7 +122,11 @@ public final class ModsPage {
 
 		rootContent = ExtraSettingsUi.vertical(context);
 		rootContent.setPadding(0, ExtraSettingsUi.dp(context, 10), 0, ExtraSettingsUi.dp(context, ExtraSettingsUi.isWideLayout(context) ? 96 : 122));
-		ExtraSettingsUi.addResponsiveScrollContent(context, scrollView, rootContent);
+		if (ExtraSettingsUi.isWideLayout(context)) {
+			ExtraSettingsUi.addResponsiveScrollContent(context, scrollView, rootContent);
+		} else {
+			scrollView.addView(rootContent, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		}
 
 		rootContent.addView(buildTopBar());
 		rootContent.addView(buildCompactActions());

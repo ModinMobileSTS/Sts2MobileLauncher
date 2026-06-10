@@ -113,7 +113,11 @@ public final class SettingsPage {
 		scrollView.setFillViewport(false);
 		scrollView.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 		tabContent.setPadding(0, ExtraSettingsUi.dp(context, 8), 0, ExtraSettingsUi.dp(context, 32));
-		ExtraSettingsUi.addResponsiveScrollContent(context, scrollView, tabContent);
+		if (ExtraSettingsUi.isWideLayout(context)) {
+			ExtraSettingsUi.addResponsiveScrollContent(context, scrollView, tabContent);
+		} else {
+			scrollView.addView(tabContent, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		}
 		shell.addView(scrollView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 		if (tabContent.getChildCount() == 0) {
 			showSettingsSegment(lastSelectedSegment, tabContent);
