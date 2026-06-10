@@ -35,7 +35,13 @@ import com.google.android.material.snackbar.Snackbar;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
+
+import in.dragonbra.javasteam.enums.EResult;
+import in.dragonbra.javasteam.steam.authentication.AuthenticationException;
 
 public class SteamAccountActivity extends AppCompatActivity {
 	private static final int SAFETY_NOTICE_COUNTDOWN_SECONDS = 5;
@@ -354,8 +360,9 @@ public class SteamAccountActivity extends AppCompatActivity {
 					if (conflict != null) {
 						showCloudConflictDialog(conflict);
 					} else {
-						progressText.setText(exception.getMessage() == null ? exception.toString() : exception.getMessage());
-						showMessage(getString(R.string.error_operation_failed) + ": " + (exception.getMessage() == null ? exception.toString() : exception.getMessage()));
+						String message = formatOperationError(exception);
+						progressText.setText(message);
+						showMessage(getString(R.string.error_operation_failed) + ": " + message);
 					}
 				});
 			}
@@ -414,12 +421,166 @@ public class SteamAccountActivity extends AppCompatActivity {
 					busy = false;
 					dismissOperationDialog();
 					progressBar.setVisibility(View.GONE);
-					progressText.setText(exception.getMessage() == null ? exception.toString() : exception.getMessage());
+					String message = formatOperationError(exception);
+					progressText.setText(message);
 					refreshStatusOnly();
-					showMessage(getString(R.string.error_operation_failed) + ": " + (exception.getMessage() == null ? exception.toString() : exception.getMessage()));
+					showMessage(getString(R.string.error_operation_failed) + ": " + message);
 				});
 			}
 		}, "sts2-steam-operation").start();
+	}
+
+	private String formatOperationError(Throwable error) {
+		String raw = rawErrorMessage(error);
+		String readable = formatRawOperationError(raw);
+		if (!readable.equals(raw)) {
+			return readable;
+		}
+		if (containsCause(error, CancellationException.class) || raw.contains("CancellationException")) {
+			return getString(R.string.steam_error_login_cancelled_or_interrupted);
+		}
+		if (containsCause(error, TimeoutException.class) || containsAny(raw, "timed out", "timeout")) {
+			return getString(R.string.steam_error_timeout);
+		}
+		if (containsAny(raw, "websocket transport has a watchdog", "watchdog", "steam disconnected", "client or session is no longer active", "NoConnection", "ConnectFailed", "RemoteDisconnect")) {
+			return getString(R.string.steam_error_connection_lost);
+		}
+		if (containsAny(raw, "Failed to resolve Steam websocket CM hostname", "no usable address", "no websocket CM candidate")) {
+			return getString(R.string.steam_error_cm_unreachable);
+		}
+		AuthenticationException authError = findCause(error, AuthenticationException.class);
+		if (authError != null && authError.getResult() != null) {
+			String message = describeSteamAuthResult(authError.getResult());
+			if (!TextUtils.isEmpty(message)) {
+				return message;
+			}
+		}
+		return raw.isEmpty() ? getString(R.string.steam_error_unknown) : raw;
+	}
+
+	private String formatStoredError(String raw) {
+		if (TextUtils.isEmpty(raw)) {
+			return "";
+		}
+		return formatRawOperationError(raw);
+	}
+
+	private String formatRawOperationError(String raw) {
+		if (containsAny(raw, "InvalidPassword", "账号名或密码错误", "account name or password")) {
+			return getString(R.string.steam_error_invalid_password);
+		}
+		if (containsAny(raw, "InvalidLoginAuthCode", "TwoFactorCodeMismatch", "ExpiredLoginAuthCode", "Steam Guard")) {
+			return getString(R.string.steam_error_guard_code);
+		}
+		if (containsAny(raw, "RateLimitExceeded", "AccountLoginDeniedThrottle", "too many", "请求过于频繁")) {
+			return getString(R.string.steam_error_rate_limited);
+		}
+		if (containsAny(raw, "ServiceUnavailable", "Busy", "TryAnotherCM", "RemoteCallFailed")) {
+			return getString(R.string.steam_error_service_busy);
+		}
+		if (containsAny(raw, "CancellationException")) {
+			return getString(R.string.steam_error_login_cancelled_or_interrupted);
+		}
+		if (containsAny(raw, "timed out", "timeout")) {
+			return getString(R.string.steam_error_timeout);
+		}
+		if (containsAny(raw, "websocket transport has a watchdog", "watchdog", "steam disconnected", "client or session is no longer active", "NoConnection", "ConnectFailed", "RemoteDisconnect")) {
+			return getString(R.string.steam_error_connection_lost);
+		}
+		if (containsAny(raw, "Failed to resolve Steam websocket CM hostname", "no usable address", "no websocket CM candidate")) {
+			return getString(R.string.steam_error_cm_unreachable);
+		}
+		return raw == null ? "" : raw;
+	}
+
+	private String describeSteamAuthResult(EResult result) {
+		switch (result) {
+			case InvalidPassword:
+			case AccountNotFound:
+				return getString(R.string.steam_error_invalid_password);
+			case InvalidLoginAuthCode:
+			case TwoFactorCodeMismatch:
+			case ExpiredLoginAuthCode:
+				return getString(R.string.steam_error_guard_code);
+			case AccountLogonDenied:
+			case AccountLoginDeniedNeedTwoFactor:
+				return getString(R.string.steam_error_guard_required);
+			case AccountLoginDeniedThrottle:
+			case RateLimitExceeded:
+				return getString(R.string.steam_error_rate_limited);
+			case Timeout:
+				return getString(R.string.steam_error_timeout);
+			case NoConnection:
+			case ConnectFailed:
+			case RemoteDisconnect:
+				return getString(R.string.steam_error_connection_lost);
+			case ServiceUnavailable:
+			case Busy:
+			case TryAnotherCM:
+			case RemoteCallFailed:
+				return getString(R.string.steam_error_service_busy);
+			case Expired:
+				return getString(R.string.steam_error_session_expired);
+			default:
+				return "";
+		}
+	}
+
+	private static String rawErrorMessage(Throwable error) {
+		if (error == null) {
+			return "";
+		}
+		StringBuilder builder = new StringBuilder();
+		Throwable current = error;
+		int depth = 0;
+		while (current != null && depth < 8) {
+			if (builder.length() > 0) {
+				builder.append(" | ");
+			}
+			builder.append(current.getClass().getSimpleName());
+			String message = current.getMessage();
+			if (!TextUtils.isEmpty(message)) {
+				builder.append(": ").append(message.replace('\r', ' ').replace('\n', ' ').trim());
+			}
+			Throwable next = current.getCause();
+			if (next == current) {
+				break;
+			}
+			current = next;
+			depth++;
+		}
+		return builder.toString().trim();
+	}
+
+	private static boolean containsAny(String value, String... needles) {
+		String lower = value == null ? "" : value.toLowerCase(Locale.ROOT);
+		for (String needle : needles) {
+			if (needle != null && lower.contains(needle.toLowerCase(Locale.ROOT))) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static <T extends Throwable> boolean containsCause(Throwable error, Class<T> type) {
+		return findCause(error, type) != null;
+	}
+
+	private static <T extends Throwable> T findCause(Throwable error, Class<T> type) {
+		Throwable current = error;
+		int depth = 0;
+		while (current != null && depth < 16) {
+			if (type.isInstance(current)) {
+				return type.cast(current);
+			}
+			Throwable next = current.getCause();
+			if (next == current) {
+				break;
+			}
+			current = next;
+			depth++;
+		}
+		return null;
 	}
 
 	private void showOperationDialog(String message) {
@@ -461,7 +622,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 		String account = snapshot.refreshTokenConfigured ? snapshot.accountName : getString(R.string.steam_not_logged_in);
 		String steamId = TextUtils.isEmpty(snapshot.steamId64) ? getString(R.string.unknown) : snapshot.steamId64;
 		String mode = SteamSettings.getCloudMode(this);
-		statusText.setText(getString(R.string.steam_account_status_format, account, steamId, mode, snapshot.lastError));
+		statusText.setText(getString(R.string.steam_account_status_format, account, steamId, mode, formatStoredError(snapshot.lastError)));
 	}
 
 	private void showMessage(String message) {
@@ -493,7 +654,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 				.setTitle(R.string.steam_guard_confirmation_title)
 				.setMessage(R.string.steam_guard_confirmation_message)
 				.setNegativeButton(android.R.string.cancel, (dialog, which) -> future.complete(false))
-				.setPositiveButton(android.R.string.ok, (dialog, which) -> future.complete(true))
+				.setPositiveButton(R.string.steam_guard_confirmation_ready_button, (dialog, which) -> future.complete(true))
 				.show());
 			return future;
 		}
