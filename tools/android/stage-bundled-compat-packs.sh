@@ -40,6 +40,7 @@ apply_build_info_patch() {
   for rel in \
     "STS2AndroidPortCompat/ModEntry.cs" \
     "STS2AndroidPortCompat/HarmonyAndroidCompat.cs" \
+    "STS2AndroidPortCompat/HarmonyMethodReferenceImporterShim.cs" \
     "STS2AndroidPortCompat/Patches/CompatBuildInfo.cs" \
     "STS2AndroidPortCompat/Directory.Build.targets" \
     "STS2AndroidPortCompat/Android/AppPaths.cs" \
