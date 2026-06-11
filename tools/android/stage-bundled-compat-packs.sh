@@ -45,6 +45,7 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Directory.Build.targets" \
     "STS2AndroidPortCompat/Android/AppPaths.cs" \
     "STS2AndroidPortCompat/Patches/EarlyLocalizationFallbackPatches.cs" \
+    "STS2AndroidPortCompat/Patches/DeferredModPatchQueue.cs" \
     "STS2AndroidPortCompat/Patches/ModelDbInitPatch.cs" \
     "STS2AndroidPortCompat/Patches/ModLoaderPatches.cs" \
     "STS2AndroidPortCompat/Patches/SavePathPatches.cs" \
