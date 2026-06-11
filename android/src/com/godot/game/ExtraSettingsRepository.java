@@ -43,6 +43,7 @@ public final class ExtraSettingsRepository {
 	public static final int SETTINGS_SCHEMA_VERSION = 6;
 	public static final String KEY_ANDROID_COMPAT_PACK_ENABLED = "android_compat_pack_enabled";
 	public static final String KEY_LOG_LEVEL = "log_level";
+	public static final String KEY_PERFORMANCE_OVERLAY_ENABLED = "android_performance_overlay_enabled";
 	public static final String LOG_LEVEL_OFF = "off";
 	public static final String LOG_LEVEL_INFO = "info";
 	public static final String LOG_LEVEL_DEBUG = "debug";
@@ -159,6 +160,7 @@ public final class ExtraSettingsRepository {
 		settings.put("lan_compatibility_mod_names", new JSONArray());
 		settings.put("audio_compatibility_mode", false);
 		settings.put(KEY_LOG_LEVEL, getStoredLogLevel());
+		settings.put(KEY_PERFORMANCE_OVERLAY_ENABLED, isStoredPerformanceOverlayEnabled());
 		settings.put("android_volume_up_soft_keyboard", false);
 		settings.put("android_flip_screen_180", false);
 		settings.put("lan_use_custom_player_id", false);
@@ -207,6 +209,8 @@ public final class ExtraSettingsRepository {
 		changed |= putIfMissing(settings, "audio_compatibility_mode", false);
 		changed |= putIfMissing(settings, KEY_LOG_LEVEL, getStoredLogLevel());
 		changed |= normalizeExistingLogLevel(settings);
+		changed |= putIfMissing(settings, KEY_PERFORMANCE_OVERLAY_ENABLED, isStoredPerformanceOverlayEnabled());
+		changed |= syncExistingPerformanceOverlaySetting(settings);
 		changed |= putIfMissing(settings, "android_volume_up_soft_keyboard", false);
 		changed |= putIfMissing(settings, "android_flip_screen_180", false);
 		changed |= putIfMissing(settings, "lan_use_custom_player_id", false);
@@ -266,6 +270,31 @@ public final class ExtraSettingsRepository {
 		saveSetting(settings -> settings.put(KEY_LOG_LEVEL, normalized));
 	}
 
+	public boolean isPerformanceOverlayEnabled(JSONObject settings) {
+		if (settings != null && settings.has(KEY_PERFORMANCE_OVERLAY_ENABLED)) {
+			boolean enabled = settings.optBoolean(KEY_PERFORMANCE_OVERLAY_ENABLED, false);
+			ExtraSettingsPreferences.setPerformanceOverlayEnabled(context, enabled);
+			return enabled;
+		}
+		return isStoredPerformanceOverlayEnabled();
+	}
+
+	public boolean isPerformanceOverlayEnabledForLaunch() {
+		boolean enabled = isStoredPerformanceOverlayEnabled();
+		try {
+			JSONObject settings = loadSettingsJson();
+			enabled = settings.optBoolean(KEY_PERFORMANCE_OVERLAY_ENABLED, enabled);
+		} catch (Exception ignored) {
+		}
+		ExtraSettingsPreferences.setPerformanceOverlayEnabled(context, enabled);
+		return enabled;
+	}
+
+	public void savePerformanceOverlayEnabled(boolean enabled) throws Exception {
+		ExtraSettingsPreferences.setPerformanceOverlayEnabled(context, enabled);
+		saveSetting(settings -> settings.put(KEY_PERFORMANCE_OVERLAY_ENABLED, enabled));
+	}
+
 	public static String normalizeLogLevel(String value) {
 		if (value == null) {
 			return LOG_LEVEL_INFO;
@@ -296,6 +325,20 @@ public final class ExtraSettingsRepository {
 
 	private String getStoredLogLevel() {
 		return normalizeLogLevel(ExtraSettingsPreferences.getLogLevel(context, LOG_LEVEL_INFO));
+	}
+
+	private boolean isStoredPerformanceOverlayEnabled() {
+		return ExtraSettingsPreferences.isPerformanceOverlayEnabled(context);
+	}
+
+	private boolean syncExistingPerformanceOverlaySetting(JSONObject settings) throws JSONException {
+		boolean enabled = settings.optBoolean(KEY_PERFORMANCE_OVERLAY_ENABLED, isStoredPerformanceOverlayEnabled());
+		ExtraSettingsPreferences.setPerformanceOverlayEnabled(context, enabled);
+		if (settings.has(KEY_PERFORMANCE_OVERLAY_ENABLED)) {
+			return false;
+		}
+		settings.put(KEY_PERFORMANCE_OVERLAY_ENABLED, enabled);
+		return true;
 	}
 
 	public void applyFirstRunDefaults() throws Exception {

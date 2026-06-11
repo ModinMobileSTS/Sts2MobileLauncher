@@ -49,6 +49,7 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/ModLoaderPatches.cs" \
     "STS2AndroidPortCompat/Patches/SavePathPatches.cs" \
     "STS2AndroidPortCompat/Patches/RenderDiagnosticPatches.cs" \
+    "STS2AndroidPortCompat/Patches/DebugMenuPatches.cs" \
     "STS2AndroidPortCompat/Patches/LifecycleAndPerformancePatches.cs" \
     "STS2AndroidPortCompat/Patches/ShaderCompatibilityPatches.cs" \
     "STS2AndroidPortCompat/Patches/AndroidStartupLoadingScreen.cs" \
@@ -66,6 +67,17 @@ apply_build_info_patch() {
       fi
     fi
   done
+
+  if [[ -d "$source_root/overlay" ]]; then
+    local source_overlay target_overlay
+    source_overlay="$(cd "$source_root/overlay" && pwd -P)"
+    target_overlay="$(cd "$target_root" && pwd -P)/overlay"
+    if [[ "$source_overlay" != "$target_overlay" ]]; then
+      rm -rf "$target_root/overlay"
+      mkdir -p "$target_root/overlay"
+      cp -a "$source_root/overlay/." "$target_root/overlay/"
+    fi
+  fi
 
   python3 - "$target_root" "$target_branch" <<'PY'
 from pathlib import Path

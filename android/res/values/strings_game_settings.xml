@@ -588,6 +588,8 @@
     <string name="launcher_startup_behavior_title">Launcher startup</string>
     <string name="launcher_startup_behavior_settings_option">Open Extra Settings</string>
     <string name="launcher_startup_behavior_game_option">Launch Game directly</string>
+    <string name="performance_overlay_switch">Show performance overlay</string>
+    <string name="performance_overlay_hint">Disabled by default. Shows FPS, frame time, CPU/GPU frame graphs and renderer details in-game on next launch.</string>
     <string name="preload_hint">Master switch only. Tap the arrow for detailed preload management.</string>
     <string name="preload_advanced_title">Preload details</string>
     <string name="preload_advanced_subtitle">Choose which startup and runtime caches are warmed up.</string>

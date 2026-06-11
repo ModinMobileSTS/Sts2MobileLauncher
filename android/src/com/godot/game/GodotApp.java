@@ -174,6 +174,7 @@ public class GodotApp extends GodotActivity {
 		currentInstance = this;
 		currentWindowFocused = hasWindowFocus();
 		logGodotAppLaunchSnapshot("onCreate_after_super");
+		HighRefreshRateController.applyWithRetries(this, getGodot(), "onCreate_after_super");
 		Log.i(TAG, "DIAG GodotApp.onCreate end windowFocused=" + currentWindowFocused);
 	}
 
@@ -348,6 +349,7 @@ public class GodotApp extends GodotActivity {
 		Log.i(TAG, "DIAG GodotApp.getCommandLine super=" + superCommandLine);
 		List<String> commandLine = new ArrayList<>(superCommandLine);
 		Collections.addAll(commandLine, RendererPreference.buildGodotCommandLineArgs(this));
+		writePerformanceOverlayLaunchFlag();
 		appendGodotLogFileCommandLineArgs(commandLine);
 		appendSts2PlatformCommandLineArgs(commandLine);
 		appendSts2LogLevelCommandLineArgs(commandLine);
@@ -374,6 +376,24 @@ public class GodotApp extends GodotActivity {
 		appendAndroidLaunchLog("Final Godot command line: " + commandLine);
 		logGodotAppLaunchSnapshot("getCommandLine_final");
 		return commandLine;
+	}
+
+	private void writePerformanceOverlayLaunchFlag() {
+		File flag = new File(new File(getFilesDir(), "launcher"), "enable_debug_menu.flag");
+		try {
+			ensureDirectory(flag.getParentFile());
+			if (new ExtraSettingsRepository(this).isPerformanceOverlayEnabledForLaunch()) {
+				try (OutputStream outputStream = new FileOutputStream(flag, false)) {
+					outputStream.write("1\n".getBytes(StandardCharsets.UTF_8));
+				}
+				Log.i(TAG, "Enabled STS2 performance overlay launch flag: " + flag.getAbsolutePath());
+				appendAndroidLaunchLog("Enabled STS2 performance overlay launch flag: " + flag.getAbsolutePath());
+			} else if (flag.exists() && !flag.delete()) {
+				Log.w(TAG, "Unable to remove STS2 performance overlay launch flag: " + flag.getAbsolutePath());
+			}
+		} catch (Exception exception) {
+			Log.w(TAG, "Unable to update STS2 performance overlay launch flag.", exception);
+		}
 	}
 
 	private void appendGodotLogFileCommandLineArgs(List<String> commandLine) {
@@ -661,6 +681,7 @@ public class GodotApp extends GodotActivity {
 		currentResumed = true;
 		currentWindowFocused = hasWindowFocus();
 		updateWindowAppearance.run();
+		HighRefreshRateController.applyWithRetries(this, getGodot(), "onResume");
 	}
 
 	@Override
@@ -772,6 +793,9 @@ public class GodotApp extends GodotActivity {
 		if (wasFocused != hasFocus) {
 			dispatchImmediateGodotFocusChange(hasFocus);
 		}
+		if (hasFocus) {
+			HighRefreshRateController.applyWithRetries(this, getGodot(), "onWindowFocusChanged");
+		}
 	}
 
 	@Override
@@ -793,6 +817,7 @@ public class GodotApp extends GodotActivity {
 		super.onGodotMainLoopStarted();
 		StartupHealthTracker.markGameLaunchFinished(this);
 		runOnUiThread(updateWindowAppearance);
+		HighRefreshRateController.applyWithRetries(this, getGodot(), "onGodotMainLoopStarted");
 	}
 
 	public static boolean isGameWindowInteractive() {

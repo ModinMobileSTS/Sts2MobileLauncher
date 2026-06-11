@@ -111,10 +111,12 @@ port-mod branch
 `GodotApp.getCommandLine()`：
 
 - 添加 renderer/display 参数。
+- Android 高刷新路径默认启用：APK manifest 不声明 `android:appCategory="game"` / `android:isGame="true"`，`GodotApp` 在启动、恢复前台、获得焦点和 Godot 主循环开始后向 Android `Window` / render `SurfaceView` 请求当前显示尺寸下最高刷新率。
 - 默认配置 `--log-file` 到当前 profile 日志目录 `<files>/instances/<profile_id>/logs/godot.log`，没有 profile 时 fallback 到 `<files>/logs/`；若附加设置 `log_level=off`，则不传 `--log-file`，完全禁用新的 `godot.log` 写入。
 - `Sts2Application` 会在主进程早期启动应用内 logcat 采集器，统一写入全局 `<files>/logs/sts2.log`；启动准备和 `GodotApp` 进入当前 profile 后也继续使用同一个全局文件，不再写入 `<files>/instances/<profile_id>/logs/sts2.log`。每次启动游戏会像 `godot.log` 一样把旧全局 `sts2.log` 归档为 `sts2YYYY-MM-DDTHH.mm.ss.log` 并只把最新采集写入 `sts2.log`；输出采用紧凑 `level tag message` 格式，例如 `I DOTNET [STS2Mobile] ...`，采集过滤遵循附加设置 `log_level`（`off`→停止采集、`info`→I/W/E、`debug`→D/I/W/E、`very_debug`→V/D/I/W/E）。该文件用于补充 `godot.log` 抓不到的 Java/Godot/Mono stderr/native 顶层日志（例如 `[STS2Mobile]`），但普通 app 只能读取自身 UID/进程可见 logcat，完整设备级日志仍需 ADB。
 - 固定追加 STS2 原生命令行 `--force-steam off`，让原版 `NGame.InitializePlatform()` 即使在 Harmony/MonoMod detour 失效的 ROM 上也走内置 Steam 跳过分支，避免继续尝试加载桌面 `steam_api64`。
 - 根据附加设置中的 `log_level`（默认 `info`，可选 `off` / `debug` / `very_debug`）追加 STS2 原生命令行 `-log <LogType> <LogLevel>`，覆盖 `Generic`、`Network`、`Actions`、`GameSync`、`VisualSync` 的运行日志等级；`off` 时不追加 STS2 `-log` 参数，Debug/Very Debug 会增加日志量并在下次启动生效。
+- 根据附加设置中的 `android_performance_overlay_enabled` 写入或清理 `<files>/launcher/enable_debug_menu.flag`；开启后 compat overlay 加载 `godot-debug-menu` 详细性能面板，默认关闭。
 - 如果当前 profile payload 的 `SlayTheSpire2.pck` 存在，添加：
 
 ```text
@@ -164,7 +166,7 @@ STS2Mobile.ModEntry
    - `preload_vfx_mode`：`off` / `hot` / `full`，默认 `off`；`hot` 仅实例化高频战斗 VFX，`full` 递归 `res://scenes/vfx/**/*.tscn`。
    - `preload_combat_code_enabled`：额外预热攻击/伤害/VFX 托管方法，默认 `false`。
    - `preload_shader_mode`：`off` / `load_resources`，默认 `off`；仅加载已知 shader 资源，不保证 GPU pipeline 已完成编译。
-   Android 附加设置页在顶部“系统”分区的系统卡片中显示 `preload_enabled` 总开关；右侧箭头打开预加载详细管理 BottomSheet，默认不会自动展开。总开关开/关只写入自身，不改写上述细分项目；BottomSheet 的“恢复默认”只重置细分项目，不修改 `preload_enabled`。默认组合保持本次改动前的预加载行为，不额外启用 VFX/菜单/shader/code warmup。
+   Android 附加设置页在顶部“系统”分区的系统卡片中显示 `preload_enabled` 总开关和默认关闭的性能 overlay 开关；预加载右侧箭头打开预加载详细管理 BottomSheet，默认不会自动展开。总开关开/关只写入自身，不改写上述细分项目；BottomSheet 的“恢复默认”只重置细分项目，不修改 `preload_enabled`。默认组合保持本次改动前的预加载行为，不额外启用 VFX/菜单/shader/code warmup。
 8. LAN bootstrap。`LanMultiplayerBootstrapPatches` 在主菜单就绪后才尝试应用本地 LAN 兼容补丁；若 `settings.save` 中 `lan_multiplayer_enabled=false`，或已加载 `sts2_lan_connect` / STS2 Game Lobby 大厅 MOD，`LanMultiplayerPatches` 会整组跳过，避免其固定消息 ID / LAN host-join 补丁与大厅 MOD 自己的联机协议 profile 冲突。
 9. `ModLoaderPatches`。
 10. save diagnostic。

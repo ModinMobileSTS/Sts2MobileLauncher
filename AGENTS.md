@@ -187,10 +187,11 @@ s2_re/
   - `GameBodyVersionManager`：legacy facade，版本选择委托给 `LaunchProfileManager`，不再执行 active/归档目录复制。
   - `CompatPackManager`：安装、导入、删除兼容包；从 APK assets 安装内置兼容包；按 payload manifest 匹配目标版本供新建/编辑启动配置使用。兼容包页不再提供全局“选中”动作，删除兼容包也不静默替换各启动配置的 `compat_pack_id`。
   - `GameLaunchPreparationManager`：启动前后台准备 Mono publish 目录、兼容包 dll、overlay pck、payload assembly 和纹理缓存清理。
-  - `GodotApp`：真正的 Godot 游戏 Activity。
+- `GodotApp`：真正的 Godot 游戏 Activity。
 - `GodotApp` 启动行为：
   - 首次向导未完成时会重定向回 `GameSettingsActivity`。
-  - `getCommandLine()` 加 renderer/display/log 参数，并固定追加 `--force-steam off` 作为原版 Steam 初始化跳过兜底；日志等级由附加设置 `log_level`（默认 `info`，可选 `off` / `debug` / `very_debug`）转为 STS2 `-log <LogType> <LogLevel>` 命令行，覆盖 Generic/Network/Actions/GameSync/VisualSync；选择 `off` 时不配置 `godot.log` 且不追加 STS2 `-log` 参数；有当前 launch profile payload 的 `SlayTheSpire2.pck` 时传 `--main-pack <files>/payloads/<payload_id>/game/SlayTheSpire2.pck`，否则使用 `assets/bootstrap.pck`。
+  - `getCommandLine()` 加 renderer/display/log 参数，并固定追加 `--force-steam off` 作为原版 Steam 初始化跳过兜底；日志等级由附加设置 `log_level`（默认 `info`，可选 `off` / `debug` / `very_debug`）转为 STS2 `-log <LogType> <LogLevel>` 命令行，覆盖 Generic/Network/Actions/GameSync/VisualSync；选择 `off` 时不配置 `godot.log` 且不追加 STS2 `-log` 参数；有当前 launch profile payload 的 `SlayTheSpire2.pck` 时传 `--main-pack <files>/payloads/<payload_id>/game/SlayTheSpire2.pck`，否则使用 `assets/bootstrap.pck`。设置页“系统”分区的 `android_performance_overlay_enabled` 默认关闭；开启后 `GodotApp` 写入 `<files>/launcher/enable_debug_menu.flag`，compat 层从 overlay 加载 `godot-debug-menu` 详细性能面板。
+  - APK manifest 默认不声明 `android:appCategory="game"` / `android:isGame="true"`，避免部分 OEM 游戏分类限频；`HighRefreshRateController` 在 `onCreate` / `onResume` / 获得焦点 / Godot 主循环开始后请求当前显示尺寸下最高 display mode，并向 Godot render `SurfaceView` 发起 `Surface.setFrameRate()` / `SurfaceControl.Transaction.setFrameRate()`。
   - 暴露 `launchGameSettingsFromGame()`、`restartToSettingsFromGame()`、`getGodotDataDir()`、`getSelectedGameDir()`、`getSelectedAccountRootDir()`、`getSelectedModsDir()`、`getSelectedLaunchContextJson()`、`getSelectedCompatPackDir()`、`getSelectedCompatOverlayPck()` 等静态桥给 C# 兼容层。
   - 维护当前 profile 的 `logs/godot.log` 与 `logs/android-launch.log`；应用内 logcat 统一采集到全局 `<files>/logs/sts2.log`，每次启动游戏时像 `godot.log` 一样归档旧 `sts2.log`。`sts2.log` 使用紧凑 `level tag message` 格式并遵循附加设置 `log_level`（off/info/debug/very_debug）；选择 `off` 时完全禁用 `godot.log` 与 `sts2.log`。`sts2.log` 只能抓到普通 app 可见的自身 UID/进程相关 logcat，完整设备级日志仍需 ADB。
 - 启动路径：
@@ -405,6 +406,8 @@ tools/android/sync-runtime-from-references.sh
 tools/package/build_importer_apk.sh
 ```
 
+正式 APK 默认启用高刷新兼容路径：manifest 不声明游戏分类标记，`GodotApp` 生命周期中持续请求最高可用刷新率。设置页“系统”分区提供默认关闭的性能 overlay 开关，开启后下次启动加载 `godot-debug-menu` 详细面板（FPS、帧时间、CPU/GPU frame graph、硬件/渲染器信息）。该 overlay 源自 `godot-extended-libraries/godot-debug-menu`，MIT license，实际打包文件位于 `port-mod/overlay/addons/debug_menu/`。
+
 脚本流程：
 
 1. `tools/android/sync-runtime-from-references.sh`
@@ -531,7 +534,7 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 - 当前工程是“Android shell + payload/version manager + compat pack”的组合，不是传统 Android Studio `app/` 子模块结构；Gradle 根就在 `android/`。
 - 实际打包推荐用 `tools/package/*.sh`，不要裸跑 Gradle，除非已同步 runtime、准备好环境并理解 compat pack staging。
 - 可公开 clone 的 GitHub 参考项目用 `tools/deps/prepare-external-projects.sh` 准备；清单在 `tools/deps/external-github-projects.json`。该脚本不下载商业 payload、original DLL、keystore 或准备好的 Godot/Mono runtime。
-- `settings.save` 的 Android-only key 是 Java 附加设置与 Harmony patcher/Java 启动参数的协议；改 key 要同步 `ExtraSettingsRepository`、页面 UI、`AndroidSettingsBridge` 或 `GodotApp.getCommandLine()` 等消费者、相关 patches，并记录到 `.agent/agent-docs/changelog/`。`log_level` 额外同步到 SharedPreferences，避免原版游戏保存 settings 时丢失该 Android 字段。
+- `settings.save` 的 Android-only key 是 Java 附加设置与 Harmony patcher/Java 启动参数的协议；改 key 要同步 `ExtraSettingsRepository`、页面 UI、`AndroidSettingsBridge` 或 `GodotApp.getCommandLine()` 等消费者、相关 patches，并记录到 `.agent/agent-docs/changelog/`。`log_level` 和 `android_performance_overlay_enabled` 额外同步到 SharedPreferences，避免原版游戏保存 settings 时丢失这些 Android 字段。
 - `<files>/default/<account>` 的账号选择逻辑与旧移植版兼容但较脆弱，多账号/自定义 platform player id 改动要同时检查 Java 与兼容 MOD。
 - 当前普通 MOD 目录由 launch profile 决定：`mods_mode=global` 使用 `<files>/mods`，`mods_mode=isolated` 使用 `<files>/instances/<profile_id>/mods`；MOD 导入先进入 cache staging 并按 manifest `id` 检测同 ID 冲突，用户选择“使用新 MOD”时才删除同 ID 原 MOD 后提交，避免两个同 ID 项目开关连体；随后按 staging 到 MOD 根的实际相对路径检测文件覆盖，若将覆盖不属于本次同 ID 替换的既有 `.dll` / `.pck` / `.json` 或资源文件，必须弹窗让用户明确确认后才提交，避免 A MOD 文件被 B MOD 静默替换；MOD 分组通过目录和 `.sts2_mod_group` 标记维护，拖拽移动会改动 MOD 文件位置。新增路径相关功能必须同步 Java 管理页、C# `AppPaths`、ModLoader patches 和迁移/备份逻辑。
 - 本地存档快照、Steam Cloud 与 WebDAV 云存档同步必须使用当前 launch profile 的 account root：`save_mode=global` 使用 `<files>/default/<account>`，`save_mode=isolated` 使用 `<files>/instances/<profile_id>/default/<account>`；不要把存档功能固定写死到全局 `<files>/default/1`。WebDAV 只同步白名单 STS2 存档文件，远端不做删除镜像；`settings.save` 默认不同步，除非用户显式开启实验性开关。

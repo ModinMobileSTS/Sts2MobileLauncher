@@ -26,8 +26,6 @@
         android:label="@string/godot_project_name_string"
         android:allowBackup="false"
         android:icon="@mipmap/icon"
-        android:appCategory="game"
-        android:isGame="true"
         android:hasFragileUserData="false"
         android:requestLegacyExternalStorage="false"
         tools:ignore="GoogleAppIndexingWarning" >

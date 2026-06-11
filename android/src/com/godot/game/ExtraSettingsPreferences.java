@@ -13,6 +13,7 @@ public final class ExtraSettingsPreferences {
 	private static final String KEY_UPDATE_CHECK_ENABLED = "update_check_enabled";
 	private static final String KEY_LAUNCHER_STARTUP_BEHAVIOR = "launcher_startup_behavior";
 	private static final String KEY_LOG_LEVEL = "log_level";
+	private static final String KEY_PERFORMANCE_OVERLAY_ENABLED = "android_performance_overlay_enabled";
 
 	private ExtraSettingsPreferences() {
 	}
@@ -63,6 +64,14 @@ public final class ExtraSettingsPreferences {
 
 	public static void setLogLevel(Context context, String logLevel) {
 		getPreferences(context).edit().putString(KEY_LOG_LEVEL, logLevel).apply();
+	}
+
+	public static boolean isPerformanceOverlayEnabled(Context context) {
+		return getPreferences(context).getBoolean(KEY_PERFORMANCE_OVERLAY_ENABLED, false);
+	}
+
+	public static void setPerformanceOverlayEnabled(Context context, boolean enabled) {
+		getPreferences(context).edit().putBoolean(KEY_PERFORMANCE_OVERLAY_ENABLED, enabled).apply();
 	}
 
 	private static SharedPreferences getPreferences(Context context) {
