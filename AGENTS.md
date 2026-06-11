@@ -15,6 +15,8 @@
 tools/package/build_importer_apk.sh
 ```
 
+- 寻找原版代码和其他关键参考内容时，请从全局配置里读取信息： .env 和 local.properties
+
 ## 1. 项目定位
 
 Android 侧拆成三层维护：
