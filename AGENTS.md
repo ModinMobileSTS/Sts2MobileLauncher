@@ -38,7 +38,7 @@ Android 侧拆成三层维护：
 
 ## 2. 当前支持版本矩阵
 
-`port-mod` 当前默认采用 flat matrix 打包模式，不切分支，而是从当前 checkout 的 `targets/active/*/target.json` 循环编译多个 target，并输出一个 schema 2 family 包。父仓库 `.gitmodules` 仍默认跟踪 beta 分支；legacy 打包模式会通过临时 worktree 同时构建多个 schema 1 内置兼容包，仅在显式设置 `COMPAT_PACK_BUILD_MODE=legacy` 时使用。
+`port-mod` 当前默认跟踪 `main`，并采用 flat matrix 打包模式：不按游戏版本切开发分支，而是从当前 checkout 的 `targets/active/*/target.json` 循环编译多个 target，并输出一个 schema 2 family 包。`compat/*` 分支只作为 legacy 发布包对照、回退诊断或历史维护入口；legacy 打包模式会通过临时 worktree 同时构建多个 schema 1 内置兼容包，仅在显式设置 `COMPAT_PACK_BUILD_MODE=legacy` 时使用。
 
 | 通道 | 游戏版本 | 原版/解包引用配置 | legacy submodule 分支 | compile gate `ReferenceFlavor` | flat target id | legacy 兼容包 id |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -48,7 +48,7 @@ Android 侧拆成三层维护：
 
 关键文件：
 
-- `.gitmodules`：`port-mod` submodule GitHub URL 与默认 branch。
+- `.gitmodules`：`port-mod` submodule GitHub URL 与默认 branch（`main`）。
 - `tools/android/bundled-compat-packs.json`：legacy 内置兼容包列表，当前包含 `compat/v0.103.2`、`compat/v0.106.1-beta` 与 `compat/v0.107.0-beta`。
 - `port-mod/targets/active/*/target.json`：flat matrix target 描述，记录 target id、支持版本、`ReferenceFlavor`、compile constants、原版引用来源与 dll sha。
 - `port-mod/tools/build-compat-matrix.sh`：从当前 checkout 构建 schema 2 family 兼容包；`tools/android/stage-bundled-compat-packs.sh` 默认会调用它。
@@ -56,7 +56,7 @@ Android 侧拆成三层维护：
 - `local.properties.example`：非环境变量的本地构建选项示例；复制为 `local.properties` 后编辑，本文件不入 git。
 - `tools/env/load-local-config.sh`：所有 bash 构建脚本共用的 `.env` / `local.properties` loader。
 - `port-mod/refs/original*/`：仅保留 README 占位；构建脚本不再依赖提交到仓库的个人 symlink。
-- `port-mod/compat_manifest.v0.107.0-beta.json`：当前 checkout 分支的 beta 兼容包 manifest；`v0.103.x` / `v0.106.1` manifest 位于对应分支。
+- `port-mod/compat_manifest.*.json`：legacy schema 1 兼容包 manifest，主要供旧发布包或诊断包使用；默认 matrix 包以 `targets/active/*/target.json` 生成 schema 2 manifest。
 
 注意：启动器按 payload manifest 的 `sts2_dll_sha256` 与 `release_info.version` 为新建启动配置自动推荐/填写兼容包；schema 1 优先匹配 `target_game.version`，也支持 manifest 中的 `target_game.supported_versions` / `compatible_versions` / `versions` 列表；schema 2 会展开 `targets[]`，优先按 dll sha 匹配具体 target，再回落到版本匹配。兼容包选择以 `<files>/instances/<profile_id>/instance.json` 中的 `compat_pack_id` 为准，schema 2 还会记录 `compat_target_id`，不再使用全局选中包作为运行时 fallback；若当前启动配置绑定的兼容包/target 缺失或与 payload 版本不一致，会在启动前提示用户编辑启动配置或承担风险继续。当前不会仅因 `sts2.dll` SHA-256 不一致硬阻止启动，但 manifest 中仍记录 SHA 供诊断和精确匹配升级使用。
 
@@ -125,7 +125,7 @@ s2_re/
       env-from-s2.sh               # 兼容旧名称：source 后加载 .env 中的 JDK/Android SDK
       gradle-with-s2-env.sh        # 在 android/ 下带本机环境执行 Gradle
       sync-runtime-from-references.sh # 同步 Godot/FMOD/dotnet_bcl 等大型运行时产物
-      build-port-mod.sh            # 编译当前 submodule 分支并 stage legacy fallback dll/pck
+      build-port-mod.sh            # 编译当前 submodule checkout 并 stage legacy fallback dll/pck
       stage-bundled-compat-packs.sh # 默认构建 flat family 包；COMPAT_PACK_BUILD_MODE=legacy 时跑 legacy 多分支构建
       bundled-compat-packs.json    # legacy 内置兼容包分支列表
       make-bootstrap-pck.py        # 生成最小 bootstrap.pck
@@ -250,7 +250,7 @@ s2_re/
 
 ## 8. 兼容包 / port-mod submodule
 
-### 8.1 submodule 分支、target matrix 与工作方式
+### 8.1 submodule main、target matrix 与工作方式
 
 `port-mod/` 是 submodule，不要把它当父仓库普通目录直接混合提交。常用检查：
 
@@ -263,28 +263,28 @@ tools/git/report-heads.sh
 
 切换或更新时注意：
 
-- 修改兼容层源码时先确认当前 `port-mod` 分支是否是目标版本分支。
+- 修改兼容层源码时默认在 `port-mod/main` 上工作；确认当前 checkout 是 `main`，不要把普通共用功能继续落到某个 `compat/*` 版本分支。
 - 兼容层改动要在 submodule 仓库内提交，再在父仓库更新 submodule 指针。
-- `tools/android/stage-bundled-compat-packs.sh` 会为非当前分支创建临时 worktree 到 `.agent/worktrees/compat-packs/`，避免不同版本补丁互相污染。
-- 当前 checkout 分支若有未提交改动，stage 脚本会直接用当前 dirty worktree 构建对应分支的内置包，便于本地测试；正式提交前必须清理 dirty 状态。
+- 默认 `tools/android/stage-bundled-compat-packs.sh` 不切分支，直接从 `port-mod/main` 的 active target matrix 构建 schema 2 family 包。
+- 仅在 `COMPAT_PACK_BUILD_MODE=legacy` 时，stage 脚本才会为非当前 legacy 分支创建临时 worktree 到 `.agent/worktrees/compat-packs/`，避免旧分支补丁互相污染；当前 checkout 若正好是某个 legacy 分支且有未提交改动，脚本会用 dirty worktree 构建对应 legacy 包，便于本地诊断。
 - flat matrix 模式下，通用源码改动只在当前 checkout 上维护；版本差异优先放入 `port-mod/targets/active/<target_id>/target.json`、target capabilities/adapter 或极少量条件编译，不再为普通共用功能复制到多个分支。停止内置某个早期版本时，把对应 target 移到 `targets/archived/`，默认 matrix 构建会跳过它。
 
 ### 8.2 构建入口
 
-- 当前分支 legacy fallback 构建：
+- 当前 checkout legacy fallback 构建：
 
 ```bash
 tools/android/build-port-mod.sh
 ```
 
-默认 `REFERENCE_FLAVOR=original-v0.107.0`，适合当前 `compat/v0.107.0-beta` 分支。脚本会：
+默认 `REFERENCE_FLAVOR=original-v0.107.0`，适合快速验证当前 beta target；验证其他 target 时显式覆盖为对应 flavor。脚本会：
 
 1. 使用 `.env` 中的 `DOTNET_BIN` 编译 `port-mod/STS2AndroidPortCompat/STS2Mobile.csproj`，并按 `ReferenceFlavor` 传入对应 `CompatReferenceDir`。
 2. 写入 build metadata（branch/commit/dirty/timestamp）。
 3. 复制输出到 `android/assets/dotnet_bcl/STS2Mobile.dll` 作为 fallback。
 4. 运行 `tools/android/make-port-overlay-pck.py` 生成 `android/assets/port_compat.pck`。
 
-- 构建当前 submodule 分支的独立兼容包：
+- 构建当前 checkout 的 schema 1 独立兼容包（legacy/诊断用）：
 
 ```bash
 cd port-mod
@@ -356,7 +356,7 @@ REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
 9. `MobileTooltipPatches` 通过 `NHoverTipSet.CreateAndShow/Remove/Clear/_Process`、owner `GuiInput` 和 `NGame._Input` 管理移动端 tooltip 显示；附加设置“设置 → 操作 → Tooltip 显示”默认 `mobile_tooltip_mode=immediate` 保持 PC 端悬停即显示，也可切换为 `long_press`（同一触点按住约 1 秒后临时显示，松手/明显拖动后隐藏）或 `hidden`。该补丁在 `CreateAndShow*` 前建立长按计时，允许原版 tooltip 创建并完成对齐后再隐藏；若原版在长按过程中频繁 `Clear()`/重建 hover tips，会保留当前 owner/计时状态，避免计时被每帧重置；游戏内设置页切换到 hidden/long_press 会立即移除已有普通 hover tooltip。inspect card/relic/potion 等显式详情页面不受隐藏策略影响。
 10. `LanMultiplayerPatches` 由 `lan_multiplayer_enabled`（附加设置“设置 → 系统 → 本地联机补丁”）作为主开关；关闭后会跳过 STS2Mobile 自带的所有本地 LAN patch（固定消息 ID、无 Steam LAN join/host、最大人数可见性等）。补丁延迟到主菜单后应用，若检测到普通 MOD 中已加载 `sts2_lan_connect` / STS2 Game Lobby 大厅 MOD，也会自动整组跳过，避免 Android 旧 LAN 兼容层和大厅 MOD 的 `legacy_4p` / `extended_8p` 协议 profile 或消息序列化补丁叠加冲突。
 11. `LifecycleAndPerformancePatches` 会在 `NMainMenu._Ready` 后启动安全 deferred preload，并在需要细分或额外 warmup 时接管原版 `LoadCommonAndMainMenuAssets()`：总开关 `preload_enabled` 默认开启；Android 附加设置页顶部“系统”分区中它只作为总开关显示，右侧箭头打开预加载详细管理 BottomSheet，总开关开/关不改写细分项目；`preload_startup_common_enabled=true`、`preload_startup_main_menu_enabled=true`、`preload_runtime_enabled=true` 保持旧版默认资源加载；`preload_menu_hotspots_enabled=false`、`preload_vfx_mode=off`、`preload_combat_code_enabled=false`、`preload_shader_mode=off` 默认为关闭，避免默认行为比旧版更重。高级开关可分别控制 CommonAssets、MainMenuSet、常用菜单实例化、VFX 场景 warmup、战斗代码 warmup、已知 shader 资源加载与 run/act/room 预加载，BottomSheet 的“恢复默认”只重置这些细分项目，不修改 `preload_enabled`。
-12. `TransitionMaterialPatches` 会复制 `NTransition` 使用的 fade/fight `ShaderMaterial`，避免关闭预加载时原版 missed-cache 清理 dispose 掉仍在 `FadeIn()` 中使用的共享 transition 材质，从而黑屏。`compat/v0.107.0-beta` 另有 `MapDrawingSceneCachePatches`，让地图画笔线条从 Android 自持有的 `PackedScene` 实例化，避免 v107 原版/兼容层 preload cleanup 释放 `NMapDrawings` 缓存的 `map_line_draw` / `map_line_erase` 场景后，画笔在 `CreateLineForPlayer()` 中抛 `ObjectDisposedException: Godot.PackedScene`。
+12. `TransitionMaterialPatches` 会复制 `NTransition` 使用的 fade/fight `ShaderMaterial`，避免关闭预加载时原版 missed-cache 清理 dispose 掉仍在 `FadeIn()` 中使用的共享 transition 材质，从而黑屏。`v0.107.0-beta` target 另有 `MapDrawingSceneCachePatches`，让地图画笔线条从 Android 自持有的 `PackedScene` 实例化，避免 v107 原版/兼容层 preload cleanup 释放 `NMapDrawings` 缓存的 `map_line_draw` / `map_line_erase` 场景后，画笔在 `CreateLineForPlayer()` 中抛 `ObjectDisposedException: Godot.PackedScene`。
 13. `ModelDbInitPatch` 分三个阶段处理模型占位：
    - **早期原版占位**（加载 MOD 前，由 `ModLoaderPatches` 触发）：仅原版，解决 MOD patch getter / MOD 静态构造引用原版模型的早访问；占位 id 会记录 owner type，供 MOD initializer shield 判断“命中的是早期原版占位还是自身真实重复”。
    - **MOD initializer shield**（每个 `TryLoadMod` 调用期间）：`ModelDb.Contains(Type)` 对非原版程序集类型、且当前 id 只命中早期原版占位时返回 `false`，还原 PC 上 MOD 初始化早于 `ModelDb.Init` 的行为；该 shield 不隐藏原版类型、不隐藏同一 type 的重复，也不在 phase 1/phase 2 后生效。
@@ -568,8 +568,8 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 - 当前普通 MOD 目录由 launch profile 决定：`mods_mode=global` 使用 `<files>/mods`，`mods_mode=isolated` 使用 `<files>/instances/<profile_id>/mods`；MOD 导入先进入 cache staging 并按 manifest `id` 检测同 ID 冲突，用户选择“使用新 MOD”时才删除同 ID 原 MOD 后提交，避免两个同 ID 项目开关连体；随后按 staging 到 MOD 根的实际相对路径检测文件覆盖，若将覆盖不属于本次同 ID 替换的既有 `.dll` / `.pck` / `.json` 或资源文件，必须弹窗让用户明确确认后才提交，避免 A MOD 文件被 B MOD 静默替换；MOD 分组通过目录和 `.sts2_mod_group` 标记维护，拖拽移动会改动 MOD 文件位置。新增路径相关功能必须同步 Java 管理页、C# `AppPaths`、ModLoader patches 和迁移/备份逻辑。
 - 本地存档快照、Steam Cloud 与 WebDAV 云存档同步必须使用当前 launch profile 的 account root：`save_mode=global` 使用 `<files>/default/<account>`，`save_mode=isolated` 使用 `<files>/instances/<profile_id>/default/<account>`；不要把存档功能固定写死到全局 `<files>/default/1`。WebDAV 只同步白名单 STS2 存档文件，远端不做删除镜像；`settings.save` 默认不同步，除非用户显式开启实验性开关。
 - 多版本兼容包的长期方向是 manifest 化、可安装、可诊断，并作为启动配置属性选择；不要把某一游戏版本的兼容 patch 直接写死到 Android shell，也不要恢复全局兼容包 fallback 选择。
-- 对当前 beta 分支改动时务必用 `ReferenceFlavor=original-v0.107.0` 编译；维护旧 beta `v0.106.1` 时用 `original-v0.106.1`；对正式 `v0.103.x` 分支改动时务必用 `ReferenceFlavor=original` 编译。
-- 新增兼容分支时需要同时增加：submodule 分支、`.env.example` 中的 original reference 配置说明或 `ReferenceFlavor` 映射、compat manifest（一个包覆盖多版本时填写 `target_game.supported_versions`）、`tools/android/bundled-compat-packs.json` 条目、文档版本矩阵、至少一次 importer APK 构建验证。
+- 对 `v0.107.0-beta` target 改动时务必用 `ReferenceFlavor=original-v0.107.0` 编译；维护旧 beta `v0.106.1-beta` target 时用 `original-v0.106.1`；对正式 `v0.103.x` target 改动时务必用 `ReferenceFlavor=original` 编译。默认验证路径是 `port-mod/tools/build-compat-matrix.sh` 的所有 active target compile gate。
+- 新增兼容 target 时需要同时增加：`.env.example` 中的 original reference 配置说明或 `ReferenceFlavor` 映射、`port-mod/targets/active/<target_id>/target.json`、必要的 target adapter/capability 或条件编译、文档版本矩阵、至少一次 importer APK 构建验证。只有需要保留 schema 1 旧发布包对照时，才额外新增/维护 `compat/*` legacy 分支、`compat_manifest.*.json` 与 `tools/android/bundled-compat-packs.json` 条目。
 
 ## 修改说明
 

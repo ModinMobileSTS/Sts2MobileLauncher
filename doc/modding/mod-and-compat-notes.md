@@ -85,26 +85,30 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 - 相关 `Patches/*Settings*.cs`；
 - `.agent/agent-docs/changelog/`（agent-only，不提交）。
 
-## 6. compat pack 分支维护
+## 6. compat pack target 维护
 
-当前维护分支：
+`port-mod` 默认在 `main` 上维护 flat matrix。普通共用修复不要再按游戏版本开开发分支；版本差异放到 `targets/active/<target_id>/target.json`、target adapter/capability 或少量条件编译。历史 `compat/*` 分支只用于 legacy schema 1 包对照、回退诊断或已经冻结的旧维护线。
 
-| 游戏版本 | 分支 | 原版引用配置 | ReferenceFlavor |
+当前 active targets：
+
+| 游戏版本 | target id | 原版引用配置 | ReferenceFlavor |
 | --- | --- | --- | --- |
-| `v0.103.2` / `v0.103.3` | `compat/v0.103.2` | `.env`: `STS2_ORIGINAL_V103_REFERENCE_DIR` 或 `STS2_ORIGINAL_V103_ROOT` | `original` |
-| `v0.106.1` beta（旧测试） | `compat/v0.106.1-beta` | `.env`: `STS2_ORIGINAL_V1061_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1061_ROOT` | `original-v0.106.1` |
-| `v0.107.0` beta | `compat/v0.107.0-beta` | `.env`: `STS2_ORIGINAL_V1070_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1070_ROOT` | `original-v0.107.0` |
+| `v0.103.2` / `v0.103.3` | `v0.103.x` | `.env`: `STS2_ORIGINAL_V103_REFERENCE_DIR` 或 `STS2_ORIGINAL_V103_ROOT` | `original` |
+| `v0.106.1` beta（旧测试） | `v0.106.1-beta` | `.env`: `STS2_ORIGINAL_V1061_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1061_ROOT` | `original-v0.106.1` |
+| `v0.107.0` beta | `v0.107.0-beta` | `.env`: `STS2_ORIGINAL_V1070_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1070_ROOT` | `original-v0.107.0` |
 
 开发步骤建议：
 
 ```bash
-# 1. 确认 submodule 分支
+# 1. 确认 submodule 在 main 上
 git -C port-mod status --short --branch
 
-# 2. 编译对应 original gate（引用目录从 .env 解析）
-REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
+# 2. 编译 matrix original gates（引用目录从 .env 解析）
+(cd port-mod && ./tools/build-compat-matrix.sh)
 
-# 3. 构建 fallback 或 compat pack
+# 3. 可选：构建 fallback 或 legacy schema 1 诊断包
+REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
+# 或
 tools/android/build-port-mod.sh
 # 或
 (cd port-mod && ./tools/build-compat-pack.sh)
@@ -114,7 +118,7 @@ tools/android/stage-bundled-compat-packs.sh
 tools/package/build_importer_apk.sh
 ```
 
-对 `compat/v0.103.2` 分支，把 `ReferenceFlavor` 改为 `original`；维护旧 beta `compat/v0.106.1-beta` 时使用 `original-v0.106.1`。
+只调试单个 target 时可运行 `(cd port-mod && ./tools/build-compat-matrix.sh --target v0.103.x)`；legacy schema 1 诊断包仍用 `REFERENCE_FLAVOR=original` / `original-v0.106.1` / `original-v0.107.0` 指定对应原版 gate。
 
 ## 7. 新增游戏版本 checklist
 
@@ -122,26 +126,18 @@ tools/package/build_importer_apk.sh
 
 1. 准备对应 PC 原版/解包目录或 DLL 引用目录，并在 `.env.example` / 文档中增加对应 `STS2_ORIGINAL_*_REFERENCE_DIR` 说明。
 2. 为新版本定义 `ReferenceFlavor` 到 `CompatReferenceDir` 的解析方式（脚本映射或显式环境变量），不要提交指向个人 workspace 的 symlink。
-3. 新建 `port-mod` 分支，例如 `compat/vX.Y.Z`。
-4. 新增/更新 `compat_manifest.*.json`：
-   - `pack_id`
-   - `display_name`
-   - `compat_version`
-   - `channel`
-   - `target_game.version`
-   - 可选 `target_game.supported_versions` / `compatible_versions` / `versions`（一个兼容包覆盖多个游戏 patch 版本时使用）
-   - `target_game.source`（描述性来源，不写个人本地路径）
-   - `target_game.sts2_dll_sha256`
-5. 用对应 `ReferenceFlavor` 做 compile gate。
-6. 更新 `tools/android/bundled-compat-packs.json`。
-7. 运行 `tools/android/stage-bundled-compat-packs.sh`。
-8. 更新 `AGENTS.md`、`doc/architecture/project-structure.md`、本文件，并在 `.agent/agent-docs/changelog/` 写 agent changelog。
-9. 构建 `tools/package/build_importer_apk.sh` 并做至少一次导入/启动 smoke test。
+3. 在 `port-mod/targets/active/<target_id>/target.json` 新增 target 描述，包含 `target_id`、`versions`、`reference_flavor`、`source`、可选 `sts2_dll_sha256` 与 compile constants。
+4. 若源码需要版本差异，优先新增 target adapter/capability；只有无法避免时才使用少量条件编译。
+5. 用对应 `ReferenceFlavor` 做 compile gate，并运行 `port-mod/tools/build-compat-matrix.sh` 覆盖所有 active target。
+6. 运行 `tools/android/stage-bundled-compat-packs.sh`。
+7. 更新 `AGENTS.md`、`doc/architecture/project-structure.md`、本文件，并在 `.agent/agent-docs/changelog/` 写 agent changelog。
+8. 构建 `tools/package/build_importer_apk.sh` 并做至少一次导入/启动 smoke test。
+9. 只有需要 legacy schema 1 对照包时，才额外新建 `compat/vX.Y.Z` 分支、新增/更新 `compat_manifest.*.json`，并更新 `tools/android/bundled-compat-packs.json`。
 
 ## 8. patch 开发注意事项
 
 - 优先使用 prefix/postfix 和反射兜底，谨慎使用复杂 transpiler；Android 上 MonoMod/Cecil/Godot StringName 生命周期问题更容易暴露。
-- 任何直接引用游戏内部类型的 patch 都可能随游戏版本变化失效，应保留在对应 compat 分支。
+- 任何直接引用游戏内部类型的 patch 都可能随游戏版本变化失效，应通过 active target compile gate 验证；只在单版本复现的问题优先收敛到 target adapter/capability 或条件编译，不要默认拆回 compat 分支。
 - `ModEntry.Apply()` patch 顺序很重要：BaseLib/RitsuLib 与平台/路径类 patch 必须早于 ModLoader。
 - Android temp 目录必须尽早配置，否则 Harmony/MonoMod 可能尝试使用不可写 `/tmp`。
 - Shader/resource overlay 资源应放入 `port-mod/overlay/`，重新打包 `port_compat.pck` 后才能生效。

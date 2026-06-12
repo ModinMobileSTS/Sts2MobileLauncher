@@ -41,7 +41,7 @@ flat matrix mode:
   - 构建当前 submodule checkout。
   - 输出 fallback：`android/assets/dotnet_bcl/STS2Mobile.dll`、`android/assets/port_compat.pck`。
 - `port-mod/tools/build-compat-pack.sh`
-  - 构建当前 compat 分支的独立 zip。
+  - 构建当前 checkout 的 schema 1 独立 zip，主要用于 legacy 包对照或诊断。
   - 写入 build metadata：branch、commit、dirty、timestamp。
 - `tools/android/stage-bundled-compat-packs.sh`
   - 默认 matrix mode：调用 `port-mod/tools/build-compat-matrix.sh`，从同一 checkout 的 `targets/active/*/target.json` 生成 schema 2 family zip。
@@ -195,7 +195,7 @@ OS.GetDataDir()/port_compat.pck
 
 另外 `TransitionMaterialPatches` 会在 `NTransition._Ready` 后复制场景默认 `ShaderMaterial`，并在原版 `AssetCache.GetMaterial()` 返回 `fade_transition_mat.tres` / `fight_transition_mat.tres` 时返回缓存材质的副本。这样关闭预加载时，原版 `LoadCommonAndMainMenuAssets()` 触发的 missed-cache 清理即使 dispose 了缓存条目，也不会把正在执行主菜单 `FadeIn()` 的 transition 材质一并释放，避免 `ObjectDisposedException: Godot.ShaderMaterial` 后黑屏。
 
-`compat/v0.107.0-beta` 的 `MapDrawingSceneCachePatches` 同样规避资源缓存生命周期问题：它拦截 `NMapDrawings.CreateLineForPlayer()`，让 v107 地图画笔绘制/橡皮线条从 Android 兼容层自持有的 `PackedScene` 实例化，而不是继续使用 `NMapDrawings._lineDrawScene` / `_lineEraseScene` 中可能已被 preload cleanup dispose 的缓存资源；橡皮线条会同步刷新 `_eraserMaterial`，保留原版保存时通过材质判断 eraser line 的行为。
+`v0.107.0-beta` target 的 `MapDrawingSceneCachePatches` 同样规避资源缓存生命周期问题：它拦截 `NMapDrawings.CreateLineForPlayer()`，让 v107 地图画笔绘制/橡皮线条从 Android 兼容层自持有的 `PackedScene` 实例化，而不是继续使用 `NMapDrawings._lineDrawScene` / `_lineEraseScene` 中可能已被 preload cleanup dispose 的缓存资源；橡皮线条会同步刷新 `_eraserMaterial`，保留原版保存时通过材质判断 eraser line 的行为。
 
 是否启用由附加设置中的 `shader_compatibility_mode` 控制。
 
