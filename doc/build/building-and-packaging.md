@@ -297,7 +297,20 @@ tools/android/generate-material-symbol-vectors.py --check
   -p:CompatReferenceDir="$STS2_ORIGINAL_V1070_REFERENCE_DIR" -v:q
 ```
 
-## 12. 构建后基本验证
+## 12. ADB 自动化调试
+
+连接设备后可用 `tools/debug/sts2-adb-debug.sh` 直接安装、配置、导入测试文件、执行启动准备、启动游戏并采集日志/性能 trace：
+
+```bash
+tools/debug/sts2-adb-debug.sh build-install
+tools/debug/sts2-adb-debug.sh status --pull
+tools/debug/sts2-adb-debug.sh prepare --mode compat --clear publish --pull
+tools/debug/sts2-adb-debug.sh launch --mode perf --preload aggressive --logcat-duration 45 --perfetto 45 --pull
+```
+
+脚本默认使用 `run-as com.megacrit.sts2re` 把本地 payload/compat/MOD 文件推入 app 私有 `files/automation/inbox/<run_id>/`，再触发应用内 `DebugAutomationActivity` 复用正常导入/准备/启动逻辑。结果拉回 `.agent/debug/runs/<run_id>/`，设备侧结果保存在 `<files>/automation/runs/<run_id>/`。精确测试某个 MOD、某个 compat target、某组 preload 设置的示例见 [`adb-automation-debugging.md`](adb-automation-debugging.md)。
+
+## 13. 构建后基本验证
 
 ```bash
 adb install -r dist/sts2-re-importer.apk

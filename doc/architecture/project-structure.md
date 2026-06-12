@@ -20,6 +20,7 @@ s2_re/
   port-mod/                        # git submodule: Android 兼容 patcher 与 target matrix
   tools/android/                   # runtime 同步、Gradle 环境、compat pack staging
   tools/package/                   # importer/direct APK 打包、payload zip 校验
+  tools/debug/                     # ADB 自动化调试、安装、导入、启动、日志/性能采集脚本
   tools/deps/                      # GitHub 外部参考项目清单与自动准备脚本
   tools/git/                       # 父仓库/submodule HEAD 巡检
   doc/                             # 公开项目文档入口
@@ -85,6 +86,7 @@ android/steam-content/                        # SteamPipe depot manifest/chunk �
 <files>/steam/downloads/                    # SteamPipe 下载 staging / 任务诊断
 <files>/steam/cloud/<profile_id>/           # Steam Cloud manifest、baseline、备份与诊断
 <files>/webdav/cloud/<slot>/                # WebDAV manifest、baseline、备份与诊断
+<files>/automation/                         # ADB 自动化调试 token、inbox、run result；本地测试数据
 <files>/save-snapshots/profiles/<profile_id>/ # 本地存档快照 zip，默认保留最近 5 个
 <files>/compat-packs/<pack_id>/             # 已安装兼容包；schema 2 在 variants/<target_id>/ 下放 dll/pck
 <files>/launcher/selected_instance.json     # 当前启动配置与解析后的运行路径
@@ -118,6 +120,7 @@ android/steam-content/                        # SteamPipe depot manifest/chunk �
 - keystore/jks/p12 等签名私钥。
 - `android/assets/compat_packs/*.zip`：脚本生成的兼容包 assets，构建时刷新，不入库。
 - `.agent/`：agent 草稿、计划、报告、临时 worktree、agent-only changelog、历史备份与外部参考 clone。
+- `.agent/debug/runs/`：ADB 自动化调试结果、logcat、Perfetto trace 和拉回的 app 私有诊断文件。
 - `dist/`、APK/AAB/APKS、.NET bin/obj。
 
 允许提交但需区分用途：

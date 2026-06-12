@@ -139,6 +139,15 @@ itself as an Android game category, and `GodotApp` requests the highest exposed
 display mode through Android `Window` / `Surface` frame-rate APIs. A disabled-by-default
 performance overlay can be enabled from Extra Settings → System.
 
+### 7. ADB Automation Debugging
+For connected-device debugging, the repository includes an ADB harness that can install the APK, push a payload/compat pack/MOD into app-private storage, run launch preparation, start the game, and collect logs or Perfetto traces:
+```bash
+tools/debug/sts2-adb-debug.sh build-install
+tools/debug/sts2-adb-debug.sh status --pull
+tools/debug/sts2-adb-debug.sh launch --mode perf --preload aggressive --logcat-duration 45 --perfetto 45 --pull
+```
+See [`doc/build/adb-automation-debugging.md`](doc/build/adb-automation-debugging.md) for targeted MOD/compat/preload scenarios.
+
 ---
 
 ## More Documentation
@@ -147,5 +156,6 @@ If you want to contribute to development, understand how the compatibility packs
 
 - [Project Structure & Version Model](doc/architecture/project-structure.md)
 - [Detailed Guide to Building & Packaging](doc/build/building-and-packaging.md)
+- [ADB Automation Debugging](doc/build/adb-automation-debugging.md)
 - [Runtime Loading & Compat Pack Lifecycle](doc/runtime/compat-pack-loading-flow.md)
 - [Notes on Developing MOD Compatibility Patches](doc/modding/mod-and-compat-notes.md)

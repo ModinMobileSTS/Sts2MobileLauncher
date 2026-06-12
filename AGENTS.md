@@ -1,7 +1,7 @@
 # AGENTS.md
 
 面向后续编码代理/维护者的项目速览与操作约定。当前目录为本仓库根目录。
-最后同步：2026-06-05。
+最后同步：2026-06-12。
 
 ## 0. 总原则
 
@@ -138,6 +138,8 @@ s2_re/
       build_android_body_zip.sh    # 上述 Python 工具的环境加载 wrapper
       build_importer_apk.sh        # 构建不内置游戏 zip 的导入版 APK
       build_direct_apk.sh          # 构建临时内置游戏 zip 的直装版 APK
+    debug/
+      sts2-adb-debug.sh            # ADB 自动化调试：安装、推送 payload/compat/MOD、准备/启动、日志/Perfetto 采集
     diff/                          # 差异清单工具
     deps/                          # GitHub 外部参考项目清单与自动准备脚本
     git/report-heads.sh            # 输出父仓库与 submodule HEAD/branch/upstream 状态
@@ -150,6 +152,7 @@ s2_re/
     plan/                          # 长期设计计划或已落地方案 checklist
   dist/                            # APK/兼容包输出副本，本地生成，gitignore
   .agent/                          # agent 草稿/报告/临时 worktree/参考 clone/agent-docs/历史备份，gitignore，不追踪
+    debug/runs/                    # ADB 自动化调试结果、logcat、Perfetto trace、本地拉回诊断，gitignore
     agent-docs/changelog/          # agent-only changelog，本地接力用，不提交
     historical-backup/docs/        # 旧 docs/ 历史 diff/validation 本地备份，不提交
 ```
@@ -192,6 +195,7 @@ s2_re/
   - `GameBodyVersionManager`：legacy facade，版本选择委托给 `LaunchProfileManager`，不再执行 active/归档目录复制。
   - `CompatPackManager`：安装、导入、删除兼容包；从 APK assets 安装内置兼容包；支持 schema 1 单目标包和 schema 2 family 包的 `targets[]` variant；按 payload manifest 的 dll sha/version 匹配目标版本供新建/编辑启动配置使用，schema 2 family 包优先于旧 schema 1 包。安装 bundled 包后会触发旧 bundled pack id 到 flat family target 的启动配置迁移。兼容包页不再提供全局“选中”动作，删除兼容包也不静默替换各启动配置的 `compat_pack_id` / `compat_target_id`。
   - `GameLaunchPreparationManager`：启动前后台准备 Mono publish 目录、兼容包 dll、overlay pck、payload assembly 和纹理缓存清理。
+  - `DebugAutomationActivity` / `DebugAutomationReceiver`：ADB 自动化调试入口；host 侧 `tools/debug/sts2-adb-debug.sh` 用 `run-as` 写入 `<files>/automation/token.txt` 后，通过 exported 调试 Activity 触发状态查询、配置修改、payload/compat/MOD 私有 inbox 导入、启动准备、启动游戏和日志/性能采集。Receiver 仅作为兼容广播入口转交 Activity；长任务不要直接放在 BroadcastReceiver 生命周期内。
 - `GodotApp`：真正的 Godot 游戏 Activity。
 - `GodotApp` 启动行为：
   - 首次向导未完成时会重定向回 `GameSettingsActivity`。
@@ -236,6 +240,7 @@ s2_re/
 <files>/steam/downloads/                    # SteamPipe 下载 staging / 任务诊断
 <files>/steam/cloud/<profile_id>/           # Steam Cloud manifest、baseline、备份与诊断
 <files>/webdav/cloud/<slot>/                # WebDAV manifest、baseline、备份与诊断
+<files>/automation/                         # ADB 自动化调试 token、inbox、runs/result；本地测试数据
 <files>/save-snapshots/profiles/<profile_id>/ # 本地存档快照 zip，默认保留最近 5 个
 <files>/compat-packs/<pack_id>/             # 已安装 Android 兼容包；schema 2 在 variants/<target_id>/ 下放 dll/pck
 <files>/launcher/selected_instance.json     # 当前启动配置解析结果
@@ -531,6 +536,24 @@ tools/package/build_importer_apk.sh
 # 或
 tools/package/build_direct_apk.sh "/path/to/SlayTheSpire2.zip"
 ```
+
+连接 ADB 设备后的自动化验证：
+
+```bash
+# 构建 + 安装 + 写入 app 私有 automation token
+tools/debug/sts2-adb-debug.sh build-install
+
+# 查询 launcher/profile/payload/compat/MOD 状态并拉回结果到 .agent/debug/runs/<run_id>/
+tools/debug/sts2-adb-debug.sh status --pull
+
+# 只验证启动准备路径，适合 compat dll/overlay/publish/preload 排查
+tools/debug/sts2-adb-debug.sh prepare --mode compat --clear publish --pull
+
+# 启动游戏并采集 logcat / Perfetto
+tools/debug/sts2-adb-debug.sh launch --mode perf --preload aggressive --logcat-duration 45 --perfetto 45 --pull
+```
+
+脚本会把本地 payload/compat/MOD 文件推送到设备 app 私有 `files/automation/inbox/<run_id>/`，再复用应用内正常导入/配置/准备逻辑。调试结果只放在 ignored 的 `.agent/debug/runs/` 和设备 `<files>/automation/`，不要提交。
 
 安装后建议检查：
 

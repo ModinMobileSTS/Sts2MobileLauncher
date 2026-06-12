@@ -149,6 +149,21 @@
             android:windowSoftInputMode="adjustResize"
             android:resizeableActivity="true" />
 
+        <activity
+            android:name=".DebugAutomationActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:exported="true"
+            android:noHistory="true"
+            android:excludeFromRecents="true" />
+
+        <receiver
+            android:name=".DebugAutomationReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="${applicationId}.DEBUG_AUTOMATION" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
