@@ -1383,10 +1383,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			List<String> results = new ArrayList<>();
 			try {
 				runOnUiThread(() -> progressDialog.setProgress(0, getString(R.string.status_busy_create_local_save_snapshot)));
-				LocalSaveSnapshotManager.Snapshot snapshot = new LocalSaveSnapshotManager(this).createAutomaticSnapshot("clean-exit");
-				if (snapshot != null) {
-					results.add(getString(R.string.status_local_save_snapshot_created, snapshot.id));
-				}
+				new LocalSaveSnapshotManager(this).createAutomaticSnapshot("clean-exit");
 				if (shouldPushSteam) {
 					String result = new Sts2SteamCloudSyncManager(this).pushLocalChanges(false, (percent, message) -> runOnUiThread(() -> progressDialog.setProgress(percent, message)));
 					results.add(result);
