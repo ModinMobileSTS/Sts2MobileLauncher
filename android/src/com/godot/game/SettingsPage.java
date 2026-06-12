@@ -74,6 +74,11 @@ public final class SettingsPage {
 	private static final String[] VFX_PRELOAD_VALUES = new String[] { "off", "hot", "full" };
 	private static final String[] SHADER_PRELOAD_VALUES = new String[] { "off", "load_resources" };
 	private static final String[] TOOLTIP_MODE_VALUES = new String[] { ExtraSettingsRepository.TOOLTIP_MODE_IMMEDIATE, ExtraSettingsRepository.TOOLTIP_MODE_LONG_PRESS, ExtraSettingsRepository.TOOLTIP_MODE_HIDDEN };
+	private static final String[] SCREEN_ROTATION_VALUES = new String[] {
+		ExtraSettingsRepository.SCREEN_ROTATION_AUTO,
+		ExtraSettingsRepository.SCREEN_ROTATION_LANDSCAPE,
+		ExtraSettingsRepository.SCREEN_ROTATION_REVERSE_LANDSCAPE
+	};
 
 	private enum SettingsSegment { GRAPHICS, INPUT, SAVE, SYSTEM }
 	private static SettingsSegment lastSelectedSegment = SettingsSegment.GRAPHICS;
@@ -383,6 +388,13 @@ public final class SettingsPage {
 		addSpinnerRow(content, R.drawable.ic_desktop_windows_24, R.string.section_resolution, buildResolutionLabels(), findResolutionSelection(settings), position -> {
 			ResolutionOption option = RESOLUTION_OPTIONS.get(position);
 			repository.saveSetting(root -> repository.putVector(root, "fullscreen_render_size", option.width, option.height));
+		});
+		addSpinnerRow(content, R.drawable.ic_sync_24, R.string.screen_rotation_mode, buildScreenRotationModeLabels(), findStringIndex(SCREEN_ROTATION_VALUES, ExtraSettingsRepository.normalizeScreenRotationMode(settings.optString(ExtraSettingsRepository.KEY_SCREEN_ROTATION_MODE, ""))), position -> {
+			String mode = SCREEN_ROTATION_VALUES[position];
+			repository.saveSetting(root -> {
+				root.put(ExtraSettingsRepository.KEY_SCREEN_ROTATION_MODE, mode);
+				root.put("android_flip_screen_180", ExtraSettingsRepository.SCREEN_ROTATION_REVERSE_LANDSCAPE.equals(mode));
+			});
 		});
 		addSpinnerRow(content, R.drawable.ic_layers_24, R.string.section_renderer, Arrays.asList(context.getString(R.string.renderer_option_opengl_es3), context.getString(R.string.renderer_option_vulkan)), findStringIndex(RENDERER_VALUES, RendererPreference.getSelectedRenderer(context)), position -> RendererPreference.setSelectedRenderer(context, RENDERER_VALUES[position]));
 		addSpinnerRow(content, R.drawable.ic_blur_on_24, R.string.msaa, buildMsaaLabels(), findIntIndex(MSAA_OPTIONS, settings.optInt("msaa", 2)), position -> repository.saveSetting(root -> root.put("msaa", MSAA_OPTIONS[position])));
@@ -742,6 +754,13 @@ public final class SettingsPage {
 				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_mobile_tooltip_immediate_desc), R.drawable.ic_info_24),
 				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_mobile_tooltip_long_press_desc), R.drawable.ic_touch_app_24),
 				new ChoiceOption(labels.get(2), context.getString(R.string.choice_sheet_mobile_tooltip_hidden_desc), R.drawable.ic_close_24)
+			);
+		}
+		if (labelRes == R.string.screen_rotation_mode && labels.size() >= 3) {
+			return Arrays.asList(
+				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_screen_rotation_auto_desc), R.drawable.ic_sync_24),
+				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_screen_rotation_landscape_desc), R.drawable.ic_desktop_windows_24),
+				new ChoiceOption(labels.get(2), context.getString(R.string.choice_sheet_screen_rotation_reverse_desc), R.drawable.ic_compare_arrows_24)
 			);
 		}
 		if (labelRes == R.string.preload_vfx_mode_title && labels.size() >= 3) {
@@ -1290,6 +1309,14 @@ public final class SettingsPage {
 			context.getString(R.string.mobile_tooltip_mode_immediate),
 			context.getString(R.string.mobile_tooltip_mode_long_press),
 			context.getString(R.string.mobile_tooltip_mode_hidden)
+		);
+	}
+
+	private List<String> buildScreenRotationModeLabels() {
+		return Arrays.asList(
+			context.getString(R.string.screen_rotation_auto),
+			context.getString(R.string.screen_rotation_landscape),
+			context.getString(R.string.screen_rotation_reverse_landscape)
 		);
 	}
 

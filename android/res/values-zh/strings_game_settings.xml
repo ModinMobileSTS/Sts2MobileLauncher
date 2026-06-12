@@ -103,6 +103,10 @@
     <string name="mod_hint">选择zip自动解压，或者逐个导入mod文件（请确保MOD完整） 注意：是否开启MOD将加载两套不同存档，可使用存档转移功能进行转移。</string>
     <string name="section_resolution">分辨率</string>
     <string name="resolution_hint">用于控制下次启动游戏时的全屏渲染分辨率。</string>
+    <string name="screen_rotation_mode">旋转模式</string>
+    <string name="screen_rotation_auto">自动</string>
+    <string name="screen_rotation_landscape">不旋转</string>
+    <string name="screen_rotation_reverse_landscape">180°</string>
     <string name="section_preload">预加载</string>
     <string name="preload_switch">启用预加载 / 启动预热</string>
     <string name="section_lan">局域网联机</string>
@@ -304,6 +308,9 @@
     <string name="confirm_delete_mod_title">删除 MOD</string>
     <string name="confirm_delete_mod_message">确定要从内部存储删除这个 MOD 吗？</string>
     <string name="resolution_auto">自动 / 默认</string>
+    <string name="choice_sheet_screen_rotation_auto_desc">使用 Android 横屏传感器模式，游戏可在普通横屏和 180° 横屏之间自动切换。</string>
+    <string name="choice_sheet_screen_rotation_landscape_desc">固定为普通横屏方向。</string>
+    <string name="choice_sheet_screen_rotation_reverse_desc">固定为反向横屏方向。</string>
     <string name="scale_default">默认（1.0x）</string>
     <string name="scale_custom">自定义</string>
     <string name="scale_custom_title">自定义缩放</string>

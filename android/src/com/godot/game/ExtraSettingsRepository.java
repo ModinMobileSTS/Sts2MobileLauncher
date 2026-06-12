@@ -44,10 +44,14 @@ public final class ExtraSettingsRepository {
 	public static final String KEY_ANDROID_COMPAT_PACK_ENABLED = "android_compat_pack_enabled";
 	public static final String KEY_LOG_LEVEL = "log_level";
 	public static final String KEY_PERFORMANCE_OVERLAY_ENABLED = "android_performance_overlay_enabled";
+	public static final String KEY_SCREEN_ROTATION_MODE = "android_screen_rotation_mode";
 	public static final String LOG_LEVEL_OFF = "off";
 	public static final String LOG_LEVEL_INFO = "info";
 	public static final String LOG_LEVEL_DEBUG = "debug";
 	public static final String LOG_LEVEL_VERY_DEBUG = "very_debug";
+	public static final String SCREEN_ROTATION_AUTO = "auto";
+	public static final String SCREEN_ROTATION_LANDSCAPE = "landscape";
+	public static final String SCREEN_ROTATION_REVERSE_LANDSCAPE = "reverse_landscape";
 	public static final String TOOLTIP_MODE_IMMEDIATE = "immediate";
 	public static final String TOOLTIP_MODE_LONG_PRESS = "long_press";
 	public static final String TOOLTIP_MODE_HIDDEN = "hidden";
@@ -163,6 +167,7 @@ public final class ExtraSettingsRepository {
 		settings.put(KEY_PERFORMANCE_OVERLAY_ENABLED, isStoredPerformanceOverlayEnabled());
 		settings.put("android_volume_up_soft_keyboard", false);
 		settings.put("android_flip_screen_180", false);
+		settings.put(KEY_SCREEN_ROTATION_MODE, SCREEN_ROTATION_AUTO);
 		settings.put("lan_use_custom_player_id", false);
 		settings.put("lan_use_custom_platform_player_id", false);
 		settings.put("lan_custom_player_id", "");
@@ -213,6 +218,7 @@ public final class ExtraSettingsRepository {
 		changed |= syncExistingPerformanceOverlaySetting(settings);
 		changed |= putIfMissing(settings, "android_volume_up_soft_keyboard", false);
 		changed |= putIfMissing(settings, "android_flip_screen_180", false);
+		changed |= ensureScreenRotationMode(settings);
 		changed |= putIfMissing(settings, "lan_use_custom_player_id", false);
 		changed |= putIfMissing(settings, "lan_use_custom_platform_player_id", false);
 		changed |= putIfMissing(settings, "lan_custom_player_id", "");
@@ -221,6 +227,38 @@ public final class ExtraSettingsRepository {
 		changed |= putIfMissing(settings, "max_multiplayer_players", 4);
 		changed |= putIfMissing(settings, "max_multiplayer_enabled", true);
 		changed |= putIfMissing(settings, "quick_sl_enabled", true);
+		return changed;
+	}
+
+	public static String normalizeScreenRotationMode(String value) {
+		if (value == null) {
+			return SCREEN_ROTATION_AUTO;
+		}
+		String normalized = value.trim().toLowerCase(Locale.ROOT).replace('-', '_').replace(" ", "_");
+		if ("none".equals(normalized) || "normal".equals(normalized) || "no_rotate".equals(normalized) || "no_rotation".equals(normalized) || SCREEN_ROTATION_LANDSCAPE.equals(normalized)) {
+			return SCREEN_ROTATION_LANDSCAPE;
+		}
+		if ("180".equals(normalized) || "flip_180".equals(normalized) || "rotate_180".equals(normalized) || "reverse".equals(normalized) || SCREEN_ROTATION_REVERSE_LANDSCAPE.equals(normalized)) {
+			return SCREEN_ROTATION_REVERSE_LANDSCAPE;
+		}
+		return SCREEN_ROTATION_AUTO;
+	}
+
+	private boolean ensureScreenRotationMode(JSONObject settings) throws JSONException {
+		String fallback = settings.optBoolean("android_flip_screen_180", false)
+			? SCREEN_ROTATION_REVERSE_LANDSCAPE
+			: SCREEN_ROTATION_AUTO;
+		String normalized = normalizeScreenRotationMode(settings.optString(KEY_SCREEN_ROTATION_MODE, fallback));
+		boolean changed = false;
+		if (!settings.has(KEY_SCREEN_ROTATION_MODE) || !normalized.equals(settings.optString(KEY_SCREEN_ROTATION_MODE, ""))) {
+			settings.put(KEY_SCREEN_ROTATION_MODE, normalized);
+			changed = true;
+		}
+		boolean flip180 = SCREEN_ROTATION_REVERSE_LANDSCAPE.equals(normalized);
+		if (settings.optBoolean("android_flip_screen_180", false) != flip180) {
+			settings.put("android_flip_screen_180", flip180);
+			changed = true;
+		}
 		return changed;
 	}
 
