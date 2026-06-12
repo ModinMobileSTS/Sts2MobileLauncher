@@ -148,6 +148,8 @@ android/assets/compat_packs/*.zip
 
 该目录下的 zip 是构建产物，已 gitignore，不再由 git 跟踪；提交前不要 `git add -f` 这些 zip。
 
+新版 APK 安装内置 matrix 包后，启动器会把旧 bundled schema 1 包选择迁移到 `sts2-android-compat` family 包的对应 target。新建启动配置的自动匹配也会在同等版本/SHA 命中时优先使用 schema 2 family 包，避免继续绑定旧单目标包。
+
 legacy 分支构建模式仍可显式启用，用于回退诊断或对照旧发布包：
 
 ```bash

@@ -37,6 +37,8 @@ public final class LaunchProfileManager {
 	private static final String PREFS_NAME = "sts2_version_manager";
 	private static final String KEY_SELECTED_LAUNCH_PROFILE_ID = "selected_launch_profile_id";
 	private static final String LEGACY_KEY_SELECTED_GAME_VERSION_ID = "selected_game_version_id";
+	private static final String FLAT_COMPAT_PACK_ID = "sts2-android-compat";
+	private static final String LEGACY_BUNDLED_COMPAT_PREFIX = FLAT_COMPAT_PACK_ID + "-";
 
 	private final Context context;
 
@@ -327,6 +329,45 @@ public final class LaunchProfileManager {
 		FileBrowserSupport.deleteRecursively(new File(getPayloadsRootDir(), normalized));
 		ensureSelectedProfileIfPossible();
 		writeSelectedLaunchContextJson(getSelectedProfile());
+	}
+
+	public synchronized int migrateLegacyBundledCompatSelectionsToFlatPack() throws Exception {
+		FileBrowserSupport.ensureDirectory(getProfilesRootDir());
+		CompatPackManager compatManager = new CompatPackManager(context);
+		List<CompatPackManager.CompatPack> installedPacks = compatManager.listInstalledPacks();
+		if (!hasReadyFlatCompatPack(installedPacks)) {
+			return 0;
+		}
+
+		int migrated = 0;
+		String selectedProfileId = getSelectedProfileId();
+		for (LaunchProfile profile : listProfilesWithoutBootstrap()) {
+			String legacyTargetId = legacyBundledCompatTargetId(profile.compatPackId);
+			boolean legacyBundledSelection = !TextUtils.isEmpty(legacyTargetId);
+			boolean flatSelectionMissingTarget = FLAT_COMPAT_PACK_ID.equals(profile.compatPackId) && TextUtils.isEmpty(profile.compatTargetId);
+			if (!legacyBundledSelection && !flatSelectionMissingTarget) {
+				continue;
+			}
+			CompatSelection replacement = legacyBundledSelection
+				? findFlatCompatSelectionByTargetId(legacyTargetId, installedPacks)
+				: findBestFlatCompatSelection(profile.payload, installedPacks);
+			if (TextUtils.isEmpty(replacement.packId) || TextUtils.isEmpty(replacement.targetId)) {
+				continue;
+			}
+			if (legacyBundledSelection && !legacyTargetId.equals(replacement.targetId)) {
+				continue;
+			}
+			if (replacement.packId.equals(profile.compatPackId) && replacement.targetId.equals(profile.compatTargetId)) {
+				continue;
+			}
+			writeProfile(profile.id, profile.displayName, profile.payloadId, replacement.packId, replacement.targetId, profile.saveMode, profile.modsMode, profile.createdAtUnix);
+			migrated++;
+			Log.i(TAG, "Migrated launch profile compat selection from " + profile.compatPackId + "/" + profile.compatTargetId + " to " + replacement.packId + "/" + replacement.targetId + " for profile " + profile.id);
+			if (profile.id.equals(selectedProfileId)) {
+				writeSelectedLaunchContextJson(readProfile(profile.id));
+			}
+		}
+		return migrated;
 	}
 
 	public void clearSelectedProfileAndUnusedPayload() throws Exception {
@@ -658,6 +699,66 @@ public final class LaunchProfileManager {
 		} catch (Exception ignored) {
 			return CompatSelection.EMPTY;
 		}
+	}
+
+	private CompatSelection findBestFlatCompatSelection(GamePayload payload, List<CompatPackManager.CompatPack> installedPacks) {
+		if (payload == null || installedPacks == null) {
+			return CompatSelection.EMPTY;
+		}
+		List<CompatPackManager.CompatPack> flatPacks = new ArrayList<>();
+		for (CompatPackManager.CompatPack pack : installedPacks) {
+			if (pack.ready && FLAT_COMPAT_PACK_ID.equals(pack.packId)) {
+				flatPacks.add(pack);
+			}
+		}
+		if (flatPacks.isEmpty()) {
+			return CompatSelection.EMPTY;
+		}
+		try {
+			CompatPackManager.CompatPack pack = new CompatPackManager(context).findBestMatch(payload.manifest, flatPacks);
+			return pack == null ? CompatSelection.EMPTY : new CompatSelection(pack.packId, pack.targetId);
+		} catch (Exception ignored) {
+			return CompatSelection.EMPTY;
+		}
+	}
+
+	private CompatSelection findFlatCompatSelectionByTargetId(String targetId, List<CompatPackManager.CompatPack> installedPacks) {
+		if (TextUtils.isEmpty(targetId) || installedPacks == null) {
+			return CompatSelection.EMPTY;
+		}
+		for (CompatPackManager.CompatPack pack : installedPacks) {
+			if (pack.ready && FLAT_COMPAT_PACK_ID.equals(pack.packId) && targetId.equals(pack.targetId)) {
+				return new CompatSelection(pack.packId, pack.targetId);
+			}
+		}
+		return CompatSelection.EMPTY;
+	}
+
+	private boolean hasReadyFlatCompatPack(List<CompatPackManager.CompatPack> installedPacks) {
+		if (installedPacks == null) {
+			return false;
+		}
+		for (CompatPackManager.CompatPack pack : installedPacks) {
+			if (pack.ready && FLAT_COMPAT_PACK_ID.equals(pack.packId)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private String legacyBundledCompatTargetId(String packId) {
+		String normalized = sanitizeOptionalId(packId);
+		if (!normalized.startsWith(LEGACY_BUNDLED_COMPAT_PREFIX + "v")) {
+			return "";
+		}
+		return normalizeLegacyBundledTargetId(normalized.substring(LEGACY_BUNDLED_COMPAT_PREFIX.length()));
+	}
+
+	private String normalizeLegacyBundledTargetId(String targetId) {
+		if ("v0.103.2".equals(targetId) || "v0.103.3".equals(targetId)) {
+			return "v0.103.x";
+		}
+		return targetId;
 	}
 
 	private CompatPackManager.CompatPack findInstalledCompatPack(String packId) {

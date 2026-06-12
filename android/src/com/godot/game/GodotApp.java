@@ -39,6 +39,7 @@ import org.fmod.FMOD;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -160,6 +161,7 @@ public class GodotApp extends GodotActivity {
 		} catch (Throwable throwable) {
 			Log.w(TAG, "Unable to normalize extra-settings directories before launch.", throwable);
 		}
+		applyConfiguredScreenOrientation();
 		EdgeToEdge.enable(this);
 		try {
 			FMOD.init(this);
@@ -171,6 +173,7 @@ public class GodotApp extends GodotActivity {
 		ensureLaunchPreparedBeforeGodot(launchPrepared);
 		logGodotAppLaunchSnapshot("onCreate_before_super");
 		super.onCreate(savedInstanceState);
+		applyConfiguredScreenOrientation();
 		currentInstance = this;
 		currentWindowFocused = hasWindowFocus();
 		logGodotAppLaunchSnapshot("onCreate_after_super");
@@ -683,6 +686,7 @@ public class GodotApp extends GodotActivity {
 		currentInstance = this;
 		currentResumed = true;
 		currentWindowFocused = hasWindowFocus();
+		applyConfiguredScreenOrientation();
 		updateWindowAppearance.run();
 		HighRefreshRateController.applyWithRetries(this, getGodot(), "onResume");
 	}
@@ -727,6 +731,43 @@ public class GodotApp extends GodotActivity {
 			Log.w("GODOT", "Failed to read soft-keyboard shortcut setting.", exception);
 			return false;
 		}
+	}
+
+	private void applyConfiguredScreenOrientation() {
+		String mode = ExtraSettingsRepository.SCREEN_ROTATION_AUTO;
+		try {
+			File settingsFile = getSettingsFile();
+			if (settingsFile.isFile()) {
+				String content = readTextFile(settingsFile).trim();
+				if (!content.isEmpty()) {
+					JSONObject settings = new JSONObject(content);
+					String fallback = settings.optBoolean("android_flip_screen_180", false)
+						? ExtraSettingsRepository.SCREEN_ROTATION_REVERSE_LANDSCAPE
+						: ExtraSettingsRepository.SCREEN_ROTATION_AUTO;
+					mode = ExtraSettingsRepository.normalizeScreenRotationMode(settings.optString(ExtraSettingsRepository.KEY_SCREEN_ROTATION_MODE, fallback));
+				}
+			}
+		} catch (Exception exception) {
+			Log.w(TAG, "Unable to read screen rotation mode; using auto.", exception);
+		}
+
+		int orientation;
+		switch (mode) {
+			case ExtraSettingsRepository.SCREEN_ROTATION_LANDSCAPE:
+				orientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
+				break;
+			case ExtraSettingsRepository.SCREEN_ROTATION_REVERSE_LANDSCAPE:
+				orientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE;
+				break;
+			case ExtraSettingsRepository.SCREEN_ROTATION_AUTO:
+			default:
+				orientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE;
+				break;
+		}
+		if (getRequestedOrientation() != orientation) {
+			setRequestedOrientation(orientation);
+		}
+		Log.i(TAG, "Configured GodotApp screen orientation mode=" + mode + " requestedOrientation=" + orientation);
 	}
 
 	private void showSoftKeyboardForGame() {
@@ -819,6 +860,7 @@ public class GodotApp extends GodotActivity {
 	public void onGodotMainLoopStarted() {
 		super.onGodotMainLoopStarted();
 		StartupHealthTracker.markGameLaunchFinished(this);
+		applyConfiguredScreenOrientation();
 		runOnUiThread(updateWindowAppearance);
 		HighRefreshRateController.applyWithRetries(this, getGodot(), "onGodotMainLoopStarted");
 	}

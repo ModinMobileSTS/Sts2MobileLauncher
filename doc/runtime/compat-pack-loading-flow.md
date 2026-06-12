@@ -58,6 +58,7 @@ flat matrix mode:
    - schema 1 校验根目录 `STS2Mobile.dll` 与 `port_compat.pck` 存在；schema 2 校验 `targets[]` 中每个 artifact 指向的 variant dll/pck 存在。
    - 安装到 `<files>/compat-packs/<pack_id>/`。
    - 不会自动把新安装的包设为全局选中包；用户需要在创建或编辑启动配置时选择。
+   - 从旧 schema 1 bundled 包升级到 flat matrix 包时，会把启动配置中旧 `sts2-android-compat-v0.*` bundled pack id 自动迁移到 `sts2-android-compat` family 包和对应 `compat_target_id`。例如 `sts2-android-compat-v0.107.0-beta` 会迁移为 `compat_pack_id=sts2-android-compat`、`compat_target_id=v0.107.0-beta`；用户手动导入/选择的非 bundled 包不会被覆盖。
 3. 用户也可在“版本”页通过 SAF 导入外部 compat pack zip；导入后同样只进入已安装包列表。
 
 ## 4. Payload 导入与版本匹配
@@ -73,7 +74,7 @@ flat matrix mode:
 4. `PckPatcher` 只修改私有 PCK copy，禁用 Sentry autoload/gdextension 元数据，避免 Android 缺少桌面 Sentry 扩展导致启动前解析错误。
 5. 写入 staging 中的 `.payload_manifest.json`，包含 `release_info`、`version`、`commit`、`sts2_dll_sha256`、PCK patch 结果等。
 6. 按 manifest 身份生成 `payload_id`，原子安装到 `<files>/payloads/<payload_id>/game/`；同一 payload 已存在时只替换 payload store 中的该目录，不再复制到 `<files>/game/`。
-7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload；新建 profile 时会按 payload manifest 中的 `sts2_dll_sha256` 与 `version` 填入推荐 compat pack。schema 2 family 包会写入 `compat_pack_id` 和 `compat_target_id`；已有 profile 不会在每次导入/启动时被覆盖。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot` 与 `source.steam.depots[]` 中记录。
+7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload；新建 profile 时会按 payload manifest 中的 `sts2_dll_sha256` 与 `version` 填入推荐 compat pack，同等命中时优先推荐 schema 2 family 包。schema 2 family 包会写入 `compat_pack_id` 和 `compat_target_id`；已有 profile 不会在每次导入/启动时被覆盖，只有旧 bundled schema 1 pack id 到 flat family pack 的升级迁移会自动改写。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot` 与 `source.steam.depots[]` 中记录。
 8. 旧安装中的 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制。
 
 ## 5. 启动前检查
@@ -161,7 +162,7 @@ STS2Mobile.ModEntry
    - 自定义模型 ID 完全交给原版 `ModelDb.Init` + MOD 的 `GetEntry` patch 自然产生，不再人为迁移 key 或做动态兜底。
    - `EarlyLocalizationFallbackPatches` 是同一类 Android/Mono eager cctor 问题的本地化侧保护：例如 MinionLib patch `NPotionHolder.UsePotion()` 时，Harmony wrapper 生成可能提前跑 `NPotionHolder..cctor -> HoverTip..ctor -> LocString.GetFormattedText()`；此时 `LocManager.Initialize()` 还在后续 `ExecuteEssential` 中，直接抛异常会让 `NPotionHolder` 在整个进程内永久失败。该补丁只覆盖 `LocManager` 完成前的格式化失败，不改变 `LocManager.Initialize` 的生命周期点。若 UI 类型静态字段直接链式读取 `LocManager.Instance.GetTable().GetRawText()`，则由 `DeferredModPatchQueue` 延后用户 MOD 对该 UI 类型的 Harmony patch，避免 `.cctor` 在 very-early 阶段执行。
    - `UnlockStateCompatPatches` 会在 `ModelDb` 初始化完成前让 `ModelDb.AllEncounters` 返回空列表，避免 Android/Mono 因 Harmony patch getter 提前运行 `UnlockState..cctor` 时枚举到尚未构造/注册完成的 MOD encounter；初始化完成后会修复可能提前创建的 static readonly `UnlockState.all`，恢复正常“全部 encounter 已见过”的语义。
-4. Release info、settings、display、font/UI scale；其中 `AppPaths` 从 Mono publish 目录或 Android 进程包名推导 `<files>` 后读取 `launcher/selected_instance.json`。显示设置会读取 `android_screen_rotation_mode`：`auto` 映射 Godot `SensorLandscape`，`landscape` 映射普通横屏，`reverse_landscape` 映射 180° 横屏；旧 `android_flip_screen_180` 只作为兼容 fallback 和同步字段保留。
+4. Release info、settings、display、font/UI scale；其中 `AppPaths` 从 Mono publish 目录或 Android 进程包名推导 `<files>` 后读取 `launcher/selected_instance.json`。显示设置会读取 `android_screen_rotation_mode`：`auto` 映射 Godot `SensorLandscape`，`landscape` 映射普通横屏，`reverse_landscape` 映射 180° 横屏；旧 `android_flip_screen_180` 只作为兼容 fallback 和同步字段保留。Java `GodotApp` manifest 默认 `sensorLandscape`，并在 `onCreate`、`onResume` 与 Godot 主循环开始后按同一字段调用 Android `setRequestedOrientation()`，避免 Activity 层固定横屏导致自动 180° 旋转无效。
 5. 移动端 layout/input、事件/商店/奖励/战斗背景等 UI 修正。
 6. Android UI safety、游戏内设置入口、shader overlay、transition material 防黑屏、Android back/touch/controller、奖励/商人二次确认、移动端 tooltip 显示策略、tap preview、hand layout。`mobile_tooltip_mode` 默认 `immediate`，保持 PC 端悬停即显示；在附加设置“设置 → 操作 → Tooltip 显示”切到 `long_press` 后，`MobileTooltipPatches` 会在 `NHoverTipSet.CreateAndShow*` 前建立当前 owner 的长按计时，允许原版创建并完成对齐后立即隐藏 tooltip，并通过 tooltip owner 的 `GuiInput` / `MouseExited` 与 `NGame._Input` 共同跟踪触摸，只在同一触点按住约 1 秒且未明显拖动时临时显示，松手或移动过大后再次隐藏（不因单纯 `MouseExited` 取消，以免 hover 动画导致控件在静止手指下移动）。若原版在长按过程中频繁 `Clear()`/重建 hover tips，兼容层会保留当前 owner/计时状态，避免计时被每帧重置；游戏内设置页切换该选项时会刷新 `AndroidSettingsBridge` 缓存并立即移除或显示已有普通 hover tooltip，`hidden` / `long_press` 模式会阻止后续普通 hover tooltip 创建，但不拦截 inspect card/relic/potion 等显式详情页面自己的说明区域。
 7. intent animation、quick restart、lifecycle/performance。`QuickRestartPatches` 在 pause menu 提供 Android 内置“重打/Retry”按钮：快速重开会先等待当前 run save 任务，再读取 autosave；淡出后清理旧 run，并执行原版保存恢复入口（`RunManager.SetUpSavedSinglePlayer()`，`v0.107.0` 为 `SetUpSavedSingleplayer()`；返回 `Task` 的版本会等待完成）以完整初始化 `NetService` / `MapSelectionSynchronizer` 等同步器后才调用 `NGame.LoadRun()`，避免资源预加载关闭或 IO 较慢时新 `RunState` 提前进入地图初始化、触发 `MapSelectionSynchronizer.GetVote()` 越界；若淡出后任一步失败，会先尝试 `FadeIn()` 解除黑屏遮罩，再显示错误弹窗。`LifecycleAndPerformancePatches` 在 `NMainMenu._Ready` 后启动安全 deferred preload，并在需要细分或额外 warmup 时接管原版 `LoadCommonAndMainMenuAssets()`：

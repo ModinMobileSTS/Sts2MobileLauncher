@@ -6,6 +6,7 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
 import android.text.TextUtils;
+import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -31,6 +32,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 public final class CompatPackManager {
+	private static final String TAG = "Sts2CompatPacks";
 	public static final String COMPAT_PACKS_DIR_NAME = "compat-packs";
 	public static final String COMPAT_ASSET_DIR = "compat_packs";
 	public static final String MANIFEST_FILE_NAME = "compat_manifest.json";
@@ -187,8 +189,9 @@ public final class CompatPackManager {
 		if (TextUtils.isEmpty(identity.version)) {
 			return null;
 		}
+		List<CompatPack> candidates = preferSchema2Packs(installedPacks);
 
-		for (CompatPack pack : installedPacks) {
+		for (CompatPack pack : candidates) {
 			if (pack.ready && !TextUtils.isEmpty(identity.sts2DllSha256) && identity.sts2DllSha256.equalsIgnoreCase(pack.targetSts2DllSha256)) {
 				return pack;
 			}
@@ -197,17 +200,32 @@ public final class CompatPackManager {
 		// back to packs that explicitly list the payload version in their manifest.
 		// This allows a single stable compat pack to cover adjacent patch releases
 		// such as v0.103.2 and v0.103.3 while preserving exact-version priority.
-		for (CompatPack pack : installedPacks) {
+		for (CompatPack pack : candidates) {
 			if (pack.ready && identity.version.equalsIgnoreCase(pack.targetVersion)) {
 				return pack;
 			}
 		}
-		for (CompatPack pack : installedPacks) {
+		for (CompatPack pack : candidates) {
 			if (pack.ready && packSupportsVersion(pack, identity.version)) {
 				return pack;
 			}
 		}
 		return null;
+	}
+
+	private List<CompatPack> preferSchema2Packs(List<CompatPack> packs) {
+		List<CompatPack> ordered = new ArrayList<>();
+		for (CompatPack pack : packs) {
+			if (pack != null && pack.manifest.optInt("schema", 1) >= 2) {
+				ordered.add(pack);
+			}
+		}
+		for (CompatPack pack : packs) {
+			if (pack != null && pack.manifest.optInt("schema", 1) < 2) {
+				ordered.add(pack);
+			}
+		}
+		return ordered;
 	}
 
 	public boolean isPackCompatibleWithPayload(CompatPack pack, JSONObject payloadManifest) {
@@ -249,6 +267,14 @@ public final class CompatPackManager {
 			} finally {
 				FileBrowserSupport.deleteRecursively(tempZip);
 			}
+		}
+		try {
+			int migrated = new LaunchProfileManager(context).migrateLegacyBundledCompatSelectionsToFlatPack();
+			if (migrated > 0) {
+				Log.i(TAG, "Migrated launch profiles to bundled flat compatibility pack: " + migrated);
+			}
+		} catch (Exception exception) {
+			Log.w(TAG, "Unable to migrate legacy bundled compatibility pack selections.", exception);
 		}
 		return installed;
 	}

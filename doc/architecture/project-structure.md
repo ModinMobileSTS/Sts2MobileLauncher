@@ -31,15 +31,15 @@ s2_re/
 
 ## 3. Android shell 主要组件
 
-- `GameSettingsActivity`：默认 launcher，承载欢迎向导、游戏主页、设置页、版本页、MOD 页，负责启动前检查；桌面图标默认打开附加设置，也可在设置页切换为完成向导后自动直接启动游戏；启动器更新检查可在关于页手动触发，手动无新版本时用 snackbar 提示，手动失败会弹窗显示原因，启动时自动检查无更新或失败仍保持静默日志。手机保持竖屏启动器，平板/大屏允许系统方向并在横屏时使用左侧 Navigation Rail、居中最大宽度内容、首页双栏与设置/关于双列卡片；游戏本体 `GodotApp` 仍固定横屏。游戏主页采用 MD3 深色仪表盘：顶部 Steam chip、动态渐变启动卡、未导入空状态、MOD/存档双状态卡和 4 列维护/高级工具快捷入口；启动器图标统一通过 bundled Material Symbols Rounded 字体渲染。
+- `GameSettingsActivity`：默认 launcher，承载欢迎向导、游戏主页、设置页、版本页、MOD 页，负责启动前检查；桌面图标默认打开附加设置，也可在设置页切换为完成向导后自动直接启动游戏；启动器更新检查可在关于页手动触发，手动无新版本时用 snackbar 提示，手动失败会弹窗显示原因，启动时自动检查无更新或失败仍保持静默日志。手机保持竖屏启动器，平板/大屏允许系统方向并在横屏时使用左侧 Navigation Rail、居中最大宽度内容、首页双栏与设置/关于双列卡片；游戏本体 `GodotApp` 保持横屏，旋转模式可在普通横屏、反向横屏和横屏传感器自动切换之间选择。游戏主页采用 MD3 深色仪表盘：顶部 Steam chip、动态渐变启动卡、未导入空状态、MOD/存档双状态卡和 4 列维护/高级工具快捷入口；启动器图标统一通过 bundled Material Symbols Rounded 字体渲染。
 - `SteamAccountActivity`：Steam 中心，负责 Steam 登录/Guard/refresh token 验证、SteamPipe 下载 STS2 payload，以及当前 launch profile account root 的 Steam Cloud 手动/自动同步。
 - `WebDavCloudActivity`：WebDAV 云存档中心，负责 WebDAV URL/用户名/密码/远端槽位配置、连接测试，以及当前 launch profile account root 的 WebDAV 手动/自动同步。
 - `LocalSaveSnapshotManager`：本地存档快照管理，启动前和干净退出后自动创建当前 launch profile account root 的 zip 快照，默认保留最近 5 个；设置页“存档”分区可手动创建和恢复。
 - `GodotApp`：真正的 Godot Activity，拼接 Godot 命令行，加载 imported PCK 或 bootstrap PCK，暴露 Java bridge 给 C#；干净退出回设置时写入云存档/本地快照自动处理 marker。
 - `PayloadManager`：导入 PC zip 或 SteamPipe 下载目录、校验必需文件、patch 私有 PCK copy、写 `.payload_manifest.json` 并安装到 payload store。
-- `LaunchProfileManager`：维护 payload store 与 launch profile，支持同一游戏本体多套全局/隔离存档和 MOD 配置，profile 保存 `compat_pack_id`，schema 2 family 包还保存 `compat_target_id`，切换时不复制 PCK。
+- `LaunchProfileManager`：维护 payload store 与 launch profile，支持同一游戏本体多套全局/隔离存档和 MOD 配置，profile 保存 `compat_pack_id`，schema 2 family 包还保存 `compat_target_id`；从旧 schema 1 bundled 包升级到 flat matrix 内置包时会迁移旧 `sts2-android-compat-v0.*` 选择到 `sts2-android-compat` family target；切换时不复制 PCK。
 - `GameBodyVersionManager`：legacy facade，版本选择委托给 `LaunchProfileManager`。
-- `CompatPackManager`：安装/选择/删除兼容包，从 APK assets 安装内置包；支持 schema 1 单目标包与 schema 2 family 包，并按 payload `sts2_dll_sha256` / version 匹配具体 target variant。
+- `CompatPackManager`：安装/选择/删除兼容包，从 APK assets 安装内置包；支持 schema 1 单目标包与 schema 2 family 包，并按 payload `sts2_dll_sha256` / version 匹配具体 target variant，同等命中时优先推荐 schema 2 family 包；安装 bundled 包后触发旧 bundled 选择到 flat family target 的迁移。
 - `GameLaunchPreparationManager`：启动前准备 Mono publish 目录、兼容包 dll、overlay pck、游戏 assemblies、纹理缓存。
 - `HighRefreshRateController`：正式启动路径默认启用的 Android 高刷新请求器；`GodotApp` 在启动/恢复/焦点/Godot 主循环阶段请求当前显示尺寸下最高 display mode，并对 Godot render `SurfaceView` 调用 Android frame-rate APIs。
 - `godot-debug-menu` overlay：打包进 `port-mod/overlay/addons/debug_menu/`，由设置页“系统”分区的性能显示开关控制，默认关闭；开启后下次启动显示 FPS、CPU/GPU frame graph 与渲染器/硬件信息。
@@ -52,7 +52,7 @@ s2_re/
 | Beta（旧测试） | `v0.106.1` | `.env` 的 `STS2_ORIGINAL_V1061_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1061_ROOT` | `compat/v0.106.1-beta` | `original-v0.106.1` | `v0.106.1-beta` | `sts2-android-compat-v0.106.1-beta` |
 | Beta | `v0.107.0` | `.env` 的 `STS2_ORIGINAL_V1070_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1070_ROOT` | `compat/v0.107.0-beta` | `original-v0.107.0` | `v0.107.0-beta` | `sts2-android-compat-v0.107.0-beta` |
 
-`port-mod` 默认跟踪 `main`。内置兼容包默认使用 flat matrix 模式：`stage-bundled-compat-packs.sh` 读取 `port-mod/targets/active/*/target.json`，从同一 checkout 构建并复制一个 `sts2-android-compat.zip` schema 2 family 包到 `android/assets/compat_packs/`。legacy 内置兼容包列表仍由 `tools/android/bundled-compat-packs.json` 控制，仅在 `COMPAT_PACK_BUILD_MODE=legacy` 时为每个分支构建 schema 1 zip。所有 zip 都是构建产物，随本地 APK 打包但不再由 git 跟踪。compile gate 引用目录由 `.env` 解析后通过 `CompatReferenceDir` 传给 MSBuild，不依赖提交到仓库的个人 symlink。
+`port-mod` 默认跟踪 `main`。内置兼容包默认使用 flat matrix 模式：`stage-bundled-compat-packs.sh` 读取 `port-mod/targets/active/*/target.json`，从同一 checkout 构建并复制一个 `sts2-android-compat.zip` schema 2 family 包到 `android/assets/compat_packs/`。legacy 内置兼容包列表仍由 `tools/android/bundled-compat-packs.json` 控制，仅在 `COMPAT_PACK_BUILD_MODE=legacy` 时为每个分支构建 schema 1 zip。升级到 flat matrix APK 后，启动器会将旧 bundled schema 1 pack id（如 `sts2-android-compat-v0.103.x`、`sts2-android-compat-v0.106.1-beta`、`sts2-android-compat-v0.107.0-beta`）迁移为 `sts2-android-compat` + 对应 target id。所有 zip 都是构建产物，随本地 APK 打包但不再由 git 跟踪。compile gate 引用目录由 `.env` 解析后通过 `CompatReferenceDir` 传给 MSBuild，不依赖提交到仓库的个人 symlink。
 
 ## 5. APK assets 与私有运行时目录
 
@@ -103,7 +103,7 @@ android/steam-content/                        # SteamPipe depot manifest/chunk �
 
 - 导入 PC zip 或 SteamPipe 下载完成后，payload 安装到 `<files>/payloads/<payload_id>/game/`，`payload_id` 由版本、commit 与 payload hash 派生；同一 payload 不再复制到固定 active 目录。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot` 与 `source.steam.*` 中记录 app/depot/manifest/branch 诊断信息。
 - 版本页以 Material 3 分段页呈现三类对象：`启动配置`、`游戏本体`、`兼容包`。列表项点击后从底部抽屉查看路径、版本、文件统计等详情；兼容包页只负责安装/导入/删除，具体使用哪个兼容包只能在创建或编辑启动配置时选择。
-- 版本页维护 `<files>/instances/<profile_id>/instance.json` 启动配置。一个 profile 绑定一个 payload、一个可选 compat pack，并分别记录 save/settings 与 MOD 使用 `global` 还是 `isolated`。schema 2 family 包会额外记录 `compat_target_id`，因此未来停止内置某个旧 target 时，可以只移出该 target 配置，不影响其他 target。
+- 版本页维护 `<files>/instances/<profile_id>/instance.json` 启动配置。一个 profile 绑定一个 payload、一个可选 compat pack，并分别记录 save/settings 与 MOD 使用 `global` 还是 `isolated`。schema 2 family 包会额外记录 `compat_target_id`，因此未来停止内置某个旧 target 时，可以只移出该 target 配置，不影响其他 target；旧 bundled schema 1 选择会在新版内置 family 包安装后自动改写为 family pack + target。
 - 切换游戏版本/配置只更新 `<files>/launcher/selected_instance.json` 与 SharedPreferences，不复制 `SlayTheSpire2.pck` 或解压目录；删除游戏本体或兼容包不会删除启动配置，配置会保留缺失引用并在启动前提示。
 - 同一个 payload 可以创建多个 profile：例如同一 beta 本体分别使用全局 MOD、独立 MOD、独立存档等。
 - Java 侧 `GodotApp` / `GameLaunchPreparationManager` 根据当前 profile 动态解析 PCK、assembly、settings、mods 与 logs 路径，并写入 `selected_instance.json`；C# 兼容层 `AppPaths` 从 Mono publish 目录或 Android 进程包名推导 `<files>` 后读取该 JSON（避免兼容层早期初始化时调用 Godot API/Java bridge），并由 `SavePathPatches` 将原版 `UserDataPathProvider` 重定向到当前 profile 的 account root。
