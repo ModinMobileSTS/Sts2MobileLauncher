@@ -459,7 +459,9 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				showMessage(getString(R.string.launch_profile_payload_missing));
 				return;
 			}
-			final String[] selectedCompatPackId = new String[] { profile == null ? findBestCompatPackIdForPayload(selectedPayload[0]) : profile.compatPackId };
+			CompatPackManager.CompatPack initialCompatPack = profile == null ? findBestCompatPackForPayload(selectedPayload[0]) : findCompatPackById(compatPackManager.listInstalledPacks(), profile.compatPackId, profile.compatTargetId);
+			final String[] selectedCompatPackId = new String[] { initialCompatPack == null ? (profile == null ? "" : profile.compatPackId) : initialCompatPack.packId };
+			final String[] selectedCompatTargetId = new String[] { initialCompatPack == null ? (profile == null ? "" : profile.compatTargetId) : initialCompatPack.targetId };
 			final MaterialButton[] compatButtonRef = new MaterialButton[1];
 
 			BottomSheetDialog dialog = new BottomSheetDialog(this);
@@ -495,10 +497,12 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			selectPayload.setText(getString(R.string.launch_profile_select_payload_button, launchProfilePayloadLabel(profile, selectedPayload[0])));
 			selectPayload.setOnClickListener(v -> showLaunchProfilePayloadPicker(selectedPayload[0], picked -> {
 				selectedPayload[0] = picked;
-				selectedCompatPackId[0] = findBestCompatPackIdForPayload(picked);
+				CompatPackManager.CompatPack pickedCompat = findBestCompatPackForPayload(picked);
+				selectedCompatPackId[0] = pickedCompat == null ? "" : pickedCompat.packId;
+				selectedCompatTargetId[0] = pickedCompat == null ? "" : pickedCompat.targetId;
 				selectPayload.setText(getString(R.string.launch_profile_select_payload_button, picked.label));
 				if (compatButtonRef[0] != null) {
-					setLaunchProfileCompatButtonText(compatButtonRef[0], selectedCompatPackId[0]);
+					setLaunchProfileCompatButtonText(compatButtonRef[0], selectedCompatPackId[0], selectedCompatTargetId[0]);
 				}
 				String currentName = nameInput.getText() == null ? "" : nameInput.getText().toString().trim();
 				if (currentName.isEmpty()) {
@@ -509,10 +513,11 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 			MaterialButton selectCompat = ExtraSettingsUi.outlineButton(this, R.string.launch_profile_select_compat_title, R.drawable.ic_extension_24);
 			compatButtonRef[0] = selectCompat;
-			setLaunchProfileCompatButtonText(selectCompat, selectedCompatPackId[0]);
-			selectCompat.setOnClickListener(v -> showLaunchProfileCompatPicker(selectedCompatPackId[0], selectedPayload[0], picked -> {
-				selectedCompatPackId[0] = picked;
-				setLaunchProfileCompatButtonText(selectCompat, selectedCompatPackId[0]);
+			setLaunchProfileCompatButtonText(selectCompat, selectedCompatPackId[0], selectedCompatTargetId[0]);
+			selectCompat.setOnClickListener(v -> showLaunchProfileCompatPicker(selectedCompatPackId[0], selectedCompatTargetId[0], selectedPayload[0], picked -> {
+				selectedCompatPackId[0] = picked.packId;
+				selectedCompatTargetId[0] = picked.targetId;
+				setLaunchProfileCompatButtonText(selectCompat, selectedCompatPackId[0], selectedCompatTargetId[0]);
 			}));
 			ExtraSettingsUi.addSmallSpacing(content, selectCompat);
 
@@ -571,12 +576,12 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 						if (selectedPayload[0] == null || !selectedPayload[0].ready) {
 							throw new IllegalStateException(getString(R.string.launch_profile_payload_missing));
 						}
-						launchProfileManager.createProfile(selectedPayload[0].id, name, saveMode, modsMode, selectedCompatPackId[0], true);
+						launchProfileManager.createProfile(selectedPayload[0].id, name, saveMode, modsMode, selectedCompatPackId[0], selectedCompatTargetId[0], true);
 						repository.ensureAppDirectories();
 						return getString(R.string.status_create_launch_profile_done);
 					}
 					String updatedPayloadId = selectedPayload[0] == null ? profile.payloadId : selectedPayload[0].id;
-					launchProfileManager.updateProfile(profile.id, updatedPayloadId, name, saveMode, modsMode, selectedCompatPackId[0]);
+					launchProfileManager.updateProfile(profile.id, updatedPayloadId, name, saveMode, modsMode, selectedCompatPackId[0], selectedCompatTargetId[0]);
 					repository.ensureAppDirectories();
 					return getString(R.string.status_update_launch_profile_done);
 				});
@@ -605,64 +610,86 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	}
 
 	private String findBestCompatPackIdForPayload(LaunchProfileManager.GamePayload payload) {
+		CompatPackManager.CompatPack pack = findBestCompatPackForPayload(payload);
+		return pack == null ? "" : pack.packId;
+	}
+
+	private CompatPackManager.CompatPack findBestCompatPackForPayload(LaunchProfileManager.GamePayload payload) {
 		try {
-			CompatPackManager.CompatPack pack = payload == null ? null : compatPackManager.findBestMatch(payload.manifest);
-			return pack == null ? "" : pack.packId;
+			return payload == null ? null : compatPackManager.findBestMatch(payload.manifest);
 		} catch (Exception ignored) {
-			return "";
+			return null;
 		}
 	}
 
 	private void setLaunchProfileCompatButtonText(MaterialButton button, String compatPackId) {
-		button.setText(getString(R.string.launch_profile_select_compat_button, launchProfileCompatLabel(compatPackId)));
+		setLaunchProfileCompatButtonText(button, compatPackId, "");
+	}
+
+	private void setLaunchProfileCompatButtonText(MaterialButton button, String compatPackId, String compatTargetId) {
+		button.setText(getString(R.string.launch_profile_select_compat_button, launchProfileCompatLabel(compatPackId, compatTargetId)));
 	}
 
 	private String launchProfileCompatLabel(String compatPackId) {
+		return launchProfileCompatLabel(compatPackId, "");
+	}
+
+	private String launchProfileCompatLabel(String compatPackId, String compatTargetId) {
 		if (TextUtils.isEmpty(compatPackId)) {
 			return getString(R.string.launch_profile_select_compat_none);
 		}
-		CompatPackManager.CompatPack pack = findCompatPackById(compatPackManager.listInstalledPacks(), compatPackId);
+		CompatPackManager.CompatPack pack = findCompatPackById(compatPackManager.listInstalledPacks(), compatPackId, compatTargetId);
 		if (pack == null) {
-			return getString(R.string.launch_profile_compat_missing_format, compatPackId);
+			return getString(R.string.launch_profile_compat_missing_format, TextUtils.isEmpty(compatTargetId) ? compatPackId : compatPackId + "/" + compatTargetId);
 		}
 		return getString(R.string.version_manager_selected_compat_format, pack.displayName, pack.targetLabel());
 	}
 
 	private CompatPackManager.CompatPack findCompatPackById(List<CompatPackManager.CompatPack> packs, String packId) {
+		return findCompatPackById(packs, packId, "");
+	}
+
+	private CompatPackManager.CompatPack findCompatPackById(List<CompatPackManager.CompatPack> packs, String packId, String targetId) {
 		if (TextUtils.isEmpty(packId) || packs == null) {
 			return null;
 		}
 		for (CompatPackManager.CompatPack pack : packs) {
-			if (pack.packId.equals(packId)) {
+			if (pack.packId.equals(packId) && (TextUtils.isEmpty(targetId) || targetId.equals(pack.targetId))) {
 				return pack;
 			}
 		}
 		return null;
 	}
 
-	private void showLaunchProfileCompatPicker(String currentCompatPackId, LaunchProfileManager.GamePayload selectedPayload, LaunchProfileCompatPickerCallback callback) {
+	private boolean stringsEqual(String left, String right) {
+		String normalizedLeft = left == null ? "" : left;
+		String normalizedRight = right == null ? "" : right;
+		return normalizedLeft.equals(normalizedRight);
+	}
+
+	private void showLaunchProfileCompatPicker(String currentCompatPackId, String currentCompatTargetId, LaunchProfileManager.GamePayload selectedPayload, LaunchProfileCompatPickerCallback callback) {
 		try {
 			List<CompatPackManager.CompatPack> packs = compatPackManager.listInstalledPacks();
-			List<String> ids = new ArrayList<>();
+			List<CompatPick> picks = new ArrayList<>();
 			List<String> labels = new ArrayList<>();
-			ids.add("");
+			picks.add(new CompatPick("", ""));
 			labels.add(getString(R.string.launch_profile_select_compat_none));
 			int checked = 0;
 			for (CompatPackManager.CompatPack pack : packs) {
-				ids.add(pack.packId);
+				picks.add(new CompatPick(pack.packId, pack.targetId));
 				String label = getString(R.string.version_manager_selected_compat_format, pack.displayName, pack.targetLabel());
 				if (selectedPayload != null && compatPackManager.isPackCompatibleWithPayload(pack, selectedPayload.manifest)) {
 					label = label + " ✓";
 				}
 				labels.add(label);
-				if (pack.packId.equals(currentCompatPackId)) {
-					checked = ids.size() - 1;
+				if (pack.packId.equals(currentCompatPackId) && stringsEqual(pack.targetId, currentCompatTargetId)) {
+					checked = picks.size() - 1;
 				}
 			}
 			new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.launch_profile_select_compat_title)
 				.setSingleChoiceItems(labels.toArray(new String[0]), checked, (dialog, which) -> {
-					callback.onCompatPicked(ids.get(which));
+					callback.onCompatPicked(picks.get(which));
 					dialog.dismiss();
 				})
 				.setNegativeButton(android.R.string.cancel, null)
@@ -673,7 +700,17 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	}
 
 	private interface LaunchProfileCompatPickerCallback {
-		void onCompatPicked(String compatPackId);
+		void onCompatPicked(CompatPick pick);
+	}
+
+	private static final class CompatPick {
+		final String packId;
+		final String targetId;
+
+		CompatPick(String packId, String targetId) {
+			this.packId = packId == null ? "" : packId;
+			this.targetId = targetId == null ? "" : targetId;
+		}
 	}
 
 	private void showLaunchProfilePayloadPicker(LaunchProfileManager.GamePayload currentPayload, LaunchProfilePayloadPickerCallback callback) {

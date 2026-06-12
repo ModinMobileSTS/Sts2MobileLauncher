@@ -211,6 +211,7 @@ public final class GameLaunchPreparationManager {
 					+ " payload=" + describePayload(payload)
 					+ " compat_enabled=" + compatEnabled
 					+ " selected_compat_id=" + launchProfiles.getSelectedCompatPackId()
+					+ " selected_compat_target_id=" + launchProfiles.getSelectedCompatTargetId()
 					+ " selected_pack=" + describeCompatPack(selectedPack)
 					+ " game_dir=" + describeFile(launchProfiles.getSelectedGameDir())
 					+ " manifest=" + describeFile(launchProfiles.getSelectedManifestFile())
@@ -232,6 +233,7 @@ public final class GameLaunchPreparationManager {
 		return "id=" + safe(profile.id)
 			+ ",payload_id=" + safe(profile.payloadId)
 			+ ",compat_pack_id=" + safe(profile.compatPackId)
+			+ ",compat_target_id=" + safe(profile.compatTargetId)
 			+ ",save_mode=" + safe(profile.saveMode)
 			+ ",mods_mode=" + safe(profile.modsMode)
 			+ ",ready=" + profile.ready
@@ -256,6 +258,7 @@ public final class GameLaunchPreparationManager {
 			return "null";
 		}
 		return "id=" + safe(pack.packId)
+			+ ",target_id=" + safe(pack.targetId)
 			+ ",version=" + safe(pack.compatVersion)
 			+ ",channel=" + safe(pack.channel)
 			+ ",target=" + safe(pack.targetLabel())
@@ -339,6 +342,7 @@ public final class GameLaunchPreparationManager {
 			Log.i(TAG,
 				"Selected compatibility pack for launch:"
 					+ " id=" + safe(pack.packId)
+					+ "; target_id=" + safe(pack.targetId)
 					+ "; display=" + safe(pack.displayName)
 					+ "; compat_version=" + safe(pack.compatVersion)
 					+ "; channel=" + safe(pack.channel)

@@ -178,7 +178,7 @@ public final class GameVersionManagerPage {
 		}
 
 		for (LaunchProfileManager.LaunchProfile profile : profiles) {
-			CompatPackManager.CompatPack pack = findPackById(packs, profile.compatPackId);
+			CompatPackManager.CompatPack pack = findPackById(packs, profile.compatPackId, profile.compatTargetId);
 			boolean selected = selectedProfile != null && selectedProfile.id.equals(profile.id);
 			String compatLabel = compatLabel(profile, pack);
 			String subtitle = context.getString(R.string.version_manager_profile_list_subtitle, modeLabel(profile.saveMode), compatLabel);
@@ -613,11 +613,15 @@ public final class GameVersionManagerPage {
 	}
 
 	private CompatPackManager.CompatPack findPackById(List<CompatPackManager.CompatPack> packs, String packId) {
+		return findPackById(packs, packId, "");
+	}
+
+	private CompatPackManager.CompatPack findPackById(List<CompatPackManager.CompatPack> packs, String packId, String targetId) {
 		if (TextUtils.isEmpty(packId) || packs == null) {
 			return null;
 		}
 		for (CompatPackManager.CompatPack pack : packs) {
-			if (packId.equals(pack.packId)) {
+			if (packId.equals(pack.packId) && (TextUtils.isEmpty(targetId) || targetId.equals(pack.targetId))) {
 				return pack;
 			}
 		}
@@ -629,7 +633,8 @@ public final class GameVersionManagerPage {
 			return pack.targetLabel();
 		}
 		if (profile != null && !TextUtils.isEmpty(profile.compatPackId)) {
-			return context.getString(R.string.launch_profile_compat_missing_format, profile.compatPackId);
+			String id = TextUtils.isEmpty(profile.compatTargetId) ? profile.compatPackId : profile.compatPackId + "/" + profile.compatTargetId;
+			return context.getString(R.string.launch_profile_compat_missing_format, id);
 		}
 		return context.getString(R.string.version_manager_no_compat_selected);
 	}

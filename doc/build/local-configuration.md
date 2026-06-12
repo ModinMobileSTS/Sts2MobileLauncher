@@ -49,6 +49,7 @@ cp local.properties.example local.properties
 | `android.direct.dist` | `dist/sts2-re-direct.apk` | 直装版稳定副本。 |
 | `android.release_keystore_*` | debug keystore 兼容默认值 | 本地签名 fallback；更建议把密码类值放到 `.env` 或 CI secrets。 |
 | `compat.default_reference_flavor` | `original-v0.107.0` | 当前分支 fallback 的默认 compile gate。 |
+| `compat.pack_build_mode` | `matrix` | `matrix` 使用 `port-mod/targets/active/*/target.json` 从单 checkout 构建 schema 2 family 包；`legacy` 使用多分支/worktree 构建 schema 1 包，仅用于回退诊断。 |
 | `compat.bundled_packs_config` | `tools/android/bundled-compat-packs.json` | 内置兼容包列表。 |
 | `compat.asset_dir` | `android/assets/compat_packs` | 内置兼容包输出到 APK assets 的目录；生成 zip 已 gitignore，不提交。 |
 | `compat.worktree_root` | `.agent/worktrees/compat-packs` | 多分支兼容包临时 worktree 根目录；位于 ignored `.agent/`。 |

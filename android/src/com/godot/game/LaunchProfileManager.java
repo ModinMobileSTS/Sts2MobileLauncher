@@ -203,9 +203,10 @@ public final class LaunchProfileManager {
 			displayName = payload == null ? id : payload.label;
 		}
 		String compatPackId = sanitizeOptionalId(json.optString("compat_pack_id", ""));
+		String compatTargetId = sanitizeOptionalId(json.optString("compat_target_id", ""));
 		long createdAt = json.optLong("created_at_unix", dir.lastModified() / 1000L);
 		long updatedAt = json.optLong("updated_at_unix", dir.lastModified() / 1000L);
-		return new LaunchProfile(id, displayName, payloadId, compatPackId, saveMode, modsMode, dir, json, payload, createdAt, updatedAt, payload != null && payload.ready);
+		return new LaunchProfile(id, displayName, payloadId, compatPackId, compatTargetId, saveMode, modsMode, dir, json, payload, createdAt, updatedAt, payload != null && payload.ready);
 	}
 
 	public LaunchProfile createProfile(String payloadId, String displayName, String saveMode, String modsMode, boolean select) throws Exception {
@@ -213,14 +214,18 @@ public final class LaunchProfileManager {
 	}
 
 	public LaunchProfile createProfile(String payloadId, String displayName, String saveMode, String modsMode, String compatPackId, boolean select) throws Exception {
+		return createProfile(payloadId, displayName, saveMode, modsMode, compatPackId, "", select);
+	}
+
+	public LaunchProfile createProfile(String payloadId, String displayName, String saveMode, String modsMode, String compatPackId, String compatTargetId, boolean select) throws Exception {
 		GamePayload payload = readPayload(payloadId);
 		if (payload == null || !payload.ready) {
 			throw new IOException("Game payload is missing or incomplete: " + payloadId);
 		}
 		String name = TextUtils.isEmpty(displayName) ? payload.label : displayName.trim();
 		String id = buildUniqueProfileId(name + "-" + UUID.randomUUID().toString().substring(0, 8));
-		String selectedCompatPackId = compatPackId == null ? findBestCompatPackId(payload) : sanitizeOptionalId(compatPackId);
-		LaunchProfile profile = writeProfile(id, name, payload.id, selectedCompatPackId, normalizeSaveMode(saveMode), normalizeModsMode(modsMode), System.currentTimeMillis() / 1000L);
+		CompatSelection selectedCompat = compatPackId == null ? findBestCompatSelection(payload) : new CompatSelection(sanitizeOptionalId(compatPackId), sanitizeOptionalId(compatTargetId));
+		LaunchProfile profile = writeProfile(id, name, payload.id, selectedCompat.packId, selectedCompat.targetId, normalizeSaveMode(saveMode), normalizeModsMode(modsMode), System.currentTimeMillis() / 1000L);
 		ensureProfileDirectories(profile);
 		if (select) {
 			selectProfile(profile.id);
@@ -240,8 +245,8 @@ public final class LaunchProfileManager {
 			return readProfile(existing.id);
 		}
 		String baseId = buildUniqueProfileId("profile-" + payload.id);
-		String compatPackId = findBestCompatPackId(payload);
-		LaunchProfile profile = writeProfile(baseId, payload.label, payload.id, compatPackId, SAVE_MODE_GLOBAL, MODS_MODE_GLOBAL, System.currentTimeMillis() / 1000L);
+		CompatSelection compat = findBestCompatSelection(payload);
+		LaunchProfile profile = writeProfile(baseId, payload.label, payload.id, compat.packId, compat.targetId, SAVE_MODE_GLOBAL, MODS_MODE_GLOBAL, System.currentTimeMillis() / 1000L);
 		ensureProfileDirectories(profile);
 		if (select) {
 			selectProfile(profile.id);
@@ -255,6 +260,10 @@ public final class LaunchProfileManager {
 	}
 
 	public LaunchProfile updateProfile(String profileId, String payloadId, String displayName, String saveMode, String modsMode, String compatPackId) throws Exception {
+		return updateProfile(profileId, payloadId, displayName, saveMode, modsMode, compatPackId, "");
+	}
+
+	public LaunchProfile updateProfile(String profileId, String payloadId, String displayName, String saveMode, String modsMode, String compatPackId, String compatTargetId) throws Exception {
 		LaunchProfile profile = readProfile(profileId);
 		if (profile == null) {
 			throw new IOException("Launch profile not found: " + profileId);
@@ -262,7 +271,8 @@ public final class LaunchProfileManager {
 		String name = TextUtils.isEmpty(displayName) ? profile.displayName : displayName.trim();
 		String normalizedPayloadId = TextUtils.isEmpty(payloadId) ? profile.payloadId : sanitizeId(payloadId);
 		String normalizedCompatPackId = sanitizeOptionalId(compatPackId);
-		LaunchProfile updated = writeProfile(profile.id, name, normalizedPayloadId, normalizedCompatPackId, normalizeSaveMode(saveMode), normalizeModsMode(modsMode), profile.createdAtUnix);
+		String normalizedCompatTargetId = sanitizeOptionalId(compatTargetId);
+		LaunchProfile updated = writeProfile(profile.id, name, normalizedPayloadId, normalizedCompatPackId, normalizedCompatTargetId, normalizeSaveMode(saveMode), normalizeModsMode(modsMode), profile.createdAtUnix);
 		ensureProfileDirectories(updated);
 		if (profile.id.equals(getSelectedProfileId())) {
 			writeSelectedLaunchContextJson(readProfile(profile.id));
@@ -271,11 +281,15 @@ public final class LaunchProfileManager {
 	}
 
 	public void setSelectedProfileCompatPack(String compatPackId) throws Exception {
+		setSelectedProfileCompatPack(compatPackId, "");
+	}
+
+	public void setSelectedProfileCompatPack(String compatPackId, String compatTargetId) throws Exception {
 		LaunchProfile profile = getSelectedProfile();
 		if (profile == null) {
 			return;
 		}
-		updateProfile(profile.id, profile.displayName, profile.saveMode, profile.modsMode, compatPackId);
+		updateProfile(profile.id, profile.payloadId, profile.displayName, profile.saveMode, profile.modsMode, compatPackId, compatTargetId);
 	}
 
 	public void selectProfile(String profileId) throws Exception {
@@ -372,6 +386,11 @@ public final class LaunchProfileManager {
 	public String getSelectedCompatPackId() {
 		LaunchProfile profile = getSelectedProfile();
 		return profile == null ? "" : profile.compatPackId;
+	}
+
+	public String getSelectedCompatTargetId() {
+		LaunchProfile profile = getSelectedProfile();
+		return profile == null ? "" : profile.compatTargetId;
 	}
 
 	public String buildSelectedLaunchContextJson() {
@@ -517,22 +536,27 @@ public final class LaunchProfileManager {
 			displayName = payload == null ? id : payload.label;
 		}
 		String compatPackId = sanitizeOptionalId(json.optString("compat_pack_id", ""));
+		String compatTargetId = sanitizeOptionalId(json.optString("compat_target_id", ""));
 		long createdAt = json.optLong("created_at_unix", dir.lastModified() / 1000L);
 		long updatedAt = json.optLong("updated_at_unix", dir.lastModified() / 1000L);
-		return new LaunchProfile(id, displayName, payloadId, compatPackId, saveMode, modsMode, dir, json, payload, createdAt, updatedAt, payload != null && payload.ready);
+		return new LaunchProfile(id, displayName, payloadId, compatPackId, compatTargetId, saveMode, modsMode, dir, json, payload, createdAt, updatedAt, payload != null && payload.ready);
 	}
 
-	private LaunchProfile writeProfile(String id, String displayName, String payloadId, String compatPackId, String saveMode, String modsMode, long createdAtUnix) throws Exception {
+	private LaunchProfile writeProfile(String id, String displayName, String payloadId, String compatPackId, String compatTargetId, String saveMode, String modsMode, long createdAtUnix) throws Exception {
 		String normalizedId = sanitizeId(id);
 		File dir = new File(getProfilesRootDir(), normalizedId);
 		FileBrowserSupport.ensureDirectory(dir);
 		long now = System.currentTimeMillis() / 1000L;
 		JSONObject json = new JSONObject();
-		json.put("schema", 1);
+		json.put("schema", 2);
 		json.put("id", normalizedId);
 		json.put("display_name", displayName == null ? "" : displayName.trim());
 		json.put("payload_id", sanitizeId(payloadId));
 		json.put("compat_pack_id", sanitizeOptionalId(compatPackId));
+		String normalizedCompatTargetId = sanitizeOptionalId(compatTargetId);
+		if (!TextUtils.isEmpty(normalizedCompatTargetId)) {
+			json.put("compat_target_id", normalizedCompatTargetId);
+		}
 		json.put("save_mode", normalizeSaveMode(saveMode));
 		json.put("mods_mode", normalizeModsMode(modsMode));
 		json.put("created_at_unix", createdAtUnix > 0 ? createdAtUnix : now);
@@ -580,7 +604,7 @@ public final class LaunchProfileManager {
 			}
 		}
 		FileBrowserSupport.writeTextFile(new File(launcherDir, "selected_game_version.json"), legacy.toString(2));
-		new CompatPackManager(context).writeSelectedCompatJsonForProfile(profile == null ? "" : profile.compatPackId);
+		new CompatPackManager(context).writeSelectedCompatJsonForProfile(profile == null ? "" : profile.compatPackId, profile == null ? "" : profile.compatTargetId);
 	}
 
 	private JSONObject buildLaunchContextJson(LaunchProfile profile) throws Exception {
@@ -604,9 +628,15 @@ public final class LaunchProfileManager {
 		root.put("selected_mods_dir", getModsRootDir(profile).getAbsolutePath());
 		root.put("selected_logs_dir", new File(profile.dir, "logs").getAbsolutePath());
 		root.put("compat_pack_id", profile.compatPackId);
-		CompatPackManager.CompatPack pack = findInstalledCompatPack(profile.compatPackId);
+		if (!TextUtils.isEmpty(profile.compatTargetId)) {
+			root.put("compat_target_id", profile.compatTargetId);
+		}
+		CompatPackManager.CompatPack pack = findInstalledCompatPack(profile.compatPackId, profile.compatTargetId);
 		if (pack != null) {
 			root.put("selected_compat_pack_dir", pack.dir.getAbsolutePath());
+			if (!TextUtils.isEmpty(pack.targetId)) {
+				root.put("selected_compat_target_id", pack.targetId);
+			}
 			root.put("selected_compat_overlay_pck", pack.overlayPckFile.getAbsolutePath());
 			root.put("selected_compat_dll", pack.dllFile.getAbsolutePath());
 		}
@@ -614,25 +644,33 @@ public final class LaunchProfileManager {
 	}
 
 	private String findBestCompatPackId(GamePayload payload) {
+		return findBestCompatSelection(payload).packId;
+	}
+
+	private CompatSelection findBestCompatSelection(GamePayload payload) {
 		if (payload == null) {
-			return "";
+			return CompatSelection.EMPTY;
 		}
 		try {
 			CompatPackManager manager = new CompatPackManager(context);
 			CompatPackManager.CompatPack pack = manager.findBestMatch(payload.manifest, manager.listInstalledPacks());
-			return pack == null ? "" : pack.packId;
+			return pack == null ? CompatSelection.EMPTY : new CompatSelection(pack.packId, pack.targetId);
 		} catch (Exception ignored) {
-			return "";
+			return CompatSelection.EMPTY;
 		}
 	}
 
 	private CompatPackManager.CompatPack findInstalledCompatPack(String packId) {
+		return findInstalledCompatPack(packId, "");
+	}
+
+	private CompatPackManager.CompatPack findInstalledCompatPack(String packId, String targetId) {
 		if (TextUtils.isEmpty(packId)) {
 			return null;
 		}
 		try {
 			for (CompatPackManager.CompatPack pack : new CompatPackManager(context).listInstalledPacks()) {
-				if (pack.packId.equals(packId)) {
+				if (pack.packId.equals(packId) && (TextUtils.isEmpty(targetId) || targetId.equals(pack.targetId))) {
 					return pack;
 				}
 			}
@@ -759,6 +797,18 @@ public final class LaunchProfileManager {
 		return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 	}
 
+	private static final class CompatSelection {
+		static final CompatSelection EMPTY = new CompatSelection("", "");
+
+		final String packId;
+		final String targetId;
+
+		CompatSelection(String packId, String targetId) {
+			this.packId = packId == null ? "" : packId;
+			this.targetId = targetId == null ? "" : targetId;
+		}
+	}
+
 	private static final class PayloadIdentity {
 		final String version;
 		final String commit;
@@ -814,6 +864,7 @@ public final class LaunchProfileManager {
 		public final String displayName;
 		public final String payloadId;
 		public final String compatPackId;
+		public final String compatTargetId;
 		public final String saveMode;
 		public final String modsMode;
 		public final File dir;
@@ -823,11 +874,12 @@ public final class LaunchProfileManager {
 		public final long updatedAtUnix;
 		public final boolean ready;
 
-		LaunchProfile(String id, String displayName, String payloadId, String compatPackId, String saveMode, String modsMode, File dir, JSONObject manifest, GamePayload payload, long createdAtUnix, long updatedAtUnix, boolean ready) {
+		LaunchProfile(String id, String displayName, String payloadId, String compatPackId, String compatTargetId, String saveMode, String modsMode, File dir, JSONObject manifest, GamePayload payload, long createdAtUnix, long updatedAtUnix, boolean ready) {
 			this.id = id == null ? "" : id;
 			this.displayName = TextUtils.isEmpty(displayName) ? this.id : displayName;
 			this.payloadId = payloadId == null ? "" : payloadId;
 			this.compatPackId = compatPackId == null ? "" : compatPackId;
+			this.compatTargetId = compatTargetId == null ? "" : compatTargetId;
 			this.saveMode = SAVE_MODE_ISOLATED.equals(saveMode) ? SAVE_MODE_ISOLATED : SAVE_MODE_GLOBAL;
 			this.modsMode = MODS_MODE_ISOLATED.equals(modsMode) ? MODS_MODE_ISOLATED : MODS_MODE_GLOBAL;
 			this.dir = dir;

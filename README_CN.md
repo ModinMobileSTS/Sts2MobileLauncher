@@ -116,6 +116,10 @@ tools/android/sync-runtime-from-references.sh
 ```bash
 tools/android/stage-bundled-compat-packs.sh
 ```
+现在默认会从单个 checkout 构建 schema 2 扁平化 family 兼容包。legacy 分版本分支包仍可用于诊断：
+```bash
+COMPAT_PACK_BUILD_MODE=legacy tools/android/stage-bundled-compat-packs.sh
+```
 
 ### 6. 构建导入版 APK
 执行构建脚本。这将会输出一个**不包含**游戏本体的 “导入版 APK”（推荐的合规分发方式）：

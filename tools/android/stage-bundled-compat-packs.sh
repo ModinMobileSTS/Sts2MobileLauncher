@@ -17,6 +17,8 @@ COMPAT_PACK_REMOTE="$(sts2_config_value COMPAT_PACK_REMOTE compat.pack_remote or
 export COMPAT_PACK_REMOTE
 COMPAT_PACK_APPLY_BUILD_INFO_PATCHES="$(sts2_config_value COMPAT_PACK_APPLY_BUILD_INFO_PATCHES compat.apply_build_info_patches 1)"
 export COMPAT_PACK_APPLY_BUILD_INFO_PATCHES
+COMPAT_PACK_BUILD_MODE="$(sts2_config_value COMPAT_PACK_BUILD_MODE compat.pack_build_mode matrix)"
+export COMPAT_PACK_BUILD_MODE
 
 if [[ ! -d "$COMPAT_ROOT/.git" && ! -f "$COMPAT_ROOT/.git" ]]; then
   echo "Missing compat submodule checkout: $COMPAT_ROOT" >&2
@@ -27,6 +29,26 @@ if [[ ! -f "$CONFIG" ]]; then
   exit 1
 fi
 sts2_require_executable "$DOTNET_BIN" "dotnet"
+
+if [[ "$COMPAT_PACK_BUILD_MODE" == "matrix" ]]; then
+  mkdir -p "$ASSET_DIR"
+  rm -f "$ASSET_DIR"/*.zip
+  if [[ ! -x "$COMPAT_ROOT/tools/build-compat-matrix.sh" ]]; then
+    echo "Missing compat matrix build script: $COMPAT_ROOT/tools/build-compat-matrix.sh" >&2
+    exit 1
+  fi
+  (
+    cd "$COMPAT_ROOT"
+    DOTNET_BIN="$DOTNET_BIN" ./tools/build-compat-matrix.sh
+  )
+  cp -f "$COMPAT_ROOT"/dist/compat-matrix/*.zip "$ASSET_DIR"/
+  sha256sum "$ASSET_DIR"/*.zip
+  exit 0
+fi
+if [[ "$COMPAT_PACK_BUILD_MODE" != "legacy" ]]; then
+  echo "Unknown COMPAT_PACK_BUILD_MODE='$COMPAT_PACK_BUILD_MODE' (expected matrix or legacy)" >&2
+  exit 1
+fi
 
 apply_build_info_patch() {
   local target_root="$1"

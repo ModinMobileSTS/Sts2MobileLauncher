@@ -210,6 +210,7 @@ public class GodotApp extends GodotActivity {
 					+ " payload=" + describePayload(payload)
 					+ " compatEnabled=" + compatManager.isCompatPackEnabled()
 					+ " selectedCompatId=" + manager.getSelectedCompatPackId()
+					+ " selectedCompatTargetId=" + manager.getSelectedCompatTargetId()
 					+ " selectedPack=" + describeCompatPack(pack)
 					+ " gameDir=" + describeFile(manager.getSelectedGameDir())
 					+ " selectedInstanceJson=" + describeFile(new File(getFilesDir(), "launcher/selected_instance.json"))
@@ -231,6 +232,7 @@ public class GodotApp extends GodotActivity {
 		return "id=" + safe(profile.id)
 			+ ",payloadId=" + safe(profile.payloadId)
 			+ ",compatPackId=" + safe(profile.compatPackId)
+			+ ",compatTargetId=" + safe(profile.compatTargetId)
 			+ ",saveMode=" + safe(profile.saveMode)
 			+ ",modsMode=" + safe(profile.modsMode)
 			+ ",ready=" + profile.ready
@@ -255,6 +257,7 @@ public class GodotApp extends GodotActivity {
 			return "null";
 		}
 		return "id=" + safe(pack.packId)
+			+ ",targetId=" + safe(pack.targetId)
 			+ ",version=" + safe(pack.compatVersion)
 			+ ",target=" + safe(pack.targetLabel())
 			+ ",ready=" + pack.ready

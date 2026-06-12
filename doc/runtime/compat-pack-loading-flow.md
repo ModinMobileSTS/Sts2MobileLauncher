@@ -5,13 +5,11 @@
 ## 1. 术语
 
 - **payload**：用户导入的 PC 版游戏 zip 解压结果，安装到 `<files>/payloads/<payload_id>/game/`；切换版本不再复制到固定 active 目录。
-- **compat pack**：Android 移动端兼容包，安装到 `<files>/compat-packs/<pack_id>/`，包含：
-  - `compat_manifest.json`
-  - `STS2Mobile.dll`
-  - `port_compat.pck`
-  - `SHA256SUMS`
+- **compat pack**：Android 移动端兼容包，安装到 `<files>/compat-packs/<pack_id>/`。当前兼容两种 manifest：
+  - schema 1 legacy 单目标包：根目录包含 `compat_manifest.json`、`STS2Mobile.dll`、`port_compat.pck`、`SHA256SUMS`。
+  - schema 2 family 包，根目录包含 `compat_manifest.json`、`SHA256SUMS`，并在 `variants/<target_id>/` 下为每个目标版本放置 `STS2Mobile.dll` 与 `port_compat.pck`。
 - **compat fallback**：APK assets 中的 `android/assets/dotnet_bcl/STS2Mobile.dll` 与 `android/assets/port_compat.pck`，主要用于兼容旧启动路径或无已选包的兜底；正常 launcher 启动会先检查当前启动配置的 compat pack，缺包时不静默 fallback。
-- **launch profile / 启动配置**：安装在 `<files>/instances/<profile_id>/instance.json`，绑定一个 payload、一个可选 compat pack，并决定存档/设置与 MOD 使用全局目录还是 profile 独立目录。兼容包选择属于启动配置，不再有运行时全局选中包 fallback。
+- **launch profile / 启动配置**：安装在 `<files>/instances/<profile_id>/instance.json`，绑定一个 payload、一个可选 compat pack，并决定存档/设置与 MOD 使用全局目录还是 profile 独立目录。schema 2 family 包会同时记录 `compat_pack_id` 与 `compat_target_id`；兼容包选择属于启动配置，不再有运行时全局选中包 fallback。
 - **普通用户 MOD**：默认放在全局 `<files>/mods/`；当当前 launch profile 的 `mods_mode=isolated` 时放在 `<files>/instances/<profile_id>/mods/`。由游戏原版 `ModManager` 在被兼容层 patch 后扫描加载。
 
 Compat pack 不是普通用户 MOD。它必须早于原版 `ModManager.Initialize()` 加载，否则无法 patch Steam/Sentry/platform、路径、MOD 扫描、输入、shader 等 Android 必需行为。
@@ -19,13 +17,22 @@ Compat pack 不是普通用户 MOD。它必须早于原版 `ModManager.Initializ
 ## 2. 构建期流程
 
 ```text
-port-mod branch
-  -> dotnet build STS2Mobile.csproj
-  -> STS2Mobile.dll
-  -> make-port-overlay-pck.py
-  -> port_compat.pck
-  -> compat_manifest.json
-  -> zip: sts2-android-compat-*.zip
+legacy mode:
+  port-mod branch
+    -> dotnet build STS2Mobile.csproj
+    -> STS2Mobile.dll
+    -> make-port-overlay-pck.py
+    -> port_compat.pck
+    -> compat_manifest.json
+    -> zip: sts2-android-compat-*.zip
+
+flat matrix mode:
+  port-mod/targets/active/*/target.json
+    -> dotnet build STS2Mobile.csproj per target ReferenceFlavor
+    -> variants/<target_id>/STS2Mobile.dll
+    -> variants/<target_id>/port_compat.pck
+    -> schema 2 compat_manifest.json targets[]
+    -> zip: sts2-android-compat.zip
 ```
 
 相关脚本：
@@ -37,8 +44,8 @@ port-mod branch
   - 构建当前 compat 分支的独立 zip。
   - 写入 build metadata：branch、commit、dirty、timestamp。
 - `tools/android/stage-bundled-compat-packs.sh`
-  - 按 `tools/android/bundled-compat-packs.json` 构建多个分支。
-  - 非当前分支使用临时 git worktree。
+  - 默认 matrix mode：调用 `port-mod/tools/build-compat-matrix.sh`，从同一 checkout 的 `targets/active/*/target.json` 生成 schema 2 family zip。
+  - `COMPAT_PACK_BUILD_MODE=legacy`：按 `tools/android/bundled-compat-packs.json` 构建多个 schema 1 分支包，非当前分支使用临时 git worktree；仅用于回退诊断。
   - 输出到 gitignored 的 `android/assets/compat_packs/*.zip`，随本地 APK 打包但不由 git 跟踪。
 
 ## 3. 安装 / 首次进入设置页
@@ -48,7 +55,7 @@ port-mod branch
    - 枚举 APK assets `compat_packs/*.zip`。
    - 复制到私有临时目录。
    - 安全解压、寻找 `compat_manifest.json`。
-   - 校验 `STS2Mobile.dll` 与 `port_compat.pck` 存在。
+   - schema 1 校验根目录 `STS2Mobile.dll` 与 `port_compat.pck` 存在；schema 2 校验 `targets[]` 中每个 artifact 指向的 variant dll/pck 存在。
    - 安装到 `<files>/compat-packs/<pack_id>/`。
    - 不会自动把新安装的包设为全局选中包；用户需要在创建或编辑启动配置时选择。
 3. 用户也可在“版本”页通过 SAF 导入外部 compat pack zip；导入后同样只进入已安装包列表。
@@ -66,7 +73,7 @@ port-mod branch
 4. `PckPatcher` 只修改私有 PCK copy，禁用 Sentry autoload/gdextension 元数据，避免 Android 缺少桌面 Sentry 扩展导致启动前解析错误。
 5. 写入 staging 中的 `.payload_manifest.json`，包含 `release_info`、`version`、`commit`、`sts2_dll_sha256`、PCK patch 结果等。
 6. 按 manifest 身份生成 `payload_id`，原子安装到 `<files>/payloads/<payload_id>/game/`；同一 payload 已存在时只替换 payload store 中的该目录，不再复制到 `<files>/game/`。
-7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload；新建 profile 时会按 payload manifest 中的 `version` 填入推荐 compat pack，已有 profile 不会在每次导入/启动时被覆盖。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot` 与 `source.steam.depots[]` 中记录。
+7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload；新建 profile 时会按 payload manifest 中的 `sts2_dll_sha256` 与 `version` 填入推荐 compat pack。schema 2 family 包会写入 `compat_pack_id` 和 `compat_target_id`；已有 profile 不会在每次导入/启动时被覆盖。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot` 与 `source.steam.depots[]` 中记录。
 8. 旧安装中的 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制。
 
 ## 5. 启动前检查
@@ -75,7 +82,7 @@ port-mod branch
 
 1. 检查当前 launch profile 绑定的 payload 是否 ready；配置存在但本体缺失/被删除时不 fallback 到旧 `<files>/game/`，而是提示重新导入/下载、切换配置或编辑配置；没有 payload 时提示导入，直装版可先解压内置 payload。
 2. 如果 Android 兼容包开关启用：
-   - 只读取当前 launch profile 的 `compat_pack_id` 并解析已安装包。
+   - 只读取当前 launch profile 的 `compat_pack_id` / `compat_target_id` 并解析已安装包。
    - 若配置未选择兼容包或引用的包已删除，阻止启动并提示编辑启动配置。
    - 若选中包 manifest 支持版本列表与 payload version 不一致，弹出风险对话框，用户可取消、去启动配置页或强制启动。
 3. 启动前 launcher 会为当前 launch profile account root 创建一份本地 `before-launch` 存档快照（默认只保留最近 5 个）。若 Steam Cloud 模式配置为“启动前拉取”或“完整自动”，且已保存 Steam refresh token，则随后拉取当前 account root 的 Steam Cloud 文件；若 WebDAV 模式配置为“启动前拉取”或“完整自动”，且已配置 WebDAV URL，则继续拉取同一 account root 的 WebDAV 文件。任一同步失败时会弹窗允许取消、打开对应云存档中心或跳过同步继续启动。
@@ -94,12 +101,12 @@ port-mod branch
 6. payload PCK stamp 变化时清理 Godot texture import cache。
 7. Stage overlay：
    - 兼容包开关关闭：删除 `<files>/port_compat.pck`；启动前会先弹风险确认，用户选择继续才进入无兼容层准备流程。
-   - 有 selected pack：复制 `<files>/compat-packs/<pack_id>/port_compat.pck` 到 `<files>/port_compat.pck`。
+   - 有 selected pack：schema 1 复制 `<files>/compat-packs/<pack_id>/port_compat.pck`；schema 2 复制 `<files>/compat-packs/<pack_id>/variants/<target_id>/port_compat.pck` 到 `<files>/port_compat.pck`。
    - 无 selected pack：仅在兼容包开关开启但绕过 launcher 检查的 fallback 准备路径中使用 APK assets `port_compat.pck` fallback。
 8. 准备 Mono publish 目录 `<files>/.godot/mono/publish/arm64/`：
    - 复制 APK assets `dotnet_bcl/*`，但 `STS2Mobile.dll` 由 selected pack 决定。
    - 兼容包开关关闭：删除 publish 目录中的 `STS2Mobile.dll`；`GodotApp` 的直接启动 fallback 也不会再从 selected pack 或 APK asset 强制补回。
-   - 有 selected pack：复制 selected `STS2Mobile.dll`。
+   - 有 selected pack：复制 selected `STS2Mobile.dll`；schema 2 的来源是当前 target variant。
    - 无 selected pack：仅在兼容包开关开启但绕过 launcher 检查的 fallback 准备路径中尝试复制 fallback `dotnet_bcl/STS2Mobile.dll`。
    - 复制当前 profile payload 目录中 `data_*/*` 的游戏 assemblies，跳过 `.so`，并保护 BCL/System/GodotSharp 等 runtime DLL。
    - 使用 SharedPreferences stamp 避免不必要的大文件重复复制；payload/profile 变化时强制刷新游戏 assemblies，并清理 publish 目录里旧 payload 遗留的游戏 DLL/JSON。

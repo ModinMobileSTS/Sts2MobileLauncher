@@ -7,7 +7,7 @@
 
 - 本工程是 **Slay the Spire 2 Android 重构移植/启动器工程**，不是完整游戏源码仓库。
 - 仓库只维护 Android shell、导入/版本管理逻辑、兼容包构建脚本与 Android 兼容补丁源码；**不提交用户游戏 zip、解压后的完整游戏 payload、大型 Godot/Mono runtime、keystore**。
-- `port-mod/` 是独立仓库 <https://github.com/ModinMobileSTS/sts2-android-compat> 的 **git submodule**，按游戏版本使用多个分支维护 Android 兼容补丁。
+- `port-mod/` 是独立仓库 <https://github.com/ModinMobileSTS/sts2-android-compat> 的 **git submodule**。当前开发默认使用 flat matrix 模式：一个 checkout 读取 `port-mod/targets/active/*/target.json`，为多个目标版本构建 schema 2 family 兼容包；按游戏版本分支构建的 legacy 模式只作为显式回退/诊断路径保留。
 - 新增或修改功能时必须同步文档：用户可见/长期维护说明优先更新 `README.md` / `doc/`；变更流水/changelog 只写入 `.agent/agent-docs/changelog/`（不提交），因为它主要服务 agent 接力，不作为公开仓库文档。历史 `docs/` 已移到 `.agent/historical-backup/docs/` 本地备份，不再作为公开文档入口。`AGENTS.md` 是 agent/维护者专用操作约定；本地 agent 草稿、报告、worktree、参考 clone、历史备份与 agent 文档放入 `.agent/`，该目录不追踪。
 - 完成用户要求的修改后，请用脚本构建一个 importer 版本 APK 便于测试：
 
@@ -32,30 +32,33 @@ Android 侧拆成三层维护：
 3. **Android 兼容包 / Harmony patcher**
    - `port-mod/STS2AndroidPortCompat` 编译输出 `STS2Mobile.dll`。
    - `port-mod/overlay` 打包输出 `port_compat.pck`。
-   - 兼容包 zip 形态为：`compat_manifest.json` + `STS2Mobile.dll` + `port_compat.pck` + `SHA256SUMS`。
+   - legacy schema 1 兼容包 zip 形态为：`compat_manifest.json` + `STS2Mobile.dll` + `port_compat.pck` + `SHA256SUMS`。
+   - flat schema 2 family 包 zip 形态为：`compat_manifest.json` + `variants/<target_id>/STS2Mobile.dll` + `variants/<target_id>/port_compat.pck` + `SHA256SUMS`；启动配置用 `compat_pack_id` + `compat_target_id` 指向具体 variant。
    - 兼容包不是普通用户 MOD；它由 launcher/Godot runtime 在游戏早期加载，用来 patch 原版 PC 程序集并让普通 MOD 系统在 Android 上工作。
 
 ## 2. 当前支持版本矩阵
 
-`port-mod` 当前按分支维护不同游戏版本的兼容补丁。父仓库 `.gitmodules` 默认跟踪 beta 分支，但打包脚本会通过临时 worktree 同时构建多个内置兼容包。
+`port-mod` 当前默认采用 flat matrix 打包模式，不切分支，而是从当前 checkout 的 `targets/active/*/target.json` 循环编译多个 target，并输出一个 schema 2 family 包。父仓库 `.gitmodules` 仍默认跟踪 beta 分支；legacy 打包模式会通过临时 worktree 同时构建多个 schema 1 内置兼容包，仅在显式设置 `COMPAT_PACK_BUILD_MODE=legacy` 时使用。
 
-| 通道 | 游戏版本 | 原版/解包引用配置 | submodule 分支 | compile gate `ReferenceFlavor` | 兼容包 id |
-| --- | --- | --- | --- | --- | --- |
-| 正式/稳定 | `v0.103.2` / `v0.103.3` | `.env`: `STS2_ORIGINAL_V103_REFERENCE_DIR` 或 `STS2_ORIGINAL_V103_ROOT` | `compat/v0.103.2` | `original` | `sts2-android-compat-v0.103.x` |
-| Beta 旧测试 | `v0.106.1` | `.env`: `STS2_ORIGINAL_V1061_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1061_ROOT` | `compat/v0.106.1-beta` | `original-v0.106.1` | `sts2-android-compat-v0.106.1-beta` |
-| Beta 测试 | `v0.107.0` | `.env`: `STS2_ORIGINAL_V1070_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1070_ROOT` | `compat/v0.107.0-beta` | `original-v0.107.0` | `sts2-android-compat-v0.107.0-beta` |
+| 通道 | 游戏版本 | 原版/解包引用配置 | legacy submodule 分支 | compile gate `ReferenceFlavor` | flat target id | legacy 兼容包 id |
+| --- | --- | --- | --- | --- | --- | --- |
+| 正式/稳定 | `v0.103.2` / `v0.103.3` | `.env`: `STS2_ORIGINAL_V103_REFERENCE_DIR` 或 `STS2_ORIGINAL_V103_ROOT` | `compat/v0.103.2` | `original` | `v0.103.x` | `sts2-android-compat-v0.103.x` |
+| Beta 旧测试 | `v0.106.1` | `.env`: `STS2_ORIGINAL_V1061_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1061_ROOT` | `compat/v0.106.1-beta` | `original-v0.106.1` | `v0.106.1-beta` | `sts2-android-compat-v0.106.1-beta` |
+| Beta 测试 | `v0.107.0` | `.env`: `STS2_ORIGINAL_V1070_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1070_ROOT` | `compat/v0.107.0-beta` | `original-v0.107.0` | `v0.107.0-beta` | `sts2-android-compat-v0.107.0-beta` |
 
 关键文件：
 
 - `.gitmodules`：`port-mod` submodule GitHub URL 与默认 branch。
-- `tools/android/bundled-compat-packs.json`：内置兼容包列表，当前包含 `compat/v0.103.2`、`compat/v0.106.1-beta` 与 `compat/v0.107.0-beta`。
+- `tools/android/bundled-compat-packs.json`：legacy 内置兼容包列表，当前包含 `compat/v0.103.2`、`compat/v0.106.1-beta` 与 `compat/v0.107.0-beta`。
+- `port-mod/targets/active/*/target.json`：flat matrix target 描述，记录 target id、支持版本、`ReferenceFlavor`、compile constants、原版引用来源与 dll sha。
+- `port-mod/tools/build-compat-matrix.sh`：从当前 checkout 构建 schema 2 family 兼容包；`tools/android/stage-bundled-compat-packs.sh` 默认会调用它。
 - `.env.example`：工具链、runtime 参考、original compile gate 引用、签名环境变量示例；复制为 `.env` 后编辑，本文件不入 git。
 - `local.properties.example`：非环境变量的本地构建选项示例；复制为 `local.properties` 后编辑，本文件不入 git。
 - `tools/env/load-local-config.sh`：所有 bash 构建脚本共用的 `.env` / `local.properties` loader。
 - `port-mod/refs/original*/`：仅保留 README 占位；构建脚本不再依赖提交到仓库的个人 symlink。
 - `port-mod/compat_manifest.v0.107.0-beta.json`：当前 checkout 分支的 beta 兼容包 manifest；`v0.103.x` / `v0.106.1` manifest 位于对应分支。
 
-注意：启动器按 payload manifest 的 `release_info.version` 为新建启动配置自动推荐/填写兼容包；优先匹配 `target_game.version`，也支持 manifest 中的 `target_game.supported_versions` / `compatible_versions` / `versions` 列表，因此同一个兼容包可覆盖多个 patch 版本（例如 `v0.103.x` 覆盖 `v0.103.2` 与 `v0.103.3`）。兼容包选择以 `<files>/instances/<profile_id>/instance.json` 中的 `compat_pack_id` 为准，不再使用全局选中包作为运行时 fallback；若当前启动配置绑定的兼容包缺失或与 payload 版本不一致，会在启动前提示用户编辑启动配置或承担风险继续。当前不会仅因 `sts2.dll` SHA-256 不一致硬阻止启动，但 manifest 中仍记录 SHA 供诊断和精确匹配升级使用。
+注意：启动器按 payload manifest 的 `sts2_dll_sha256` 与 `release_info.version` 为新建启动配置自动推荐/填写兼容包；schema 1 优先匹配 `target_game.version`，也支持 manifest 中的 `target_game.supported_versions` / `compatible_versions` / `versions` 列表；schema 2 会展开 `targets[]`，优先按 dll sha 匹配具体 target，再回落到版本匹配。兼容包选择以 `<files>/instances/<profile_id>/instance.json` 中的 `compat_pack_id` 为准，schema 2 还会记录 `compat_target_id`，不再使用全局选中包作为运行时 fallback；若当前启动配置绑定的兼容包/target 缺失或与 payload 版本不一致，会在启动前提示用户编辑启动配置或承担风险继续。当前不会仅因 `sts2.dll` SHA-256 不一致硬阻止启动，但 manifest 中仍记录 SHA 供诊断和精确匹配升级使用。
 
 ## 3. 本地配置 / 参考输入
 
@@ -105,7 +108,7 @@ s2_re/
       dotnet_bcl/                  # 大型 .NET/Godot runtime DLL，同步生成，gitignore
       payload/                     # 直装版临时内置 zip，gitignore
     libs/                          # Godot/FMOD/template AAR，同步生成，gitignore
-  port-mod/                        # git submodule: ModinMobileSTS/sts2-android-compat，多分支兼容补丁仓库
+  port-mod/                        # git submodule: ModinMobileSTS/sts2-android-compat，兼容补丁仓库
     compat_manifest.*.json         # 当前分支的兼容包 manifest
     STS2AndroidPortCompat/         # 兼容插件源码，输出 STS2Mobile.dll
       STS2Mobile.csproj            # runtime 期望的程序集名：STS2Mobile.dll
@@ -114,15 +117,17 @@ s2_re/
       Android/                     # Android settings/path bridge
     overlay/                       # 打包进 port_compat.pck 的 shader/resource overlay
     refs/                          # 可选本地 original compile gate 占位说明；脚本优先用 .env 的引用目录
+    targets/active/*/target.json   # flat matrix 目标版本描述；移到 archived 后默认不再内置
     tools/build-compat-pack.sh     # 导出独立可安装 compat pack zip
+    tools/build-compat-matrix.sh   # 单 checkout 构建 schema 2 family compat pack
   tools/
     android/
       env-from-s2.sh               # 兼容旧名称：source 后加载 .env 中的 JDK/Android SDK
       gradle-with-s2-env.sh        # 在 android/ 下带本机环境执行 Gradle
       sync-runtime-from-references.sh # 同步 Godot/FMOD/dotnet_bcl 等大型运行时产物
       build-port-mod.sh            # 编译当前 submodule 分支并 stage legacy fallback dll/pck
-      stage-bundled-compat-packs.sh # 按 bundled-compat-packs.json 多分支构建内置兼容包
-      bundled-compat-packs.json    # 内置兼容包分支列表
+      stage-bundled-compat-packs.sh # 默认构建 flat family 包；COMPAT_PACK_BUILD_MODE=legacy 时跑 legacy 多分支构建
+      bundled-compat-packs.json    # legacy 内置兼容包分支列表
       make-bootstrap-pck.py        # 生成最小 bootstrap.pck
       make-port-overlay-pck.py     # 从 port-mod/overlay 生成 legacy fallback port_compat.pck
       generate-material-symbol-vectors.py # 从 Material Symbols Rounded TTF 生成 Android vector drawable
@@ -183,9 +188,9 @@ s2_re/
   - `WebDavCloudActivity`：WebDAV 云存档中心；保存 WebDAV URL、用户名、密码/应用令牌与可选远端槽位到加密偏好，只同步当前 launch profile account root 的白名单 STS2 存档文件，远端目录为用户配置 base URL 下的 `SlayTheSpire2/saves/<slot>/`，并用 `.sts2re/manifest.json` 记录 SHA-1 manifest；支持测试连接、刷新清单、拉取、上传、强制上传、启动前拉取和干净退出后上传。
   - `LocalSaveSnapshotManager`：本地存档快照管理；启动前创建 `before-launch`，游戏干净退出回设置后创建 `clean-exit`，恢复快照前创建 `before-restore`，默认保留当前 launch profile 最近 5 个 zip 快照；设置页“存档”分区可立即创建和恢复历史快照。
   - `PayloadManager`：导入/校验/安装 PC 游戏 zip 或 SteamPipe 下载目录到 payload store。
-  - `LaunchProfileManager`：维护 `<files>/payloads/<payload_id>/game/` 与 `<files>/instances/<profile_id>/instance.json`，支持同一游戏本体创建多个全局/隔离存档和 MOD 的启动配置，并把 `compat_pack_id` 作为每个配置自己的选择；切换配置不复制 PCK。游戏本体缺失时配置仍保留且可选择/编辑，启动时提示用户重新导入、下载或重新绑定。
+  - `LaunchProfileManager`：维护 `<files>/payloads/<payload_id>/game/` 与 `<files>/instances/<profile_id>/instance.json`，支持同一游戏本体创建多个全局/隔离存档和 MOD 的启动配置，并把 `compat_pack_id` 作为每个配置自己的选择；schema 2 family 兼容包还会保存 `compat_target_id`。切换配置不复制 PCK。游戏本体缺失时配置仍保留且可选择/编辑，启动时提示用户重新导入、下载或重新绑定。
   - `GameBodyVersionManager`：legacy facade，版本选择委托给 `LaunchProfileManager`，不再执行 active/归档目录复制。
-  - `CompatPackManager`：安装、导入、删除兼容包；从 APK assets 安装内置兼容包；按 payload manifest 匹配目标版本供新建/编辑启动配置使用。兼容包页不再提供全局“选中”动作，删除兼容包也不静默替换各启动配置的 `compat_pack_id`。
+  - `CompatPackManager`：安装、导入、删除兼容包；从 APK assets 安装内置兼容包；支持 schema 1 单目标包和 schema 2 family 包的 `targets[]` variant；按 payload manifest 的 dll sha/version 匹配目标版本供新建/编辑启动配置使用。兼容包页不再提供全局“选中”动作，删除兼容包也不静默替换各启动配置的 `compat_pack_id` / `compat_target_id`。
   - `GameLaunchPreparationManager`：启动前后台准备 Mono publish 目录、兼容包 dll、overlay pck、payload assembly 和纹理缓存清理。
 - `GodotApp`：真正的 Godot 游戏 Activity。
 - `GodotApp` 启动行为：
@@ -197,7 +202,7 @@ s2_re/
 - 启动路径：
   1. `GameSettingsActivity.launchGame()` 检查当前启动配置绑定的 payload 是否 ready；配置存在但本体缺失时不 fallback 到旧 `<files>/game/`，而是提示用户重新导入、下载、切换或编辑启动配置。
   2. 如果兼容包开关关闭，启动前弹出风险确认；用户选择继续后，准备流程会删除 staged `STS2Mobile.dll` 与 `<files>/port_compat.pck`，真正按无兼容层路径启动。若用户选择开启，则写回 `android_compat_pack_enabled=true` 后取消本次启动。
-  3. 如果兼容包开关启用，只读取当前启动配置的 `compat_pack_id`；无包/包已删除则阻止启动并提示编辑启动配置，版本不匹配则弹窗提示。
+  3. 如果兼容包开关启用，只读取当前启动配置的 `compat_pack_id` / `compat_target_id`；无包/target 已删除则阻止启动并提示编辑启动配置，版本不匹配则弹窗提示。
   4. 后台执行 `GameLaunchPreparationManager.prepareForLaunch()`。
   5. 以 `launch_prepared=true` 启动 `GodotApp`；`GodotApp` 仍保留 fallback 准备路径防止直接启动遗漏，但同样尊重兼容包开关，关闭时不会 fallback 复制 `STS2Mobile.dll`。
 
@@ -216,7 +221,7 @@ s2_re/
 - 安全措施：Zip Slip canonical path 防护、单一顶层目录 payload zip 自动展平、backup/rollback、取消控制、旧 scratch 清理。
 - 导入成功后会尝试：
   - `LaunchProfileManager.createOrSelectDefaultProfileForPayload()`：创建/选择绑定该 payload 的启动配置；默认配置使用全局存档和全局 MOD，并在创建时按版本填入推荐兼容包；用户可在“版本”页新建/编辑配置来改兼容包或改为隔离配置。
-  - `CompatPackManager.findBestMatch()`：按版本为新建/编辑启动配置提供推荐兼容包；启动时不会再覆盖已有配置的 `compat_pack_id`。
+  - `CompatPackManager.findBestMatch()`：按 dll sha/version 为新建/编辑启动配置提供推荐兼容包或 schema 2 target variant；启动时不会再覆盖已有配置的 `compat_pack_id` / `compat_target_id`。
   - 旧 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制。
 
 应用私有目录约定：
@@ -224,7 +229,7 @@ s2_re/
 ```text
 <files>/payloads/<payload_id>/game/         # 不可变导入游戏 payload
 <files>/payloads/<payload_id>/game/.payload_manifest.json # 导入 manifest，含 release_info / dll sha / pck patch 记录
-<files>/instances/<profile_id>/instance.json # 启动配置，绑定 payload/compat/save/mod 模式
+<files>/instances/<profile_id>/instance.json # 启动配置，绑定 payload/compat/save/mod 模式；schema 2 可含 compat_target_id
 <files>/instances/<profile_id>/default/<account>/settings.save # 隔离存档/设置目录
 <files>/instances/<profile_id>/mods/        # 隔离普通用户 MOD 目录
 <files>/instances/<profile_id>/logs/        # profile 日志目录：godot.log / android-launch.log
@@ -232,7 +237,7 @@ s2_re/
 <files>/steam/cloud/<profile_id>/           # Steam Cloud manifest、baseline、备份与诊断
 <files>/webdav/cloud/<slot>/                # WebDAV manifest、baseline、备份与诊断
 <files>/save-snapshots/profiles/<profile_id>/ # 本地存档快照 zip，默认保留最近 5 个
-<files>/compat-packs/<pack_id>/             # 已安装 Android 兼容包
+<files>/compat-packs/<pack_id>/             # 已安装 Android 兼容包；schema 2 在 variants/<target_id>/ 下放 dll/pck
 <files>/launcher/selected_instance.json     # 当前启动配置解析结果
 <files>/launcher/selected_game_version.json # legacy 兼容诊断记录，指向当前 payload
 <files>/launcher/selected_compat_pack.json  # 当前启动配置解析出的兼容包诊断记录
@@ -245,7 +250,7 @@ s2_re/
 
 ## 8. 兼容包 / port-mod submodule
 
-### 8.1 submodule 分支与工作方式
+### 8.1 submodule 分支、target matrix 与工作方式
 
 `port-mod/` 是 submodule，不要把它当父仓库普通目录直接混合提交。常用检查：
 
@@ -262,6 +267,7 @@ tools/git/report-heads.sh
 - 兼容层改动要在 submodule 仓库内提交，再在父仓库更新 submodule 指针。
 - `tools/android/stage-bundled-compat-packs.sh` 会为非当前分支创建临时 worktree 到 `.agent/worktrees/compat-packs/`，避免不同版本补丁互相污染。
 - 当前 checkout 分支若有未提交改动，stage 脚本会直接用当前 dirty worktree 构建对应分支的内置包，便于本地测试；正式提交前必须清理 dirty 状态。
+- flat matrix 模式下，通用源码改动只在当前 checkout 上维护；版本差异优先放入 `port-mod/targets/active/<target_id>/target.json`、target capabilities/adapter 或极少量条件编译，不再为普通共用功能复制到多个分支。停止内置某个早期版本时，把对应 target 移到 `targets/archived/`，默认 matrix 构建会跳过它。
 
 ### 8.2 构建入口
 
@@ -291,7 +297,27 @@ cd port-mod
 tools/android/stage-bundled-compat-packs.sh
 ```
 
-该脚本读取 `tools/android/bundled-compat-packs.json`，为每个分支输出 gitignored 的 `android/assets/compat_packs/*.zip`。APK 启动时 `CompatPackManager.installBundledCompatPacks()` 会把打入 assets 的这些 zip 安装到 `<files>/compat-packs/`。
+默认 flat matrix 模式读取 `port-mod/targets/active/*/target.json`，从当前 checkout 输出 gitignored 的 `android/assets/compat_packs/sts2-android-compat.zip` schema 2 family 包：
+
+```bash
+tools/android/stage-bundled-compat-packs.sh
+```
+
+会调用 `port-mod/tools/build-compat-matrix.sh`，从当前 checkout 的 `targets/active/*/target.json` 依次用对应 `ReferenceFlavor` 编译，并输出一个 schema 2 `sts2-android-compat.zip` family 包。APK 启动时 `CompatPackManager.installBundledCompatPacks()` 会把打入 assets 的这些 zip 安装到 `<files>/compat-packs/`。
+
+legacy 分支模式只在需要对照旧发布包或回退诊断时使用：
+
+```bash
+COMPAT_PACK_BUILD_MODE=legacy tools/android/stage-bundled-compat-packs.sh
+```
+
+可在 submodule 内单独调试：
+
+```bash
+cd port-mod
+./tools/build-compat-matrix.sh --target v0.107.0-beta
+./tools/build-compat-matrix.sh
+```
 
 ### 8.3 compile gate
 
@@ -320,8 +346,8 @@ REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
 正常启动前，Java shell 会：
 
 1. 复制 APK `dotnet_bcl` runtime 到 `<files>/.godot/mono/publish/arm64/`。
-2. 兼容包开关开启时按当前启动配置的 `compat_pack_id` 复制 `STS2Mobile.dll` 到 publish 目录；关闭兼容包开关时删除该 dll，且 `GodotApp` fallback 不会再从 selected pack 或 APK asset 强制补回。
-3. 兼容包开关开启时复制当前启动配置兼容包的 `port_compat.pck` 到 `<files>/port_compat.pck`；关闭时删除 `<files>/port_compat.pck`。无选择时使用 `android/assets/port_compat.pck` fallback（正常 launcher 启动会先阻止缺包场景）。
+2. 兼容包开关开启时按当前启动配置的 `compat_pack_id` / `compat_target_id` 复制 `STS2Mobile.dll` 到 publish 目录；关闭兼容包开关时删除该 dll，且 `GodotApp` fallback 不会再从 selected pack 或 APK asset 强制补回。
+3. 兼容包开关开启时复制当前启动配置兼容包/target 的 `port_compat.pck` 到 `<files>/port_compat.pck`；关闭时删除 `<files>/port_compat.pck`。无选择时使用 `android/assets/port_compat.pck` fallback（正常 launcher 启动会先阻止缺包场景）。
 4. 复制当前 launch profile payload 目录 `<files>/payloads/<payload_id>/game/data_*/*` 到 publish 目录，但保护 BCL/System/GodotSharp 等 runtime DLL 不被 payload 覆盖；profile/payload 切换时会清理旧游戏 assembly 残留。
 5. patched Godot runtime 加载 `STS2Mobile.dll` / `STS2Mobile.ModEntry`，调用 `InitializeGodotSharp` 与 `Apply`；`Apply` 会先配置 Android 私有 temp，并通过 `HarmonyAndroidCompat` 在真正的 `MonoMod.Utils` / `MonoMod.Core` 程序集上强制 Android/Mono 后端，避免 HarmonyOS 等 ROM 被 MonoMod 误判为 Posix/Linux 后在 Harmony `UpdateWrapper` 中抛 `NotImplementedException`。默认路径贴近 `../s2` 的 minimal bootstrap，不启用旧 native resolver / `DMDType=cecil` override；`monomod_android_libc_shim` 仍由 AndroidSystem 按需用于指令缓存刷新和 `/proc/self/mem` executable-page patch fallback。`HarmonyMethodReferenceImporterShim` 会在后续大量 Harmony patch 前自检 `MMReflectionImporter` 是否丢失 STS2 方法引用上的 required/optional custom modifiers，必要时仅对带 modifiers 的 `sts2` 方法导入安装极窄 postfix 原地修正，避免普通 MOD patch 原方法体时生成无法绑定的动态 `MemberRef`。`EarlyLocalizationFallbackPatches` 会在普通 MOD 加载前保护 `LocString.GetFormattedText()`：Android/Mono 若在 MOD `PatchAll` 阶段提前运行游戏 UI 类型静态构造、且 `LocManager.Initialize()` 尚未执行，只临时返回稳定 fallback 文本，初始化完成后停止吞异常，避免 `NPotionHolder` 这类类型被永久标记为 cctor 失败。`DeferredModPatchQueue` 会在普通 MOD initializer / `PatchAll` 窗口拦截 `PatchProcessor.Patch()`，把目标为 `sts2` 程序集 Godot/UI 类型（如 `MegaCrit.Sts2.Core.Nodes.*`、`MegaCrit.Sts2.addons.*`，且存在静态初始化器）的用户 MOD patch 排队，等 `ExecuteEssential` 中 `LocManager.Initialize()`、`ModelDb.Init()`、`ModelIdSerializationCache.Init()` 与 `ModelDb.InitIds()` 完成后再按原顺序重放，避免 Android/Mono 在 very-early 阶段 patch 这些 UI 类型时提前执行 `.cctor`。若 MOD 因 Android 早期原版模型占位误判 ModelDb 已初始化并提前调用 `AbstractModel.InitId()`，兼容层只在 `ModelIdSerializationCache.Init()` 前跳过该早调用，后续 `ModelDb.InitIds()` 会统一完成排序 ID 初始化。早期初始化不得调用 Godot C# API；Harmony self-test 仅在 `<files>/launcher/enable_harmony_selftest.flag` 存在时运行，旧 bootstrap 仅在 `<files>/launcher/enable_old_harmony_compat_bootstrap.flag` 存在时作为诊断启用。
 6. `ModEntry.Apply()` 先独立保护并应用保命 patch：`PlatformPatches` 跳过桌面 Steam 初始化、`SavePathPatches` 把原版 `UserDataPathProvider` 重定向到当前 launch profile 的 account root；即使后续诊断或 UI/性能 patch 在特定 ROM 上失败，也不能阻断这两组核心 patch。随后分组应用 BaseLib/RitsuLib、ModelDb/UnlockState、release/settings/display/layout/input、shader、LAN、ModLoader 等；每组单独捕获异常并写入 `[STS2Mobile]` 日志。`AppPaths` 从 publish 目录或 Android 进程包名推导 `<files>` 并读取 `<files>/launcher/selected_instance.json`（避免兼容层早期初始化调用 Godot API/Java bridge）。`RenderDiagnosticPatches` 后置且仅作诊断，不得阻断核心 patch。`ShaderCompatibilityPatches` 只替换已知高风险桌面特效 shader；不要再替换 `res://shaders/blur/canvas_group_mask_blur.gdshader`，该 shader 用于卡面/先古卡遮罩，旧移动替代版会导致先古卡面纯白且不应随 overlay/兼容包发布。
@@ -338,7 +364,7 @@ REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
    - **phase 2**（`InitPrefix` 中，`Priority.Last`）：在占位上原地运行真实静态/实例构造器，并跳过原版 one-pass body。因部分 MOD 的 `ModelDb.Init` prefix 会自己返回 `false` 并让 Harmony 跳过后续 prefix，兼容层还安装 `Priority.First` postfix 与 `ExecuteEssential` 后置兜底，确保构造 phase 一定执行。自定义模型 ID（含 `ENCOUNTER.YUWANCARD-KILLER_ELITE` 等带前缀 ID）完全由原版 `ModelDb.Init` + MOD `GetEntry` patch 自然产生，不再人为迁移 key。用户 MOD 的 `ModelDb.Init` prefix/postfix 生命周期保留。
    - `UnlockStateCompatPatches` 在 `ModelDb` 初始化完成前让 `ModelDb.AllEncounters` 返回空列表，避免 Android/Mono 因 Harmony patch getter 提前运行 `UnlockState..cctor` 时枚举到尚未构造/注册完成的 MOD encounter；初始化完成后会修复可能提前创建的 static readonly `UnlockState.all`。
 
-上述 MOD 初始化时序、本地 LAN patch 自动跳过大厅 MOD、预加载/tooltip 设置协议、shader 兼容排除卡面 `canvas_group_mask_blur`、快速重开 async 时序修复是 `compat/v0.103.2`、`compat/v0.106.1-beta` 与 `compat/v0.107.0-beta` 内置包都应保持的相同不变式；跨版本热修需同步到 `tools/android/stage-bundled-compat-packs.sh` 的 worktree 注入列表。v107 专属修复（例如 `MapDrawingSceneCachePatches.cs`）只应保留在 `compat/v0.107.0-beta` 当前分支，不加入跨分支注入列表。详细流程见 `doc/runtime/compat-pack-loading-flow.md`。
+上述 MOD 初始化时序、本地 LAN patch 自动跳过大厅 MOD、预加载/tooltip 设置协议、shader 兼容排除卡面 `canvas_group_mask_blur`、快速重开 async 时序修复是 `v0.103.x`、`v0.106.1-beta` 与 `v0.107.0-beta` target 都应保持的相同不变式；flat matrix 模式下跨版本热修需通过所有 active target compile gate。legacy 分支模式仍在用时，跨版本热修还需同步到 `tools/android/stage-bundled-compat-packs.sh` 的 worktree 注入列表。v107 专属修复（例如 `MapDrawingSceneCachePatches.cs`）只应通过 target capability/条件逻辑限制在 `v0.107.0-beta`，不要无条件影响其他 target。详细流程见 `doc/runtime/compat-pack-loading-flow.md`。
 
 ### 8.5 MOD 兼容性排查规范
 
@@ -451,8 +477,11 @@ tools/android/gradle-with-s2-env.sh :compileMonoDebugJavaWithJavac
 # 只构建当前兼容 MOD fallback
 tools/android/build-port-mod.sh
 
-# 构建全部内置兼容包
+# 构建全部内置兼容包（默认 flat schema 2 family 包）
 tools/android/stage-bundled-compat-packs.sh
+
+# legacy 分支模式，仅用于回退诊断
+COMPAT_PACK_BUILD_MODE=legacy tools/android/stage-bundled-compat-packs.sh
 
 # 刷新 Android 启动器 Material Symbols 官方轮廓 vector drawable
 # 需要 Python 包 fontTools；若系统 Python 禁止全局安装，可用 .agent/ 下的临时 venv。
@@ -480,7 +509,7 @@ tools/android/generate-material-symbol-vectors.py --check
 - 修改 `tools/android/make-bootstrap-pck.py` 后需要重新生成 `android/assets/bootstrap.pck`。
 - 修改启动器图标 glyph 映射或新增 `MaterialSymbols.drawable(..., "glyph", ...)` 字符串图标后，需要运行 `tools/android/generate-material-symbol-vectors.py` 刷新 `android/res/drawable/ic_ms_*.xml`，并用 `tools/android/generate-material-symbol-vectors.py --check` 校验；脚本依赖 Python `fontTools`，可装在 ignored 的 `.agent/` venv 中。不要恢复运行时 icon font ligature 渲染，否则 MIUI 关闭优化等 ROM 字体路径可能显示原始 glyph 名称。
 - 修改 Java bridge 包名/类名要谨慎：C# helper 和 patched runtime 默认找 `com.godot.game.GodotApp`。
-- 修改所有内置分支都必须带上的兼容层热修（例如 `ModEntry.cs`、`HarmonyAndroidCompat.cs`、`HarmonyMethodReferenceImporterShim.cs`、`EarlyLocalizationFallbackPatches.cs`、`DeferredModPatchQueue.cs`、`AppPaths.cs`、`ModelDbInitPatch.cs`、`ModLoaderPatches.cs`、`SavePathPatches.cs`、`RenderDiagnosticPatches.cs`、`LifecycleAndPerformancePatches.cs`、`ShaderCompatibilityPatches.cs`、`TransitionMaterialPatches.cs`、`MobileTooltipPatches.cs`、`QuickRestartPatches.cs`）时，同步更新 `tools/android/stage-bundled-compat-packs.sh` 的 worktree 注入列表，确保 `v0.103.x`、`v0.106.1` 与 `v0.107.0` 内置包都得到同一修复；只在某个游戏版本复现的问题不要加入跨分支注入列表。
+- flat matrix 模式下，共用兼容层热修只维护在当前 checkout，必须通过 `port-mod/tools/build-compat-matrix.sh` 的所有 active target compile gate；只在某个游戏版本复现的问题优先放入 target adapter/capabilities 或极少量条件编译。legacy 分支模式仍在用的共用热修，需要同步更新 `tools/android/stage-bundled-compat-packs.sh` 的 worktree 注入列表，确保 `v0.103.x`、`v0.106.1` 与 `v0.107.0` legacy 内置包都得到同一修复。
 - 改 `applicationId` 时同步 shortcuts、FileProvider、manifest、Gradle 配置与所有 hard-coded target package。
 
 仓库 / 子模块 HEAD 巡检：

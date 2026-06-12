@@ -161,7 +161,7 @@ tools/package/build_importer_apk.sh
 
 ## 10. 兼容包 manifest 约定
 
-典型 manifest：
+schema 1 legacy 单目标 manifest：
 
 ```json
 {
@@ -189,7 +189,31 @@ tools/package/build_importer_apk.sh
 }
 ```
 
-`CompatPackManager` 优先用 `target_game.version` 与 payload manifest 的 `version` 精确匹配；如果 manifest 提供 `target_game.supported_versions` / `compatible_versions` / `versions`，也会把这些版本视为兼容，用于 `v0.103.x` 这类一个包覆盖多个 patch 版本的场景。`sts2_dll_sha256` 记录用于诊断和未来更严格匹配。
+schema 2 family manifest：
+
+```json
+{
+  "schema": 2,
+  "pack_id": "sts2-android-compat",
+  "display_name": "STS2 Android Compatibility",
+  "compat_version": "0.4.0",
+  "channel": "mixed",
+  "targets": [
+    {
+      "target_id": "v0.107.0-beta",
+      "versions": ["v0.107.0"],
+      "source": "original_pc_reference_v0.107.0",
+      "sts2_dll_sha256": "...",
+      "artifacts": {
+        "dll": "variants/v0.107.0-beta/STS2Mobile.dll",
+        "overlay_pck": "variants/v0.107.0-beta/port_compat.pck"
+      }
+    }
+  ]
+}
+```
+
+`CompatPackManager` 对 schema 1 优先用 `target_game.version` 与 payload manifest 的 `version` 精确匹配；对 schema 2 会把 `targets[]` 展开成可选 variant，并优先按 payload 的 `sts2_dll_sha256` 精确匹配，再回落到 `version` / `versions` 列表。启动配置保存 `compat_pack_id`；schema 2 还保存 `compat_target_id`，因此一个 family 包可以覆盖多个游戏版本，也可以在停止维护旧 target 后把它拆成独立 legacy 包。
 
 ## 11. 用户 MOD 测试建议
 

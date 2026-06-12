@@ -122,6 +122,10 @@ Compile the mobile compatibility layer C# code into DLLs and package them as a Z
 ```bash
 tools/android/stage-bundled-compat-packs.sh
 ```
+This now builds the flattened schema-2 family pack from one checkout by default. Legacy per-version branch packs remain available for diagnostics:
+```bash
+COMPAT_PACK_BUILD_MODE=legacy tools/android/stage-bundled-compat-packs.sh
+```
 
 ### 6. Build the Importer APK
 Run the build script. This will output an "Importer APK" that **DOES NOT** contain the base game (the recommended, legally compliant distribution method):

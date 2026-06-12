@@ -124,19 +124,47 @@ REFERENCE_FLAVOR=original tools/android/build-port-mod.sh
 tools/android/stage-bundled-compat-packs.sh
 ```
 
-脚本读取 `tools/android/bundled-compat-packs.json`（或 `local.properties` 的 `compat.bundled_packs_config`）。当前会构建：
+默认使用 flat matrix 模式：脚本读取 `port-mod/targets/active/*/target.json`，从当前 checkout 依次用各目标的 `ReferenceFlavor` 编译，输出一个 schema 2 family 兼容包：
 
-- `compat/v0.103.2` → `sts2-android-compat-v0.103.x.zip`（支持 `v0.103.2` / `v0.103.3`）
-- `compat/v0.106.1-beta` → `sts2-android-compat-v0.106.1-beta.zip`（旧 beta）
-- `compat/v0.107.0-beta` → `sts2-android-compat-v0.107.0-beta.zip`
+```text
+android/assets/compat_packs/sts2-android-compat.zip
+  compat_manifest.json
+  variants/<target_id>/STS2Mobile.dll
+  variants/<target_id>/port_compat.pck
+  SHA256SUMS
+```
 
-非当前分支使用 `compat.worktree_root`（默认 `.agent/worktrees/compat-packs/`）临时 worktree 构建；当前分支可直接使用 dirty worktree 方便测试。输出到：
+当前 active targets：
+
+- `v0.103.x`（支持 `v0.103.2` / `v0.103.3`，`ReferenceFlavor=original`）
+- `v0.106.1-beta`（旧 beta，`ReferenceFlavor=original-v0.106.1`）
+- `v0.107.0-beta`（当前 beta，`ReferenceFlavor=original-v0.107.0`）
+
+输出到：
 
 ```text
 android/assets/compat_packs/*.zip
 ```
 
 该目录下的 zip 是构建产物，已 gitignore，不再由 git 跟踪；提交前不要 `git add -f` 这些 zip。
+
+legacy 分支构建模式仍可显式启用，用于回退诊断或对照旧发布包：
+
+```bash
+COMPAT_PACK_BUILD_MODE=legacy tools/android/stage-bundled-compat-packs.sh
+```
+
+legacy 模式读取 `tools/android/bundled-compat-packs.json`（或 `local.properties` 的 `compat.bundled_packs_config`），非当前分支使用 `compat.worktree_root`（默认 `.agent/worktrees/compat-packs/`）临时 worktree 构建；当前分支可直接使用 dirty worktree 方便测试。
+
+也可以直接在 submodule 中局部构建 matrix 包：
+
+```bash
+cd port-mod
+./tools/build-compat-matrix.sh --target v0.107.0-beta
+./tools/build-compat-matrix.sh
+```
+
+`--target` 只构建单个 target；不带参数会构建 `targets/active/` 下所有目标。未来停止维护旧版本时，将对应目录移到 `targets/archived/`，默认 matrix 构建就不会再内置它；需要临时导出 legacy 目标时可用 `BUILD_ARCHIVED_TARGETS=1`。
 
 ## 7. 生成启动器 Material Symbols 矢量图
 
