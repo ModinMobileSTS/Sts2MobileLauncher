@@ -648,6 +648,7 @@
     <string name="update_available_title">Launcher update available</string>
     <string name="update_available_message">Current launcher: %1$s\nLatest launcher: %2$s\n\n%3$s</string>
     <string name="update_download">Open release</string>
+    <string name="update_bilibili">B站</string>
     <string name="update_later">Later</string>
     <string name="friend_links_title">Friendly links</string>
     <string name="friend_link_amethyst_title">Slay The Amethyst Modded</string>

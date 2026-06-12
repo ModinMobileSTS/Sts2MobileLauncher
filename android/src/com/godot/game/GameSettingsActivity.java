@@ -48,6 +48,7 @@ import java.util.List;
 
 public class GameSettingsActivity extends AppCompatActivity implements ExtraSettingsActions {
 	private static final String TAG = "Sts2ExtraSettings";
+	private static final String UPDATE_BILIBILI_DYNAMIC_URL = "https://space.bilibili.com/116375500/dynamic";
 	private static final int REQUEST_EXPORT_SAVE = 1001;
 	private static final int REQUEST_IMPORT_SAVE = 1002;
 	private static final int REQUEST_IMPORT_GAME_PAYLOAD = 1006;
@@ -1775,6 +1776,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			.setTitle(R.string.update_available_title)
 			.setMessage(message)
 			.setNegativeButton(R.string.update_later, null)
+			.setNeutralButton(R.string.update_bilibili, (dialog, which) -> openUrl(UPDATE_BILIBILI_DYNAMIC_URL))
 			.setPositiveButton(R.string.update_download, (dialog, which) -> openUrl(updateInfo.releaseUrl))
 			.show();
 	}
