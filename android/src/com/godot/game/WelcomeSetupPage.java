@@ -405,7 +405,7 @@ public final class WelcomeSetupPage {
 		}
 		String renderer = RendererPreference.getSelectedRenderer(context);
 		String vsync = settings.optString("vsync", "off");
-		int msaa = settings.optInt("msaa", 2);
+		int msaa = settings.optInt("msaa", 0);
 		boolean shaderCompat = settings.optBoolean("shader_compatibility_mode", false);
 		if (RendererPreference.RENDERER_OPENGL_ES3.equals(renderer) && msaa == 0 && shaderCompat && "off".equals(vsync)) {
 			return ExtraSettingsRepository.GRAPHICS_PRESET_COMPATIBILITY;
@@ -413,7 +413,7 @@ public final class WelcomeSetupPage {
 		if (RendererPreference.RENDERER_VULKAN.equals(renderer) && msaa == 2 && !shaderCompat && "on".equals(vsync)) {
 			return ExtraSettingsRepository.GRAPHICS_PRESET_QUALITY;
 		}
-		if (RendererPreference.RENDERER_OPENGL_ES3.equals(renderer) && msaa == 2 && !shaderCompat && "off".equals(vsync)) {
+		if (RendererPreference.RENDERER_OPENGL_ES3.equals(renderer) && msaa == 0 && !shaderCompat && "off".equals(vsync)) {
 			return ExtraSettingsRepository.GRAPHICS_PRESET_RECOMMENDED;
 		}
 		return ExtraSettingsRepository.GRAPHICS_PRESET_CUSTOM;

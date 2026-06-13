@@ -10,6 +10,7 @@ import android.text.TextUtils;
 import android.util.Log;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -385,48 +386,113 @@ final class DebugAutomationRunner {
 				settings.put("preload_startup_main_menu_enabled", false);
 				settings.put("preload_menu_hotspots_enabled", false);
 				settings.put("preload_vfx_mode", "off");
+				settings.put("preload_vfx_tree_warmup_enabled", false);
+				settings.put("preload_vfx_tree_warmup_scope", "safe");
+				settings.put("preload_vfx_tree_warmup_frames", 3);
+				settings.put("preload_vfx_retain_cache_enabled", false);
+				settings.put("preload_combat_animation_warmup_mode", "off");
+				settings.put("preload_combat_animation_warmup_frames", 1);
+				settings.put("preload_combat_hit_effect_warmup_enabled", false);
 				settings.put("preload_combat_code_enabled", false);
 				settings.put("preload_shader_mode", "off");
 				settings.put("preload_runtime_enabled", false);
+				settings.put("preload_protect_warm_cache_enabled", false);
+				settings.put("preload_gameplay_assets_enabled", false);
+				settings.put("preload_learned_assets_enabled", false);
 			} else if ("aggressive".equals(normalized) || "full".equals(normalized)) {
-				settings.put("preload_enabled", true);
-				settings.put("preload_startup_common_enabled", true);
-				settings.put("preload_startup_main_menu_enabled", true);
-				settings.put("preload_menu_hotspots_enabled", true);
-				settings.put("preload_vfx_mode", "full");
-				settings.put("preload_combat_code_enabled", true);
-				settings.put("preload_shader_mode", "load_resources");
-				settings.put("preload_runtime_enabled", true);
+				putAggressivePreloadSettings(settings, true, "safe");
+			} else if ("animation_full".equals(normalized) || "spine_full".equals(normalized) || "all_animations".equals(normalized)) {
+				putAggressivePreloadSettings(settings, true, "all", "all");
+			} else if ("vfx_full_tree".equals(normalized) || "full_tree".equals(normalized) || "all_vfx_tree".equals(normalized) || "all_resources".equals(normalized)) {
+				putAggressivePreloadSettings(settings, true, "safe", "all");
+			} else if ("tree_warmup".equals(normalized) || "render_warmup".equals(normalized) || "aggressive_tree".equals(normalized)) {
+				putAggressivePreloadSettings(settings, true, "safe");
 			} else if ("runtime_only".equals(normalized)) {
 				settings.put("preload_enabled", true);
 				settings.put("preload_startup_common_enabled", false);
 				settings.put("preload_startup_main_menu_enabled", false);
 				settings.put("preload_menu_hotspots_enabled", false);
 				settings.put("preload_vfx_mode", "off");
+				settings.put("preload_vfx_tree_warmup_enabled", false);
+				settings.put("preload_vfx_tree_warmup_scope", "safe");
+				settings.put("preload_vfx_tree_warmup_frames", 3);
+				settings.put("preload_vfx_retain_cache_enabled", false);
+				settings.put("preload_combat_animation_warmup_mode", "off");
+				settings.put("preload_combat_animation_warmup_frames", 1);
+				settings.put("preload_combat_hit_effect_warmup_enabled", false);
 				settings.put("preload_combat_code_enabled", false);
 				settings.put("preload_shader_mode", "off");
 				settings.put("preload_runtime_enabled", true);
+				settings.put("preload_protect_warm_cache_enabled", true);
+				settings.put("preload_gameplay_assets_enabled", false);
+				settings.put("preload_learned_assets_enabled", true);
 			} else if ("startup_only".equals(normalized)) {
 				settings.put("preload_enabled", true);
 				settings.put("preload_startup_common_enabled", true);
 				settings.put("preload_startup_main_menu_enabled", true);
 				settings.put("preload_menu_hotspots_enabled", true);
 				settings.put("preload_vfx_mode", "hot");
+				settings.put("preload_vfx_tree_warmup_enabled", false);
+				settings.put("preload_vfx_tree_warmup_scope", "safe");
+				settings.put("preload_vfx_tree_warmup_frames", 3);
+				settings.put("preload_vfx_retain_cache_enabled", false);
+				settings.put("preload_combat_animation_warmup_mode", "off");
+				settings.put("preload_combat_animation_warmup_frames", 1);
+				settings.put("preload_combat_hit_effect_warmup_enabled", false);
 				settings.put("preload_combat_code_enabled", false);
 				settings.put("preload_shader_mode", "off");
 				settings.put("preload_runtime_enabled", false);
+				settings.put("preload_protect_warm_cache_enabled", true);
+				settings.put("preload_gameplay_assets_enabled", false);
+				settings.put("preload_learned_assets_enabled", true);
 			} else {
 				settings.put("preload_enabled", true);
 				settings.put("preload_startup_common_enabled", true);
 				settings.put("preload_startup_main_menu_enabled", true);
 				settings.put("preload_menu_hotspots_enabled", false);
 				settings.put("preload_vfx_mode", "off");
+				settings.put("preload_vfx_tree_warmup_enabled", false);
+				settings.put("preload_vfx_tree_warmup_scope", "safe");
+				settings.put("preload_vfx_tree_warmup_frames", 3);
+				settings.put("preload_vfx_retain_cache_enabled", false);
+				settings.put("preload_combat_animation_warmup_mode", "off");
+				settings.put("preload_combat_animation_warmup_frames", 1);
+				settings.put("preload_combat_hit_effect_warmup_enabled", false);
 				settings.put("preload_combat_code_enabled", false);
 				settings.put("preload_shader_mode", "off");
 				settings.put("preload_runtime_enabled", true);
+				settings.put("preload_protect_warm_cache_enabled", true);
+				settings.put("preload_gameplay_assets_enabled", false);
+				settings.put("preload_learned_assets_enabled", true);
 			}
 		});
 		putEvent("preload", normalized);
+	}
+
+	private static void putAggressivePreloadSettings(JSONObject settings, boolean treeWarmup, String combatAnimationMode) throws JSONException {
+		putAggressivePreloadSettings(settings, treeWarmup, combatAnimationMode, "safe");
+	}
+
+	private static void putAggressivePreloadSettings(JSONObject settings, boolean treeWarmup, String combatAnimationMode, String vfxTreeWarmupScope) throws JSONException {
+		settings.put("preload_enabled", true);
+		settings.put("preload_startup_common_enabled", true);
+		settings.put("preload_startup_main_menu_enabled", true);
+		settings.put("preload_menu_hotspots_enabled", true);
+		settings.put("preload_vfx_mode", "full");
+		settings.put("preload_combat_code_enabled", true);
+		settings.put("preload_shader_mode", "load_resources");
+		settings.put("preload_runtime_enabled", true);
+		settings.put("preload_debug_enabled", false);
+		settings.put("preload_vfx_tree_warmup_enabled", treeWarmup);
+		settings.put("preload_vfx_tree_warmup_scope", vfxTreeWarmupScope);
+		settings.put("preload_vfx_tree_warmup_frames", 6);
+		settings.put("preload_vfx_retain_cache_enabled", true);
+		settings.put("preload_combat_animation_warmup_mode", combatAnimationMode);
+		settings.put("preload_combat_animation_warmup_frames", "all".equals(combatAnimationMode) ? 2 : 1);
+		settings.put("preload_combat_hit_effect_warmup_enabled", true);
+		settings.put("preload_protect_warm_cache_enabled", true);
+		settings.put("preload_gameplay_assets_enabled", true);
+		settings.put("preload_learned_assets_enabled", true);
 	}
 
 	private void mergeSettingsJson(ExtraSettingsRepository repository, String settingsJson) throws Exception {
@@ -820,6 +886,17 @@ final class DebugAutomationRunner {
 			"preload_combat_code_enabled",
 			"preload_shader_mode",
 			"preload_runtime_enabled",
+			"preload_debug_enabled",
+			"preload_vfx_tree_warmup_enabled",
+			"preload_vfx_tree_warmup_scope",
+			"preload_vfx_tree_warmup_frames",
+			"preload_vfx_retain_cache_enabled",
+			"preload_combat_animation_warmup_mode",
+			"preload_combat_animation_warmup_frames",
+			"preload_combat_hit_effect_warmup_enabled",
+			"preload_protect_warm_cache_enabled",
+			"preload_gameplay_assets_enabled",
+			"preload_learned_assets_enabled",
 			"mod_settings"
 		}) {
 			if (settings.has(key)) {

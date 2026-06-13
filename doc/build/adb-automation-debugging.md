@@ -69,7 +69,7 @@ tools/debug/sts2-adb-debug.sh configure \
 - `--profile <id>` / `--payload-id <id>`：选择特定启动配置或 payload。
 - `--save-mode global|isolated`、`--mods-mode global|isolated`：调整当前 profile。
 - `--mods-only`、`--mods-enable`、`--mods-disable`：精确控制 MOD 启用状态。
-- `--preload default|off|aggressive|runtime_only|startup_only`：快速切换预加载组合。
+- `--preload default|off|aggressive|tree_warmup|vfx_full_tree|animation_full|runtime_only|startup_only`：快速切换预加载组合；`aggressive` / `tree_warmup` 会打开保护 warm cache、实战资源补全包、VFX retain cache、漏载学习、实际播放 VFX 预热、当前房间安全战斗动画预热、战斗命中特效/受击音效预热，适合“尽量全热完”的高内存测试。`vfx_full_tree` 会把 VFX 播放范围切到 `all`，逐个尝试让 `res://scenes/vfx/**/*.tscn` 全部临时进树跑帧，单项失败会记录并跳过；`animation_full` 在此基础上进一步对当前战斗房间先走原版 `SetAnimationTrigger()` 路径，再做所有 Spine clip 短帧采样，并跳过死亡、复活、逃跑、睡眠/醒来等危险 trigger。日志中的 `resource_only` / `tree_warmed` / `tree_ineligible` / `tree_failed` 可区分这些路径；战斗房间日志中的 `hit_effects` / `hit_audio` 可确认伤害数字、命中火花和 FMOD 受击事件是否已预热。VFX warmup 完成日志还会输出 `<files>/shader_cache` 前后文件数和字节数；miss 学习文件写入 `<files>/launcher/preload-learned-assets.json`。需要逐资源 miss 分类、phase enter/leave 或逐动画明细时，可额外用 `--settings-json '{"preload_debug_enabled":true}'` 打开隐藏诊断。
 - `--renderer opengl_es3|vulkan`、`--log-level info|debug|very_debug|off`、`--performance-overlay true|false`：调整运行诊断开关。
 - `--clear texture,publish,logs,mods,compat,payloads,automation`：清理对应 app 私有状态。
 - `--logcat-duration <秒>`、`--collect-logcat`、`--perfetto <秒>`：采集设备日志和系统 trace。

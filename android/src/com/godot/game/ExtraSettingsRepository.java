@@ -134,7 +134,7 @@ public final class ExtraSettingsRepository {
 		settings.put("target_display", -1);
 		settings.put("resize_windows", true);
 		settings.put("fps_limit", 60);
-		settings.put("msaa", 2);
+		settings.put("msaa", 0);
 		settings.put("shader_compatibility_mode", false);
 		settings.put("vsync", "off");
 		putVector(settings, "window_position", -1, -1);
@@ -145,9 +145,19 @@ public final class ExtraSettingsRepository {
 		settings.put("preload_startup_main_menu_enabled", true);
 		settings.put("preload_menu_hotspots_enabled", false);
 		settings.put("preload_vfx_mode", "off");
+		settings.put("preload_vfx_tree_warmup_enabled", false);
+		settings.put("preload_vfx_tree_warmup_scope", "safe");
+		settings.put("preload_vfx_tree_warmup_frames", 3);
+		settings.put("preload_vfx_retain_cache_enabled", false);
+		settings.put("preload_combat_animation_warmup_mode", "off");
+		settings.put("preload_combat_animation_warmup_frames", 1);
+		settings.put("preload_combat_hit_effect_warmup_enabled", false);
 		settings.put("preload_combat_code_enabled", false);
 		settings.put("preload_shader_mode", "off");
 		settings.put("preload_runtime_enabled", true);
+		settings.put("preload_protect_warm_cache_enabled", true);
+		settings.put("preload_gameplay_assets_enabled", false);
+		settings.put("preload_learned_assets_enabled", true);
 		settings.put(KEY_ANDROID_COMPAT_PACK_ENABLED, true);
 		settings.put("global_scale", 1.0f);
 		settings.put("ui_font_scale_percent", 100);
@@ -192,9 +202,19 @@ public final class ExtraSettingsRepository {
 		changed |= putIfMissing(settings, "preload_startup_main_menu_enabled", true);
 		changed |= putIfMissing(settings, "preload_menu_hotspots_enabled", false);
 		changed |= putIfMissing(settings, "preload_vfx_mode", "off");
+		changed |= putIfMissing(settings, "preload_vfx_tree_warmup_enabled", false);
+		changed |= putIfMissing(settings, "preload_vfx_tree_warmup_scope", "safe");
+		changed |= putIfMissing(settings, "preload_vfx_tree_warmup_frames", 3);
+		changed |= putIfMissing(settings, "preload_vfx_retain_cache_enabled", false);
+		changed |= putIfMissing(settings, "preload_combat_animation_warmup_mode", "off");
+		changed |= putIfMissing(settings, "preload_combat_animation_warmup_frames", 1);
+		changed |= putIfMissing(settings, "preload_combat_hit_effect_warmup_enabled", false);
 		changed |= putIfMissing(settings, "preload_combat_code_enabled", false);
 		changed |= putIfMissing(settings, "preload_shader_mode", "off");
 		changed |= putIfMissing(settings, "preload_runtime_enabled", true);
+		changed |= putIfMissing(settings, "preload_protect_warm_cache_enabled", true);
+		changed |= putIfMissing(settings, "preload_gameplay_assets_enabled", false);
+		changed |= putIfMissing(settings, "preload_learned_assets_enabled", true);
 		changed |= putIfMissing(settings, KEY_ANDROID_COMPAT_PACK_ENABLED, true);
 		changed |= putIfMissing(settings, "fullscreen_render_size", vector(0, 0));
 		changed |= putIfMissing(settings, "global_scale", 1.0f);
@@ -392,9 +412,19 @@ public final class ExtraSettingsRepository {
 			settings.put("preload_startup_main_menu_enabled", true);
 			settings.put("preload_menu_hotspots_enabled", false);
 			settings.put("preload_vfx_mode", "off");
+			settings.put("preload_vfx_tree_warmup_enabled", false);
+			settings.put("preload_vfx_tree_warmup_scope", "safe");
+			settings.put("preload_vfx_tree_warmup_frames", 3);
+			settings.put("preload_vfx_retain_cache_enabled", false);
+			settings.put("preload_combat_animation_warmup_mode", "off");
+			settings.put("preload_combat_animation_warmup_frames", 1);
+			settings.put("preload_combat_hit_effect_warmup_enabled", false);
 			settings.put("preload_combat_code_enabled", false);
 			settings.put("preload_shader_mode", "off");
 			settings.put("preload_runtime_enabled", true);
+			settings.put("preload_protect_warm_cache_enabled", true);
+			settings.put("preload_gameplay_assets_enabled", false);
+			settings.put("preload_learned_assets_enabled", true);
 		});
 	}
 
@@ -405,7 +435,7 @@ public final class ExtraSettingsRepository {
 				return;
 			}
 			if (GRAPHICS_PRESET_RECOMMENDED.equals(preset)) {
-				settings.put("msaa", 2);
+				settings.put("msaa", 0);
 				settings.put("shader_compatibility_mode", false);
 				settings.put("vsync", "off");
 			} else if (GRAPHICS_PRESET_QUALITY.equals(preset)) {

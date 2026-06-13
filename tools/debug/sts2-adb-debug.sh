@@ -78,7 +78,14 @@ Scenario options:
   --mods-enable ID[,ID]     Enable listed MOD ids/names.
   --mods-disable ID[,ID]    Disable listed MOD ids/names.
   --mods-only-imported      After importing MODs, enable only newly imported ids.
-  --preload default|off|aggressive|runtime_only|startup_only
+  --preload default|off|aggressive|tree_warmup|vfx_full_tree|animation_full|runtime_only|startup_only
+                            aggressive enables protected warm cache, gameplay asset pack,
+                            rendered VFX warmup, current-room safe animation warmup,
+                            combat hit VFX/audio warmup, VFX cache retention,
+                            learned miss list, and summary logs.
+                            vfx_full_tree tries every VFX scene in the scene tree.
+                            animation_full also samples all current-room Spine clips
+                            and enables the full VFX tree attempt.
   --renderer opengl_es3|vulkan
   --log-level off|info|debug|very_debug
   --performance-overlay true|false

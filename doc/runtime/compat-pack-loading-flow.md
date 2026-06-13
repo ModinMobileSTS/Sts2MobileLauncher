@@ -50,7 +50,7 @@ flat matrix mode:
 
 ## 3. 安装 / 首次进入设置页
 
-1. Android 默认启动 `GameSettingsActivity`。设置页内部使用“画面 / 操作 / 存档 / 系统”顶部 Segmented Button 分区，较长的单选设置（如渲染器、分辨率、旋转模式、日志等级、桌面图标启动后）通过 Bottom Sheet 单选列表修改。画面高级里的“旋转模式”写入 `android_screen_rotation_mode`，默认 `auto`，即游戏固定横屏但可随设备在普通横屏和 180° 横屏间自动切换；也可固定为 `landscape`（不旋转）或 `reverse_landscape`（180°）。桌面图标名称/图标使用主应用资源；“设置 → 系统 → 桌面图标启动后”默认打开附加设置，也可切换为向导完成后自动走 `GameSettingsActivity.launchGame()` 直接启动游戏。设置页快捷方式和游戏内返回设置不触发自动直启。
+1. Android 默认启动 `GameSettingsActivity`。设置页内部使用“画面 / 操作 / 存档 / 系统”顶部 Segmented Button 分区，较长的单选设置（如渲染器、分辨率、旋转模式、日志等级、桌面图标启动后）通过 Bottom Sheet 单选列表修改；预加载详细 BottomSheet 刚打开时可通过内容区上滑完整展开，完整展开后内容滚动区不参与降下/关闭，只能下拉顶部手柄关闭。首次安装和新建隔离档案首次生成设置时，推荐图形默认写入 `msaa=0`、`vsync=off`。画面高级里的“旋转模式”写入 `android_screen_rotation_mode`，默认 `auto`，即游戏固定横屏但可随设备在普通横屏和 180° 横屏间自动切换；也可固定为 `landscape`（不旋转）或 `reverse_landscape`（180°）。桌面图标名称/图标使用主应用资源；“设置 → 系统 → 桌面图标启动后”默认打开附加设置，也可切换为向导完成后自动走 `GameSettingsActivity.launchGame()` 直接启动游戏。设置页快捷方式和游戏内返回设置不触发自动直启。
 2. 设置页可在后台调用 `CompatPackManager.installBundledCompatPacks()`：
    - 枚举 APK assets `compat_packs/*.zip`。
    - 复制到私有临时目录。
@@ -172,9 +172,20 @@ STS2Mobile.ModEntry
    - `preload_runtime_enabled`：保留 run/act/room 资源预加载，默认 `true`。
    - `preload_menu_hotspots_enabled`：额外实例化单人/多人常用子菜单，默认 `false`。
    - `preload_vfx_mode`：`off` / `hot` / `full`，默认 `off`；`hot` 仅实例化高频战斗 VFX，`full` 递归 `res://scenes/vfx/**/*.tscn`。
+   - `preload_vfx_tree_warmup_enabled`：实际播放 VFX 预热，默认 `false`；开启后把 VFX 临时加入场景树跑帧，让粒子、材质和首批动画帧真正执行。
+   - `preload_vfx_tree_warmup_scope`：VFX 实际播放范围，默认 `safe`；`safe` 只跑安全名单，包含常见战斗 VFX 与猎人小刀/匕首 VFX；`all` 会逐个尝试让 `res://scenes/vfx/**/*.tscn` 全部进树跑帧，单项失败会记录并跳过，主要用于卸载重装后填充 Godot shader cache 的高内存诊断，不会自动执行卡牌/怪物战斗逻辑。
+   - `preload_vfx_tree_warmup_frames`：普通安全名单 VFX 跑帧数，默认 `3`，启动器提供 `1/3/6/12`；小刀/匕首 VFX 会使用更高下限。
+   - `preload_vfx_retain_cache_enabled`：保留已预热 VFX 场景缓存，默认 `false`；开启后与缓存保护配合减少战斗中重复首次实例化。
+   - `preload_combat_animation_warmup_mode`：战斗动画预热，默认 `off`；`safe` 会在当前战斗房间创建后，对实际出场的玩家/怪物先走原版 `SetAnimationTrigger()` 真实触发路径，再短帧采样安全 Spine 动作（攻击、施法、受击、猎人小刀等）并恢复原动画/动画状态；`all` 会在跳过死亡、复活、逃跑、睡眠/醒来等危险 trigger 的前提下尽量走真实 trigger，并枚举当前房间所有 Spine clip 短帧采样，覆盖更广但耗时更高，仅建议高内存诊断使用。预热期间会临时覆盖当前战斗房间的全屏遮罩，背后的角色/怪物仍实际绘制以触发 GPU/Spine 热身，但不会把采样动作暴露给玩家。
+   - `preload_combat_animation_warmup_frames`：每个战斗动画 trigger/clip 的采样帧数，默认 `1`，启动器提供 `1/2/3/6`；采样发生在当前战斗房间节点真实存在后，不会在启动页实例化全游戏所有怪物。
+   - `preload_combat_hit_effect_warmup_enabled`：战斗命中特效预热，默认 `false`；开启后在当前战斗房间遮罩后走真实命中渲染路径，实例化伤害数字、命中火花、斩击/钝击 VFX，并以 0 音量触发当前怪物和常见敌人受击 FMOD 事件来预热 sample data，不会改血量、出牌或战斗历史。
    - `preload_combat_code_enabled`：额外预热攻击/伤害/VFX 托管方法，默认 `false`。
    - `preload_shader_mode`：`off` / `load_resources`，默认 `off`；仅加载已知 shader 资源，不保证 GPU pipeline 已完成编译。
-   Android 附加设置页在顶部“系统”分区的系统卡片中显示 `preload_enabled` 总开关和默认关闭的性能 overlay 开关；预加载右侧箭头打开预加载详细管理 BottomSheet，默认不会自动展开。总开关开/关只写入自身，不改写上述细分项目；BottomSheet 的“恢复默认”只重置细分项目，不修改 `preload_enabled`。默认组合保持本次改动前的预加载行为，不额外启用 VFX/菜单/shader/code warmup。
+   - `preload_protect_warm_cache_enabled`：保护已预热缓存，默认 `true`；compat 层会过滤原版 `AssetCache.UnloadAssets()` / `UnloadMissedCacheAssets()` 对 Android warm cache 的卸载，降低房间/战斗资源集切换后重复首次加载的概率。
+   - `preload_gameplay_assets_enabled`：实战资源补全包，默认 `false`；额外收集并加载能力/遗物/药水图标、意图、角色、Act、遭遇/怪物和保留的 VFX 资源，内存占用更高，主要供“尽量全热完”测试使用。
+   - `preload_learned_assets_enabled`：学习漏载资源，默认 `true`；预加载完成后实战中首次 miss 的 `res://` 资源会记录到 `<files>/launcher/preload-learned-assets.json`，后续启动自动加入 warm cache。
+   - 隐藏诊断字段 `preload_debug_enabled` 只供 ADB 自动化和本地排查使用；`tree_warmup` / `aggressive` 预加载 profile 会开启安全名单 VFX 进树跑帧、当前房间安全战斗动画预热、战斗命中特效/受击音效预热，用来判断卡顿来自资源未覆盖还是未触发实际渲染/动画/音频预热；`vfx_full_tree` 会启用全 VFX 场景进树探测；`animation_full` 进一步启用当前房间全部 Spine clip 采样并同时启用全 VFX 场景进树探测。摘要日志会分别统计 `resource_only`、`tree_warmed`、`tree_ineligible` 和 `tree_failed`，VFX warmup 完成日志还会输出 `<files>/shader_cache` 的前后文件数/字节数；显式开启 `preload_debug_enabled=true` 后，预加载完成后继续发生的 `AssetCache.LoadAsset` miss 会标记 `postStartupPreload=true` 并按资源类别汇总，也会输出逐资源/逐动画细节。Godot 渲染侧会把已编译 shader 变体持久写入 `<files>/shader_cache/**.cache`，因此首次真实绘制后的 shader 编译收益可跨进程和设备重启保留；兼容层自己的 protected warm cache 只是 `PreloadManager.Cache` 内存保护，不跨进程。
+   Android 附加设置页在顶部“系统”分区的系统卡片中显示 `preload_enabled` 总开关和默认关闭的性能 overlay 开关；预加载右侧箭头打开预加载详细管理 BottomSheet，默认不会自动展开。总开关开/关只写入自身，不改写上述细分项目；BottomSheet 的“恢复默认”只重置细分项目，不修改 `preload_enabled`。预加载详细 BottomSheet 刚打开时内容区上滑会切到全屏展开，展开后滚动内容区不会下拉关闭，只有顶部手柄接受下拉关闭手势。默认组合保持本次改动前的预加载行为，不额外启用 VFX/菜单/shader/code/gameplay warmup，但会保留保护已预热缓存与学习漏载资源。
 8. LAN bootstrap。`LanMultiplayerBootstrapPatches` 在主菜单就绪后才尝试应用本地 LAN 兼容补丁；若 `settings.save` 中 `lan_multiplayer_enabled=false`，或已加载 `sts2_lan_connect` / STS2 Game Lobby 大厅 MOD，`LanMultiplayerPatches` 会整组跳过，避免其固定消息 ID / LAN host-join 补丁与大厅 MOD 自己的联机协议 profile 冲突。
 9. `ModLoaderPatches`。
 10. save diagnostic。

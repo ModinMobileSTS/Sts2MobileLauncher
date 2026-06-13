@@ -11,17 +11,20 @@ import android.text.TextUtils;
 import android.text.format.Formatter;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.button.MaterialButtonToggleGroup;
@@ -72,6 +75,10 @@ public final class SettingsPage {
 	private static final String[] LOG_LEVEL_VALUES = new String[] { ExtraSettingsRepository.LOG_LEVEL_OFF, ExtraSettingsRepository.LOG_LEVEL_INFO, ExtraSettingsRepository.LOG_LEVEL_DEBUG, ExtraSettingsRepository.LOG_LEVEL_VERY_DEBUG };
 	private static final String[] LAUNCHER_STARTUP_VALUES = new String[] { ExtraSettingsPreferences.LAUNCHER_STARTUP_SETTINGS, ExtraSettingsPreferences.LAUNCHER_STARTUP_GAME };
 	private static final String[] VFX_PRELOAD_VALUES = new String[] { "off", "hot", "full" };
+	private static final String[] VFX_TREE_SCOPE_VALUES = new String[] { "safe", "all" };
+	private static final int[] VFX_TREE_FRAME_OPTIONS = new int[] { 1, 3, 6, 12 };
+	private static final String[] COMBAT_ANIMATION_WARMUP_VALUES = new String[] { "off", "safe", "all" };
+	private static final int[] COMBAT_ANIMATION_FRAME_OPTIONS = new int[] { 1, 2, 3, 6 };
 	private static final String[] SHADER_PRELOAD_VALUES = new String[] { "off", "load_resources" };
 	private static final String[] TOOLTIP_MODE_VALUES = new String[] { ExtraSettingsRepository.TOOLTIP_MODE_IMMEDIATE, ExtraSettingsRepository.TOOLTIP_MODE_LONG_PRESS, ExtraSettingsRepository.TOOLTIP_MODE_HIDDEN };
 	private static final String[] SCREEN_ROTATION_VALUES = new String[] {
@@ -397,7 +404,7 @@ public final class SettingsPage {
 			});
 		});
 		addSpinnerRow(content, R.drawable.ic_layers_24, R.string.section_renderer, Arrays.asList(context.getString(R.string.renderer_option_opengl_es3), context.getString(R.string.renderer_option_vulkan)), findStringIndex(RENDERER_VALUES, RendererPreference.getSelectedRenderer(context)), position -> RendererPreference.setSelectedRenderer(context, RENDERER_VALUES[position]));
-		addSpinnerRow(content, R.drawable.ic_blur_on_24, R.string.msaa, buildMsaaLabels(), findIntIndex(MSAA_OPTIONS, settings.optInt("msaa", 2)), position -> repository.saveSetting(root -> root.put("msaa", MSAA_OPTIONS[position])));
+		addSpinnerRow(content, R.drawable.ic_blur_on_24, R.string.msaa, buildMsaaLabels(), findIntIndex(MSAA_OPTIONS, settings.optInt("msaa", 0)), position -> repository.saveSetting(root -> root.put("msaa", MSAA_OPTIONS[position])));
 		addSpinnerRow(content, R.drawable.ic_sync_24, R.string.vsync, buildVsyncLabels(), findStringIndex(VSYNC_VALUES, settings.optString("vsync", "off")), position -> repository.saveSetting(root -> root.put("vsync", VSYNC_VALUES[position])));
 		addSpinnerRow(content, R.drawable.ic_zoom_in_24, R.string.section_scale, buildScaleLabels((float) settings.optDouble("global_scale", 1.0)), findScaleSelection(settings), position -> {
 			ScaleOption option = SCALE_OPTIONS.get(position);
@@ -770,6 +777,12 @@ public final class SettingsPage {
 				new ChoiceOption(labels.get(2), context.getString(R.string.choice_sheet_preload_vfx_full_desc), R.drawable.ic_high_quality_24)
 			);
 		}
+		if (labelRes == R.string.preload_vfx_tree_scope_title && labels.size() >= 2) {
+			return Arrays.asList(
+				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_preload_vfx_tree_scope_safe_desc), R.drawable.ic_check_circle_24),
+				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_preload_vfx_tree_scope_all_desc), R.drawable.ic_high_quality_24)
+			);
+		}
 		if (labelRes == R.string.preload_shader_mode_title && labels.size() >= 2) {
 			return Arrays.asList(
 				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_preload_shader_off_desc), R.drawable.ic_close_24),
@@ -877,26 +890,131 @@ public final class SettingsPage {
 		return scrollView;
 	}
 
-	private void addBottomSheetHandle(LinearLayout content) {
+	private View addBottomSheetHandle(LinearLayout content) {
+		FrameLayout touchTarget = new FrameLayout(context);
+		touchTarget.setPadding(0, ExtraSettingsUi.dp(context, 10), 0, ExtraSettingsUi.dp(context, 18));
 		View handle = new View(context);
 		GradientDrawable handleBackground = new GradientDrawable();
 		handleBackground.setColor(ExtraSettingsUi.COLOR_OUTLINE);
 		handleBackground.setCornerRadius(ExtraSettingsUi.dp(context, 2));
 		handle.setBackground(handleBackground);
-		LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(context, 32), ExtraSettingsUi.dp(context, 4));
-		handleParams.gravity = Gravity.CENTER_HORIZONTAL;
-		handleParams.bottomMargin = ExtraSettingsUi.dp(context, 18);
-		content.addView(handle, handleParams);
+		FrameLayout.LayoutParams handleParams = new FrameLayout.LayoutParams(ExtraSettingsUi.dp(context, 32), ExtraSettingsUi.dp(context, 4), Gravity.CENTER);
+		touchTarget.addView(handle, handleParams);
+		LinearLayout.LayoutParams targetParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ExtraSettingsUi.dp(context, 32));
+		content.addView(touchTarget, targetParams);
+		return touchTarget;
+	}
+
+	private void addBottomSheetDismissHandle(LinearLayout content, BottomSheetDialog dialog) {
+		View handleTarget = addBottomSheetHandle(content);
+		int dismissDistance = ExtraSettingsUi.dp(context, 36);
+		int expandDistance = ExtraSettingsUi.dp(context, 24);
+		final float[] downRawY = new float[1];
+		handleTarget.setOnTouchListener((view, event) -> {
+			switch (event.getActionMasked()) {
+				case MotionEvent.ACTION_DOWN:
+					downRawY[0] = event.getRawY();
+					view.getParent().requestDisallowInterceptTouchEvent(true);
+					return true;
+				case MotionEvent.ACTION_MOVE:
+					if (downRawY[0] - event.getRawY() >= expandDistance) {
+						expandBottomSheet(dialog);
+					}
+					return true;
+				case MotionEvent.ACTION_UP:
+					view.getParent().requestDisallowInterceptTouchEvent(false);
+					if (event.getRawY() - downRawY[0] >= dismissDistance) {
+						dialog.dismiss();
+					} else if (downRawY[0] - event.getRawY() >= expandDistance) {
+						expandBottomSheet(dialog);
+					}
+					return true;
+				case MotionEvent.ACTION_CANCEL:
+					view.getParent().requestDisallowInterceptTouchEvent(false);
+					return true;
+				default:
+					return true;
+			}
+		});
 	}
 
 	private void configureBottomSheetWindow(BottomSheetDialog dialog) {
+		configureBottomSheetWindow(dialog, true);
+	}
+
+	private void configureBottomSheetWindow(BottomSheetDialog dialog, boolean draggable) {
 		dialog.setOnShowListener(unused -> {
 			Window window = dialog.getWindow();
 			if (window != null) {
 				window.setDimAmount(0.48f);
 				window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
 			}
+			dialog.getBehavior().setDraggable(draggable);
 		});
+	}
+
+	private void configurePreloadAdvancedBottomSheetWindow(BottomSheetDialog dialog) {
+		dialog.setOnShowListener(unused -> {
+			Window window = dialog.getWindow();
+			if (window != null) {
+				window.setDimAmount(0.48f);
+				window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+			}
+			BottomSheetBehavior<FrameLayout> behavior = dialog.getBehavior();
+			FrameLayout bottomSheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+			if (bottomSheet != null) {
+				ViewGroup.LayoutParams params = bottomSheet.getLayoutParams();
+				params.height = ViewGroup.LayoutParams.MATCH_PARENT;
+				bottomSheet.setLayoutParams(params);
+			}
+			behavior.setFitToContents(false);
+			behavior.setExpandedOffset(0);
+			behavior.setDraggable(true);
+			behavior.addBottomSheetCallback(new BottomSheetBehavior.BottomSheetCallback() {
+				@Override
+				public void onStateChanged(View bottomSheet, int newState) {
+					if (newState == BottomSheetBehavior.STATE_EXPANDED) {
+						behavior.setDraggable(false);
+					} else if (newState == BottomSheetBehavior.STATE_COLLAPSED || newState == BottomSheetBehavior.STATE_HALF_EXPANDED) {
+						behavior.setDraggable(true);
+					}
+				}
+
+				@Override
+				public void onSlide(View bottomSheet, float slideOffset) {
+				}
+			});
+			if (behavior.getState() == BottomSheetBehavior.STATE_EXPANDED) {
+				behavior.setDraggable(false);
+			}
+		});
+	}
+
+	private void installBottomSheetExpandOnScroll(ScrollView scrollView, BottomSheetDialog dialog) {
+		int expandDistance = ExtraSettingsUi.dp(context, 24);
+		final float[] downRawY = new float[1];
+		scrollView.setOnTouchListener((view, event) -> {
+			switch (event.getActionMasked()) {
+				case MotionEvent.ACTION_DOWN:
+					downRawY[0] = event.getRawY();
+					return false;
+				case MotionEvent.ACTION_MOVE:
+					if (downRawY[0] - event.getRawY() >= expandDistance) {
+						expandBottomSheet(dialog);
+					}
+					return false;
+				default:
+					return false;
+			}
+		});
+	}
+
+	private void expandBottomSheet(BottomSheetDialog dialog) {
+		BottomSheetBehavior<FrameLayout> behavior = dialog.getBehavior();
+		if (behavior.getState() != BottomSheetBehavior.STATE_EXPANDED) {
+			behavior.setDraggable(true);
+			behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
+		}
 	}
 
 	private void addSwitchRow(LinearLayout parent, int iconRes, int titleRes, int hintRes, boolean checked, BoolSettingOperation operation) {
@@ -989,7 +1107,7 @@ public final class SettingsPage {
 		}
 		String renderer = RendererPreference.getSelectedRenderer(context);
 		String vsync = settings.optString("vsync", "off");
-		int msaa = settings.optInt("msaa", 2);
+		int msaa = settings.optInt("msaa", 0);
 		boolean shaderCompat = settings.optBoolean("shader_compatibility_mode", false);
 		if (RendererPreference.RENDERER_OPENGL_ES3.equals(renderer) && msaa == 0 && shaderCompat && "off".equals(vsync)) {
 			return ExtraSettingsRepository.GRAPHICS_PRESET_COMPATIBILITY;
@@ -997,7 +1115,7 @@ public final class SettingsPage {
 		if (RendererPreference.RENDERER_VULKAN.equals(renderer) && msaa == 2 && !shaderCompat && "on".equals(vsync)) {
 			return ExtraSettingsRepository.GRAPHICS_PRESET_QUALITY;
 		}
-		if (RendererPreference.RENDERER_OPENGL_ES3.equals(renderer) && msaa == 2 && !shaderCompat && "off".equals(vsync)) {
+		if (RendererPreference.RENDERER_OPENGL_ES3.equals(renderer) && msaa == 0 && !shaderCompat && "off".equals(vsync)) {
 			return ExtraSettingsRepository.GRAPHICS_PRESET_RECOMMENDED;
 		}
 		return ExtraSettingsRepository.GRAPHICS_PRESET_CUSTOM;
@@ -1080,7 +1198,7 @@ public final class SettingsPage {
 		try {
 			BottomSheetDialog dialog = new BottomSheetDialog(context);
 			dialog.setContentView(buildPreloadAdvancedSheetContent(dialog, repository.loadSettingsJson()));
-			configureBottomSheetWindow(dialog);
+			configurePreloadAdvancedBottomSheetWindow(dialog);
 			dialog.show();
 		} catch (Exception exception) {
 			actions.showError(exception);
@@ -1091,18 +1209,30 @@ public final class SettingsPage {
 		ScrollView scrollView = bottomSheetScrollView();
 		LinearLayout content = ExtraSettingsUi.vertical(context);
 		int horizontalPadding = ExtraSettingsUi.dp(context, 20);
-		content.setPadding(horizontalPadding, ExtraSettingsUi.dp(context, 12), horizontalPadding, ExtraSettingsUi.dp(context, 28));
+		int bottomPadding = ExtraSettingsUi.dp(context, 28);
+		content.setPadding(horizontalPadding, ExtraSettingsUi.dp(context, 12), horizontalPadding, bottomPadding);
 		scrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-		addBottomSheetHandle(content);
+		installBottomSheetExpandOnScroll(scrollView, dialog);
+		addBottomSheetDismissHandle(content, dialog);
 		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_bolt_24, R.string.preload_advanced_title, R.string.preload_advanced_subtitle, null));
 		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.body(context, R.string.preload_advanced_master_note));
 		addSwitchRow(content, R.drawable.ic_layers_24, R.string.preload_startup_common_switch, R.string.preload_startup_common_hint, settings.optBoolean("preload_startup_common_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_startup_common_enabled", checked)));
 		addSwitchRow(content, R.drawable.ic_dashboard_24, R.string.preload_startup_main_menu_switch, R.string.preload_startup_main_menu_hint, settings.optBoolean("preload_startup_main_menu_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_startup_main_menu_enabled", checked)));
 		addSwitchRow(content, R.drawable.ic_rocket_launch_24, R.string.preload_menu_hotspots_switch, R.string.preload_menu_hotspots_hint, settings.optBoolean("preload_menu_hotspots_enabled", false), checked -> repository.saveSetting(root -> root.put("preload_menu_hotspots_enabled", checked)));
 		addSpinnerRow(content, R.drawable.ic_auto_awesome_24, R.string.preload_vfx_mode_title, buildVfxPreloadLabels(), findStringIndex(VFX_PRELOAD_VALUES, settings.optString("preload_vfx_mode", "off")), position -> repository.saveSetting(root -> root.put("preload_vfx_mode", VFX_PRELOAD_VALUES[position])));
+		addSwitchRow(content, R.drawable.ic_ms_play_arrow_24, R.string.preload_vfx_tree_warmup_switch, R.string.preload_vfx_tree_warmup_hint, settings.optBoolean("preload_vfx_tree_warmup_enabled", false), checked -> repository.saveSetting(root -> root.put("preload_vfx_tree_warmup_enabled", checked)));
+		addSpinnerRow(content, R.drawable.ic_high_quality_24, R.string.preload_vfx_tree_scope_title, buildVfxTreeScopeLabels(), findStringIndex(VFX_TREE_SCOPE_VALUES, settings.optString("preload_vfx_tree_warmup_scope", "safe")), position -> repository.saveSetting(root -> root.put("preload_vfx_tree_warmup_scope", VFX_TREE_SCOPE_VALUES[position])));
+		addSpinnerRow(content, R.drawable.ic_speed_24, R.string.preload_vfx_tree_frames_title, buildVfxTreeFrameLabels(), findIntIndex(VFX_TREE_FRAME_OPTIONS, settings.optInt("preload_vfx_tree_warmup_frames", 3)), position -> repository.saveSetting(root -> root.put("preload_vfx_tree_warmup_frames", VFX_TREE_FRAME_OPTIONS[position])));
+		addSwitchRow(content, R.drawable.ic_save_24, R.string.preload_vfx_retain_cache_switch, R.string.preload_vfx_retain_cache_hint, settings.optBoolean("preload_vfx_retain_cache_enabled", false), checked -> repository.saveSetting(root -> root.put("preload_vfx_retain_cache_enabled", checked)));
+		addSpinnerRow(content, R.drawable.ic_ms_person_24, R.string.preload_combat_animation_mode_title, buildCombatAnimationWarmupLabels(), findStringIndex(COMBAT_ANIMATION_WARMUP_VALUES, settings.optString("preload_combat_animation_warmup_mode", "off")), position -> repository.saveSetting(root -> root.put("preload_combat_animation_warmup_mode", COMBAT_ANIMATION_WARMUP_VALUES[position])));
+		addSpinnerRow(content, R.drawable.ic_speed_24, R.string.preload_combat_animation_frames_title, buildCombatAnimationFrameLabels(), findIntIndex(COMBAT_ANIMATION_FRAME_OPTIONS, settings.optInt("preload_combat_animation_warmup_frames", 1)), position -> repository.saveSetting(root -> root.put("preload_combat_animation_warmup_frames", COMBAT_ANIMATION_FRAME_OPTIONS[position])));
+		addSwitchRow(content, R.drawable.ic_auto_awesome_24, R.string.preload_combat_hit_effect_warmup_switch, R.string.preload_combat_hit_effect_warmup_hint, settings.optBoolean("preload_combat_hit_effect_warmup_enabled", false), checked -> repository.saveSetting(root -> root.put("preload_combat_hit_effect_warmup_enabled", checked)));
 		addSwitchRow(content, R.drawable.ic_speed_24, R.string.preload_combat_code_switch, R.string.preload_combat_code_hint, settings.optBoolean("preload_combat_code_enabled", false), checked -> repository.saveSetting(root -> root.put("preload_combat_code_enabled", checked)));
 		addSpinnerRow(content, R.drawable.ic_build_24, R.string.preload_shader_mode_title, buildShaderPreloadLabels(), findStringIndex(SHADER_PRELOAD_VALUES, settings.optString("preload_shader_mode", "off")), position -> repository.saveSetting(root -> root.put("preload_shader_mode", SHADER_PRELOAD_VALUES[position])));
 		addSwitchRow(content, R.drawable.ic_sync_24, R.string.preload_runtime_switch, R.string.preload_runtime_hint, settings.optBoolean("preload_runtime_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_runtime_enabled", checked)));
+		addSwitchRow(content, R.drawable.ic_save_24, R.string.preload_protect_warm_cache_switch, R.string.preload_protect_warm_cache_hint, settings.optBoolean("preload_protect_warm_cache_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_protect_warm_cache_enabled", checked)));
+		addSwitchRow(content, R.drawable.ic_layers_24, R.string.preload_gameplay_assets_switch, R.string.preload_gameplay_assets_hint, settings.optBoolean("preload_gameplay_assets_enabled", false), checked -> repository.saveSetting(root -> root.put("preload_gameplay_assets_enabled", checked)));
+		addSwitchRow(content, R.drawable.ic_list_24, R.string.preload_learned_assets_switch, R.string.preload_learned_assets_hint, settings.optBoolean("preload_learned_assets_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_learned_assets_enabled", checked)));
 		LinearLayout buttons = ExtraSettingsUi.horizontal(context);
 		MaterialButton reset = ExtraSettingsUi.outlineButton(context, R.string.preload_restore_defaults, R.drawable.ic_restart_alt_24);
 		MaterialButton close = ExtraSettingsUi.tonalButton(context, android.R.string.ok, 0);
@@ -1333,6 +1463,37 @@ public final class SettingsPage {
 			context.getString(R.string.preload_vfx_mode_hot),
 			context.getString(R.string.preload_vfx_mode_full)
 		);
+	}
+
+	private List<String> buildVfxTreeScopeLabels() {
+		return Arrays.asList(
+			context.getString(R.string.preload_vfx_tree_scope_safe),
+			context.getString(R.string.preload_vfx_tree_scope_all)
+		);
+	}
+
+	private List<String> buildVfxTreeFrameLabels() {
+		List<String> labels = new ArrayList<>();
+		for (int frames : VFX_TREE_FRAME_OPTIONS) {
+			labels.add(context.getString(R.string.preload_vfx_tree_frames_option, frames));
+		}
+		return labels;
+	}
+
+	private List<String> buildCombatAnimationWarmupLabels() {
+		return Arrays.asList(
+			context.getString(R.string.preload_combat_animation_mode_off),
+			context.getString(R.string.preload_combat_animation_mode_safe),
+			context.getString(R.string.preload_combat_animation_mode_all)
+		);
+	}
+
+	private List<String> buildCombatAnimationFrameLabels() {
+		List<String> labels = new ArrayList<>();
+		for (int frames : COMBAT_ANIMATION_FRAME_OPTIONS) {
+			labels.add(context.getString(R.string.preload_combat_animation_frames_option, frames));
+		}
+		return labels;
 	}
 
 	private List<String> buildShaderPreloadLabels() {
