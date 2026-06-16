@@ -84,6 +84,7 @@ public class GodotApp extends GodotActivity {
 	private static volatile boolean currentWindowFocused;
 	private static volatile boolean currentResumed;
 	private File gameDir;
+	private android.view.OrientationEventListener orientationEventListener;
 
 	static {
 		Log.i(TAG, "DIAG GodotApp static init begin versionCode=" + BuildConfig.VERSION_CODE + " versionName=" + BuildConfig.VERSION_NAME + " flavor=" + BuildConfig.FLAVOR);
@@ -693,6 +694,7 @@ public class GodotApp extends GodotActivity {
 
 	@Override
 	public void onPause() {
+		disableOrientationEventListener();
 		currentResumed = false;
 		currentWindowFocused = false;
 		super.onPause();
@@ -734,7 +736,7 @@ public class GodotApp extends GodotActivity {
 	}
 
 	private void applyConfiguredScreenOrientation() {
-		String mode = ExtraSettingsRepository.SCREEN_ROTATION_AUTO;
+		String mode = ExtraSettingsRepository.SCREEN_ROTATION_USER_LANDSCAPE;
 		try {
 			File settingsFile = getSettingsFile();
 			if (settingsFile.isFile()) {
@@ -743,7 +745,7 @@ public class GodotApp extends GodotActivity {
 					JSONObject settings = new JSONObject(content);
 					String fallback = settings.optBoolean("android_flip_screen_180", false)
 						? ExtraSettingsRepository.SCREEN_ROTATION_REVERSE_LANDSCAPE
-						: ExtraSettingsRepository.SCREEN_ROTATION_AUTO;
+						: ExtraSettingsRepository.SCREEN_ROTATION_USER_LANDSCAPE;
 					mode = ExtraSettingsRepository.normalizeScreenRotationMode(settings.optString(ExtraSettingsRepository.KEY_SCREEN_ROTATION_MODE, fallback));
 				}
 			}
@@ -755,19 +757,61 @@ public class GodotApp extends GodotActivity {
 		switch (mode) {
 			case ExtraSettingsRepository.SCREEN_ROTATION_LANDSCAPE:
 				orientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
+				disableOrientationEventListener();
 				break;
 			case ExtraSettingsRepository.SCREEN_ROTATION_REVERSE_LANDSCAPE:
 				orientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE;
+				disableOrientationEventListener();
+				break;
+			case ExtraSettingsRepository.SCREEN_ROTATION_USER_LANDSCAPE:
+				orientation = ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE;
+				disableOrientationEventListener();
 				break;
 			case ExtraSettingsRepository.SCREEN_ROTATION_AUTO:
 			default:
 				orientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE;
+				enableOrientationEventListener();
 				break;
 		}
 		if (getRequestedOrientation() != orientation) {
 			setRequestedOrientation(orientation);
 		}
 		Log.i(TAG, "Configured GodotApp screen orientation mode=" + mode + " requestedOrientation=" + orientation);
+	}
+
+	private void enableOrientationEventListener() {
+		if (orientationEventListener == null) {
+			orientationEventListener = new android.view.OrientationEventListener(this, android.hardware.SensorManager.SENSOR_DELAY_NORMAL) {
+				@Override
+				public void onOrientationChanged(int orientation) {
+					if (orientation == ORIENTATION_UNKNOWN) {
+						return;
+					}
+					if (orientation >= 65 && orientation <= 115) {
+						int target = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE;
+						if (getRequestedOrientation() != target) {
+							setRequestedOrientation(target);
+							Log.d(TAG, "Force orientation auto-rotate reversed landscape: orientation=" + orientation);
+						}
+					} else if (orientation >= 245 && orientation <= 295) {
+						int target = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
+						if (getRequestedOrientation() != target) {
+							setRequestedOrientation(target);
+							Log.d(TAG, "Force orientation auto-rotate standard landscape: orientation=" + orientation);
+						}
+					}
+				}
+			};
+		}
+		if (orientationEventListener.canDetectOrientation()) {
+			orientationEventListener.enable();
+		}
+	}
+
+	private void disableOrientationEventListener() {
+		if (orientationEventListener != null) {
+			orientationEventListener.disable();
+		}
 	}
 
 	private void showSoftKeyboardForGame() {
@@ -848,6 +892,7 @@ public class GodotApp extends GodotActivity {
 			FMOD.close();
 		} catch (Throwable ignored) {
 		}
+		disableOrientationEventListener();
 		currentResumed = false;
 		currentWindowFocused = false;
 		if (currentInstance == this) {
@@ -863,6 +908,14 @@ public class GodotApp extends GodotActivity {
 		applyConfiguredScreenOrientation();
 		runOnUiThread(updateWindowAppearance);
 		HighRefreshRateController.applyWithRetries(this, getGodot(), "onGodotMainLoopStarted");
+	}
+
+	public static void applySelectedScreenOrientationFromGame() {
+		GodotApp activity = currentInstance;
+		if (activity == null) {
+			return;
+		}
+		activity.runOnUiThread(activity::applyConfiguredScreenOrientation);
 	}
 
 	public static boolean isGameWindowInteractive() {

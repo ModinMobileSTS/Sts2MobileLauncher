@@ -83,6 +83,7 @@ public final class SettingsPage {
 	private static final String[] TOOLTIP_MODE_VALUES = new String[] { ExtraSettingsRepository.TOOLTIP_MODE_IMMEDIATE, ExtraSettingsRepository.TOOLTIP_MODE_LONG_PRESS, ExtraSettingsRepository.TOOLTIP_MODE_HIDDEN };
 	private static final String[] SCREEN_ROTATION_VALUES = new String[] {
 		ExtraSettingsRepository.SCREEN_ROTATION_AUTO,
+		ExtraSettingsRepository.SCREEN_ROTATION_USER_LANDSCAPE,
 		ExtraSettingsRepository.SCREEN_ROTATION_LANDSCAPE,
 		ExtraSettingsRepository.SCREEN_ROTATION_REVERSE_LANDSCAPE
 	};
@@ -396,7 +397,7 @@ public final class SettingsPage {
 			ResolutionOption option = RESOLUTION_OPTIONS.get(position);
 			repository.saveSetting(root -> repository.putVector(root, "fullscreen_render_size", option.width, option.height));
 		});
-		addSpinnerRow(content, R.drawable.ic_sync_24, R.string.screen_rotation_mode, buildScreenRotationModeLabels(), findStringIndex(SCREEN_ROTATION_VALUES, ExtraSettingsRepository.normalizeScreenRotationMode(settings.optString(ExtraSettingsRepository.KEY_SCREEN_ROTATION_MODE, ""))), position -> {
+		addSpinnerRow(content, R.drawable.ic_sync_24, R.string.screen_rotation_mode, buildScreenRotationModeLabels(), findStringIndex(SCREEN_ROTATION_VALUES, ExtraSettingsRepository.normalizeScreenRotationMode(settings.optString(ExtraSettingsRepository.KEY_SCREEN_ROTATION_MODE, ExtraSettingsRepository.SCREEN_ROTATION_USER_LANDSCAPE))), position -> {
 			String mode = SCREEN_ROTATION_VALUES[position];
 			repository.saveSetting(root -> {
 				root.put(ExtraSettingsRepository.KEY_SCREEN_ROTATION_MODE, mode);
@@ -763,11 +764,12 @@ public final class SettingsPage {
 				new ChoiceOption(labels.get(2), context.getString(R.string.choice_sheet_mobile_tooltip_hidden_desc), R.drawable.ic_close_24)
 			);
 		}
-		if (labelRes == R.string.screen_rotation_mode && labels.size() >= 3) {
+		if (labelRes == R.string.screen_rotation_mode && labels.size() >= 4) {
 			return Arrays.asList(
 				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_screen_rotation_auto_desc), R.drawable.ic_sync_24),
-				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_screen_rotation_landscape_desc), R.drawable.ic_desktop_windows_24),
-				new ChoiceOption(labels.get(2), context.getString(R.string.choice_sheet_screen_rotation_reverse_desc), R.drawable.ic_compare_arrows_24)
+				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_screen_rotation_user_landscape_desc), R.drawable.ic_sync_24),
+				new ChoiceOption(labels.get(2), context.getString(R.string.choice_sheet_screen_rotation_landscape_desc), R.drawable.ic_desktop_windows_24),
+				new ChoiceOption(labels.get(3), context.getString(R.string.choice_sheet_screen_rotation_reverse_desc), R.drawable.ic_compare_arrows_24)
 			);
 		}
 		if (labelRes == R.string.preload_vfx_mode_title && labels.size() >= 3) {
@@ -1445,6 +1447,7 @@ public final class SettingsPage {
 	private List<String> buildScreenRotationModeLabels() {
 		return Arrays.asList(
 			context.getString(R.string.screen_rotation_auto),
+			context.getString(R.string.screen_rotation_user_landscape),
 			context.getString(R.string.screen_rotation_landscape),
 			context.getString(R.string.screen_rotation_reverse_landscape)
 		);

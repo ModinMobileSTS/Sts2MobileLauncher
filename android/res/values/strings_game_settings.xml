@@ -105,6 +105,7 @@
     <string name="resolution_hint">Controls the fullscreen render resolution used by the game on next launch.</string>
     <string name="screen_rotation_mode">Rotation mode</string>
     <string name="screen_rotation_auto">Auto</string>
+    <string name="screen_rotation_user_landscape">Follow system</string>
     <string name="screen_rotation_landscape">No rotation</string>
     <string name="screen_rotation_reverse_landscape">180°</string>
     <string name="section_preload">Preload</string>
@@ -308,7 +309,8 @@
     <string name="confirm_delete_mod_title">Delete MOD</string>
     <string name="confirm_delete_mod_message">Delete this MOD file from internal storage?</string>
     <string name="resolution_auto">Auto / Default</string>
-    <string name="choice_sheet_screen_rotation_auto_desc">Use Android landscape sensor mode so the game can switch between normal and 180° landscape.</string>
+    <string name="choice_sheet_screen_rotation_auto_desc">Force automatic switching between normal and 180° landscape, even when system auto-rotate is off.</string>
+    <string name="choice_sheet_screen_rotation_user_landscape_desc">Follow the system auto-rotate lock while staying in landscape orientations.</string>
     <string name="choice_sheet_screen_rotation_landscape_desc">Lock the game to the normal landscape orientation.</string>
     <string name="choice_sheet_screen_rotation_reverse_desc">Lock the game to the reverse landscape orientation.</string>
     <string name="scale_default">Default (1.0x)</string>

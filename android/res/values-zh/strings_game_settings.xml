@@ -105,6 +105,7 @@
     <string name="resolution_hint">用于控制下次启动游戏时的全屏渲染分辨率。</string>
     <string name="screen_rotation_mode">旋转模式</string>
     <string name="screen_rotation_auto">自动</string>
+    <string name="screen_rotation_user_landscape">跟随系统</string>
     <string name="screen_rotation_landscape">不旋转</string>
     <string name="screen_rotation_reverse_landscape">180°</string>
     <string name="section_preload">预加载</string>
@@ -308,7 +309,8 @@
     <string name="confirm_delete_mod_title">删除 MOD</string>
     <string name="confirm_delete_mod_message">确定要从内部存储删除这个 MOD 吗？</string>
     <string name="resolution_auto">自动 / 默认</string>
-    <string name="choice_sheet_screen_rotation_auto_desc">使用 Android 横屏传感器模式，游戏可在普通横屏和 180° 横屏之间自动切换。</string>
+    <string name="choice_sheet_screen_rotation_auto_desc">强制在普通横屏和 180° 横屏之间自动切换，即使系统没有开启屏幕自动旋转。</string>
+    <string name="choice_sheet_screen_rotation_user_landscape_desc">跟随系统屏幕自动旋转开关，但仅在横屏方向之间切换。</string>
     <string name="choice_sheet_screen_rotation_landscape_desc">固定为普通横屏方向。</string>
     <string name="choice_sheet_screen_rotation_reverse_desc">固定为反向横屏方向。</string>
     <string name="scale_default">默认（1.0x）</string>

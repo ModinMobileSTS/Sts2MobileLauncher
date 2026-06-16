@@ -78,7 +78,7 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 - `mod_list[]`
 - legacy `disabled_mods[]`
 
-同一个 settings JSON 也承载兼容层显示/输入协议。`android_screen_rotation_mode` 是当前旋转模式字段，取值为 `auto`（默认，横屏传感器自动在普通/180°横屏间切换）、`landscape`（不旋转）或 `reverse_landscape`（固定 180°）；旧 `android_flip_screen_180` 仍会同步，供旧兼容包 fallback。
+同一个 settings JSON 也承载兼容层显示/输入协议。`android_screen_rotation_mode` 是当前旋转模式字段，取值为 `user_landscape`（默认，跟随系统，只在横屏间旋转，受系统自动旋转开关约束）、`auto`（强制双向横屏旋转，通过重力监听器绕过系统旋转锁定限制）、`landscape`（不旋转）或 `reverse_landscape`（固定 180°）；旧 `android_flip_screen_180` 仍会同步，供旧兼容包 fallback。
 
 修改设置 key 时必须同步：
 

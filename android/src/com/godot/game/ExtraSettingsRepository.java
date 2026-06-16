@@ -50,6 +50,7 @@ public final class ExtraSettingsRepository {
 	public static final String LOG_LEVEL_DEBUG = "debug";
 	public static final String LOG_LEVEL_VERY_DEBUG = "very_debug";
 	public static final String SCREEN_ROTATION_AUTO = "auto";
+	public static final String SCREEN_ROTATION_USER_LANDSCAPE = "user_landscape";
 	public static final String SCREEN_ROTATION_LANDSCAPE = "landscape";
 	public static final String SCREEN_ROTATION_REVERSE_LANDSCAPE = "reverse_landscape";
 	public static final String TOOLTIP_MODE_IMMEDIATE = "immediate";
@@ -177,7 +178,7 @@ public final class ExtraSettingsRepository {
 		settings.put(KEY_PERFORMANCE_OVERLAY_ENABLED, isStoredPerformanceOverlayEnabled());
 		settings.put("android_volume_up_soft_keyboard", false);
 		settings.put("android_flip_screen_180", false);
-		settings.put(KEY_SCREEN_ROTATION_MODE, SCREEN_ROTATION_AUTO);
+		settings.put(KEY_SCREEN_ROTATION_MODE, SCREEN_ROTATION_USER_LANDSCAPE);
 		settings.put("lan_use_custom_player_id", false);
 		settings.put("lan_use_custom_platform_player_id", false);
 		settings.put("lan_custom_player_id", "");
@@ -252,7 +253,7 @@ public final class ExtraSettingsRepository {
 
 	public static String normalizeScreenRotationMode(String value) {
 		if (value == null) {
-			return SCREEN_ROTATION_AUTO;
+			return SCREEN_ROTATION_USER_LANDSCAPE;
 		}
 		String normalized = value.trim().toLowerCase(Locale.ROOT).replace('-', '_').replace(" ", "_");
 		if ("none".equals(normalized) || "normal".equals(normalized) || "no_rotate".equals(normalized) || "no_rotation".equals(normalized) || SCREEN_ROTATION_LANDSCAPE.equals(normalized)) {
@@ -261,13 +262,16 @@ public final class ExtraSettingsRepository {
 		if ("180".equals(normalized) || "flip_180".equals(normalized) || "rotate_180".equals(normalized) || "reverse".equals(normalized) || SCREEN_ROTATION_REVERSE_LANDSCAPE.equals(normalized)) {
 			return SCREEN_ROTATION_REVERSE_LANDSCAPE;
 		}
-		return SCREEN_ROTATION_AUTO;
+		if ("user".equals(normalized) || "system".equals(normalized) || "follow_system".equals(normalized) || SCREEN_ROTATION_USER_LANDSCAPE.equals(normalized)) {
+			return SCREEN_ROTATION_USER_LANDSCAPE;
+		}
+		return SCREEN_ROTATION_USER_LANDSCAPE;
 	}
 
 	private boolean ensureScreenRotationMode(JSONObject settings) throws JSONException {
 		String fallback = settings.optBoolean("android_flip_screen_180", false)
 			? SCREEN_ROTATION_REVERSE_LANDSCAPE
-			: SCREEN_ROTATION_AUTO;
+			: SCREEN_ROTATION_USER_LANDSCAPE;
 		String normalized = normalizeScreenRotationMode(settings.optString(KEY_SCREEN_ROTATION_MODE, fallback));
 		boolean changed = false;
 		if (!settings.has(KEY_SCREEN_ROTATION_MODE) || !normalized.equals(settings.optString(KEY_SCREEN_ROTATION_MODE, ""))) {
