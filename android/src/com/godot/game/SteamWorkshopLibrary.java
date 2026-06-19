@@ -67,10 +67,10 @@ public final class SteamWorkshopLibrary {
 			item.getFileSizeBytes(),
 			item.getTimeUpdatedEpochSeconds() * 1000L,
 			now,
-			existing == null ? 0L : existing.lastCheckedAtMs,
-			existing == null ? 0L : existing.remoteUpdatedAtMs,
-			existing == null ? "" : existing.updateStatus,
-			existing == null ? "" : existing.lastError,
+			now,
+			item.getTimeUpdatedEpochSeconds() * 1000L,
+			"current",
+			"",
 			installedRootPath,
 			modIds,
 			importedModsSize(importedMods),
@@ -110,6 +110,20 @@ public final class SteamWorkshopLibrary {
 
 	public synchronized void clearEntries() throws Exception {
 		writeEntries(Collections.emptyList());
+	}
+
+	public synchronized void removeEntry(String publishedFileId) throws Exception {
+		if (TextUtils.isEmpty(publishedFileId)) {
+			return;
+		}
+		List<Entry> entries = readEntries();
+		List<Entry> kept = new ArrayList<>();
+		for (Entry entry : entries) {
+			if (!publishedFileId.equals(entry.publishedFileId)) {
+				kept.add(entry);
+			}
+		}
+		writeEntries(kept);
 	}
 
 	private List<Entry> readEntries() {

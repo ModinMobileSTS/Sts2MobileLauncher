@@ -62,25 +62,7 @@ class SteamPublishedFileClient(
                 )
                 SteamPublishedFileQueryResult(
                     total = response.total,
-                    items = response.publishedfiledetailsList.mapNotNull { detail ->
-                        detail.publishedfileid.takeIf { it > 0L }?.toULong()?.let { publishedFileId ->
-                            SteamPublishedFileItem(
-                                publishedFileId = publishedFileId,
-                                appId = detail.consumerAppid.toUInt(),
-                                title = detail.title,
-                                description = detail.shortDescription.takeIf(String::isNotBlank)
-                                    ?: detail.fileDescription,
-                                previewUrl = detail.previewUrl,
-                                creatorSteamId = detail.creator,
-                                fileSizeBytes = detail.fileSize,
-                                subscriptions = detail.subscriptions,
-                                lifetimeSubscriptions = detail.lifetimeSubscriptions,
-                                views = detail.views,
-                                timeCreatedEpochSeconds = detail.timeCreated.toLong(),
-                                timeUpdatedEpochSeconds = detail.timeUpdated.toLong(),
-                            )
-                        }
-                    },
+                    items = response.publishedfiledetailsList.mapNotNull(::toPublishedFileItem),
                     nextCursor = response.nextCursor.takeIf(String::isNotBlank),
                 )
             } catch (error: Throwable) {
@@ -91,6 +73,27 @@ class SteamPublishedFileClient(
             }
         }
     }
+
+    private fun toPublishedFileItem(
+        detail: top.apricityx.workshop.steam.proto.PublishedFileDetails,
+    ): SteamPublishedFileItem? =
+        detail.publishedfileid.takeIf { it > 0L }?.toULong()?.let { publishedFileId ->
+            SteamPublishedFileItem(
+                publishedFileId = publishedFileId,
+                appId = detail.consumerAppid.toUInt(),
+                title = detail.title,
+                description = detail.shortDescription.takeIf(String::isNotBlank)
+                    ?: detail.fileDescription,
+                previewUrl = detail.previewUrl,
+                creatorSteamId = detail.creator,
+                fileSizeBytes = detail.fileSize,
+                subscriptions = detail.subscriptions,
+                lifetimeSubscriptions = detail.lifetimeSubscriptions,
+                views = detail.views,
+                timeCreatedEpochSeconds = detail.timeCreated.toLong(),
+                timeUpdatedEpochSeconds = detail.timeUpdated.toLong(),
+            )
+        }
 }
 
 const val STEAM_LANGUAGE_ENGLISH = 0

@@ -34,7 +34,24 @@ internal object SteamWorkshopDirectAccess {
 
     private val COMMUNITY_ROUTE = RouteProfile(
         name = "steam-community",
-        logicalHosts = setOf("steamcommunity.com", "www.steamcommunity.com"),
+        logicalHosts = setOf(
+            "steamcommunity.com",
+            "www.steamcommunity.com",
+            "images.steamusercontent.com",
+            "steamuserimages-a.akamaihd.net",
+            "steamusercontent-a.akamaihd.net",
+            "cdn.akamai.steamstatic.com",
+            "shared.akamai.steamstatic.com",
+            "cdn.cloudflare.steamstatic.com",
+            "clan.cloudflare.steamstatic.com",
+            "avatars.steamstatic.com",
+        ),
+        logicalHostSuffixes = setOf(
+            ".steamusercontent.com",
+            ".steamuserimages-a.akamaihd.net",
+            ".steamusercontent-a.akamaihd.net",
+            ".steamstatic.com",
+        ),
         forwardHost = "steamcommunity.rmbgame.net",
         ignoreSslCertVerification = true,
     )
@@ -203,7 +220,7 @@ internal object SteamWorkshopDirectAccess {
 
     private fun routeForLogicalHost(host: String): RouteProfile? {
         val normalized = host.lowercase()
-        return ROUTES.firstOrNull { route -> normalized in route.logicalHosts }
+        return ROUTES.firstOrNull { route -> route.supports(normalized) }
     }
 
     private fun routeForForwardHost(host: String): RouteProfile? {
@@ -214,13 +231,16 @@ internal object SteamWorkshopDirectAccess {
     private data class RouteProfile(
         val name: String,
         val logicalHosts: Set<String>,
+        val logicalHostSuffixes: Set<String> = emptySet(),
         val forwardHost: String,
         val ignoreSslCertVerification: Boolean,
     ) {
         val primaryLogicalHost: String = logicalHosts.first()
 
         fun supports(host: String): Boolean =
-            host.lowercase() in logicalHosts
+            host.lowercase().let { normalized ->
+                normalized in logicalHosts || logicalHostSuffixes.any(normalized::endsWith)
+            }
     }
 
     private class RouteHostnameVerifier(
