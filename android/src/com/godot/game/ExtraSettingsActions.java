@@ -23,6 +23,7 @@ public interface ExtraSettingsActions {
 	void requestImportFullDataBackup();
 	void requestImportMod();
 	void openModStore();
+	void openSteamWorkshop();
 	void openSteamAccount();
 	void openWebDavCloud();
 	void openLogViewer();

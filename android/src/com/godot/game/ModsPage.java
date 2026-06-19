@@ -225,6 +225,8 @@ public final class ModsPage {
 		addChipGap(chips);
 		chips.addView(actionChip(R.string.mod_group_create, R.drawable.ic_folder_24, v -> showCreateGroupDialog()));
 		addChipGap(chips);
+		chips.addView(actionChip(R.string.workshop_open, R.drawable.ic_steam_24, v -> actions.openSteamWorkshop()));
+		addChipGap(chips);
 		chips.addView(actionChip(R.string.mod_profiles_title, R.drawable.ic_layers_24, this::showProfilesMenu));
 		addChipGap(chips);
 		chips.addView(actionChip(R.string.mod_sort_menu_title, R.drawable.ic_sort_24, this::showSortMenu));

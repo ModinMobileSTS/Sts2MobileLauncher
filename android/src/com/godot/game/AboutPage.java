@@ -21,6 +21,7 @@ public final class AboutPage {
 	private static final String QUICK_RESTART_URL = "https://github.com/freude916/sts2-quickRestart";
 	private static final String RITSU_LIB_URL = "https://github.com/BAKAOLC/STS2-RitsuLib";
 	private static final String STS2_LAUNCHER_MOD_MANAGER_URL = "https://github.com/iunius612/StS2-Launcher_Mod_Manager";
+	private static final String WORKSHOP_ANDROID_DOWNLOADER_URL = "https://github.com/Apricityx/WorkshopAndroidDownloader";
 
 	private final Context context;
 	private final ExtraSettingsActions actions;
@@ -46,6 +47,7 @@ public final class AboutPage {
 		ExtraSettingsUi.addCardSpacing(root, friendHeader());
 		addResponsiveCards(root, linkCard(R.drawable.ic_extension_24, R.string.friend_link_amethyst_title, R.string.friend_link_amethyst_desc, SLAY_AMETHYST_URL), linkCard(R.drawable.ic_restart_alt_24, R.string.friend_link_quick_restart_title, R.string.friend_link_quick_restart_desc, QUICK_RESTART_URL));
 		addResponsiveCards(root, linkCard(R.drawable.ic_code_24, R.string.friend_link_ritsu_lib_title, R.string.friend_link_ritsu_lib_desc, RITSU_LIB_URL), linkCard(R.drawable.ic_settings_24, R.string.friend_link_sts2_launcher_mod_manager_title, R.string.friend_link_sts2_launcher_mod_manager_desc, STS2_LAUNCHER_MOD_MANAGER_URL));
+		ExtraSettingsUi.addCardSpacing(root, linkCard(R.drawable.ic_steam_24, R.string.friend_link_workshop_android_downloader_title, R.string.friend_link_workshop_android_downloader_desc, WORKSHOP_ANDROID_DOWNLOADER_URL));
 		return scrollView;
 	}
 

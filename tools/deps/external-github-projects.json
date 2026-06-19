@@ -12,6 +12,16 @@
       "purpose": "Steam protocol/downloader source reference; android/steam-protocol and android/steam-content were adapted from this project."
     },
     {
+      "id": "workshop-android-downloader",
+      "name": "WorkshopAndroidDownloader",
+      "url": "https://github.com/Apricityx/WorkshopAndroidDownloader.git",
+      "web_url": "https://github.com/Apricityx/WorkshopAndroidDownloader",
+      "groups": ["source-reference", "steam", "workshop"],
+      "clone_by_default": true,
+      "required_for_build": false,
+      "purpose": "Android Steam Workshop downloader reference for Workshop browse/download/update tracking support."
+    },
+    {
       "id": "sts2-launcher-mod-manager",
       "name": "StS2-Launcher_Mod_Manager",
       "url": "https://github.com/iunius612/StS2-Launcher_Mod_Manager.git",

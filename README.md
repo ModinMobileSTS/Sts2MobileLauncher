@@ -34,10 +34,10 @@
 
 ## About the Project
 
-This project is an experimental, unofficial Android port and launcher framework for *Slay the Spire 2*. It **DOES NOT** contain any base game files. Instead, it provides an Android shell that allows players to import and run their legally owned PC game files on mobile devices, featuring support for Mod loading, local save snapshots, Steam Cloud and WebDAV save synchronization, and launcher update checks from the About page. When an update is found, the launcher can open either the GitHub release page or the Bilibili dynamic feed.
+This project is an experimental, unofficial Android port and launcher framework for *Slay the Spire 2*. It **DOES NOT** contain any base game files. Instead, it provides an Android shell that allows players to import and run their legally owned PC game files on mobile devices, featuring support for Mod loading, Steam Workshop browsing/download tracking with anonymous public browsing and compatible-access fallback, local save snapshots, Steam Cloud and WebDAV save synchronization, and launcher update checks from the About page. When an update is found, the launcher can open either the GitHub release page or the Bilibili dynamic feed.
 
 **The core architecture consists of three layers:**
-1. **Android Launcher Shell (`android/`):** Handles game data importing, Steam login and game downloading, local save snapshots, Steam Cloud/WebDAV save syncing, and local file/MOD management. Once everything is ready, it boots up the Godot game process.
+1. **Android Launcher Shell (`android/`):** Handles game data importing, Steam login and game downloading, Steam Workshop public browsing/download tracking with a default compatible-access route for networks where Steam Community direct connections time out, local save snapshots, Steam Cloud/WebDAV save syncing, and local file/MOD management. Once everything is ready, it boots up the Godot game process.
 2. **Android Compatibility Pack (`port-mod/` submodule):** Acts as a low-level hook (based on Harmony), loaded at the very beginning of the game boot process. It intercepts and fixes various PC-to-Android incompatibilities (e.g., input adaptation, path redirection, PC-specific shader replacement, Mod loader bridging).
 3. **Base Game (Provided by User):** Supplied by the user either by importing the PC version's `SlayTheSpire2.zip` or by legally downloading it via the SteamPipe API after logging into their Steam account within the app.
 
@@ -60,6 +60,8 @@ The creation of this project relies heavily on the explorations of the open-sour
   Provided underlying concepts for stripping the Godot/Mono runtime, Android compatibility patch load orders, and design references for some build scripts.
 - **[SlayTheAmethystModded](https://github.com/ModinMobileSTS/SlayTheAmethystModded)**
   An unofficial mobile launcher for STS1. The reverse-engineered integration and source code for `steam-protocol`, `steam-content` (SteamPipe game downloads), and Steam Cloud saves in this project are primarily ported/adapted from it.
+- **[WorkshopAndroidDownloader](https://github.com/Apricityx/WorkshopAndroidDownloader)**
+  Android Steam Workshop downloader reference used for the launcher Workshop browsing, download, and update-tracking flow.
 - **[STS2-RitsuLib](https://github.com/BAKAOLC/STS2-RitsuLib) / [BaseLib-StS2](https://github.com/Alchyr/BaseLib-StS2)**
   Served as vital test baseline reference libraries for troubleshooting Android MOD compatibility.
 - **[Google Material Symbols](https://fonts.google.com/icons)**

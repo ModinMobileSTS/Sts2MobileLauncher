@@ -822,6 +822,15 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	}
 
 	@Override
+	public void openSteamWorkshop() {
+		try {
+			startActivity(new Intent(this, SteamWorkshopActivity.class));
+		} catch (Exception exception) {
+			showError(exception);
+		}
+	}
+
+	@Override
 	public void openSteamAccount() {
 		try {
 			startActivity(new Intent(this, SteamAccountActivity.class));

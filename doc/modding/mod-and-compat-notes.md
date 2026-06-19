@@ -42,15 +42,23 @@ mod_manifest.json
 
 ## 3. MOD 管理界面与导入冲突处理
 
-`ModsPage` 采用紧凑 Material 3 顶栏：顶部为 MOD 总开关和药丸搜索框，导入、分组、排序、筛选、MOD 方案入口统一放在可横向滚动的 Chip 操作组中。NexusMods 商店 Activity 仍保留在工程内，但主 MOD 页入口暂时隐藏。
+`ModsPage` 采用紧凑 Material 3 顶栏：顶部为 MOD 总开关和药丸搜索框，导入、分组、创意工坊、排序、筛选、MOD 方案入口统一放在可横向滚动的 Chip 操作组中。NexusMods 商店 Activity 仍保留在工程内，但主 MOD 页入口暂时隐藏。
 
 MOD 卡片默认折叠，只显示左侧拖拽手柄、名称、版本/作者和启用开关；展开后显示完整描述、分类/路径、作者、依赖，以及右下角图标按钮：选中、信息、删除；超长描述默认截断到 10 行并提供“显示更多”。MOD 列表按“前置库 / 内容模组 / 用户新建分组”分区，分组右侧可收起/展开。长按卡片左侧手柄可跨分组或组内拖拽排序，长按分组 header 可移动整个分组；拖拽开始会触发一次轻微震动反馈，列表中会插入半透明虚线 ghost 占位并用 LayoutTransition 平滑让位。用户新建分组会在对应 MOD 根目录下写入 `.sts2_mod_group` 标记文件，便于空分组也能被识别；不要把该标记误认为游戏 MOD manifest。组顺序与组内 MOD 顺序保存在本地 `sts2_mod_profiles` SharedPreferences，不影响游戏运行时 manifest 语义。
 
 导入 MOD 时，Android shell 会先把选择的 zip/文件解包到 cache staging 目录并解析 manifest。如果发现新导入 manifest 的 `id` 与已安装 MOD 相同，会弹出冲突 Dialog，说明“连体现象”：界面可能显示两个项目，但任何一个开关都会按同 ID 同时影响两个。Dialog 会用信息卡分别展示原 MOD 和新 MOD，用户可选择保留原 MOD（丢弃本次 staging）或使用新 MOD（删除同 ID 原 MOD 后提交 staging）。该规则同样服务 Nexus 下载导入路径，避免同 ID manifest 在 `<files>/mods` 或隔离 MOD 根中长期并存。
 
-同 ID 冲突处理后，导入流程还会按 staging 到当前 MOD 根目录的实际相对路径预检文件覆盖。如果新导入内容会写入已经存在的 `.dll` / `.pck` / `.json` 或其它资源文件，且这些文件不属于用户刚确认替换的同 ID 旧 MOD，会再次弹出“文件覆盖”警告，列出会被覆盖的相对路径和可推断的现有归属；默认取消/保留已安装文件，只有用户明确选择替换时才继续。底层提交接口默认不允许未确认的路径覆盖，Nexus 下载导入也会先 staging 并复用这两级确认流程，避免把 A MOD 的 DLL/PCK 静默替换成 B MOD 的文件。
+同 ID 冲突处理后，导入流程还会按 staging 到当前 MOD 根目录的实际相对路径预检文件覆盖。如果新导入内容会写入已经存在的 `.dll` / `.pck` / `.json` 或其它资源文件，且这些文件不属于用户刚确认替换的同 ID 旧 MOD，会再次弹出“文件覆盖”警告，列出会被覆盖的相对路径和可推断的现有归属；默认取消/保留已安装文件，只有用户明确选择替换时才继续。底层提交接口默认不允许未确认的路径覆盖，Nexus/创意工坊下载导入也会先 staging 并复用这两级确认流程，避免把 A MOD 的 DLL/PCK 静默替换成 B MOD 的文件。
 
-## 4. NexusMods 商店导入
+## 4. Steam 创意工坊导入与更新记录
+
+`SteamWorkshopActivity` 不单独保存 Workshop 账号。MOD 页“创意工坊”按钮会打开塔2创意工坊页面；未登录 Steam 时通过 Steam Community 公开 Workshop 页面匿名展示公开条目，已登录时优先复用 Steam 中心的加密 refresh token 和 SteamID64 走 Steam CM 查询并在失败时回落到公开浏览。页面支持搜索、打开 Steam 网页、下载并导入条目、查看已下载列表、手动检查更新，以及设置下载导入分组、创意工坊兼容访问和 UGC 分块并发数。
+
+创意工坊下载先落到 `<files>/workshop/downloads/<published_file_id>-<uuid>/`，随后调用 `ExtraSettingsRepository.prepareDownloadedModDirectory()` 把下载目录复制到 MOD 导入 staging，并完整复用本地导入/Nexus 导入的同 ID 冲突和路径覆盖确认流程。提交成功后，启动器会把导入的 MOD 移到设置中的导入分组（默认 `workshop`），并在 `<files>/workshop/library/index.json` 记录 `published_file_id`、远端更新时间、导入的 MOD ID、安装路径摘要、大小和内容 SHA-1 摘要。更新检查通过 Steam published file details 获取远端 `time_updated`，与记录的安装远端更新时间比较，标记 `available` / `current` / `failed`；重新下载更新仍走同一套冲突确认和分组移动逻辑。
+
+创意工坊下载实现参考 `Apricityx/WorkshopAndroidDownloader`：公开 `file_url` 走直链下载，UGC manifest 路径走 SteamPipe CDN chunk 下载；未登录时下载器会尝试匿名 Steam 会话和公开 CDN 回退，部分公开 MOD 可直接下载，受限/需拥有权限的条目仍可能要求登录。默认开启的“创意工坊兼容访问”会把 `steamcommunity.com` / `api.steampowered.com` 请求转到参考项目同款 `steamcommunity.rmbgame.net` / `steamstore.rmbgame.net` 路径，并保留逻辑 Host；关闭后只使用原始 Steam 域名。当前 UI 只把成功下载出的文件作为普通用户 MOD 导入，不恢复游戏进程内的桌面 Steam Workshop 枚举。
+
+## 5. NexusMods 商店导入
 
 `NexusModsStoreActivity` 仍作为实验性页面保留，但 `ModsPage` 暂时不展示入口。后续重新开放时需继续遵循：
 
@@ -60,7 +68,7 @@ MOD 卡片默认折叠，只显示左侧拖拽手柄、名称、版本/作者和
 - 下载流程会获取 NexusMods 文件列表，选择文件后尝试生成下载链接并把下载到的 ZIP 先交给 `ExtraSettingsRepository.prepareDownloadedModImport()` 解包到 staging；若触发同 ID 或路径覆盖冲突，会复用本地导入弹窗，确认后再提交到当前 launch profile 的 MOD 目录并启用 MOD 总开关。
 - NexusMods 对非 Premium 用户可能要求先访问网页；此时界面会引导打开网页并支持粘贴 `nxm://...key=...&expires=...` 链接重试下载。
 
-## 5. MOD 启用/禁用协议
+## 6. MOD 启用/禁用协议
 
 Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile 的 settings：
 
@@ -87,7 +95,7 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 - 相关 `Patches/*Settings*.cs`；
 - `.agent/agent-docs/changelog/`（agent-only，不提交）。
 
-## 6. compat pack target 维护
+## 7. compat pack target 维护
 
 `port-mod` 默认在 `main` 上维护 flat matrix。普通共用修复不要再按游戏版本开开发分支；版本差异放到 `targets/active/<target_id>/target.json`、target adapter/capability 或少量条件编译。历史 `compat/*` 分支只用于 legacy schema 1 包对照、回退诊断或已经冻结的旧维护线。
 
@@ -122,7 +130,7 @@ tools/package/build_importer_apk.sh
 
 只调试单个 target 时可运行 `(cd port-mod && ./tools/build-compat-matrix.sh --target v0.103.x)`；legacy schema 1 诊断包仍用 `REFERENCE_FLAVOR=original` / `original-v0.106.1` / `original-v0.107.0` 指定对应原版 gate。
 
-## 7. 新增游戏版本 checklist
+## 8. 新增游戏版本 checklist
 
 新增一个目标游戏版本时，至少需要：
 
@@ -136,7 +144,7 @@ tools/package/build_importer_apk.sh
 8. 构建 `tools/package/build_importer_apk.sh` 并做至少一次导入/启动 smoke test。
 9. 只有需要 legacy schema 1 对照包时，才额外新建 `compat/vX.Y.Z` 分支、新增/更新 `compat_manifest.*.json`，并更新 `tools/android/bundled-compat-packs.json`。
 
-## 8. patch 开发注意事项
+## 9. patch 开发注意事项
 
 - 优先使用 prefix/postfix 和反射兜底，谨慎使用复杂 transpiler；Android 上 MonoMod/Cecil/Godot StringName 生命周期问题更容易暴露。
 - 任何直接引用游戏内部类型的 patch 都可能随游戏版本变化失效，应通过 active target compile gate 验证；只在单版本复现的问题优先收敛到 target adapter/capability 或条件编译，不要默认拆回 compat 分支。
@@ -146,7 +154,7 @@ tools/package/build_importer_apk.sh
 - 普通 MOD loader 的目标是尽量复用游戏原本的 scanner、dependency sort 和 TryLoadMod，减少与 PC 行为分叉。
 - `v0.103.x`、`v0.106.1` beta 与 `v0.107.0` beta 分支应保持同一套 Android/Mono MOD 初始化不变式：加载任何 MOD 前只允许预注册原版模型占位；每个 MOD initializer 期间只允许短暂隐藏“非原版类型命中早期原版占位”的 `ModelDb.Contains(Type)` 结果，避免与原版同名的 MOD 模型因 Android 提前占位误报重复；若 MOD 因早期占位误判 ModelDb 已初始化并调用 `AbstractModel.InitId()`，兼容层只在 `ModelIdSerializationCache.Init()` 完成前跳过该次早调用，后续正常 `ModelDb.InitIds()` 会统一设置排序 ID，不得提前动态分配 net ID；MOD 自定义模型占位必须等到所有 MOD Harmony patch 应用后、`ModelDb.Init()` 前再按最终 ID 注册。用户 MOD 在 initializer / `PatchAll` 中 patch STS2 Godot/UI 类型时，`DeferredModPatchQueue` 可将带静态初始化器的 UI patch 延后到 `ExecuteEssential` 完成后重放；不要把普通模型类 patch 一并延后，否则会破坏 MOD 依赖的 `ModelDb.Init` 前置 hook 时序。
 
-## 9. MOD 兼容性排查规范
+## 10. MOD 兼容性排查规范
 
 排查普通 MOD 在 Android 上无法加载、依赖缺失、初始化顺序异常或行为与 PC 不一致时，建议按以下方式收集参照信息：
 
@@ -157,7 +165,7 @@ tools/package/build_importer_apk.sh
   - RitsuLib: <https://github.com/BAKAOLC/STS2-RitsuLib>
   - BaseLib-StS2: <https://github.com/Alchyr/BaseLib-StS2>
 
-## 10. 兼容包 manifest 约定
+## 11. 兼容包 manifest 约定
 
 schema 1 legacy 单目标 manifest：
 
@@ -213,7 +221,7 @@ schema 2 family manifest：
 
 `CompatPackManager` 对 schema 1 优先用 `target_game.version` 与 payload manifest 的 `version` 精确匹配；对 schema 2 会把 `targets[]` 展开成可选 variant，并优先按 payload 的 `sts2_dll_sha256` 精确匹配，再回落到 `version` / `versions` 列表。启动配置保存 `compat_pack_id`；schema 2 还保存 `compat_target_id`，因此一个 family 包可以覆盖多个游戏版本，也可以在停止维护旧 target 后把它拆成独立 legacy 包。
 
-## 11. 用户 MOD 测试建议
+## 12. 用户 MOD 测试建议
 
 1. 先确认无普通 MOD 时游戏可启动。
 2. 安装 BaseLib/RitsuLib 等基础库 MOD，查看 log 中 BaseLib/RitsuLib compatibility patch 是否正常。

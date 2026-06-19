@@ -1,7 +1,7 @@
 # AGENTS.md
 
 面向后续编码代理/维护者的项目速览与操作约定。当前目录为本仓库根目录。
-最后同步：2026-06-12。
+最后同步：2026-06-19。
 
 ## 0. 总原则
 
@@ -186,6 +186,7 @@ s2_re/
 - 主要页面/管理器：
   - `WelcomeSetupPage`：首次向导。
   - `GamePage` / `SettingsPage` / `ModsPage` / `GameVersionManagerPage`：主页、设置、MOD、版本/兼容包管理；启动器图标统一使用 `tools/android/generate-material-symbol-vectors.py` 从 bundled Material Symbols Rounded 字体（`android/res/font/material_symbols_rounded.ttf`）离线生成的官方轮廓 vector drawable（`android/res/drawable/ic_ms_*.xml`），运行时由 `MaterialSymbols` helper 按 glyph 名或旧 `R.drawable.ic_*` 映射加载，避免依赖系统字体 ligature；手机启动器继续锁竖屏，平板/大屏启动器 Activity 使用系统方向，横屏时主 shell 从底部导航切换为左侧 Navigation Rail，页面内容通过 `ExtraSettingsUi` 的响应式最大宽度容器居中，首页使用 hero/状态工具双栏，设置/关于页卡片可两列排列，MOD/版本/Steam/Nexus/WebDAV 页面至少保持居中限宽；`GamePage` 按 `propotype_mainpage.html` 的 MD3 深色首页原型实现：顶部 STS2 标题 + Steam 登录/云存档 chip，ready 状态使用动态渐变/光晕 hero 启动卡，未导入状态使用虚线空状态卡，MOD/存档状态卡带 150% 淡色背景大图标、按压缩放与水印放大回正微动效，维护/高级工具为 4 列快捷按钮并保留 Android ripple，其中主页高级工具入口打开“启动配置”而不是全局兼容包选择；`SettingsPage` 内部使用“画面 / 操作 / 存档 / 系统”顶部 Segmented Button 分区，并把下拉类设置改为 Bottom Sheet 单选列表，预加载详细 BottomSheet 刚打开时可通过内容区上滑完整展开，完整展开后内容滚动区不参与降下/关闭，只能下拉顶部手柄关闭；画面高级项里的“旋转模式”写入 `android_screen_rotation_mode`，默认 `user_landscape`（跟随系统横屏锁定状态旋转），也可选为 `auto`（自动旋转强转，通过重力感应忽略系统锁定在正反横屏中切换），或固定 `landscape` 与 `reverse_landscape`；首次/默认推荐图形配置为 OpenGL ES、关闭 MSAA、关闭垂直同步；旧 `android_flip_screen_180` 仅作为兼容布尔字段同步维护。`ModsPage` 顶部是 MOD 总开关、药丸搜索框和可横向滚动 Chip 操作组；Nexus 商店入口当前在 MOD 页隐藏，排序/筛选/MOD 方案入口位于 Chip 组；MOD 卡片默认折叠，展开后显示完整描述、作者、依赖和“选中/信息/删除”图标按钮；支持前置库/内容模组/用户新建分组，长按左侧手柄拖拽到分组时会震动并显示半透明虚线 ghost 占位。
+  - `SteamWorkshopActivity`：Steam 创意工坊页面；由 MOD 页“创意工坊”chip 打开，未登录时通过 Steam Community 公开 Workshop 页面匿名浏览塔2公开条目并用 published file details 补全大小/更新时间，已登录时优先复用 Steam 中心保存的 refresh token/SteamID64 走 Steam CM 查询，失败则回落到公开浏览；默认开启“创意工坊兼容访问”，对 `steamcommunity.com` / `api.steampowered.com` 使用 WorkshopAndroidDownloader 同款 `steamcommunity.rmbgame.net` / `steamstore.rmbgame.net` 转发路径，解决部分网络下 Steam Community 原始域名直连超时；下载条目通过现有 MOD staging 导入当前 launch profile 的 MOD 根目录，下载器会在无账号时尝试匿名 Steam 会话/公开 CDN 回退，部分受限条目仍可能需要登录；下载后在 `<files>/workshop/library/index.json` 记录 PublishedFileId、远端更新时间、导入 MOD ID、安装路径摘要、大小和内容 SHA-1 摘要，用于手动/自动更新检查；页面内含网页入口、已下载列表、导入分组、兼容访问开关与 UGC 分块并发设置。实现参考 `.agent/reference-repos/workshop-android-downloader` / <https://github.com/Apricityx/WorkshopAndroidDownloader>。
   - `NexusModsStoreActivity`：实验性 NexusMods 商店 Activity 仍保留但 `ModsPage` 入口暂时隐藏；用户手动保存 Personal API Key 后可浏览热门/最新/近期更新结果、按 URL/数字 ID 精确查询、下载 ZIP 并导入到当前 launch profile 的 MOD 目录（全局 `<files>/mods/` 或隔离 `<files>/instances/<id>/mods/`）；下载导入与本地导入共用同 ID 冲突和路径覆盖确认流程。非 Premium 下载若被 NexusMods API 拒绝，可引导用户打开网页并粘贴 NXM 链接中的 `key/expires`。
   - `SteamAccountActivity`：Steam 中心；首次打开会显示带动态倒计时、5 秒后才能关闭的账号安全提示（本地保存 refresh token、可信来源、未知 MOD 风险、云存档备份、国内可能需要加速器），页面底部常驻“安全说明”按钮可再次查看；完成账号密码登录、Steam Guard、refresh token 加密保存、SteamPipe 下载 STS2 payload 到 payload store，以及当前 launch profile account root 的 Steam Cloud 手动拉取/上传和可选自动同步设置。
   - `WebDavCloudActivity`：WebDAV 云存档中心；保存 WebDAV URL、用户名、密码/应用令牌与可选远端槽位到加密偏好，只同步当前 launch profile account root 的白名单 STS2 存档文件，远端目录为用户配置 base URL 下的 `SlayTheSpire2/saves/<slot>/`，并用 `.sts2re/manifest.json` 记录 SHA-1 manifest；支持测试连接、刷新清单、拉取、上传、强制上传、启动前拉取和干净退出后上传。
@@ -238,6 +239,8 @@ s2_re/
 <files>/instances/<profile_id>/mods/        # 隔离普通用户 MOD 目录
 <files>/instances/<profile_id>/logs/        # profile 日志目录：godot.log / android-launch.log
 <files>/steam/downloads/                    # SteamPipe 下载 staging / 任务诊断
+<files>/workshop/downloads/                 # Steam Workshop 下载 staging / metadata / download.log
+<files>/workshop/library/index.json         # 已导入 Workshop MOD 的 PublishedFileId / 更新时间 / MOD ID 记录
 <files>/steam/cloud/<profile_id>/           # Steam Cloud manifest、baseline、备份与诊断
 <files>/webdav/cloud/<slot>/                # WebDAV manifest、baseline、备份与诊断
 <files>/automation/                         # ADB 自动化调试 token、inbox、runs/result；本地测试数据
@@ -585,10 +588,10 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 
 - 当前工程是“Android shell + payload/version manager + compat pack”的组合，不是传统 Android Studio `app/` 子模块结构；Gradle 根就在 `android/`。
 - 实际打包推荐用 `tools/package/*.sh`，不要裸跑 Gradle，除非已同步 runtime、准备好环境并理解 compat pack staging。
-- 可公开 clone 的 GitHub 参考项目用 `tools/deps/prepare-external-projects.sh` 准备；清单在 `tools/deps/external-github-projects.json`。该脚本不下载商业 payload、original DLL、keystore 或准备好的 Godot/Mono runtime。
+- 可公开 clone 的 GitHub 参考项目用 `tools/deps/prepare-external-projects.sh` 准备；清单在 `tools/deps/external-github-projects.json`。默认参考仓库包含 `SlayTheAmethystModded`、`WorkshopAndroidDownloader` 与 `StS2-Launcher_Mod_Manager`；该脚本不下载商业 payload、original DLL、keystore 或准备好的 Godot/Mono runtime。
 - `settings.save` 的 Android-only key 是 Java 附加设置与 Harmony patcher/Java 启动参数的协议；改 key 要同步 `ExtraSettingsRepository`、页面 UI、`AndroidSettingsBridge` 或 `GodotApp.getCommandLine()` 等消费者、相关 patches，并记录到 `.agent/agent-docs/changelog/`。`log_level` 和 `android_performance_overlay_enabled` 额外同步到 SharedPreferences，避免原版游戏保存 settings 时丢失这些 Android 字段。
 - `<files>/default/<account>` 的账号选择逻辑与旧移植版兼容但较脆弱，多账号/自定义 platform player id 改动要同时检查 Java 与兼容 MOD。
-- 当前普通 MOD 目录由 launch profile 决定：`mods_mode=global` 使用 `<files>/mods`，`mods_mode=isolated` 使用 `<files>/instances/<profile_id>/mods`；MOD 导入先进入 cache staging 并按 manifest `id` 检测同 ID 冲突，用户选择“使用新 MOD”时才删除同 ID 原 MOD 后提交，避免两个同 ID 项目开关连体；随后按 staging 到 MOD 根的实际相对路径检测文件覆盖，若将覆盖不属于本次同 ID 替换的既有 `.dll` / `.pck` / `.json` 或资源文件，必须弹窗让用户明确确认后才提交，避免 A MOD 文件被 B MOD 静默替换；MOD 分组通过目录和 `.sts2_mod_group` 标记维护，拖拽移动会改动 MOD 文件位置。新增路径相关功能必须同步 Java 管理页、C# `AppPaths`、ModLoader patches 和迁移/备份逻辑。
+- 当前普通 MOD 目录由 launch profile 决定：`mods_mode=global` 使用 `<files>/mods`，`mods_mode=isolated` 使用 `<files>/instances/<profile_id>/mods`；MOD 导入先进入 cache staging 并按 manifest `id` 检测同 ID 冲突，用户选择“使用新 MOD”时才删除同 ID 原 MOD 后提交，避免两个同 ID 项目开关连体；随后按 staging 到 MOD 根的实际相对路径检测文件覆盖，若将覆盖不属于本次同 ID 替换的既有 `.dll` / `.pck` / `.json` 或资源文件，必须弹窗让用户明确确认后才提交，避免 A MOD 文件被 B MOD 静默替换；本地导入、Nexus 下载和 Workshop 下载都必须走这套 staging/冲突确认流程；MOD 分组通过目录和 `.sts2_mod_group` 标记维护，拖拽移动会改动 MOD 文件位置。新增路径相关功能必须同步 Java 管理页、C# `AppPaths`、ModLoader patches 和迁移/备份逻辑。
 - 本地存档快照、Steam Cloud 与 WebDAV 云存档同步必须使用当前 launch profile 的 account root：`save_mode=global` 使用 `<files>/default/<account>`，`save_mode=isolated` 使用 `<files>/instances/<profile_id>/default/<account>`；不要把存档功能固定写死到全局 `<files>/default/1`。WebDAV 只同步白名单 STS2 存档文件，远端不做删除镜像；`settings.save` 默认不同步，除非用户显式开启实验性开关。
 - 多版本兼容包的长期方向是 manifest 化、可安装、可诊断，并作为启动配置属性选择；不要把某一游戏版本的兼容 patch 直接写死到 Android shell，也不要恢复全局兼容包 fallback 选择。
 - 对 `v0.107.0-beta` target 改动时务必用 `ReferenceFlavor=original-v0.107.0` 编译；维护旧 beta `v0.106.1-beta` target 时用 `original-v0.106.1`；对正式 `v0.103.x` target 改动时务必用 `ReferenceFlavor=original` 编译。默认验证路径是 `port-mod/tools/build-compat-matrix.sh` 的所有 active target compile gate。

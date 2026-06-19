@@ -260,7 +260,24 @@ final class DebugAutomationRunner {
 			details.put("status", buildStatus());
 			return details;
 		}
+		if ("workshop_diagnostics".equals(normalized) || "workshop".equals(normalized)) {
+			return runWorkshopDiagnostics();
+		}
 		return runScenario();
+	}
+
+	private JSONObject runWorkshopDiagnostics() throws Exception {
+		JSONObject details = new JSONObject();
+		String query = normalizedExtra("query", "");
+		int page = intExtra("page", 1);
+		int pageSize = intExtra("page_size", 30);
+		long started = SystemClock.uptimeMillis();
+		putEvent("workshop_diagnostics_begin", "query=" + query + " page=" + page + " pageSize=" + pageSize);
+		JSONObject diagnostics = new SteamWorkshopCatalog(context).runDiagnostics(query, page, pageSize);
+		details.put("workshop", diagnostics);
+		details.put("elapsed_ms", SystemClock.uptimeMillis() - started);
+		putEvent("workshop_diagnostics_end", "elapsed=" + (SystemClock.uptimeMillis() - started) + "ms");
+		return details;
 	}
 
 	private JSONObject runScenario() throws Exception {
@@ -1037,6 +1054,18 @@ final class DebugAutomationRunner {
 			return false;
 		}
 		return fallback;
+	}
+
+	private int intExtra(String key, int fallback) {
+		String value = normalizedExtra(key, "");
+		if (TextUtils.isEmpty(value)) {
+			return fallback;
+		}
+		try {
+			return Integer.parseInt(value);
+		} catch (NumberFormatException ignored) {
+			return fallback;
+		}
 	}
 
 	private String normalizedExtra(String key, String fallback) {

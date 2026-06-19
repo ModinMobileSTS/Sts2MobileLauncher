@@ -28,10 +28,10 @@
 
 ## 项目简介
 
-本项目是一个实验性的、非官方的《杀戮尖塔2》Android 移植与启动器框架。它**不包含**任何游戏本体文件，而是提供了一个 Android 运行外壳，让玩家能在手机上导入并运行自己合法拥有的 PC 版游戏文件，同时支持 MOD 加载、本地存档快照、Steam Cloud/WebDAV 云存档同步，以及关于页的启动器更新检查。
+本项目是一个实验性的、非官方的《杀戮尖塔2》Android 移植与启动器框架。它**不包含**任何游戏本体文件，而是提供了一个 Android 运行外壳，让玩家能在手机上导入并运行自己合法拥有的 PC 版游戏文件，同时支持 MOD 加载、Steam 创意工坊公开浏览/下载记录（未登录时可匿名浏览公开条目，并默认启用兼容访问路径以绕过部分网络下 Steam Community 直连超时）、本地存档快照、Steam Cloud/WebDAV 云存档同步，以及关于页的启动器更新检查。
 
 **应用核心架构分为三层：**
-1. **Android 启动器外壳 (`android/`)：** 负责游戏数据的导入、Steam 账号登录与本体下载、Steam 云存档同步、本地文件/MOD 管理，并在准备就绪后拉起 Godot 游戏进程。
+1. **Android 启动器外壳 (`android/`)：** 负责游戏数据的导入、Steam 账号登录与本体下载、Steam 创意工坊公开浏览/下载记录（含默认开启的兼容访问路径）、Steam 云存档同步、本地文件/MOD 管理，并在准备就绪后拉起 Godot 游戏进程。
 2. **Android 兼容包 (`port-mod/` 子模块)：** 作为底层 Hook（基于 Harmony），在游戏启动的最早期加载，用于拦截并修复 PC 版在 Android 上的各种水土不服（如输入适配、路径重定向、PC 专有 Shader 替换、MOD 加载器桥接等）。
 3. **游戏本体 (用户提供)：** 由用户通过导入 PC 版 `SlayTheSpire2.zip` 或在应用内登录 Steam 账号通过 SteamPipe 接口合法下载。
 
@@ -54,6 +54,8 @@
   提供了底层的 Godot/Mono 运行时剥离思路、Android 兼容补丁加载顺序以及部分构建脚本的设计参考。
 - **[SlayTheAmethystModded](https://github.com/ModinMobileSTS/SlayTheAmethystModded)**
   STS1 的非官方移动端启动器。本作的 `steam-protocol` (Steam 协议)、`steam-content` (SteamPipe 游戏下载) 以及 Steam Cloud 云存档的逆向接入方案与源码主要移植/改编自该项目。
+- **[WorkshopAndroidDownloader](https://github.com/Apricityx/WorkshopAndroidDownloader)**
+  Android Steam 创意工坊下载器参考项目，用于本启动器的工坊浏览、下载和更新记录流程。
 - **[STS2-RitsuLib](https://github.com/BAKAOLC/STS2-RitsuLib) / [BaseLib-StS2](https://github.com/Alchyr/BaseLib-StS2)**
   作为 Android 端 MOD 兼容性排查的重要测试基准参考库。
 - **[Google Material Symbols](https://fonts.google.com/icons)**

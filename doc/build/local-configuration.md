@@ -80,6 +80,7 @@ tools/deps/prepare-external-projects.sh --all
 | 项目 | 用途 | 准备方式 |
 | --- | --- | --- |
 | `ModinMobileSTS/SlayTheAmethystModded` | Steam protocol/downloader 参考来源 | 默认 clone |
+| `Apricityx/WorkshopAndroidDownloader` | Android Steam Workshop 浏览、下载和更新记录参考来源 | 默认 clone |
 | `iunius612/StS2-Launcher_Mod_Manager` | launcher/runtime 参考源码 | 默认 clone；runtime 产物仍需 `.env` 指向本地准备结果 |
 | `BAKAOLC/STS2-RitsuLib` | MOD 兼容排查参考 | `--group modding-reference` 或 `--all` |
 | `Alchyr/BaseLib-StS2` | MOD 兼容排查参考 | `--group modding-reference` 或 `--all` |

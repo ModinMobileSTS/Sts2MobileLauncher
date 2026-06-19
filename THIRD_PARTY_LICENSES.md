@@ -10,13 +10,14 @@
 - 当前 Gradle/.NET 依赖大多为 MIT、Apache-2.0、BSD 系列等宽松许可证，MIT 与其兼容性较好。
 - MIT 不会把本仓库没有权利再授权的内容一并改许可证；第三方源码、模板、二进制 runtime、FMOD、Steam/NexusMods 服务 API、用户游戏文件等仍遵循各自许可证/服务条款。
 
-注意：`SlayTheAmethystModded` 仓库截至本次整理未暴露标准 SPDX 顶层 `LICENSE`，但带有 `NOTICE` / `THIRD_PARTY_LICENSES.md`。本仓库中从它改编/参考的 Steam 协议与下载实现应继续保留出处说明；公开分发前建议向上游确认可再分发许可或保留单独授权记录。
+注意：`SlayTheAmethystModded` 仓库截至本次整理未暴露标准 SPDX 顶层 `LICENSE`，但带有 `NOTICE` / `THIRD_PARTY_LICENSES.md`。`WorkshopAndroidDownloader` 仓库截至本次整理也未检测到标准顶层 `LICENSE`。本仓库中从这些项目改编/参考的 Steam 协议、SteamPipe 与 Workshop 下载实现应继续保留出处说明；公开分发前建议向上游确认可再分发许可或保留单独授权记录。
 
 ## 直接引用资源 / 参考代码实现的仓库
 
 | 名称 | URL | 本仓库用途 | 上游许可/注意事项 |
 | --- | --- | --- | --- |
 | SlayTheAmethystModded | <https://github.com/ModinMobileSTS/SlayTheAmethystModded> | Steam 登录、SteamPipe 下载、Steam Cloud 相关实现与设计参考；`android/steam-protocol/`、`android/steam-content/` 的协议/下载代码从该项目思路与源码改编。 | 顶层许可未检测到标准 SPDX；上游包含 `NOTICE` 与第三方许可证摘要。保留署名，发布前确认改编源码授权。 |
+| WorkshopAndroidDownloader | <https://github.com/Apricityx/WorkshopAndroidDownloader> | Android Steam Workshop 浏览、下载、UGC manifest/chunk 下载与已下载条目更新记录流程参考；本仓库新增的 Workshop 页面、`SteamPublishedFileClient` 与 `android/steam-content/.../workshop/` 相关实现参考/裁剪自该项目。 | 顶层许可未检测到标准 SPDX。保留署名，发布前确认改编源码授权。 |
 | StS2-Launcher_Mod_Manager | <https://github.com/iunius612/StS2-Launcher_Mod_Manager> | Android launcher/runtime、Godot/Mono publish 目录、兼容补丁加载顺序与构建脚本的参考来源；`.env` 可指向本地准备的 runtime/template 产物。 | MIT License。运行时二进制产物不提交到本仓库，随本地配置同步/构建。 |
 | sts2-android-compat | <https://github.com/ModinMobileSTS/sts2-android-compat> | `port-mod/` submodule：Android 兼容补丁源码，按游戏版本分支构建 `STS2Mobile.dll` 与 `port_compat.pck`。 | 独立仓库；以其自身许可证/提交历史为准。 |
 | godot-debug-menu | <https://github.com/godot-extended-libraries/godot-debug-menu> | `port-mod/overlay/addons/debug_menu/` 打包该 Godot 4.x debug menu add-on，作为设置页可选的游戏内性能 overlay，显示 FPS、帧时间、CPU/GPU frame graph 和硬件/渲染器信息。 | MIT License；保留上游 `LICENSE.md`。 |
@@ -63,5 +64,5 @@
 1. 确认 APK 不包含用户游戏 zip、解包后的商业 payload、original/reference DLL、keystore 或账号/token。
 2. 重新生成并审计 `android/assets/compat_packs/*.zip`，不要把 zip 产物加入 git。
 3. 对实际打入 APK 的 Godot/.NET/FMOD/native runtime 与 Gradle 依赖导出完整 license/notice 清单。
-4. 对 `SlayTheAmethystModded` 改编代码和无标准 license 的依赖保留授权依据或替换为自研/明确许可实现。
+4. 对 `SlayTheAmethystModded`、`WorkshopAndroidDownloader` 改编代码和无标准 license 的依赖保留授权依据或替换为自研/明确许可实现。
 5. README、`doc/` 与本文件需同步记录新增第三方来源。

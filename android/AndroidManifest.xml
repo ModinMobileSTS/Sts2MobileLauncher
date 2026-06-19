@@ -96,6 +96,15 @@
             android:resizeableActivity="true" />
 
         <activity
+            android:name=".SteamWorkshopActivity"
+            android:label="@string/workshop_title"
+            android:theme="@style/Theme.Sts2ExtraSettings"
+            android:exported="false"
+            android:screenOrientation="unspecified"
+            android:windowSoftInputMode="adjustResize"
+            android:resizeableActivity="true" />
+
+        <activity
             android:name=".SteamAccountActivity"
             android:label="@string/steam_account_title"
             android:theme="@style/Theme.Sts2ExtraSettings"

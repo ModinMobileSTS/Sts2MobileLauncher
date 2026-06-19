@@ -566,6 +566,26 @@ public final class ExtraSettingsRepository {
 		return commitPreparedModImport(preparedImport, true, false);
 	}
 
+	public PreparedModImport prepareDownloadedModDirectory(File sourceDirectory, String displayName) throws Exception {
+		if (sourceDirectory == null || !sourceDirectory.isDirectory()) {
+			throw new IOException(context.getString(R.string.workshop_download_missing_directory));
+		}
+		File singleZip = findSingleImportZip(sourceDirectory);
+		if (singleZip != null) {
+			return prepareDownloadedModImport(singleZip, TextUtils.isEmpty(displayName) ? singleZip.getName() : displayName);
+		}
+		File stagingRoot = createModImportTempRoot();
+		deleteRecursively(stagingRoot);
+		ensureDirectory(stagingRoot);
+		try {
+			copyDirectoryContentsForModImport(sourceDirectory, stagingRoot);
+			return finishPreparedModImport(stagingRoot, displayName, sanitizeFileName(TextUtils.isEmpty(displayName) ? sourceDirectory.getName() : displayName));
+		} catch (Exception exception) {
+			deleteRecursively(stagingRoot);
+			throw exception;
+		}
+	}
+
 	public PreparedModImport prepareModImport(Uri inputUri) throws Exception {
 		File stagingRoot = createModImportTempRoot();
 		deleteRecursively(stagingRoot);
@@ -2063,6 +2083,36 @@ public final class ExtraSettingsRepository {
 		for (File child : children) {
 			copyRecursively(child, new File(targetDirectory, child.getName()));
 		}
+	}
+
+	private void copyDirectoryContentsForModImport(File sourceDirectory, File targetDirectory) throws IOException {
+		ensureDirectory(targetDirectory);
+		File[] children = sourceDirectory.listFiles();
+		if (children == null) {
+			return;
+		}
+		for (File child : children) {
+			if (isWorkshopDownloadSupportFile(child)) {
+				continue;
+			}
+			copyRecursively(child, new File(targetDirectory, child.getName()));
+		}
+	}
+
+	private File findSingleImportZip(File sourceDirectory) {
+		File[] children = sourceDirectory == null ? null : sourceDirectory.listFiles(file -> !isWorkshopDownloadSupportFile(file));
+		if (children == null || children.length != 1 || !children[0].isFile()) {
+			return null;
+		}
+		return isZipFile(children[0]) ? children[0] : null;
+	}
+
+	private boolean isWorkshopDownloadSupportFile(File file) {
+		if (file == null) {
+			return false;
+		}
+		String name = file.getName();
+		return ".chunks".equals(name) || "metadata.json".equals(name) || "download.log".equals(name);
 	}
 
 	private void validateRestoredDataRoot(File restoredDataRoot) throws IOException {

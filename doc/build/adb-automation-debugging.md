@@ -59,6 +59,12 @@ tools/debug/sts2-adb-debug.sh launch \
 tools/debug/sts2-adb-debug.sh configure \
   --settings-json '{"preload_shader_mode":"load_resources","preload_combat_code_enabled":true}' \
   --pull
+
+# 在 Android app 进程内诊断创意工坊网络路径
+tools/debug/sts2-adb-debug.sh --timeout 160 workshop-diagnostics \
+  --query BaseLib \
+  --collect-logcat \
+  --pull
 ```
 
 常用选项：
@@ -73,6 +79,7 @@ tools/debug/sts2-adb-debug.sh configure \
 - `--renderer opengl_es3|vulkan`、`--log-level info|debug|very_debug|off`、`--performance-overlay true|false`：调整运行诊断开关。
 - `--clear texture,publish,logs,mods,compat,payloads,automation`：清理对应 app 私有状态。
 - `--logcat-duration <秒>`、`--collect-logcat`、`--perfetto <秒>`：采集设备日志和系统 trace。
+- `workshop-diagnostics --query <关键词>`：在设备上的 app 进程内分别测试 Steam Community 原始路由、创意工坊兼容访问路由、published file details 和页面实际搜索路径；结果写入 `details.workshop.public_browse_original`、`public_browse_direct`、`details` 与 `catalog_search`，用于排查“同设备同网络参考项目正常但本应用超时”的问题。
 
 完整参数见：
 

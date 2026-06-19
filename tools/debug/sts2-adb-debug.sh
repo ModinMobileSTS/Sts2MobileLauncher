@@ -56,6 +56,7 @@ Commands:
   prepare [options]         Apply options, then run GameLaunchPreparationManager.
   launch [options]          Apply options, prepare by default, then start GodotApp.
   run [options]             Free scenario runner. Add --launch/--prepare as needed.
+  workshop-diagnostics      Run in-app Steam Workshop network diagnostics on the connected device.
   open-settings [options]   Apply options, then open GameSettingsActivity.
   pull [--run-id ID]        Pull automation result and relevant app logs.
   logcat [--duration N]     Capture adb logcat to the local run directory.
@@ -94,6 +95,9 @@ Scenario options:
   --operation-preset touch|original
   --aspect-ratio VALUE
   --settings-json JSON      Merge raw keys into settings.save.
+  --query TEXT              Workshop diagnostics/search query.
+  --page N                  Workshop diagnostics page. Default: 1.
+  --page-size N             Workshop diagnostics page size. Default: 30.
   --clear ITEMS             Comma/pipe list: texture,publish,logs,mods,compat,payloads,automation.
   --prepare / --no-prepare  Control prepare before launch.
   --launch / --no-launch    Start GodotApp for run command.
@@ -325,6 +329,9 @@ parse_scenario_args() {
       --operation-preset) append_extra operation_preset "${2:?}"; shift 2 ;;
       --aspect-ratio) append_extra aspect_ratio "${2:?}"; shift 2 ;;
       --settings-json) append_extra settings_json "${2:?}"; shift 2 ;;
+      --query) append_extra query "${2:?}"; shift 2 ;;
+      --page) append_extra page "${2:?}"; shift 2 ;;
+      --page-size) append_extra page_size "${2:?}"; shift 2 ;;
       --clear) append_extra clear "${2:?}"; shift 2 ;;
       --apk) APK="$(sts2_resolve_path "${2:?}")"; shift 2 ;;
       --prepare) append_extra prepare true; shift ;;
@@ -560,7 +567,7 @@ parse_global_args() {
       --timeout) TIMEOUT_SECONDS="${2:?}"; shift 2 ;;
       --root) TRY_ROOT=1; shift ;;
       --help|-h) usage; exit 0 ;;
-      build|install|build-install|token|status|configure|prepare|launch|run|open-settings|pull|logcat|perfetto)
+      build|install|build-install|token|status|configure|prepare|launch|run|workshop-diagnostics|open-settings|pull|logcat|perfetto)
         COMMAND="$1"
         shift
         REMAINING_ARGS=("$@")
@@ -624,6 +631,12 @@ main() {
       require_device
       parse_scenario_args "${REMAINING_ARGS[@]}"
       start_automation_command run
+      ;;
+    workshop-diagnostics)
+      require_device
+      parse_scenario_args "${REMAINING_ARGS[@]}"
+      PULL_AFTER=1
+      start_automation_command workshop_diagnostics
       ;;
     open-settings)
       require_device
