@@ -223,9 +223,9 @@ public final class ModsPage {
 
 		chips.addView(actionChip(R.string.import_mod, R.drawable.ic_upload_file_24, v -> actions.requestImportMod()));
 		addChipGap(chips);
-		chips.addView(actionChip(R.string.mod_group_create, R.drawable.ic_folder_24, v -> showCreateGroupDialog()));
-		addChipGap(chips);
 		chips.addView(actionChip(R.string.workshop_open, R.drawable.ic_steam_24, v -> actions.openSteamWorkshop()));
+		addChipGap(chips);
+		chips.addView(actionChip(R.string.mod_group_create, R.drawable.ic_folder_24, v -> showCreateGroupDialog()));
 		addChipGap(chips);
 		chips.addView(actionChip(R.string.mod_profiles_title, R.drawable.ic_layers_24, this::showProfilesMenu));
 		addChipGap(chips);

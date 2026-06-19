@@ -634,10 +634,11 @@ public final class ExtraSettingsRepository {
 		normalizeRuntimeModAliases(stagingRoot);
 		List<ModEntry> incomingEntries = new ArrayList<>();
 		collectManifestFiles(stagingRoot, stagingRoot, incomingEntries);
+		List<String> relativeFilePaths = collectRelativeFilePaths(stagingRoot);
 		List<ModImportConflict> conflicts = findImportConflicts(incomingEntries);
-		PreparedModImport preparedImport = new PreparedModImport(stagingRoot, displayName, normalizedName, incomingEntries, conflicts, Collections.emptyList());
+		PreparedModImport preparedImport = new PreparedModImport(stagingRoot, displayName, normalizedName, incomingEntries, conflicts, Collections.emptyList(), relativeFilePaths);
 		List<ModImportPathConflict> pathConflicts = findImportPathConflicts(preparedImport, conflicts);
-		return new PreparedModImport(stagingRoot, displayName, normalizedName, incomingEntries, conflicts, pathConflicts);
+		return new PreparedModImport(stagingRoot, displayName, normalizedName, incomingEntries, conflicts, pathConflicts, relativeFilePaths);
 	}
 
 	public String commitPreparedModImport(PreparedModImport preparedImport, boolean replaceExistingConflicts) throws Exception {
@@ -690,6 +691,19 @@ public final class ExtraSettingsRepository {
 		return findImportPathConflicts(preparedImport, confirmedIdConflicts);
 	}
 
+	public List<ModImportPathConflict> findCurrentImportPathConflicts(PreparedModImport preparedImport, List<ModImportConflict> confirmedIdConflicts, String rawTargetGroupName) {
+		if (preparedImport == null || preparedImport.stagingRoot == null || !preparedImport.stagingRoot.isDirectory()) {
+			return Collections.emptyList();
+		}
+		File modsRoot = getModsRootDir();
+		List<ModImportPathConflict> conflicts = findImportPathConflicts(preparedImport, confirmedIdConflicts, modsRoot, "");
+		String groupName = sanitizeFileName(normalizeModGroupName(rawTargetGroupName));
+		if (!TextUtils.isEmpty(groupName)) {
+			conflicts.addAll(findImportPathConflicts(preparedImport, confirmedIdConflicts, new File(modsRoot, groupName), groupName + "/"));
+		}
+		return conflicts;
+	}
+
 	private List<ModImportConflict> findImportConflicts(List<ModEntry> incomingEntries) {
 		if (incomingEntries == null || incomingEntries.isEmpty()) {
 			return Collections.emptyList();
@@ -711,22 +725,25 @@ public final class ExtraSettingsRepository {
 	}
 
 	private List<ModImportPathConflict> findImportPathConflicts(PreparedModImport preparedImport, List<ModImportConflict> confirmedIdConflicts) {
-		File modsRoot = getModsRootDir();
+		return findImportPathConflicts(preparedImport, confirmedIdConflicts, getModsRootDir(), "");
+	}
+
+	private List<ModImportPathConflict> findImportPathConflicts(PreparedModImport preparedImport, List<ModImportConflict> confirmedIdConflicts, File targetRoot, String displayPrefix) {
 		try {
-			ensureDirectory(modsRoot);
+			ensureDirectory(targetRoot);
 		} catch (RuntimeException ignored) {
 		}
 		Set<String> ignoredExistingPaths = collectConfirmedConflictPaths(confirmedIdConflicts);
-		List<File> incomingFiles = new ArrayList<>();
-		collectRegularFiles(preparedImport.stagingRoot, incomingFiles);
 		List<ModImportPathConflict> conflicts = new ArrayList<>();
 		Set<String> seenTargets = new LinkedHashSet<>();
-		for (File incomingFile : incomingFiles) {
-			String relativePath = getRelativePath(preparedImport.stagingRoot, incomingFile);
+		for (String relativePath : getPreparedImportRelativeFilePaths(preparedImport)) {
 			if (TextUtils.isEmpty(relativePath)) {
 				continue;
 			}
-			File targetFile = new File(modsRoot, relativePath.replace('/', File.separatorChar));
+			File targetFile = resolveRelativeChild(targetRoot, relativePath);
+			if (targetFile == null) {
+				continue;
+			}
 			if (!targetFile.isFile()) {
 				continue;
 			}
@@ -734,9 +751,33 @@ public final class ExtraSettingsRepository {
 			if (ignoredExistingPaths.contains(canonicalTarget) || !seenTargets.add(canonicalTarget)) {
 				continue;
 			}
-			conflicts.add(new ModImportPathConflict(relativePath, describeModFileOwner(targetFile)));
+			conflicts.add(new ModImportPathConflict(displayPrefix + relativePath, describeModFileOwner(targetFile)));
 		}
 		return conflicts;
+	}
+
+	private List<String> collectRelativeFilePaths(File root) {
+		List<File> files = new ArrayList<>();
+		collectRegularFiles(root, files);
+		List<String> paths = new ArrayList<>();
+		for (File file : files) {
+			String relativePath = getRelativePath(root, file);
+			if (!TextUtils.isEmpty(relativePath) && !paths.contains(relativePath)) {
+				paths.add(relativePath);
+			}
+		}
+		paths.sort(String::compareToIgnoreCase);
+		return paths;
+	}
+
+	private List<String> getPreparedImportRelativeFilePaths(PreparedModImport preparedImport) {
+		if (preparedImport == null) {
+			return new ArrayList<>();
+		}
+		if (preparedImport.relativeFilePaths != null && !preparedImport.relativeFilePaths.isEmpty()) {
+			return new ArrayList<>(preparedImport.relativeFilePaths);
+		}
+		return collectRelativeFilePaths(preparedImport.stagingRoot);
 	}
 
 	private Set<String> collectConfirmedConflictPaths(List<ModImportConflict> confirmedIdConflicts) {
@@ -1072,6 +1113,53 @@ public final class ExtraSettingsRepository {
 			pruneEmptyDirectories(sourceDirectory.getParentFile(), modsRoot);
 		} else {
 			moveModEntryFiles(modEntry, targetGroupDirectory);
+		}
+		normalizeRuntimeModAliases(modsRoot);
+	}
+
+	public void movePreparedImportFilesToGroup(PreparedModImport preparedImport, String rawGroupName) throws Exception {
+		if (preparedImport == null || preparedImport.stagingRoot == null) {
+			return;
+		}
+		String groupName = sanitizeFileName(normalizeModGroupName(rawGroupName));
+		if (TextUtils.isEmpty(groupName)) {
+			return;
+		}
+		File modsRoot = getModsRootDir();
+		ensureDirectory(modsRoot);
+		File targetGroupDirectory = new File(modsRoot, groupName);
+		ensureDirectory(targetGroupDirectory);
+		markModGroupDirectory(targetGroupDirectory);
+		List<String> relativePaths = getPreparedImportRelativeFilePaths(preparedImport);
+		relativePaths.sort(String::compareToIgnoreCase);
+		Set<String> movedParents = new LinkedHashSet<>();
+		for (String relativePath : relativePaths) {
+			File source = resolveRelativeChild(modsRoot, relativePath);
+			File target = resolveRelativeChild(targetGroupDirectory, relativePath);
+			if (source == null || target == null || !source.isFile()) {
+				continue;
+			}
+			if (source.getCanonicalFile().equals(target.getCanonicalFile())) {
+				continue;
+			}
+			if (target.isFile()) {
+				deleteIfExists(target);
+			}
+			File targetParent = target.getParentFile();
+			if (targetParent != null) {
+				ensureDirectory(targetParent);
+			}
+			File sourceParent = source.getParentFile();
+			if (!source.renameTo(target)) {
+				copyRecursively(source, target);
+				deleteIfExists(source);
+			}
+			if (sourceParent != null) {
+				movedParents.add(sourceParent.getCanonicalPath());
+			}
+		}
+		for (String movedParent : movedParents) {
+			pruneEmptyDirectories(new File(movedParent), modsRoot);
 		}
 		normalizeRuntimeModAliases(modsRoot);
 	}
@@ -2277,6 +2365,23 @@ public final class ExtraSettingsRepository {
 		return file.getName();
 	}
 
+	private File resolveRelativeChild(File root, String relativePath) {
+		if (root == null || TextUtils.isEmpty(relativePath)) {
+			return null;
+		}
+		try {
+			File rootCanonical = root.getCanonicalFile();
+			File child = new File(rootCanonical, relativePath.replace('/', File.separatorChar)).getCanonicalFile();
+			String rootPath = rootCanonical.getAbsolutePath();
+			String childPath = child.getAbsolutePath();
+			if (childPath.equals(rootPath) || childPath.startsWith(rootPath + File.separator)) {
+				return child;
+			}
+		} catch (IOException ignored) {
+		}
+		return null;
+	}
+
 	private long directorySize(File file) {
 		return DirectoryStatsCalculator.calculate(file).totalBytes;
 	}
@@ -2399,14 +2504,16 @@ public final class ExtraSettingsRepository {
 		public final List<ModEntry> incomingEntries;
 		public final List<ModImportConflict> conflicts;
 		public final List<ModImportPathConflict> pathConflicts;
+		public final List<String> relativeFilePaths;
 
-		PreparedModImport(File stagingRoot, String displayName, String normalizedName, List<ModEntry> incomingEntries, List<ModImportConflict> conflicts, List<ModImportPathConflict> pathConflicts) {
+		PreparedModImport(File stagingRoot, String displayName, String normalizedName, List<ModEntry> incomingEntries, List<ModImportConflict> conflicts, List<ModImportPathConflict> pathConflicts, List<String> relativeFilePaths) {
 			this.stagingRoot = stagingRoot;
 			this.displayName = displayName == null ? normalizedName : displayName;
 			this.normalizedName = normalizedName;
 			this.incomingEntries = Collections.unmodifiableList(new ArrayList<>(incomingEntries));
 			this.conflicts = Collections.unmodifiableList(new ArrayList<>(conflicts));
 			this.pathConflicts = Collections.unmodifiableList(new ArrayList<>(pathConflicts));
+			this.relativeFilePaths = Collections.unmodifiableList(new ArrayList<>(relativeFilePaths));
 		}
 	}
 

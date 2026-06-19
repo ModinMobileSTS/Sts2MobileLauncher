@@ -1789,7 +1789,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void handlePreparedWorkshopPathConflicts(SteamWorkshopDownloader.Result result, ExtraSettingsRepository.PreparedModImport prepared, boolean replaceExistingConflicts, List<ExtraSettingsRepository.ModImportConflict> confirmedIdConflicts) {
-		List<ExtraSettingsRepository.ModImportPathConflict> pathConflicts = repository.findCurrentImportPathConflicts(prepared, replaceExistingConflicts ? confirmedIdConflicts : new ArrayList<>());
+		List<ExtraSettingsRepository.ModImportPathConflict> pathConflicts = repository.findCurrentImportPathConflicts(prepared, replaceExistingConflicts ? confirmedIdConflicts : new ArrayList<>(), SteamWorkshopPreferences.getDownloadGroup(this));
 		if (!pathConflicts.isEmpty()) {
 			showModImportPathConflictDialog(prepared, pathConflicts,
 				() -> {
@@ -1831,7 +1831,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 					}
 				}
 				String importedName = repository.commitPreparedModImport(prepared, replaceExistingConflicts, allowPathConflicts);
-				moveImportedModsToWorkshopGroup(incomingIds);
+				moveImportedModsToWorkshopGroup(prepared, incomingIds);
 				List<ExtraSettingsRepository.ModEntry> importedEntries = findImportedEntries(incomingIds);
 				library.recordInstall(result.getItem(), importedEntries);
 				runOnUiThread(() -> {
@@ -1856,12 +1856,13 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		});
 	}
 
-	private void moveImportedModsToWorkshopGroup(List<String> incomingIds) throws Exception {
+	private void moveImportedModsToWorkshopGroup(ExtraSettingsRepository.PreparedModImport prepared, List<String> incomingIds) throws Exception {
 		if (incomingIds == null || incomingIds.isEmpty()) {
 			return;
 		}
 		String groupName = SteamWorkshopPreferences.getDownloadGroup(this);
 		repository.createModGroup(groupName);
+		repository.movePreparedImportFilesToGroup(prepared, groupName);
 		List<ExtraSettingsRepository.ModEntry> installed = repository.listInstalledModManifests();
 		for (ExtraSettingsRepository.ModEntry entry : installed) {
 			if (incomingIds.contains(entry.modId)) {
