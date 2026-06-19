@@ -409,7 +409,7 @@ REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
 - 默认 build type：`release`（脚本执行 `assembleMonoRelease`）
 - ABI：`arm64-v8a`
 - applicationId：`com.megacrit.sts2re`
-- versionName/versionCode：`v0.1.3` / `4`
+- versionName/versionCode：`v0.1.4` / `5`
 - 默认测试签名：由 `.env` 的 `RELEASE_KEYSTORE_*` 或 `local.properties` 的 `android.release_keystore_*` 提供；示例使用 `${HOME}/.android/debug.keystore`。
 
 注意：`release` build type 当前仍保留 `debuggable true`，便于 sideload 后使用 `run-as` 验证；正式发布前必须重新审视签名、debuggable、混淆、资源优化、FileProvider 暴露范围。
