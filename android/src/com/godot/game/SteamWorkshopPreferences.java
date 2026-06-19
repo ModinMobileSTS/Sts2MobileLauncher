@@ -31,7 +31,7 @@ public final class SteamWorkshopPreferences {
 	}
 
 	public static int getConcurrentChunks(Context context) {
-		return Math.max(1, Math.min(8, preferences(context).getInt(KEY_CONCURRENT_CHUNKS, 4)));
+		return Math.max(1, Math.min(8, preferences(context).getInt(KEY_CONCURRENT_CHUNKS, 2)));
 	}
 
 	public static void setConcurrentChunks(Context context, int value) {

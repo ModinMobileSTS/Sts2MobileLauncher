@@ -16,6 +16,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Process;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.text.format.Formatter;
@@ -1452,7 +1453,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		task.markDownloading(getString(R.string.workshop_status_downloading));
 		refreshDownloadUi();
 		showMessage(getString(R.string.workshop_download_background_started, item.getTitle()));
-		new Thread(() -> {
+		startWorkshopBackgroundThread("sts2-workshop-download", () -> {
 			SteamWorkshopDownloader.Result result = null;
 			try {
 				SteamWorkshopDownloader downloader = new SteamWorkshopDownloader(this);
@@ -1479,7 +1480,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 					}
 				});
 			}
-		}, "sts2-workshop-download").start();
+		});
 	}
 
 	private void postDownloadProgress(String publishedFileId, SteamWorkshopDownloader.Progress progress) {
@@ -1821,7 +1822,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			task.markImporting(getString(R.string.workshop_importing_status));
 			refreshDownloadUi();
 		}
-		new Thread(() -> {
+		startWorkshopBackgroundThread("sts2-workshop-import", () -> {
 			try {
 				List<String> incomingIds = new ArrayList<>();
 				for (ExtraSettingsRepository.ModEntry entry : prepared.incomingEntries) {
@@ -1852,7 +1853,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 					showError(exception);
 				});
 			}
-		}, "sts2-workshop-import").start();
+		});
 	}
 
 	private void moveImportedModsToWorkshopGroup(List<String> incomingIds) throws Exception {
@@ -2084,6 +2085,14 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void setIdleStatus(String message) {
+	}
+
+	private void startWorkshopBackgroundThread(String name, Runnable task) {
+		Thread thread = new Thread(() -> {
+			Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
+			task.run();
+		}, name);
+		thread.start();
 	}
 
 	private void showMessage(String message) {

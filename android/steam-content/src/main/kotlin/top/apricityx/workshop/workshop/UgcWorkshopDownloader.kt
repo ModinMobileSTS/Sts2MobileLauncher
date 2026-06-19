@@ -11,8 +11,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.io.ByteArrayInputStream
@@ -20,6 +21,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.ZipInputStream
 
 class UgcWorkshopDownloader(
@@ -230,18 +232,33 @@ class UgcWorkshopDownloader(
         emit: suspend (DownloadEvent) -> Unit,
         log: suspend (String) -> Unit,
     ) = coroutineScope {
-        val semaphore = Semaphore(maxConcurrentChunks.coerceAtLeast(1))
+        if (chunks.isEmpty()) {
+            return@coroutineScope
+        }
+        val workerCount = maxConcurrentChunks.coerceIn(1, chunks.size)
         val totalBytes = chunks.sumOf { it.uncompressedLength.toLong() }
-        val downloaded = java.util.concurrent.atomic.AtomicLong(0L)
+        val downloaded = AtomicLong(0L)
         val completedChunks = AtomicInteger(0)
         val totalChunks = chunks.size
+        val nextChunkIndex = AtomicInteger(0)
+        val progress = CoalescedProgressEmitter(
+            totalBytes = totalBytes,
+            totalChunks = totalChunks,
+            totalFiles = totalFiles,
+            eventSink = emit,
+        )
 
-        chunks.map { chunk ->
+        List(workerCount) {
             async(Dispatchers.IO) {
-                semaphore.withPermit {
+                while (true) {
+                    val index = nextChunkIndex.getAndIncrement()
+                    if (index >= chunks.size) {
+                        break
+                    }
+                    val chunk = chunks[index]
                     val stageFile = File(stageDir, "${chunk.idHex}.chunk")
-                    if (tryReuseCachedChunk(stageFile, chunk, downloaded, completedChunks, totalBytes, totalChunks, totalFiles, emit)) {
-                        return@withPermit
+                    if (tryReuseCachedChunk(stageFile, chunk, downloaded, completedChunks, progress)) {
+                        continue
                     }
 
                     val processed = downloadChunkWithRetries(
@@ -257,15 +274,13 @@ class UgcWorkshopDownloader(
                         log = log,
                     )
                     writeAtomically(stageFile, processed)
-                    emit(
-                        DownloadEvent.Progress(
-                            writtenBytes = downloaded.addAndGet(processed.size.toLong()),
-                            totalBytes = totalBytes,
-                            completedChunks = completedChunks.incrementAndGet(),
-                            totalChunks = totalChunks,
-                            completedFiles = 0,
-                            totalFiles = totalFiles,
-                        ),
+                    val written = downloaded.addAndGet(processed.size.toLong())
+                    val done = completedChunks.incrementAndGet()
+                    progress.emit(
+                        writtenBytes = written,
+                        completedChunks = done,
+                        completedFiles = 0,
+                        force = done >= totalChunks,
                     )
                 }
             }
@@ -275,12 +290,9 @@ class UgcWorkshopDownloader(
     private suspend fun tryReuseCachedChunk(
         stageFile: File,
         chunk: ManifestChunk,
-        downloaded: java.util.concurrent.atomic.AtomicLong,
+        downloaded: AtomicLong,
         completedChunks: AtomicInteger,
-        totalBytes: Long,
-        totalChunks: Int,
-        totalFiles: Int,
-        emit: suspend (DownloadEvent) -> Unit,
+        progress: CoalescedProgressEmitter,
     ): Boolean {
         if (!stageFile.exists()) {
             return false
@@ -291,15 +303,13 @@ class UgcWorkshopDownloader(
             return false
         }
 
-        emit(
-            DownloadEvent.Progress(
-                writtenBytes = downloaded.addAndGet(stageFile.length()),
-                totalBytes = totalBytes,
-                completedChunks = completedChunks.incrementAndGet(),
-                totalChunks = totalChunks,
-                completedFiles = 0,
-                totalFiles = totalFiles,
-            ),
+        val written = downloaded.addAndGet(stageFile.length())
+        val done = completedChunks.incrementAndGet()
+        progress.emit(
+            writtenBytes = written,
+            completedChunks = done,
+            completedFiles = 0,
+            force = false,
         )
         return true
     }
@@ -360,6 +370,12 @@ class UgcWorkshopDownloader(
         log: suspend (String) -> Unit,
     ) {
         var completedFiles = 0
+        val progress = CoalescedProgressEmitter(
+            totalBytes = totalBytes,
+            totalChunks = totalChunks,
+            totalFiles = totalFiles,
+            eventSink = emit,
+        )
         manifest.files.forEach { file ->
             if (!file.linkTarget.isNullOrBlank()) {
                 log("Skipping symlink-like manifest entry ${file.path} -> ${file.linkTarget}")
@@ -393,14 +409,20 @@ class UgcWorkshopDownloader(
                     file.chunks.forEach { chunk ->
                         val chunkFile = File(stageDir, "${chunk.idHex}.chunk")
                         output.seek(chunk.offset)
-                        chunkFile.inputStream().buffered().use { input ->
-                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        chunkFile.inputStream().buffered(IO_BUFFER_SIZE).use { input ->
+                            val buffer = ByteArray(IO_BUFFER_SIZE)
+                            var bytesSinceYield = 0L
                             while (true) {
                                 val read = input.read(buffer)
                                 if (read == -1) {
                                     break
                                 }
                                 output.write(buffer, 0, read)
+                                bytesSinceYield += read
+                                if (bytesSinceYield >= IO_YIELD_BYTES) {
+                                    yield()
+                                    bytesSinceYield = 0L
+                                }
                             }
                         }
                     }
@@ -427,25 +449,12 @@ class UgcWorkshopDownloader(
                 }
             }
 
-            emit(
-                DownloadEvent.FileCompleted(
-                    DownloadedFileInfo(
-                        relativePath = file.path,
-                        sizeBytes = target.length(),
-                        modifiedEpochMillis = target.lastModified(),
-                    ),
-                ),
-            )
             completedFiles += 1
-            emit(
-                DownloadEvent.Progress(
-                    writtenBytes = totalBytes,
-                    totalBytes = totalBytes,
-                    completedChunks = totalChunks,
-                    totalChunks = totalChunks,
-                    completedFiles = completedFiles,
-                    totalFiles = totalFiles,
-                ),
+            progress.emit(
+                writtenBytes = totalBytes,
+                completedChunks = totalChunks,
+                completedFiles = completedFiles,
+                force = completedFiles >= totalFiles,
             )
         }
     }
@@ -494,9 +503,22 @@ class UgcWorkshopDownloader(
         }
     }
 
-    private fun writeAtomically(target: File, bytes: ByteArray) {
+    private suspend fun writeAtomically(target: File, bytes: ByteArray) {
         val temp = File(target.parentFile, "${target.name}.tmp")
-        temp.writeBytes(bytes)
+        temp.outputStream().buffered(IO_BUFFER_SIZE).use { output ->
+            var offset = 0
+            var bytesSinceYield = 0L
+            while (offset < bytes.size) {
+                val count = minOf(IO_BUFFER_SIZE, bytes.size - offset)
+                output.write(bytes, offset, count)
+                offset += count
+                bytesSinceYield += count
+                if (bytesSinceYield >= IO_YIELD_BYTES) {
+                    yield()
+                    bytesSinceYield = 0L
+                }
+            }
+        }
         if (!temp.renameTo(target)) {
             temp.copyTo(target, overwrite = true)
             temp.delete()
@@ -515,9 +537,66 @@ class UgcWorkshopDownloader(
         }
     }
 
+    private class CoalescedProgressEmitter(
+        private val totalBytes: Long,
+        private val totalChunks: Int,
+        private val totalFiles: Int,
+        private val eventSink: suspend (DownloadEvent) -> Unit,
+    ) {
+        private val mutex = Mutex()
+        private var lastEmittedAtMs = 0L
+        private var lastWrittenBytes = -1L
+        private var lastCompletedChunks = -1
+        private var lastCompletedFiles = -1
+
+        suspend fun emit(
+            writtenBytes: Long,
+            completedChunks: Int,
+            completedFiles: Int,
+            force: Boolean = false,
+        ) {
+            val event = mutex.withLock {
+                val now = System.currentTimeMillis()
+                val byteDelta = if (lastWrittenBytes < 0L) Long.MAX_VALUE else (writtenBytes - lastWrittenBytes).coerceAtLeast(0L)
+                val chunkDelta = completedChunks - lastCompletedChunks
+                val fileDelta = completedFiles - lastCompletedFiles
+                val shouldEmit = force ||
+                    byteDelta >= PROGRESS_EMIT_BYTES ||
+                    chunkDelta >= PROGRESS_EMIT_CHUNKS ||
+                    fileDelta >= PROGRESS_EMIT_FILES ||
+                    now - lastEmittedAtMs >= PROGRESS_EMIT_INTERVAL_MS
+                if (!shouldEmit) {
+                    null
+                } else {
+                    lastEmittedAtMs = now
+                    lastWrittenBytes = writtenBytes
+                    lastCompletedChunks = completedChunks
+                    lastCompletedFiles = completedFiles
+                    DownloadEvent.Progress(
+                        writtenBytes = writtenBytes,
+                        totalBytes = totalBytes,
+                        completedChunks = completedChunks,
+                        totalChunks = totalChunks,
+                        completedFiles = completedFiles,
+                        totalFiles = totalFiles,
+                    )
+                }
+            }
+            if (event != null) {
+                eventSink(event)
+            }
+        }
+    }
+
     companion object {
         const val DEFAULT_MAX_CONCURRENT_CHUNKS = 4
         private const val MAX_CHUNK_DOWNLOAD_ATTEMPTS = 3
         private const val CHUNK_RETRY_DELAY_MILLIS = 750L
+        private const val IO_BUFFER_SIZE = 64 * 1024
+        private const val IO_YIELD_BYTES = 1024 * 1024L
+        private const val PROGRESS_EMIT_BYTES = 512 * 1024L
+        private const val PROGRESS_EMIT_CHUNKS = 4
+        private const val PROGRESS_EMIT_FILES = 8
+        private const val PROGRESS_EMIT_INTERVAL_MS = 250L
     }
 }

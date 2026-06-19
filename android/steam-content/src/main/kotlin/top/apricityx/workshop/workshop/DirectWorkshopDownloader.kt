@@ -1,6 +1,7 @@
 package top.apricityx.workshop.workshop
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -78,21 +79,16 @@ class DirectWorkshopDownloader(
                             if (append) existingBytes + contentLength else contentLength
                         }
 
+                    val progress = DirectProgressEmitter(totalBytes, emit)
                     if (append) {
-                        emit(
-                            DownloadEvent.Progress(
-                                writtenBytes = existingBytes,
-                                totalBytes = totalBytes,
-                                completedFiles = 0,
-                                totalFiles = 1,
-                            ),
-                        )
+                        progress.emit(existingBytes, force = true)
                     }
 
                     response.body?.byteStream()?.use { input ->
-                        FileOutputStream(partialFile, append).buffered().use { output ->
-                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        FileOutputStream(partialFile, append).buffered(IO_BUFFER_SIZE).use { output ->
+                            val buffer = ByteArray(IO_BUFFER_SIZE)
                             var written = existingBytes
+                            var bytesSinceYield = 0L
 
                             while (true) {
                                 val read = input.read(buffer)
@@ -101,15 +97,14 @@ class DirectWorkshopDownloader(
                                 }
                                 output.write(buffer, 0, read)
                                 written += read
-                                emit(
-                                    DownloadEvent.Progress(
-                                        writtenBytes = written,
-                                        totalBytes = totalBytes,
-                                        completedFiles = 0,
-                                        totalFiles = 1,
-                                    ),
-                                )
+                                bytesSinceYield += read
+                                progress.emit(written)
+                                if (bytesSinceYield >= IO_YIELD_BYTES) {
+                                    yield()
+                                    bytesSinceYield = 0L
+                                }
                             }
+                            progress.emit(written, force = true)
                         }
                     } ?: throw WorkshopDownloadException("Direct download body was empty")
                 }
@@ -150,7 +145,37 @@ class DirectWorkshopDownloader(
         )
     }
 
+    private class DirectProgressEmitter(
+        private val totalBytes: Long?,
+        private val emit: suspend (DownloadEvent) -> Unit,
+    ) {
+        private var lastEmittedAtMs = 0L
+        private var lastEmittedBytes = -1L
+
+        suspend fun emit(writtenBytes: Long, force: Boolean = false) {
+            val now = System.currentTimeMillis()
+            val byteDelta = if (lastEmittedBytes < 0L) Long.MAX_VALUE else (writtenBytes - lastEmittedBytes).coerceAtLeast(0L)
+            if (!force && byteDelta < PROGRESS_EMIT_BYTES && now - lastEmittedAtMs < PROGRESS_EMIT_INTERVAL_MS) {
+                return
+            }
+            lastEmittedAtMs = now
+            lastEmittedBytes = writtenBytes
+            emit(
+                DownloadEvent.Progress(
+                    writtenBytes = writtenBytes,
+                    totalBytes = totalBytes,
+                    completedFiles = 0,
+                    totalFiles = 1,
+                ),
+            )
+        }
+    }
+
     companion object {
         private const val MAX_DIRECT_DOWNLOAD_ATTEMPTS = 3
+        private const val IO_BUFFER_SIZE = 64 * 1024
+        private const val IO_YIELD_BYTES = 1024 * 1024L
+        private const val PROGRESS_EMIT_BYTES = 512 * 1024L
+        private const val PROGRESS_EMIT_INTERVAL_MS = 250L
     }
 }
