@@ -671,6 +671,37 @@ public final class ExtraSettingsRepository {
 		}
 	}
 
+	public WorkshopModImportResult commitPreparedWorkshopModImport(PreparedModImport preparedImport, String rawGroupName, String publishedFileId, boolean replaceExistingConflicts) throws Exception {
+		if (preparedImport == null || preparedImport.stagingRoot == null || !preparedImport.stagingRoot.isDirectory()) {
+			throw new IOException("Prepared MOD import is no longer available.");
+		}
+		try {
+			List<ModImportConflict> idConflicts = replaceExistingConflicts ? findCurrentWorkshopImportConflicts(preparedImport, rawGroupName, publishedFileId) : Collections.emptyList();
+			if (replaceExistingConflicts) {
+				deleteExistingImportConflicts(idConflicts);
+			}
+			File installRoot = getWorkshopItemInstallDir(rawGroupName, publishedFileId);
+			File groupDirectory = installRoot.getParentFile();
+			if (groupDirectory != null) {
+				ensureDirectory(groupDirectory);
+				if (!groupDirectory.getCanonicalFile().equals(getModsRootDir().getCanonicalFile())) {
+					markModGroupDirectory(groupDirectory);
+				}
+			}
+			deleteRecursively(installRoot);
+			ensureDirectory(installRoot);
+			copyDirectoryContents(preparedImport.stagingRoot, installRoot);
+			normalizeRuntimeModAliases(installRoot);
+			JSONObject settings = loadSettingsJson();
+			ensureModSettings(settings).put("mods_enabled", true);
+			saveSettingsJson(settings);
+			List<ModEntry> installedEntries = listInstalledModManifestsUnder(installRoot);
+			return new WorkshopModImportResult(installRoot, installedEntries, preparedImport.normalizedName);
+		} finally {
+			discardPreparedModImport(preparedImport);
+		}
+	}
+
 	public void discardPreparedModImport(PreparedModImport preparedImport) {
 		if (preparedImport != null) {
 			deleteRecursively(preparedImport.stagingRoot);
@@ -682,6 +713,30 @@ public final class ExtraSettingsRepository {
 			return Collections.emptyList();
 		}
 		return findImportConflicts(preparedImport.incomingEntries);
+	}
+
+	public List<ModImportConflict> findCurrentWorkshopImportConflicts(PreparedModImport preparedImport, String rawGroupName, String publishedFileId) {
+		if (preparedImport == null) {
+			return Collections.emptyList();
+		}
+		File installRoot = getWorkshopItemInstallDir(rawGroupName, publishedFileId);
+		List<ModImportConflict> conflicts = findImportConflicts(preparedImport.incomingEntries);
+		if (conflicts.isEmpty()) {
+			return conflicts;
+		}
+		List<ModImportConflict> filtered = new ArrayList<>();
+		for (ModImportConflict conflict : conflicts) {
+			List<ModEntry> existingOutsideItem = new ArrayList<>();
+			for (ModEntry existingEntry : conflict.existingEntries) {
+				if (!isModEntryUnderDirectory(existingEntry, installRoot)) {
+					existingOutsideItem.add(existingEntry);
+				}
+			}
+			if (!existingOutsideItem.isEmpty()) {
+				filtered.add(new ModImportConflict(conflict.modId, existingOutsideItem, conflict.incomingEntry));
+			}
+		}
+		return filtered;
 	}
 
 	public List<ModImportPathConflict> findCurrentImportPathConflicts(PreparedModImport preparedImport, List<ModImportConflict> confirmedIdConflicts) {
@@ -995,6 +1050,43 @@ public final class ExtraSettingsRepository {
 		}
 	}
 
+	public List<ModEntry> listInstalledModManifestsUnder(File directory) {
+		List<ModEntry> results = new ArrayList<>();
+		File modsRoot = getModsRootDir();
+		if (directory != null && directory.isDirectory() && isSameOrDescendant(directory, modsRoot)) {
+			collectManifestFiles(modsRoot, directory, results);
+		}
+		results.sort(Comparator.comparing(entry -> entry.relativePath, String::compareToIgnoreCase));
+		return results;
+	}
+
+	public File getWorkshopItemInstallDir(String rawGroupName, String publishedFileId) {
+		String groupName = sanitizeFileName(normalizeModGroupName(rawGroupName));
+		String itemDirectoryName = sanitizeWorkshopPublishedFileId(publishedFileId);
+		File modsRoot = getModsRootDir();
+		File parent = TextUtils.isEmpty(groupName) ? modsRoot : new File(modsRoot, groupName);
+		return new File(parent, itemDirectoryName);
+	}
+
+	public void deleteWorkshopItemInstall(String installedRootPath, String publishedFileId, List<ModEntry> modEntries) throws Exception {
+		File installRoot = firstInstalledRootPath(installedRootPath);
+		File modsRoot = getModsRootDir();
+		if (installRoot != null
+			&& installRoot.getName().equals(sanitizeWorkshopPublishedFileId(publishedFileId))
+			&& isSameOrDescendant(installRoot, modsRoot)
+			&& !installRoot.getCanonicalFile().equals(modsRoot.getCanonicalFile())) {
+			deleteRecursively(installRoot);
+		}
+		JSONObject settings = loadSettingsJson();
+		if (modEntries != null) {
+			for (ModEntry modEntry : modEntries) {
+				removeModEntry(settings, modEntry.modId);
+				removeModEntry(settings, modEntry.pckName);
+			}
+		}
+		saveSettingsJson(settings);
+	}
+
 	public List<String> listModGroups() {
 		List<String> groups = new ArrayList<>();
 		File modsRoot = getModsRootDir();
@@ -1260,6 +1352,31 @@ public final class ExtraSettingsRepository {
 			return "";
 		}
 		return trimmed;
+	}
+
+	private String sanitizeWorkshopPublishedFileId(String publishedFileId) {
+		String sanitized = sanitizeFileName(publishedFileId == null ? "" : publishedFileId.trim());
+		return TextUtils.isEmpty(sanitized) ? "unknown_workshop_item" : sanitized;
+	}
+
+	private File firstInstalledRootPath(String installedRootPath) {
+		if (TextUtils.isEmpty(installedRootPath)) {
+			return null;
+		}
+		for (String line : installedRootPath.split("\\n")) {
+			String trimmed = line == null ? "" : line.trim();
+			if (!TextUtils.isEmpty(trimmed)) {
+				return new File(trimmed);
+			}
+		}
+		return null;
+	}
+
+	private boolean isModEntryUnderDirectory(ModEntry modEntry, File directory) {
+		if (modEntry == null || modEntry.manifestFile == null || directory == null) {
+			return false;
+		}
+		return isSameOrDescendant(modEntry.manifestFile, directory);
 	}
 
 	private File uniqueDirectory(File desired) {
@@ -2494,6 +2611,18 @@ public final class ExtraSettingsRepository {
 			this.id = id;
 			this.name = name;
 			this.enabledModIds = Collections.unmodifiableSet(new LinkedHashSet<>(enabledModIds));
+		}
+	}
+
+	public static final class WorkshopModImportResult {
+		public final File installRoot;
+		public final List<ModEntry> installedEntries;
+		public final String importedName;
+
+		WorkshopModImportResult(File installRoot, List<ModEntry> installedEntries, String importedName) {
+			this.installRoot = installRoot;
+			this.installedEntries = Collections.unmodifiableList(new ArrayList<>(installedEntries));
+			this.importedName = importedName == null ? "" : importedName;
 		}
 	}
 

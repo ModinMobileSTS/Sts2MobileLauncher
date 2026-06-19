@@ -39,7 +39,7 @@ public final class SteamWorkshopLibrary {
 		return entries;
 	}
 
-	public synchronized Entry recordInstall(SteamWorkshopCatalog.Item item, List<ExtraSettingsRepository.ModEntry> importedMods) throws Exception {
+	public synchronized Entry recordInstall(SteamWorkshopCatalog.Item item, File installRoot, List<ExtraSettingsRepository.ModEntry> importedMods) throws Exception {
 		ensureRoot();
 		List<Entry> entries = readEntries();
 		Map<String, Entry> byId = new LinkedHashMap<>();
@@ -54,9 +54,8 @@ public final class SteamWorkshopLibrary {
 				}
 			}
 		}
-		String installedRootPath = joinedInstalledPaths(importedMods);
+		String installedRootPath = installRoot == null ? "" : installRoot.getAbsolutePath();
 		long now = System.currentTimeMillis();
-		Entry existing = byId.get(item.getPublishedFileId());
 		Entry updated = new Entry(
 			Integer.toString(item.getAppId()),
 			item.getPublishedFileId(),
@@ -73,8 +72,8 @@ public final class SteamWorkshopLibrary {
 			"",
 			installedRootPath,
 			modIds,
-			importedModsSize(importedMods),
-			sha1ImportedMods(importedMods)
+			directorySize(installRoot),
+			sha1InstalledRoot(installRoot)
 		);
 		byId.put(updated.publishedFileId, updated);
 		writeEntries(new ArrayList<>(byId.values()));
@@ -180,84 +179,19 @@ public final class SteamWorkshopLibrary {
 		return total;
 	}
 
-	private static String joinedInstalledPaths(List<ExtraSettingsRepository.ModEntry> importedMods) {
-		if (importedMods == null || importedMods.isEmpty()) {
-			return "";
-		}
-		List<String> paths = new ArrayList<>();
-		for (ExtraSettingsRepository.ModEntry mod : importedMods) {
-			File directory = installedDirectory(mod);
-			if (directory == null) {
-				continue;
-			}
-			String path = directory.getAbsolutePath();
-			if (!TextUtils.isEmpty(path) && !paths.contains(path)) {
-				paths.add(path);
-			}
-		}
-		return TextUtils.join("\n", paths);
-	}
-
-	private static long importedModsSize(List<ExtraSettingsRepository.ModEntry> importedMods) {
-		if (importedMods == null || importedMods.isEmpty()) {
-			return 0L;
-		}
-		long total = 0L;
-		List<String> seen = new ArrayList<>();
-		for (ExtraSettingsRepository.ModEntry mod : importedMods) {
-			File directory = installedDirectory(mod);
-			if (directory == null) {
-				continue;
-			}
-			String path = directory.getAbsolutePath();
-			if (!seen.contains(path)) {
-				seen.add(path);
-				total += directorySize(directory);
-			}
-		}
-		return total;
-	}
-
-	private static String sha1ImportedMods(List<ExtraSettingsRepository.ModEntry> importedMods) {
-		if (importedMods == null || importedMods.isEmpty()) {
+	private static String sha1InstalledRoot(File installRoot) {
+		if (installRoot == null || !installRoot.exists()) {
 			return "";
 		}
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-1");
-			List<File> roots = new ArrayList<>();
-			List<String> seen = new ArrayList<>();
-			for (ExtraSettingsRepository.ModEntry mod : importedMods) {
-				File directory = installedDirectory(mod);
-				if (directory == null || !directory.exists()) {
-					continue;
-				}
-				String path = directory.getAbsolutePath();
-				if (seen.contains(path)) {
-					continue;
-				}
-				seen.add(path);
-				roots.add(directory);
-			}
-			roots.sort(Comparator.comparing(File::getAbsolutePath, String::compareToIgnoreCase));
-			for (File root : roots) {
-				digest.update(root.getName().getBytes(StandardCharsets.UTF_8));
-				digest.update((byte) 0);
-				String tree = sha1Tree(root);
-				digest.update(tree.getBytes(StandardCharsets.UTF_8));
-				digest.update((byte) 0);
-			}
+			digest.update(installRoot.getName().getBytes(StandardCharsets.UTF_8));
+			digest.update((byte) 0);
+			digest.update(sha1Tree(installRoot).getBytes(StandardCharsets.UTF_8));
 			return toHex(digest.digest());
 		} catch (Exception ignored) {
 			return "";
 		}
-	}
-
-	private static File installedDirectory(ExtraSettingsRepository.ModEntry mod) {
-		if (mod == null || mod.manifestFile == null) {
-			return null;
-		}
-		File parent = mod.manifestFile.getParentFile();
-		return parent == null ? mod.manifestFile : parent;
 	}
 
 	private static String sha1Tree(File root) {

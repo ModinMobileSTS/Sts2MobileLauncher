@@ -871,57 +871,23 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 
 	private List<ExtraSettingsRepository.ModEntry> findInstalledModsForWorkshop(SteamWorkshopCatalog.Item item, SteamWorkshopLibrary.Entry entry) {
 		List<ExtraSettingsRepository.ModEntry> matches = new ArrayList<>();
-		if (entry == null) {
+		if (entry == null || TextUtils.isEmpty(entry.installedRootPath)) {
 			return matches;
 		}
-		List<ExtraSettingsRepository.ModEntry> installed = repository.listInstalledModManifests();
-		Set<String> importedIds = new LinkedHashSet<>(entry.importedModIds);
-		List<String> installedRoots = new ArrayList<>();
-		if (!TextUtils.isEmpty(entry.installedRootPath)) {
-			for (String line : entry.installedRootPath.split("\\n")) {
-				String trimmed = line == null ? "" : line.trim();
-				if (!TextUtils.isEmpty(trimmed)) {
-					installedRoots.add(trimmed);
-				}
-			}
-		}
-		String itemTitleKey = normalizeIdentity(item == null ? "" : item.getTitle());
-		for (ExtraSettingsRepository.ModEntry mod : installed) {
-			if (importedIds.contains(mod.modId) || importedIds.contains(mod.pckName)) {
-				matches.add(mod);
+		Set<String> seenManifestPaths = new LinkedHashSet<>();
+		for (String line : entry.installedRootPath.split("\\n")) {
+			String trimmed = line == null ? "" : line.trim();
+			if (TextUtils.isEmpty(trimmed)) {
 				continue;
 			}
-			if (isModUnderAnyRoot(mod, installedRoots)) {
-				matches.add(mod);
-				continue;
-			}
-			if (importedIds.isEmpty() && !TextUtils.isEmpty(itemTitleKey)) {
-				String displayKey = normalizeIdentity(mod.displayName);
-				String modKey = normalizeIdentity(mod.modId);
-				String pckKey = normalizeIdentity(mod.pckName);
-				if (itemTitleKey.equals(displayKey) || itemTitleKey.equals(modKey) || itemTitleKey.equals(pckKey)) {
+			for (ExtraSettingsRepository.ModEntry mod : repository.listInstalledModManifestsUnder(new File(trimmed))) {
+				String manifestPath = mod.manifestFile == null ? mod.relativePath : mod.manifestFile.getAbsolutePath();
+				if (seenManifestPaths.add(manifestPath)) {
 					matches.add(mod);
 				}
 			}
 		}
 		return matches;
-	}
-
-	private boolean isModUnderAnyRoot(ExtraSettingsRepository.ModEntry mod, List<String> roots) {
-		if (mod == null || mod.manifestFile == null || roots == null || roots.isEmpty()) {
-			return false;
-		}
-		String manifestPath = mod.manifestFile.getAbsolutePath();
-		for (String root : roots) {
-			if (TextUtils.isEmpty(root)) {
-				continue;
-			}
-			String normalizedRoot = root.endsWith(File.separator) ? root.substring(0, root.length() - 1) : root;
-			if (manifestPath.equals(normalizedRoot) || manifestPath.startsWith(normalizedRoot + File.separator)) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	private void showLocalModDetails(ExtraSettingsRepository.ModEntry entry) {
@@ -1285,7 +1251,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			.setPositiveButton(R.string.delete, (dialog, which) -> {
 				try {
 					if (deleteLocal.isChecked()) {
-						repository.deleteMods(currentInstalledMods);
+						repository.deleteWorkshopItemInstall(entry.installedRootPath, entry.publishedFileId, currentInstalledMods);
 					}
 					library.removeEntry(entry.publishedFileId);
 					showDownloads();
@@ -1546,40 +1512,23 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		if (requiredItems == null || requiredItems.isEmpty()) {
 			return missing;
 		}
-		List<ExtraSettingsRepository.ModEntry> installedMods = repository.listInstalledModManifests();
 		List<SteamWorkshopLibrary.Entry> libraryEntries = library.listEntries();
 		for (SteamWorkshopCatalog.RequiredItem required : requiredItems) {
-			if (!isRequiredItemInstalled(required, installedMods, libraryEntries)) {
+			if (!isRequiredItemInstalled(required, libraryEntries)) {
 				missing.add(required);
 			}
 		}
 		return missing;
 	}
 
-	private boolean isRequiredItemInstalled(SteamWorkshopCatalog.RequiredItem required, List<ExtraSettingsRepository.ModEntry> installedMods, List<SteamWorkshopLibrary.Entry> libraryEntries) {
+	private boolean isRequiredItemInstalled(SteamWorkshopCatalog.RequiredItem required, List<SteamWorkshopLibrary.Entry> libraryEntries) {
 		String requiredId = required.getPublishedFileId();
-		Set<String> installedIds = new LinkedHashSet<>();
-		Set<String> installedIdentityKeys = new LinkedHashSet<>();
-		for (ExtraSettingsRepository.ModEntry entry : installedMods) {
-			addNonEmpty(installedIds, entry.modId);
-			addNonEmpty(installedIdentityKeys, normalizeIdentity(entry.modId));
-			addNonEmpty(installedIdentityKeys, normalizeIdentity(entry.pckName));
-			addNonEmpty(installedIdentityKeys, normalizeIdentity(entry.displayName));
-		}
 		for (SteamWorkshopLibrary.Entry entry : libraryEntries) {
-			if (!requiredId.equals(entry.publishedFileId)) {
-				continue;
-			}
-			for (String importedId : entry.importedModIds) {
-				if (installedIds.contains(importedId)) {
-					return true;
-				}
+			if (requiredId.equals(entry.publishedFileId) && !findInstalledModsForWorkshop(required.toItem(), entry).isEmpty()) {
+				return true;
 			}
 		}
-		String requiredTitleKey = normalizeIdentity(required.getTitle());
-		String requiredIdKey = normalizeIdentity(requiredId);
-		return (!TextUtils.isEmpty(requiredTitleKey) && installedIdentityKeys.contains(requiredTitleKey))
-			|| (!TextUtils.isEmpty(requiredIdKey) && installedIdentityKeys.contains(requiredIdKey));
+		return false;
 	}
 
 	private void showMissingPrerequisitesDialog(SteamWorkshopCatalog.Item item, List<SteamWorkshopCatalog.RequiredItem> missing) {
@@ -1780,7 +1729,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void handlePreparedWorkshopImport(SteamWorkshopDownloader.Result result, ExtraSettingsRepository.PreparedModImport prepared) {
-		List<ExtraSettingsRepository.ModImportConflict> idConflicts = repository.findCurrentImportConflicts(prepared);
+		String groupName = SteamWorkshopPreferences.getDownloadGroup(this);
+		String publishedFileId = result.getItem().getPublishedFileId();
+		List<ExtraSettingsRepository.ModImportConflict> idConflicts = repository.findCurrentWorkshopImportConflicts(prepared, groupName, publishedFileId);
 		if (!idConflicts.isEmpty()) {
 			showModImportConflictDialog(prepared, idConflicts,
 				() -> {
@@ -1789,7 +1740,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 					clearDownloadQueue();
 					showMessage(getString(R.string.status_import_mod_cancelled));
 				},
-				() -> handlePreparedWorkshopPathConflicts(result, prepared, true, idConflicts),
+				() -> commitPreparedWorkshopImport(result, prepared, true),
 				() -> {
 					repository.discardPreparedModImport(prepared);
 					finishDownloadTask(result.getItem().getPublishedFileId());
@@ -1798,32 +1749,10 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 				});
 			return;
 		}
-		handlePreparedWorkshopPathConflicts(result, prepared, false, idConflicts);
+		commitPreparedWorkshopImport(result, prepared, false);
 	}
 
-	private void handlePreparedWorkshopPathConflicts(SteamWorkshopDownloader.Result result, ExtraSettingsRepository.PreparedModImport prepared, boolean replaceExistingConflicts, List<ExtraSettingsRepository.ModImportConflict> confirmedIdConflicts) {
-		List<ExtraSettingsRepository.ModImportPathConflict> pathConflicts = repository.findCurrentImportPathConflicts(prepared, replaceExistingConflicts ? confirmedIdConflicts : new ArrayList<>(), SteamWorkshopPreferences.getDownloadGroup(this));
-		if (!pathConflicts.isEmpty()) {
-			showModImportPathConflictDialog(prepared, pathConflicts,
-				() -> {
-					repository.discardPreparedModImport(prepared);
-					finishDownloadTask(result.getItem().getPublishedFileId());
-					clearDownloadQueue();
-					showMessage(getString(R.string.status_import_mod_cancelled));
-				},
-				() -> commitPreparedWorkshopImport(result, prepared, replaceExistingConflicts, true),
-				() -> {
-					repository.discardPreparedModImport(prepared);
-					finishDownloadTask(result.getItem().getPublishedFileId());
-					clearDownloadQueue();
-					showMessage(getString(R.string.status_import_mod_cancelled));
-				});
-			return;
-		}
-		commitPreparedWorkshopImport(result, prepared, replaceExistingConflicts, false);
-	}
-
-	private void commitPreparedWorkshopImport(SteamWorkshopDownloader.Result result, ExtraSettingsRepository.PreparedModImport prepared, boolean replaceExistingConflicts, boolean allowPathConflicts) {
+	private void commitPreparedWorkshopImport(SteamWorkshopDownloader.Result result, ExtraSettingsRepository.PreparedModImport prepared, boolean replaceExistingConflicts) {
 		if (importBusy) {
 			return;
 		}
@@ -1837,22 +1766,19 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}
 		startWorkshopBackgroundThread("sts2-workshop-import", () -> {
 			try {
-				List<String> incomingIds = new ArrayList<>();
-				for (ExtraSettingsRepository.ModEntry entry : prepared.incomingEntries) {
-					if (!incomingIds.contains(entry.modId)) {
-						incomingIds.add(entry.modId);
-					}
-				}
-				String importedName = repository.commitPreparedModImport(prepared, replaceExistingConflicts, allowPathConflicts);
-				moveImportedModsToWorkshopGroup(prepared, incomingIds);
-				List<ExtraSettingsRepository.ModEntry> importedEntries = findImportedEntries(incomingIds);
-				library.recordInstall(result.getItem(), importedEntries);
+				ExtraSettingsRepository.WorkshopModImportResult importResult = repository.commitPreparedWorkshopModImport(
+					prepared,
+					SteamWorkshopPreferences.getDownloadGroup(this),
+					result.getItem().getPublishedFileId(),
+					replaceExistingConflicts
+				);
+				library.recordInstall(result.getItem(), importResult.installRoot, importResult.installedEntries);
 				runOnUiThread(() -> {
 					progressDialog.dismiss();
 					importBusy = false;
 					markWorkshopItemCurrent(result.getItem());
 					finishDownloadTask(result.getItem().getPublishedFileId());
-					showMessage(getString(R.string.workshop_import_done, importedName));
+					showMessage(getString(R.string.workshop_import_done, importResult.importedName));
 					if (!pendingDownloadQueue.isEmpty()) {
 						startNextQueuedDownload();
 					}
@@ -1867,35 +1793,6 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 				});
 			}
 		});
-	}
-
-	private void moveImportedModsToWorkshopGroup(ExtraSettingsRepository.PreparedModImport prepared, List<String> incomingIds) throws Exception {
-		if (incomingIds == null || incomingIds.isEmpty()) {
-			return;
-		}
-		String groupName = SteamWorkshopPreferences.getDownloadGroup(this);
-		repository.createModGroup(groupName);
-		repository.movePreparedImportFilesToGroup(prepared, groupName);
-		List<ExtraSettingsRepository.ModEntry> installed = repository.listInstalledModManifests();
-		for (ExtraSettingsRepository.ModEntry entry : installed) {
-			if (incomingIds.contains(entry.modId)) {
-				repository.moveModToGroup(entry, groupName);
-			}
-		}
-	}
-
-	private List<ExtraSettingsRepository.ModEntry> findImportedEntries(List<String> ids) {
-		if (ids == null || ids.isEmpty()) {
-			return new ArrayList<>();
-		}
-		Set<String> idSet = new LinkedHashSet<>(ids);
-		List<ExtraSettingsRepository.ModEntry> matches = new ArrayList<>();
-		for (ExtraSettingsRepository.ModEntry entry : repository.listInstalledModManifests()) {
-			if (idSet.contains(entry.modId)) {
-				matches.add(entry);
-			}
-		}
-		return matches;
 	}
 
 	private void checkTrackedUpdates() {
@@ -2287,21 +2184,6 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 
 	private String emptyToFallback(String value, String fallback) {
 		return TextUtils.isEmpty(value) ? (fallback == null ? "" : fallback) : value;
-	}
-
-	private void addNonEmpty(Set<String> values, String value) {
-		if (!TextUtils.isEmpty(value)) {
-			values.add(value);
-		}
-	}
-
-	private String normalizeIdentity(String value) {
-		if (TextUtils.isEmpty(value)) {
-			return "";
-		}
-		return value.toLowerCase(Locale.ROOT)
-			.replaceAll("[^a-z0-9\\u4e00-\\u9fa5]+", "")
-			.trim();
 	}
 
 	private int parseInt(String value, int fallback) {
