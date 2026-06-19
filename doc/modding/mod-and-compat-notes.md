@@ -105,7 +105,8 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 | --- | --- | --- | --- |
 | `v0.103.2` / `v0.103.3` | `v0.103.x` | `.env`: `STS2_ORIGINAL_V103_REFERENCE_DIR` 或 `STS2_ORIGINAL_V103_ROOT` | `original` |
 | `v0.106.1` beta（旧测试） | `v0.106.1-beta` | `.env`: `STS2_ORIGINAL_V1061_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1061_ROOT` | `original-v0.106.1` |
-| `v0.107.0` beta | `v0.107.0-beta` | `.env`: `STS2_ORIGINAL_V1070_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1070_ROOT` | `original-v0.107.0` |
+| `v0.107.0` beta（旧测试） | `v0.107.0-beta` | `.env`: `STS2_ORIGINAL_V1070_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1070_ROOT` | `original-v0.107.0` |
+| `v0.107.1` stable | `v0.107.1` | `.env`: `STS2_ORIGINAL_V1071_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1071_ROOT` | `original-v0.107.1` |
 
 开发步骤建议：
 
@@ -117,7 +118,7 @@ git -C port-mod status --short --branch
 (cd port-mod && ./tools/build-compat-matrix.sh)
 
 # 3. 可选：构建 fallback 或 legacy schema 1 诊断包
-REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
+REFERENCE_FLAVOR=original-v0.107.1 tools/android/build-port-mod.sh
 # 或
 tools/android/build-port-mod.sh
 # 或
@@ -128,7 +129,7 @@ tools/android/stage-bundled-compat-packs.sh
 tools/package/build_importer_apk.sh
 ```
 
-只调试单个 target 时可运行 `(cd port-mod && ./tools/build-compat-matrix.sh --target v0.103.x)`；legacy schema 1 诊断包仍用 `REFERENCE_FLAVOR=original` / `original-v0.106.1` / `original-v0.107.0` 指定对应原版 gate。
+只调试单个 target 时可运行 `(cd port-mod && ./tools/build-compat-matrix.sh --target v0.107.1)`；legacy schema 1 诊断包仍用 `REFERENCE_FLAVOR=original` / `original-v0.106.1` / `original-v0.107.0` 指定对应原版 gate，单独调试 `v0.107.1` 可用 `REFERENCE_FLAVOR=original-v0.107.1`。
 
 ## 8. 新增游戏版本 checklist
 
@@ -152,7 +153,7 @@ tools/package/build_importer_apk.sh
 - Android temp 目录必须尽早配置，否则 Harmony/MonoMod 可能尝试使用不可写 `/tmp`。
 - Shader/resource overlay 资源应放入 `port-mod/overlay/`，重新打包 `port_compat.pck` 后才能生效。
 - 普通 MOD loader 的目标是尽量复用游戏原本的 scanner、dependency sort 和 TryLoadMod，减少与 PC 行为分叉。
-- `v0.103.x`、`v0.106.1` beta 与 `v0.107.0` beta 分支应保持同一套 Android/Mono MOD 初始化不变式：加载任何 MOD 前只允许预注册原版模型占位；每个 MOD initializer 期间只允许短暂隐藏“非原版类型命中早期原版占位”的 `ModelDb.Contains(Type)` 结果，避免与原版同名的 MOD 模型因 Android 提前占位误报重复；若 MOD 因早期占位误判 ModelDb 已初始化并调用 `AbstractModel.InitId()`，兼容层只在 `ModelIdSerializationCache.Init()` 完成前跳过该次早调用，后续正常 `ModelDb.InitIds()` 会统一设置排序 ID，不得提前动态分配 net ID；MOD 自定义模型占位必须等到所有 MOD Harmony patch 应用后、`ModelDb.Init()` 前再按最终 ID 注册。用户 MOD 在 initializer / `PatchAll` 中 patch STS2 Godot/UI 类型时，`DeferredModPatchQueue` 可将带静态初始化器的 UI patch 延后到 `ExecuteEssential` 完成后重放；不要把普通模型类 patch 一并延后，否则会破坏 MOD 依赖的 `ModelDb.Init` 前置 hook 时序。
+- `v0.103.x`、`v0.107.1` stable target、`v0.106.1` beta 与 `v0.107.0` beta target 应保持同一套 Android/Mono MOD 初始化不变式：加载任何 MOD 前只允许预注册原版模型占位；每个 MOD initializer 期间只允许短暂隐藏“非原版类型命中早期原版占位”的 `ModelDb.Contains(Type)` 结果，避免与原版同名的 MOD 模型因 Android 提前占位误报重复；若 MOD 因早期占位误判 ModelDb 已初始化并调用 `AbstractModel.InitId()`，兼容层只在 `ModelIdSerializationCache.Init()` 完成前跳过该次早调用，后续正常 `ModelDb.InitIds()` 会统一设置排序 ID，不得提前动态分配 net ID；MOD 自定义模型占位必须等到所有 MOD Harmony patch 应用后、`ModelDb.Init()` 前再按最终 ID 注册。用户 MOD 在 initializer / `PatchAll` 中 patch STS2 Godot/UI 类型时，`DeferredModPatchQueue` 可将带静态初始化器的 UI patch 延后到 `ExecuteEssential` 完成后重放；不要把普通模型类 patch 一并延后，否则会破坏 MOD 依赖的 `ModelDb.Init` 前置 hook 时序。
 
 ## 10. MOD 兼容性排查规范
 
@@ -206,13 +207,13 @@ schema 2 family manifest：
   "channel": "mixed",
   "targets": [
     {
-      "target_id": "v0.107.0-beta",
-      "versions": ["v0.107.0"],
-      "source": "original_pc_reference_v0.107.0",
+      "target_id": "v0.107.1",
+      "versions": ["v0.107.1"],
+      "source": "original_pc_reference_v0.107.1",
       "sts2_dll_sha256": "...",
       "artifacts": {
-        "dll": "variants/v0.107.0-beta/STS2Mobile.dll",
-        "overlay_pck": "variants/v0.107.0-beta/port_compat.pck"
+        "dll": "variants/v0.107.1/STS2Mobile.dll",
+        "overlay_pck": "variants/v0.107.1/port_compat.pck"
       }
     }
   ]

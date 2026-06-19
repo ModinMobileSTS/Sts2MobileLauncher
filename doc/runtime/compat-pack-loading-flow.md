@@ -1,6 +1,6 @@
 # MOD 与兼容包加载流程
 
-本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。当前说明适用于内置的 `v0.103.x` 正式/稳定兼容分支、旧 `v0.106.1` beta 兼容分支与当前 `v0.107.0` beta 兼容分支。
+本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。当前说明适用于内置的 `v0.103.x` / `v0.107.1` 正式/稳定兼容 target，以及旧 `v0.106.1` / `v0.107.0` beta 兼容 target。
 
 ## 1. 术语
 
@@ -207,7 +207,7 @@ OS.GetDataDir()/port_compat.pck
 
 另外 `TransitionMaterialPatches` 会在 `NTransition._Ready` 后复制场景默认 `ShaderMaterial`，并在原版 `AssetCache.GetMaterial()` 返回 `fade_transition_mat.tres` / `fight_transition_mat.tres` 时返回缓存材质的副本。这样关闭预加载时，原版 `LoadCommonAndMainMenuAssets()` 触发的 missed-cache 清理即使 dispose 了缓存条目，也不会把正在执行主菜单 `FadeIn()` 的 transition 材质一并释放，避免 `ObjectDisposedException: Godot.ShaderMaterial` 后黑屏。
 
-`v0.107.0-beta` target 的 `MapDrawingSceneCachePatches` 同样规避资源缓存生命周期问题：它拦截 `NMapDrawings.CreateLineForPlayer()`，让 v107 地图画笔绘制/橡皮线条从 Android 兼容层自持有的 `PackedScene` 实例化，而不是继续使用 `NMapDrawings._lineDrawScene` / `_lineEraseScene` 中可能已被 preload cleanup dispose 的缓存资源；橡皮线条会同步刷新 `_eraserMaterial`，保留原版保存时通过材质判断 eraser line 的行为。
+`v0.107.0-beta` 与 `v0.107.1` target 的 `MapDrawingSceneCachePatches` 同样规避资源缓存生命周期问题：它拦截 `NMapDrawings.CreateLineForPlayer()`，让 v107 地图画笔绘制/橡皮线条从 Android 兼容层自持有的 `PackedScene` 实例化，而不是继续使用 `NMapDrawings._lineDrawScene` / `_lineEraseScene` 中可能已被 preload cleanup dispose 的缓存资源；橡皮线条会同步刷新 `_eraserMaterial`，保留原版保存时通过材质判断 eraser line 的行为。
 
 是否启用由附加设置中的 `shader_compatibility_mode` 控制。
 
@@ -217,7 +217,7 @@ OS.GetDataDir()/port_compat.pck
 
 `ModLoaderPatches` 行为：
 
-- Prefix 替换 `ModManager.Initialize()`，避免 Android 上高风险 IL transpiler；`v0.107.0` 起原方法返回 `Task`，跳过原方法时兼容层会返回 `Task.CompletedTask`，避免 `ExecuteVeryEarly()` `await` 到 `null`。
+- Prefix 替换 `ModManager.Initialize()`，避免 Android 上高风险 IL transpiler；`v0.107.0` 起原方法返回 `Task`，跳过原方法时兼容层会返回 `Task.CompletedTask`，避免 `ExecuteVeryEarly()` `await` 到 `null`。`v0.107.1` 起原版用 `ModManager.State` 取代旧 `_initialized`，兼容层会反射写入 `Initialized`，并继续保留旧字段写入以兼容 `v0.107.0`。
 - 设置原版私有字段 `_settings`、`_fileIo`、`_gameVersion`。
 - 添加 assembly resolve fallback。
 - 为对齐 PC 时序，在用户 MOD 的 Harmony patch 全部应用前不对任何 MOD 模型类型调用 `ModelDb.GetId`/`GetEntry`，也不提前调用完整 `LocManager.Initialize()`。原版模型占位提前到**加载任何 MOD 之前**（`ModLoaderPatches` 触发，原版不带前缀，安全，修复 MOD patch getter / MOD 静态构造引用原版模型的早访问）；每个 MOD initializer 期间只隐藏非原版类型命中早期原版占位的 `ModelDb.Contains(Type)` 结果，避免同名模型误判；如果 MOD 因早期占位误判 ModelDb 已初始化而提前调用 `AbstractModel.InitId()`，兼容层会在 `ModelIdSerializationCache.Init()` 完成前跳过这次调用，等后续 `ModelDb.InitIds()` 统一设置排序 ID，避免提前分配或污染 net ID；MOD 自定义模型占位延迟到 `ModelDb.Init()` 之前的 phase 1，按最终 ID 进行。早期 UI 类型静态构造里的本地化格式化失败由 `EarlyLocalizationFallbackPatches` 临时兜底；直接 patch STS2 Godot/UI 类型且可能触发 `.cctor` 的用户 MOD patch 由 `DeferredModPatchQueue` 排队到 `ExecuteEssential` 初始化完成后重放。

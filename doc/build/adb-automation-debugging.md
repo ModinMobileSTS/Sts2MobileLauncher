@@ -35,7 +35,7 @@ tools/debug/sts2-adb-debug.sh launch \
 tools/debug/sts2-adb-debug.sh prepare \
   --compat dist/sts2-android-compat.zip \
   --compat-pack sts2-android-compat \
-  --compat-target v0.107.0-beta \
+  --compat-target v0.107.1 \
   --clear publish \
   --pull
 

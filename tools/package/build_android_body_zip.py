@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -551,14 +552,65 @@ def copy_reference_native_support(port_reference: Path | None, project_dir: Path
     return copied
 
 
+def synthesize_missing_uid_sidecars(project_dir: Path) -> int:
+    ext_resource_re = re.compile(r'uid="(uid://[^"]+)"[^\n]*path="res://([^"]+)"')
+    created = 0
+    resource_files = list(project_dir.rglob("*.tscn")) + list(project_dir.rglob("*.tres"))
+    for resource_file in resource_files:
+        text = resource_file.read_text(encoding="utf-8", errors="replace")
+        for match in ext_resource_re.finditer(text):
+            uid, relative_path = match.groups()
+            if relative_path.startswith("uid://") or "://" in relative_path:
+                continue
+            resource_path = project_dir / relative_path
+            if not resource_path.is_file():
+                continue
+            uid_path = resource_path.with_name(resource_path.name + ".uid")
+            if uid_path.exists():
+                continue
+            uid_path.write_text(uid + "\n", encoding="utf-8")
+            created += 1
+    return created
+
+
+def stage_dotnet_solution_for_export(project_dir: Path) -> bool:
+    source_solution = project_dir / "sts2.sln"
+    if not source_solution.is_file():
+        return False
+    parent_solution = project_dir.parent / "sts2.sln"
+    relative_csproj = (Path(project_dir.name) / "sts2.csproj").as_posix()
+    text = source_solution.read_text(encoding="utf-8", errors="replace")
+    text = text.replace('"sts2.csproj"', f'"{relative_csproj}"')
+    if not parent_solution.is_file() or parent_solution.read_text(encoding="utf-8", errors="replace") != text:
+        parent_solution.write_text(text, encoding="utf-8")
+    return True
+
+
+def patch_project_binary(project_dir: Path) -> bool:
+    project_binary = project_dir / "project.binary"
+    if not project_binary.is_file():
+        return False
+    data = project_binary.read_bytes()
+    patched = data.replace(b"autoload/SentryInit", b"disabled/SentryInit")
+    if patched == data:
+        return False
+    project_binary.write_bytes(patched)
+    return True
+
+
 def patch_project_files(project_dir: Path) -> dict:
     result = {
         "font_imports_patched": 0,
+        "uid_sidecars_created": 0,
+        "dotnet_solution_staged": False,
+        "project_binary_patched": False,
         "project_godot_patched": False,
         "extension_list_patched": False,
         "sentry_gdextension_removed": False,
         "csproj_patched": False,
     }
+    result["uid_sidecars_created"] = synthesize_missing_uid_sidecars(project_dir)
+    result["dotnet_solution_staged"] = stage_dotnet_solution_for_export(project_dir)
     for import_file in (project_dir / "fonts").rglob("*.import"):
         text = import_file.read_text(encoding="utf-8", errors="replace")
         original = text
@@ -608,6 +660,8 @@ def patch_project_files(project_dir: Path) -> dict:
     if text != original:
         project_godot.write_text(text, encoding="utf-8")
         result["project_godot_patched"] = True
+
+    result["project_binary_patched"] = patch_project_binary(project_dir)
 
     sentry_extension = project_dir / "addons/sentry/sentry.gdextension"
     if sentry_extension.exists():
