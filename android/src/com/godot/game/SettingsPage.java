@@ -112,6 +112,7 @@ public final class SettingsPage {
 		shell.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 		int padding = ExtraSettingsUi.pageHorizontalPadding(context);
 		shell.setPadding(padding, ExtraSettingsUi.dp(context, 18), padding, 0);
+		SystemBarInsetsHelper.applySystemBarPadding(shell, true, false, false, false);
 		LinearLayout header = ExtraSettingsUi.vertical(context);
 		header.addView(ExtraSettingsUi.title(context, R.string.tab_settings));
 

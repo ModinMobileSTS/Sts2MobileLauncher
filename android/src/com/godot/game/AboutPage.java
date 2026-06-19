@@ -37,6 +37,7 @@ public final class AboutPage {
 		scrollView.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 		LinearLayout root = ExtraSettingsUi.vertical(context);
 		root.setPadding(0, ExtraSettingsUi.dp(context, 24), 0, ExtraSettingsUi.dp(context, 32));
+		SystemBarInsetsHelper.applySystemBarPadding(root, true, false, false, false);
 		ExtraSettingsUi.addResponsiveScrollContent(context, scrollView, root);
 
 		root.addView(ExtraSettingsUi.title(context, R.string.tab_about));

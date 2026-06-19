@@ -7,6 +7,7 @@
     android:background="@color/sts2_crash_background">
 
     <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar_crash"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:backgroundTint="@color/sts2_crash_surface"

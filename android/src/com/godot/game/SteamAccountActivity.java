@@ -58,6 +58,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
+		SystemBarInsetsHelper.enableEdgeToEdge(this);
 		buildUi();
 		refreshStatus();
 		showFirstOpenSafetyNoticeIfNeeded();
@@ -126,6 +127,8 @@ public class SteamAccountActivity extends AppCompatActivity {
 		scroll.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 		root = ExtraSettingsUi.vertical(this);
 		root.setPadding(0, ExtraSettingsUi.dp(this, 24), 0, ExtraSettingsUi.dp(this, 32));
+		SystemBarInsetsHelper.applySystemBarPadding(root, true, false, false, false);
+		SystemBarInsetsHelper.applySystemBarPadding(scroll, false, true, true, true);
 		ExtraSettingsUi.addResponsiveScrollContent(this, scroll, root);
 		setContentView(scroll);
 		populateRoot();

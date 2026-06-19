@@ -62,6 +62,7 @@ public final class GameVersionManagerPage {
 		ScrollView scrollView = new ScrollView(context);
 		LinearLayout root = ExtraSettingsUi.vertical(context);
 		root.setPadding(0, ExtraSettingsUi.dp(context, 24), 0, ExtraSettingsUi.dp(context, 112));
+		SystemBarInsetsHelper.applySystemBarPadding(root, true, false, false, false);
 		ExtraSettingsUi.addResponsiveScrollContent(context, scrollView, root);
 
 		root.addView(ExtraSettingsUi.title(context, R.string.tab_versions));

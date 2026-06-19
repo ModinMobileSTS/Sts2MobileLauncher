@@ -78,6 +78,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
+		SystemBarInsetsHelper.enableEdgeToEdge(this);
 		repository = new ExtraSettingsRepository(this);
 		payloadManager = new PayloadManager(this);
 		compatPackManager = new CompatPackManager(this);
@@ -121,6 +122,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		shell.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 
 		contentFrame = new FrameLayout(this);
+		SystemBarInsetsHelper.applySystemBarPadding(contentFrame, false, true, false, true);
 		bottomNavigationView = null;
 		navigationRailView = null;
 		if (wideLayout) {
@@ -130,6 +132,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			navigationRailView.setLabelVisibilityMode(NavigationBarView.LABEL_VISIBILITY_LABELED);
 			navigationRailView.setItemMinimumHeight(ExtraSettingsUi.dp(this, 64));
 			navigationRailView.setPadding(0, ExtraSettingsUi.dp(this, 12), 0, ExtraSettingsUi.dp(this, 12));
+			SystemBarInsetsHelper.applySystemBarPadding(navigationRailView, true, false, true, false);
 			shell.addView(navigationRailView, new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 96), ViewGroup.LayoutParams.MATCH_PARENT));
 			shell.addView(contentFrame, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
 		} else {
@@ -138,6 +141,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			bottomNavigationView.inflateMenu(R.menu.menu_extra_settings_nav);
 			configureNavigationBar(bottomNavigationView, ExtraSettingsUi.dp(this, 64));
 			bottomNavigationView.setLabelVisibilityMode(NavigationBarView.LABEL_VISIBILITY_LABELED);
+			SystemBarInsetsHelper.applySystemBarPadding(bottomNavigationView, false, false, true, false);
 			shell.addView(bottomNavigationView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 		}
 

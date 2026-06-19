@@ -45,6 +45,7 @@ public class TextEditorActivity extends AppCompatActivity {
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
+		SystemBarInsetsHelper.enableEdgeToEdge(this);
 		setContentView(R.layout.activity_text_editor);
 
 		bindViews();

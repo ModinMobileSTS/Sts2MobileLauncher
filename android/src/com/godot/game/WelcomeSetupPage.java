@@ -88,6 +88,7 @@ public final class WelcomeSetupPage {
 		buttons.addView(nextButton, nextParams);
 		ExtraSettingsUi.addSmallSpacing(bottom, buttons);
 		bottomFrame.setPadding(ExtraSettingsUi.pageHorizontalPadding(context), 0, ExtraSettingsUi.pageHorizontalPadding(context), 0);
+		SystemBarInsetsHelper.applySystemBarPadding(bottomFrame, false, false, true, false);
 		bottomFrame.addView(bottom, ExtraSettingsUi.centeredContentParams(context));
 		shell.addView(bottomFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -134,6 +135,7 @@ public final class WelcomeSetupPage {
 		scrollView.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 		LinearLayout root = ExtraSettingsUi.vertical(context);
 		root.setPadding(0, ExtraSettingsUi.dp(context, 28), 0, ExtraSettingsUi.dp(context, 28));
+		SystemBarInsetsHelper.applySystemBarPadding(root, true, false, false, false);
 		ExtraSettingsUi.addResponsiveScrollContent(context, scrollView, root);
 		switch (stepIndex) {
 			case STEP_RENDER -> buildRenderStep(root);

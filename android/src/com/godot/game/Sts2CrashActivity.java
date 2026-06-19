@@ -24,8 +24,11 @@ public class Sts2CrashActivity extends AppCompatActivity {
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
+		SystemBarInsetsHelper.enableEdgeToEdge(this);
 		StartupHealthTracker.clearPendingLaunchState(this);
 		setContentView(R.layout.activity_sts2_crash);
+		SystemBarInsetsHelper.applySystemBarPaddingAndGrow(findViewById(R.id.toolbar_crash), true, false, false, false);
+		SystemBarInsetsHelper.applySystemBarPadding(findViewById(android.R.id.content), false, true, true, true);
 
 		config = CustomActivityOnCrash.getConfigFromIntent(getIntent());
 		fullErrorDetails = buildCompactErrorDetails();

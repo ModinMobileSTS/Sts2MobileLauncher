@@ -45,6 +45,7 @@ public class NexusModsStoreActivity extends AppCompatActivity {
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
+		SystemBarInsetsHelper.enableEdgeToEdge(this);
 		repository = new ExtraSettingsRepository(this);
 		repository.ensureAppDirectories();
 		setContentView(buildContent());
@@ -65,6 +66,8 @@ public class NexusModsStoreActivity extends AppCompatActivity {
 
 		LinearLayout root = ExtraSettingsUi.vertical(this);
 		root.setPadding(0, ExtraSettingsUi.dp(this, 24), 0, ExtraSettingsUi.dp(this, 40));
+		SystemBarInsetsHelper.applySystemBarPadding(root, true, false, false, false);
+		SystemBarInsetsHelper.applySystemBarPadding(scrollView, false, true, true, true);
 		ExtraSettingsUi.addResponsiveScrollContent(this, scrollView, root);
 
 		root.addView(buildTopBar());

@@ -150,6 +150,7 @@ public final class GamePage {
 		LinearLayout bar = ExtraSettingsUi.horizontal(context);
 		bar.setGravity(Gravity.CENTER_VERTICAL);
 		bar.setPadding(dp(20), dp(24), dp(20), dp(16));
+		SystemBarInsetsHelper.applySystemBarPadding(bar, true, false, false, false);
 
 		TextView title = text(context.getString(R.string.game_home_title), 28, COLOR_ON_SURFACE, Typeface.BOLD);
 		title.setLetterSpacing(0.018f);

@@ -116,6 +116,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
+		SystemBarInsetsHelper.enableEdgeToEdge(this);
 		repository = new ExtraSettingsRepository(this);
 		repository.ensureAppDirectories();
 		catalog = new SteamWorkshopCatalog(this);
@@ -125,7 +126,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		refreshSteamStatus();
 		refreshSettingsSummary();
 		refreshFilterLabels();
-		searchWorkshop("", 1);
+		if (screenHost != null) {
+			screenHost.post(() -> searchWorkshop("", 1));
+		}
 	}
 
 	@Override
@@ -234,8 +237,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private View buildAppBar(boolean backMode, int titleRes, Runnable navigation, boolean showSearch) {
 		FrameLayout bar = new FrameLayout(this);
 		bar.setBackgroundColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
-		bar.setPadding(ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 8));
-		bar.setMinimumHeight(ExtraSettingsUi.dp(this, 64));
+		int topInset = statusBarHeight();
+		bar.setPadding(ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 8) + topInset, ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 8));
+		bar.setMinimumHeight(ExtraSettingsUi.dp(this, 64) + topInset);
 
 		LinearLayout row = ExtraSettingsUi.horizontal(this);
 		row.setGravity(Gravity.CENTER_VERTICAL);
@@ -296,9 +300,18 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		return bar;
 	}
 
+	private int statusBarHeight() {
+		int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+		if (resourceId > 0) {
+			return getResources().getDimensionPixelSize(resourceId);
+		}
+		return 0;
+	}
+
 	private LinearLayout buildDrawer() {
 		LinearLayout content = ExtraSettingsUi.vertical(this);
 		content.setPadding(ExtraSettingsUi.dp(this, 12), ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 12), ExtraSettingsUi.dp(this, 24));
+		SystemBarInsetsHelper.applySystemBarPadding(content, true, false, true, false);
 		GradientDrawable background = new GradientDrawable();
 		background.setColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
 		float radius = ExtraSettingsUi.dp(this, 28);
@@ -2319,6 +2332,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		ScrollView scroll = new ScrollView(this);
 		scroll.setFillViewport(false);
 		scroll.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
+		SystemBarInsetsHelper.applySystemBarPadding(scroll, false, true, true, true);
 		return scroll;
 	}
 
