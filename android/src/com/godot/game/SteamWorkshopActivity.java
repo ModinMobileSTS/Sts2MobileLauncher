@@ -93,6 +93,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private ProgressBar progressBar;
 	private final Handler mainHandler = new Handler(Looper.getMainLooper());
 	private final Map<String, DownloadTask> downloadTasks = new LinkedHashMap<>();
+	private final Map<String, List<DownloadProgressBinding>> downloadProgressBindings = new LinkedHashMap<>();
 	private final ConcurrentHashMap<String, SteamWorkshopDownloader.Progress> pendingProgressUpdates = new ConcurrentHashMap<>();
 	private final AtomicBoolean progressDrainPosted = new AtomicBoolean(false);
 	private int currentPage = 1;
@@ -111,6 +112,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private View listLoadMoreView;
 	private boolean downloadUiRefreshScheduled;
 	private long lastDownloadUiRefreshAtMs;
+	private boolean listDownloadUiStale;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -136,6 +138,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		if (imageLoader != null) {
 			imageLoader.shutdown();
 		}
+		downloadProgressBindings.clear();
 		super.onDestroy();
 	}
 
@@ -364,6 +367,11 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}
 		screenHost.setTag(screen);
 		refreshFilterLabels();
+		if (screen == SCREEN_LIST && listDownloadUiStale) {
+			refreshDownloadUi();
+		} else {
+			refreshDownloadProgressBindings();
+		}
 	}
 
 	private void toggleDrawer(boolean open) {
@@ -517,6 +525,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		refreshFilterLabels();
 		listContainer.removeAllViews();
 		listLoadMoreView = null;
+		listDownloadUiStale = false;
 		if (result.getItems().isEmpty()) {
 			ExtraSettingsUi.addCardSpacing(listContainer, buildEmptyCard(R.string.workshop_no_results, R.string.workshop_no_results_hint, R.drawable.ic_search_24));
 			maybeAutoCheckTrackedUpdates();
@@ -976,6 +985,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		FrameLayout.LayoutParams buttonParams = new FrameLayout.LayoutParams(size, size, Gravity.CENTER);
 		frame.addView(stop, buttonParams);
 		frame.setLayoutParams(new LinearLayout.LayoutParams(size, size));
+		registerDownloadProgressBinding(task.publishedFileId, frame, ring, null);
 		if (wide) {
 			LinearLayout wrapper = ExtraSettingsUi.horizontal(this);
 			wrapper.setGravity(Gravity.CENTER);
@@ -1131,7 +1141,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		title.setMaxLines(2);
 		title.setEllipsize(TextUtils.TruncateAt.END);
 		texts.addView(title);
-		texts.addView(ExtraSettingsUi.caption(this, getString(R.string.workshop_download_progress_line, task.percent, task.message)), fullWidthTopMargin(5));
+		TextView progressText = ExtraSettingsUi.caption(this, getString(R.string.workshop_download_progress_line, task.percent, task.message));
+		texts.addView(progressText, fullWidthTopMargin(5));
+		registerDownloadProgressBinding(task.publishedFileId, progressText, null, progressText);
 		row.addView(buildActiveDownloadControl(task, false));
 		content.addView(row);
 		return card;
@@ -1430,7 +1442,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private void startDownloadAndImport(SteamWorkshopCatalog.Item item) {
 		DownloadTask task = ensurePendingDownloadTask(item, getString(R.string.workshop_status_downloading));
 		task.markDownloading(getString(R.string.workshop_status_downloading));
-		refreshDownloadUi();
+		updateDownloadProgressBindings(task.publishedFileId);
 		showMessage(getString(R.string.workshop_download_background_started, item.getTitle()));
 		startWorkshopBackgroundThread("sts2-workshop-download", () -> {
 			SteamWorkshopDownloader.Result result = null;
@@ -1444,13 +1456,14 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 				SteamWorkshopDownloader.Result finalResult = result;
 				runOnUiThread(() -> {
 					task.markImporting(getString(R.string.workshop_importing_status));
-					refreshDownloadUi();
+					updateDownloadProgressBindings(task.publishedFileId);
 					handlePreparedWorkshopImport(finalResult, prepared);
 				});
 			} catch (Exception exception) {
 				runOnUiThread(() -> {
 					downloadTasks.remove(item.getPublishedFileId());
 					clearDownloadQueue();
+					markDownloadUiStructureChanged();
 					refreshDownloadUi();
 					if (isCancelled(exception)) {
 						showMessage(getString(R.string.workshop_download_cancelled));
@@ -1488,11 +1501,16 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		if (task == null) {
 			return;
 		}
-		task.percent = progress.getPercent();
-		task.message = progress.getMessage();
+		int percent = progress.getPercent();
+		String message = progress.getMessage();
+		boolean visualChanged = task.percent != percent || !TextUtils.equals(task.message, message);
+		task.percent = percent;
+		task.message = message;
 		task.downloadedBytes = progress.getDownloadedBytes();
 		task.totalBytes = progress.getTotalBytes();
-		scheduleDownloadUiRefresh();
+		if (visualChanged) {
+			scheduleDownloadUiRefresh();
+		}
 	}
 
 	private DownloadTask ensurePendingDownloadTask(SteamWorkshopCatalog.Item item, String message) {
@@ -1503,6 +1521,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}
 		task.message = TextUtils.isEmpty(message) ? item.getTitle() : message;
 		task.percent = Math.max(1, task.percent);
+		markDownloadUiStructureChanged();
 		refreshDownloadUi();
 		return task;
 	}
@@ -1622,12 +1641,14 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		task.cancel();
 		downloadTasks.remove(publishedFileId);
 		clearDownloadQueue();
+		markDownloadUiStructureChanged();
 		refreshDownloadUi();
 		showMessage(getString(R.string.workshop_download_cancelled));
 	}
 
 	private void finishDownloadTask(String publishedFileId) {
 		downloadTasks.remove(publishedFileId);
+		markDownloadUiStructureChanged();
 		refreshDownloadUi();
 	}
 
@@ -1697,11 +1718,11 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void refreshDownloadUi() {
-		lastDownloadUiRefreshAtMs = System.currentTimeMillis();
 		Object screen = screenHost == null ? null : screenHost.getTag();
 		if (screen instanceof Integer) {
 			int value = (Integer) screen;
 			if (value == SCREEN_LIST && listContainer != null) {
+				listDownloadUiStale = false;
 				if (lastSearchResult != null) {
 					showSearchResults(lastSearchResult);
 				}
@@ -1712,6 +1733,86 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			} else if (value == SCREEN_DOWNLOADS && downloadsContainer != null) {
 				showDownloads();
 			}
+		}
+		refreshDownloadProgressBindings();
+	}
+
+	private void markDownloadUiStructureChanged() {
+		listDownloadUiStale = true;
+	}
+
+	private void registerDownloadProgressBinding(String publishedFileId, View root, ProgressRingDrawable ring, TextView progressText) {
+		if (TextUtils.isEmpty(publishedFileId) || root == null || (ring == null && progressText == null)) {
+			return;
+		}
+		DownloadProgressBinding binding = new DownloadProgressBinding(publishedFileId, root, ring, progressText);
+		List<DownloadProgressBinding> bindings = downloadProgressBindings.get(publishedFileId);
+		if (bindings == null) {
+			bindings = new ArrayList<>();
+			downloadProgressBindings.put(publishedFileId, bindings);
+		}
+		bindings.add(binding);
+		View.OnAttachStateChangeListener listener = new View.OnAttachStateChangeListener() {
+			@Override
+			public void onViewAttachedToWindow(View view) {
+				updateDownloadProgressBinding(binding, downloadTasks.get(publishedFileId));
+			}
+
+			@Override
+			public void onViewDetachedFromWindow(View view) {
+				unregisterDownloadProgressBinding(binding);
+				view.removeOnAttachStateChangeListener(this);
+			}
+		};
+		root.addOnAttachStateChangeListener(listener);
+		updateDownloadProgressBinding(binding, downloadTasks.get(publishedFileId));
+	}
+
+	private void unregisterDownloadProgressBinding(DownloadProgressBinding binding) {
+		if (binding == null) {
+			return;
+		}
+		List<DownloadProgressBinding> bindings = downloadProgressBindings.get(binding.publishedFileId);
+		if (bindings == null) {
+			return;
+		}
+		bindings.remove(binding);
+		if (bindings.isEmpty()) {
+			downloadProgressBindings.remove(binding.publishedFileId);
+		}
+	}
+
+	private void updateDownloadProgressBindings(String publishedFileId) {
+		List<DownloadProgressBinding> bindings = downloadProgressBindings.get(publishedFileId);
+		if (bindings == null || bindings.isEmpty()) {
+			return;
+		}
+		DownloadTask task = downloadTasks.get(publishedFileId);
+		for (DownloadProgressBinding binding : new ArrayList<>(bindings)) {
+			if (!binding.root.isAttachedToWindow()) {
+				unregisterDownloadProgressBinding(binding);
+				continue;
+			}
+			updateDownloadProgressBinding(binding, task);
+		}
+	}
+
+	private void refreshDownloadProgressBindings() {
+		lastDownloadUiRefreshAtMs = System.currentTimeMillis();
+		for (String publishedFileId : new ArrayList<>(downloadProgressBindings.keySet())) {
+			updateDownloadProgressBindings(publishedFileId);
+		}
+	}
+
+	private void updateDownloadProgressBinding(DownloadProgressBinding binding, DownloadTask task) {
+		if (binding == null || task == null || !task.isActive()) {
+			return;
+		}
+		if (binding.ring != null) {
+			binding.ring.setProgress(task.percent);
+		}
+		if (binding.progressText != null) {
+			binding.progressText.setText(getString(R.string.workshop_download_progress_line, task.percent, task.message));
 		}
 	}
 
@@ -1724,7 +1825,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		downloadUiRefreshScheduled = true;
 		mainHandler.postDelayed(() -> {
 			downloadUiRefreshScheduled = false;
-			refreshDownloadUi();
+			refreshDownloadProgressBindings();
 		}, delay);
 	}
 
@@ -1762,7 +1863,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		DownloadTask task = downloadTasks.get(result.getItem().getPublishedFileId());
 		if (task != null) {
 			task.markImporting(getString(R.string.workshop_importing_status));
-			refreshDownloadUi();
+			updateDownloadProgressBindings(task.publishedFileId);
 		}
 		startWorkshopBackgroundThread("sts2-workshop-import", () -> {
 			try {
@@ -2324,6 +2425,20 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			importing = true;
 			percent = 100;
 			this.message = message == null ? "" : message;
+		}
+	}
+
+	private static final class DownloadProgressBinding {
+		final String publishedFileId;
+		final View root;
+		final ProgressRingDrawable ring;
+		final TextView progressText;
+
+		DownloadProgressBinding(String publishedFileId, View root, ProgressRingDrawable ring, TextView progressText) {
+			this.publishedFileId = publishedFileId;
+			this.root = root;
+			this.ring = ring;
+			this.progressText = progressText;
 		}
 	}
 
