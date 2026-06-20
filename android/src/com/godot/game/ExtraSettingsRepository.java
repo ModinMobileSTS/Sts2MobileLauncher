@@ -265,6 +265,9 @@ public final class ExtraSettingsRepository {
 		if ("user".equals(normalized) || "system".equals(normalized) || "follow_system".equals(normalized) || SCREEN_ROTATION_USER_LANDSCAPE.equals(normalized)) {
 			return SCREEN_ROTATION_USER_LANDSCAPE;
 		}
+		if (SCREEN_ROTATION_AUTO.equals(normalized) || "sensor".equals(normalized) || "sensor_landscape".equals(normalized) || "auto_rotate".equals(normalized) || "auto_rotation".equals(normalized)) {
+			return SCREEN_ROTATION_AUTO;
+		}
 		return SCREEN_ROTATION_USER_LANDSCAPE;
 	}
 
