@@ -52,8 +52,8 @@
     <string name="workshop_disabled">disabled</string>
     <string name="workshop_auto_update_check">Auto-check tracked Workshop MOD updates</string>
     <string name="workshop_direct_access">Compatible Workshop access</string>
-    <string name="workshop_direct_access_hint">Use the same Steam Community forwarding route as WorkshopOnAndroid when direct Steam Community connections time out.</string>
-    <string name="workshop_direct_access_disabled_notice">Compatible Workshop access is off; Steam Community may time out on some networks.</string>
+    <string name="workshop_direct_access_hint">Use the same WorkshopOnAndroid-compatible Steam Community/API routing and SteamPipe CDN behavior when direct Steam access times out.</string>
+    <string name="workshop_direct_access_disabled_notice">Compatible Workshop access is off; Steam Community or SteamPipe CDN may time out on some networks.</string>
     <string name="workshop_download_group">Import group</string>
     <string name="workshop_download_group_hint">Folder/group name, e.g. workshop</string>
     <string name="workshop_concurrent_chunks">Concurrent chunks</string>

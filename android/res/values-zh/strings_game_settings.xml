@@ -52,8 +52,8 @@
     <string name="workshop_disabled">关闭</string>
     <string name="workshop_auto_update_check">自动检查已记录创意工坊 MOD 更新</string>
     <string name="workshop_direct_access">创意工坊兼容访问</string>
-    <string name="workshop_direct_access_hint">直连 Steam 社区超时时，使用与 WorkshopOnAndroid 相同的 Steam 社区转发路径。</string>
-    <string name="workshop_direct_access_disabled_notice">已关闭创意工坊兼容访问，部分网络下 Steam 社区可能超时。</string>
+    <string name="workshop_direct_access_hint">直连 Steam 超时时，使用与 WorkshopOnAndroid 相同的 Steam 社区/API 路由，并兼容 SteamPipe CDN 下载。</string>
+    <string name="workshop_direct_access_disabled_notice">已关闭创意工坊兼容访问，部分网络下 Steam 社区或 SteamPipe CDN 可能超时。</string>
     <string name="workshop_download_group">导入分组</string>
     <string name="workshop_download_group_hint">文件夹/分组名，例如 workshop</string>
     <string name="workshop_concurrent_chunks">分块并发数</string>

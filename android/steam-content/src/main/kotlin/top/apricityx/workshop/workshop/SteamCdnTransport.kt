@@ -22,13 +22,18 @@ internal class SteamCdnTransport(
         contentServers: List<CdnServer>,
     ): SteamCdnServerPool {
         val proxyServer = contentServers.firstOrNull(CdnServer::useAsProxy)
-        val downloadServers = contentServers
-            .asSequence()
-            .filter { it.allowedAppIds.isEmpty() || appId in it.allowedAppIds }
-            .filter { it.type == "SteamCache" || it.type == "CDN" }
-            .sortedBy(CdnServer::weightedLoad)
-            .distinctBy { server -> "${server.vHost}:${server.host}:${server.port}:${server.secureScheme}" }
-            .toList()
+        val downloadServers = buildList {
+            contentServers
+                .asSequence()
+                .filter { it.allowedAppIds.isEmpty() || appId in it.allowedAppIds }
+                .filter { it.type == "SteamCache" || it.type == "CDN" }
+                .sortedBy(CdnServer::weightedLoad)
+                .forEach { server ->
+                    repeat(server.numEntriesInClientList.coerceAtLeast(0)) {
+                        add(server)
+                    }
+                }
+        }
         return SteamCdnServerPool(
             proxyServer = proxyServer,
             downloadServers = downloadServers,

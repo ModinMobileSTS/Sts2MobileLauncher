@@ -26,6 +26,7 @@
         android:label="@string/godot_project_name_string"
         android:allowBackup="false"
         android:icon="@mipmap/icon"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:hasFragileUserData="false"
         android:requestLegacyExternalStorage="false"
         tools:ignore="GoogleAppIndexingWarning" >
