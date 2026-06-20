@@ -68,6 +68,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	private boolean busy;
 	private boolean launchUpdateCheckRequested;
 	private boolean bundledPayloadAutoExtractRequested;
+	private boolean bundledPayloadAutoExtractCheckRunning;
 	private boolean bundledCompatPackBootstrapFinished;
 	private boolean pendingLauncherDirectLaunch;
 	private boolean preLaunchLocalSnapshotCreated;
@@ -209,10 +210,42 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	}
 
 	private void maybeAutoExtractBundledPayload() {
-		if (bundledPayloadAutoExtractRequested || busy || !payloadManager.hasBundledPayload() || payloadManager.getStatus().ready) {
+		if (bundledPayloadAutoExtractRequested || busy || !payloadManager.hasBundledPayload()) {
+			return;
+		}
+		if (!payloadManager.getStatus().ready) {
+			bundledPayloadAutoExtractRequested = true;
+			requestExtractBundledPayload();
 			return;
 		}
 		bundledPayloadAutoExtractRequested = true;
+		bundledPayloadAutoExtractCheckRunning = true;
+		new Thread(() -> {
+			try {
+				boolean needsImport = !payloadManager.isCurrentBundledPayloadImported();
+				runOnUiThread(() -> {
+					bundledPayloadAutoExtractCheckRunning = false;
+					if (needsImport) {
+						requestExtractBundledPayloadWhenIdle();
+					}
+				});
+			} catch (Exception exception) {
+				runOnUiThread(() -> bundledPayloadAutoExtractCheckRunning = false);
+				Log.w(TAG, "Unable to check bundled payload import state.", exception);
+			}
+		}, "sts2-bundled-payload-check").start();
+	}
+
+	private void requestExtractBundledPayloadWhenIdle() {
+		if (isFinishing() || isDestroyed()) {
+			return;
+		}
+		if (busy) {
+			if (contentFrame != null) {
+				contentFrame.postDelayed(this::requestExtractBundledPayloadWhenIdle, 500);
+			}
+			return;
+		}
 		requestExtractBundledPayload();
 	}
 
@@ -239,7 +272,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			if (!pendingLauncherDirectLaunch || isFinishing() || isDestroyed()) {
 				return;
 			}
-			if (busy) {
+			if (busy || bundledPayloadAutoExtractCheckRunning) {
 				contentFrame.postDelayed(this::runPendingLauncherDirectLaunch, 500);
 				return;
 			}

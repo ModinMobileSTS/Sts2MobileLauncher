@@ -214,7 +214,7 @@ tools/package/build_importer_apk.sh
 
 ## 9. 构建直装版 APK
 
-直装版临时内置本地 PC zip：
+直装版临时内置本地 PC zip。启动器会按内置 zip 的 SHA-256 判断当前 APK 自带本体是否已导入；如果用户从旧直装版升级且只导入过旧 APK 的本体，新 APK 首次进入主界面后会自动导入当前内置 zip，并为新 payload 创建/选择默认启动配置。
 
 ```bash
 tools/package/build_direct_apk.sh "/path/to/SlayTheSpire2.zip"

@@ -1,6 +1,8 @@
 package com.godot.game;
 
 import android.content.Context;
+import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
@@ -69,6 +71,10 @@ public final class PayloadManager {
 	public static final String STS2_DLL_PATH = ASSEMBLY_DIR_NAME + "/sts2.dll";
 	public static final String STS2_DEPS_PATH = ASSEMBLY_DIR_NAME + "/sts2.deps.json";
 	public static final String STS2_RUNTIME_CONFIG_PATH = ASSEMBLY_DIR_NAME + "/sts2.runtimeconfig.json";
+
+	private static final String PREFS_NAME = "sts2_payload_manager";
+	private static final String KEY_BUNDLED_PAYLOAD_SHA256 = "bundled_payload_sha256";
+	private static final String KEY_BUNDLED_PAYLOAD_PACKAGE_UPDATED_AT = "bundled_payload_package_updated_at";
 
 	private static final int BUFFER_SIZE = 1024 * 1024;
 	private static final int PCK_MAGIC_G = 0x47;
@@ -140,6 +146,26 @@ public final class PayloadManager {
 		} catch (IOException ignored) {
 			return false;
 		}
+	}
+
+	public boolean isCurrentBundledPayloadImported() throws Exception {
+		if (!hasBundledPayload()) {
+			return false;
+		}
+		String bundledSha256 = getCurrentBundledPayloadSha256();
+		if (TextUtils.isEmpty(bundledSha256)) {
+			return false;
+		}
+		for (LaunchProfileManager.GamePayload payload : new LaunchProfileManager(context).listPayloads()) {
+			if (payload == null || !payload.ready || payload.manifest == null) {
+				continue;
+			}
+			JSONObject source = payload.manifest.optJSONObject("source");
+			if (source != null && bundledSha256.equalsIgnoreCase(source.optString("sha256", ""))) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	public Status importPayloadZip(Uri uri) throws Exception {
@@ -590,6 +616,34 @@ public final class PayloadManager {
 		return copyToFileWithSha256(inputStream, destination, -1, null, null, 0, 100);
 	}
 
+	private String getCurrentBundledPayloadSha256() throws Exception {
+		long packageUpdatedAt = getPackageLastUpdateTime();
+		SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+		String cachedSha256 = prefs.getString(KEY_BUNDLED_PAYLOAD_SHA256, "");
+		long cachedPackageUpdatedAt = prefs.getLong(KEY_BUNDLED_PAYLOAD_PACKAGE_UPDATED_AT, -1L);
+		if (!TextUtils.isEmpty(cachedSha256) && cachedPackageUpdatedAt == packageUpdatedAt) {
+			return cachedSha256;
+		}
+		String sha256;
+		try (InputStream inputStream = context.getAssets().open(BUNDLED_PAYLOAD_ASSET)) {
+			sha256 = sha256(inputStream);
+		}
+		prefs.edit()
+			.putString(KEY_BUNDLED_PAYLOAD_SHA256, sha256)
+			.putLong(KEY_BUNDLED_PAYLOAD_PACKAGE_UPDATED_AT, packageUpdatedAt)
+			.apply();
+		return sha256;
+	}
+
+	private long getPackageLastUpdateTime() {
+		try {
+			PackageInfo packageInfo = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+			return packageInfo.lastUpdateTime;
+		} catch (Exception ignored) {
+			return -1L;
+		}
+	}
+
 	private String copyToFileWithSha256(InputStream inputStream, File destination, long totalBytes, ProgressListener progressListener, ImportControl control, int startPercent, int endPercent) throws Exception {
 		MessageDigest digest = MessageDigest.getInstance("SHA-256");
 		File parent = destination.getParentFile();
@@ -757,13 +811,17 @@ public final class PayloadManager {
 	}
 
 	private String sha256(File file) throws Exception {
-		MessageDigest digest = MessageDigest.getInstance("SHA-256");
 		try (InputStream inputStream = new BufferedInputStream(new FileInputStream(file))) {
-			byte[] buffer = new byte[8192];
-			int read;
-			while ((read = inputStream.read(buffer)) != -1) {
-				digest.update(buffer, 0, read);
-			}
+			return sha256(inputStream);
+		}
+	}
+
+	private String sha256(InputStream inputStream) throws Exception {
+		MessageDigest digest = MessageDigest.getInstance("SHA-256");
+		byte[] buffer = new byte[8192];
+		int read;
+		while ((read = inputStream.read(buffer)) != -1) {
+			digest.update(buffer, 0, read);
 		}
 		return toHex(digest.digest());
 	}

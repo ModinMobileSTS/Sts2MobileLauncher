@@ -458,7 +458,7 @@ tools/package/build_importer_apk.sh
 
 ### 9.4 直装版 APK
 
-直装版在构建时临时把本地 PC zip 复制到 `android/assets/payload/SlayTheSpire2.zip`，首次启动自动解压/安装到 payload store `<files>/payloads/<payload_id>/game/` 并创建 launch profile。zip 复制有 trap 清理，不提交。
+直装版在构建时临时把本地 PC zip 复制到 `android/assets/payload/SlayTheSpire2.zip`，启动器会按内置 zip 的 SHA-256 判断当前 APK 自带本体是否已导入；首次安装或从旧直装版升级且只导入过旧内置本体时，会自动解压/安装当前内置 zip 到 payload store `<files>/payloads/<payload_id>/game/` 并创建/选择 launch profile。zip 复制有 trap 清理，不提交。
 
 ```bash
 tools/package/build_direct_apk.sh "/path/to/SlayTheSpire2.zip"
