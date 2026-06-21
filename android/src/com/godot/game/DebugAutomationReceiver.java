@@ -339,6 +339,11 @@ final class DebugAutomationRunner {
 			repository.savePerformanceOverlayEnabled(booleanExtra("performance_overlay", false));
 			putEvent("performance_overlay", String.valueOf(booleanExtra("performance_overlay", false)));
 		}
+		if (hasExtra("high_refresh") || hasExtra("high_refresh_rate")) {
+			boolean enabled = hasExtra("high_refresh") ? booleanExtra("high_refresh", true) : booleanExtra("high_refresh_rate", true);
+			repository.saveHighRefreshRateEnabled(enabled);
+			putEvent("high_refresh", String.valueOf(enabled));
+		}
 		if (hasExtra("compat_enabled")) {
 			boolean enabled = booleanExtra("compat_enabled", true);
 			repository.saveSetting(settings -> settings.put(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, enabled));
@@ -527,6 +532,9 @@ final class DebugAutomationRunner {
 		}
 		if (merged.has(ExtraSettingsRepository.KEY_PERFORMANCE_OVERLAY_ENABLED)) {
 			ExtraSettingsPreferences.setPerformanceOverlayEnabled(context, merged.optBoolean(ExtraSettingsRepository.KEY_PERFORMANCE_OVERLAY_ENABLED, false));
+		}
+		if (merged.has(ExtraSettingsRepository.KEY_HIGH_REFRESH_RATE_ENABLED)) {
+			ExtraSettingsPreferences.setHighRefreshRateEnabled(context, merged.optBoolean(ExtraSettingsRepository.KEY_HIGH_REFRESH_RATE_ENABLED, true));
 		}
 		putEvent("settings_json", "merged");
 	}
@@ -895,6 +903,7 @@ final class DebugAutomationRunner {
 			ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED,
 			ExtraSettingsRepository.KEY_LOG_LEVEL,
 			ExtraSettingsRepository.KEY_PERFORMANCE_OVERLAY_ENABLED,
+			ExtraSettingsRepository.KEY_HIGH_REFRESH_RATE_ENABLED,
 			"preload_enabled",
 			"preload_startup_common_enabled",
 			"preload_startup_main_menu_enabled",

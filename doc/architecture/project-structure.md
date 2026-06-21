@@ -43,7 +43,7 @@ s2_re/
 - `GameBodyVersionManager`：legacy facade，版本选择委托给 `LaunchProfileManager`。
 - `CompatPackManager`：安装/选择/删除兼容包，从 APK assets 安装内置包；支持 schema 1 单目标包与 schema 2 family 包，并按 payload `sts2_dll_sha256` / version 匹配具体 target variant，同等命中时优先推荐 schema 2 family 包；安装 bundled 包后触发旧 bundled 选择到 flat family target 的迁移。
 - `GameLaunchPreparationManager`：启动前准备 Mono publish 目录、兼容包 dll、overlay pck、游戏 assemblies、纹理缓存。
-- `HighRefreshRateController`：正式启动路径默认启用的 Android 高刷新请求器；`GodotApp` 在启动/恢复/焦点/Godot 主循环阶段请求当前显示尺寸下最高 display mode，并对 Godot render `SurfaceView` 调用 Android frame-rate APIs。
+- `HighRefreshRateController`：Android 高刷新请求器，默认由 `android_high_refresh_rate_enabled=true` 启用；`GodotApp` 在启动/恢复/焦点/Godot 主循环阶段请求当前显示尺寸下最高 display mode，并对 Godot render `SurfaceView` 调用 Android frame-rate APIs，可在设置页“系统”分区的预加载下方关闭。
 - `godot-debug-menu` overlay：打包进 `port-mod/overlay/addons/debug_menu/`，由设置页“系统”分区的性能显示开关控制，默认关闭；开启后下次启动显示 FPS、CPU/GPU frame graph 与渲染器/硬件信息。
 
 ## 4. 版本矩阵

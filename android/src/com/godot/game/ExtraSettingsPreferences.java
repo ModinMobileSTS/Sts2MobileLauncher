@@ -14,6 +14,7 @@ public final class ExtraSettingsPreferences {
 	private static final String KEY_LAUNCHER_STARTUP_BEHAVIOR = "launcher_startup_behavior";
 	private static final String KEY_LOG_LEVEL = "log_level";
 	private static final String KEY_PERFORMANCE_OVERLAY_ENABLED = "android_performance_overlay_enabled";
+	private static final String KEY_HIGH_REFRESH_RATE_ENABLED = "android_high_refresh_rate_enabled";
 
 	private ExtraSettingsPreferences() {
 	}
@@ -72,6 +73,14 @@ public final class ExtraSettingsPreferences {
 
 	public static void setPerformanceOverlayEnabled(Context context, boolean enabled) {
 		getPreferences(context).edit().putBoolean(KEY_PERFORMANCE_OVERLAY_ENABLED, enabled).apply();
+	}
+
+	public static boolean isHighRefreshRateEnabled(Context context) {
+		return getPreferences(context).getBoolean(KEY_HIGH_REFRESH_RATE_ENABLED, true);
+	}
+
+	public static void setHighRefreshRateEnabled(Context context, boolean enabled) {
+		getPreferences(context).edit().putBoolean(KEY_HIGH_REFRESH_RATE_ENABLED, enabled).apply();
 	}
 
 	private static SharedPreferences getPreferences(Context context) {

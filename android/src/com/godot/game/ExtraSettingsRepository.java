@@ -44,6 +44,7 @@ public final class ExtraSettingsRepository {
 	public static final String KEY_ANDROID_COMPAT_PACK_ENABLED = "android_compat_pack_enabled";
 	public static final String KEY_LOG_LEVEL = "log_level";
 	public static final String KEY_PERFORMANCE_OVERLAY_ENABLED = "android_performance_overlay_enabled";
+	public static final String KEY_HIGH_REFRESH_RATE_ENABLED = "android_high_refresh_rate_enabled";
 	public static final String KEY_SCREEN_ROTATION_MODE = "android_screen_rotation_mode";
 	public static final String LOG_LEVEL_OFF = "off";
 	public static final String LOG_LEVEL_INFO = "info";
@@ -176,6 +177,7 @@ public final class ExtraSettingsRepository {
 		settings.put("audio_compatibility_mode", false);
 		settings.put(KEY_LOG_LEVEL, getStoredLogLevel());
 		settings.put(KEY_PERFORMANCE_OVERLAY_ENABLED, isStoredPerformanceOverlayEnabled());
+		settings.put(KEY_HIGH_REFRESH_RATE_ENABLED, isStoredHighRefreshRateEnabled());
 		settings.put("android_volume_up_soft_keyboard", false);
 		settings.put("android_flip_screen_180", false);
 		settings.put(KEY_SCREEN_ROTATION_MODE, SCREEN_ROTATION_USER_LANDSCAPE);
@@ -237,6 +239,8 @@ public final class ExtraSettingsRepository {
 		changed |= normalizeExistingLogLevel(settings);
 		changed |= putIfMissing(settings, KEY_PERFORMANCE_OVERLAY_ENABLED, isStoredPerformanceOverlayEnabled());
 		changed |= syncExistingPerformanceOverlaySetting(settings);
+		changed |= putIfMissing(settings, KEY_HIGH_REFRESH_RATE_ENABLED, isStoredHighRefreshRateEnabled());
+		changed |= syncExistingHighRefreshRateSetting(settings);
 		changed |= putIfMissing(settings, "android_volume_up_soft_keyboard", false);
 		changed |= putIfMissing(settings, "android_flip_screen_180", false);
 		changed |= ensureScreenRotationMode(settings);
@@ -360,6 +364,31 @@ public final class ExtraSettingsRepository {
 		saveSetting(settings -> settings.put(KEY_PERFORMANCE_OVERLAY_ENABLED, enabled));
 	}
 
+	public boolean isHighRefreshRateEnabled(JSONObject settings) {
+		if (settings != null && settings.has(KEY_HIGH_REFRESH_RATE_ENABLED)) {
+			boolean enabled = settings.optBoolean(KEY_HIGH_REFRESH_RATE_ENABLED, true);
+			ExtraSettingsPreferences.setHighRefreshRateEnabled(context, enabled);
+			return enabled;
+		}
+		return isStoredHighRefreshRateEnabled();
+	}
+
+	public boolean isHighRefreshRateEnabledForLaunch() {
+		boolean enabled = isStoredHighRefreshRateEnabled();
+		try {
+			JSONObject settings = loadSettingsJson();
+			enabled = settings.optBoolean(KEY_HIGH_REFRESH_RATE_ENABLED, enabled);
+		} catch (Exception ignored) {
+		}
+		ExtraSettingsPreferences.setHighRefreshRateEnabled(context, enabled);
+		return enabled;
+	}
+
+	public void saveHighRefreshRateEnabled(boolean enabled) throws Exception {
+		ExtraSettingsPreferences.setHighRefreshRateEnabled(context, enabled);
+		saveSetting(settings -> settings.put(KEY_HIGH_REFRESH_RATE_ENABLED, enabled));
+	}
+
 	public static String normalizeLogLevel(String value) {
 		if (value == null) {
 			return LOG_LEVEL_INFO;
@@ -396,6 +425,10 @@ public final class ExtraSettingsRepository {
 		return ExtraSettingsPreferences.isPerformanceOverlayEnabled(context);
 	}
 
+	private boolean isStoredHighRefreshRateEnabled() {
+		return ExtraSettingsPreferences.isHighRefreshRateEnabled(context);
+	}
+
 	private boolean syncExistingPerformanceOverlaySetting(JSONObject settings) throws JSONException {
 		boolean enabled = settings.optBoolean(KEY_PERFORMANCE_OVERLAY_ENABLED, isStoredPerformanceOverlayEnabled());
 		ExtraSettingsPreferences.setPerformanceOverlayEnabled(context, enabled);
@@ -403,6 +436,16 @@ public final class ExtraSettingsRepository {
 			return false;
 		}
 		settings.put(KEY_PERFORMANCE_OVERLAY_ENABLED, enabled);
+		return true;
+	}
+
+	private boolean syncExistingHighRefreshRateSetting(JSONObject settings) throws JSONException {
+		boolean enabled = settings.optBoolean(KEY_HIGH_REFRESH_RATE_ENABLED, isStoredHighRefreshRateEnabled());
+		ExtraSettingsPreferences.setHighRefreshRateEnabled(context, enabled);
+		if (settings.has(KEY_HIGH_REFRESH_RATE_ENABLED)) {
+			return false;
+		}
+		settings.put(KEY_HIGH_REFRESH_RATE_ENABLED, enabled);
 		return true;
 	}
 

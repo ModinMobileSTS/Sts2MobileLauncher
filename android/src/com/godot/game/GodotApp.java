@@ -178,7 +178,7 @@ public class GodotApp extends GodotActivity {
 		currentInstance = this;
 		currentWindowFocused = hasWindowFocus();
 		logGodotAppLaunchSnapshot("onCreate_after_super");
-		HighRefreshRateController.applyWithRetries(this, getGodot(), "onCreate_after_super");
+		requestHighRefreshRate("onCreate_after_super");
 		Log.i(TAG, "DIAG GodotApp.onCreate end windowFocused=" + currentWindowFocused);
 	}
 
@@ -681,6 +681,14 @@ public class GodotApp extends GodotActivity {
 		return intent;
 	}
 
+	private void requestHighRefreshRate(String reason) {
+		if (!new ExtraSettingsRepository(this).isHighRefreshRateEnabledForLaunch()) {
+			Log.i(TAG, "High refresh request disabled by setting; reason=" + reason);
+			return;
+		}
+		HighRefreshRateController.applyWithRetries(this, getGodot(), reason);
+	}
+
 	@Override
 	public void onResume() {
 		super.onResume();
@@ -689,7 +697,7 @@ public class GodotApp extends GodotActivity {
 		currentWindowFocused = hasWindowFocus();
 		applyConfiguredScreenOrientation();
 		updateWindowAppearance.run();
-		HighRefreshRateController.applyWithRetries(this, getGodot(), "onResume");
+		requestHighRefreshRate("onResume");
 	}
 
 	@Override
@@ -882,7 +890,7 @@ public class GodotApp extends GodotActivity {
 			dispatchImmediateGodotFocusChange(hasFocus);
 		}
 		if (hasFocus) {
-			HighRefreshRateController.applyWithRetries(this, getGodot(), "onWindowFocusChanged");
+			requestHighRefreshRate("onWindowFocusChanged");
 		}
 	}
 
@@ -907,7 +915,7 @@ public class GodotApp extends GodotActivity {
 		StartupHealthTracker.markGameLaunchFinished(this);
 		applyConfiguredScreenOrientation();
 		runOnUiThread(updateWindowAppearance);
-		HighRefreshRateController.applyWithRetries(this, getGodot(), "onGodotMainLoopStarted");
+		requestHighRefreshRate("onGodotMainLoopStarted");
 	}
 
 	public static void applySelectedScreenOrientationFromGame() {

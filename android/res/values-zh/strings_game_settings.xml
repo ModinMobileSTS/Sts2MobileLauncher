@@ -736,6 +736,8 @@
     <string name="launcher_startup_behavior_game_option">直接启动游戏</string>
     <string name="performance_overlay_switch">显示性能面板</string>
     <string name="performance_overlay_hint">默认关闭。开启后下次进游戏会显示 FPS、帧时间、CPU/GPU 帧图表和渲染器信息。</string>
+    <string name="high_refresh_rate_switch">请求高刷新率</string>
+    <string name="high_refresh_rate_hint">默认开启。进游戏时会向 Android 请求当前屏幕可用的最高刷新率，并同步到渲染 Surface；若发热、耗电或设备显示异常可关闭。</string>
     <string name="preload_hint">这里只控制总开关。点击右侧箭头可详细管理预加载项目。</string>
     <string name="preload_advanced_title">预加载详细管理</string>
     <string name="preload_advanced_subtitle">选择启动和运行时分别预热哪些缓存。</string>
