@@ -123,6 +123,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		repository.ensureAppDirectories();
 		catalog = new SteamWorkshopCatalog(this);
 		library = new SteamWorkshopLibrary(this);
+		SteamWorkshopDownloadCleaner.maybeRunDailyCleanup(this);
 		imageLoader = new WorkshopImageLoader(this);
 		setContentView(buildContent());
 		refreshSteamStatus();
@@ -1874,6 +1875,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 					replaceExistingConflicts
 				);
 				library.recordInstall(result.getItem(), importResult.installRoot, importResult.installedEntries);
+				SteamWorkshopDownloadCleaner.deleteImportedDownloadDirectory(this, result.getOutputDir());
 				runOnUiThread(() -> {
 					progressDialog.dismiss();
 					importBusy = false;

@@ -87,6 +87,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		launchProfileManager = new LaunchProfileManager(this);
 		launchProfileManager.bootstrapIfNeeded();
 		repository.ensureAppDirectories();
+		SteamWorkshopDownloadCleaner.maybeRunDailyCleanup(this);
 		installBundledCompatPacksInBackground(false);
 		if (!ExtraSettingsPreferences.isFirstRunSetupCompleted(this)) {
 			showWelcome();
