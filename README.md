@@ -136,9 +136,10 @@ tools/package/build_importer_apk.sh
 ```
 Upon successful build, the APK will be output to `dist/sts2-re-importer.apk`.
 
-Android high-refresh support is part of the normal APK: the app does not mark
-itself as an Android game category, and `GodotApp` requests the highest exposed
-display mode through Android `Window` / `Surface` frame-rate APIs by default.
+Android high-refresh support is part of the normal APK: the app declares the
+Android game category so OEM game/GPU scheduling can recognize `GodotApp`, and
+also requests the highest exposed display mode through Android `Window` /
+`Surface` frame-rate APIs by default.
 This request can be disabled from Extra Settings → System below Preload. A
 disabled-by-default performance overlay can also be enabled from Extra Settings → System.
 

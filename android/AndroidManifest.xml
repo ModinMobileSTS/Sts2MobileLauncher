@@ -29,6 +29,8 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:hasFragileUserData="false"
         android:requestLegacyExternalStorage="false"
+        android:isGame="true"
+        android:appCategory="game"
         tools:ignore="GoogleAppIndexingWarning" >
         <profileable
             android:shell="true"

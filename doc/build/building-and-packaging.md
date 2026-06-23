@@ -210,7 +210,7 @@ tools/package/build_importer_apk.sh
 4. 执行 `local.properties` 中的 `android.gradle.task`（默认 `assembleMonoRelease`）。
 5. 复制 APK 到 `android.importer.dist`（默认 `dist/sts2-re-importer.apk`）。
 
-正式 APK 默认采用高刷新兼容模式：manifest 不声明 `android:appCategory="game"` / `android:isGame="true"`，`GodotApp` 会在启动、恢复前台、获得焦点和 Godot 主循环开始后向 `WindowManager.LayoutParams.preferredDisplayModeId`、`preferredRefreshRate`、`Surface.setFrameRate()` 与 `SurfaceControl.Transaction.setFrameRate()` 请求当前显示尺寸下最高刷新率。设置页“系统”分区提供默认关闭的“Show performance overlay”开关；开启后下次启动会加载 `godot-debug-menu`，显示 FPS、帧时间、CPU/GPU frame graph 和渲染器/硬件信息。
+正式 APK 默认声明 `android:appCategory="game"` / `android:isGame="true"`，让 OEM 游戏/GPU 调度识别 `GodotApp`；同时采用高刷新兼容模式，`GodotApp` 会在启动、恢复前台、获得焦点和 Godot 主循环开始后向 `WindowManager.LayoutParams.preferredDisplayModeId`、`preferredRefreshRate`、`Surface.setFrameRate()` 与 `SurfaceControl.Transaction.setFrameRate()` 请求当前显示尺寸下最高刷新率。设置页“系统”分区提供默认关闭的“Show performance overlay”开关；开启后下次启动会加载 `godot-debug-menu`，显示 FPS、帧时间、CPU/GPU frame graph 和渲染器/硬件信息。
 
 ## 9. 构建直装版 APK
 

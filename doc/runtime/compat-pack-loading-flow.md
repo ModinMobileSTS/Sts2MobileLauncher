@@ -119,7 +119,7 @@ flat matrix mode:
 `GodotApp.getCommandLine()`：
 
 - 添加 renderer/display 参数。
-- Android 高刷新路径由 `android_high_refresh_rate_enabled` 控制，默认启用：APK manifest 不声明 `android:appCategory="game"` / `android:isGame="true"`，`GodotApp` 在启动、恢复前台、获得焦点和 Godot 主循环开始后向 Android `Window` / render `SurfaceView` 请求当前显示尺寸下最高刷新率；关闭该开关后不再发起这些请求。
+- Android 高刷新路径由 `android_high_refresh_rate_enabled` 控制，默认启用：APK manifest 声明 `android:appCategory="game"` / `android:isGame="true"`，让 OEM 游戏/GPU 调度识别 `GodotApp`；同时 `GodotApp` 在启动、恢复前台、获得焦点和 Godot 主循环开始后向 Android `Window` / render `SurfaceView` 请求当前显示尺寸下最高刷新率，关闭该开关后不再发起刷新率请求。
 - 默认配置 `--log-file` 到当前 profile 日志目录 `<files>/instances/<profile_id>/logs/godot.log`，没有 profile 时 fallback 到 `<files>/logs/`；若附加设置 `log_level=off`，则不传 `--log-file`，完全禁用新的 `godot.log` 写入。
 - `Sts2Application` 会在主进程早期启动应用内 logcat 采集器，统一写入全局 `<files>/logs/sts2.log`；启动准备和 `GodotApp` 进入当前 profile 后也继续使用同一个全局文件，不再写入 `<files>/instances/<profile_id>/logs/sts2.log`。每次启动游戏会像 `godot.log` 一样把旧全局 `sts2.log` 归档为 `sts2YYYY-MM-DDTHH.mm.ss.log` 并只把最新采集写入 `sts2.log`；输出采用紧凑 `level tag message` 格式，例如 `I DOTNET [STS2Mobile] ...`，采集过滤遵循附加设置 `log_level`（`off`→停止采集、`info`→I/W/E、`debug`→D/I/W/E、`very_debug`→V/D/I/W/E）。该文件用于补充 `godot.log` 抓不到的 Java/Godot/Mono stderr/native 顶层日志（例如 `[STS2Mobile]`），但普通 app 只能读取自身 UID/进程可见 logcat，完整设备级日志仍需 ADB。
 - 固定追加 STS2 原生命令行 `--force-steam off`，让原版 `NGame.InitializePlatform()` 即使在 Harmony/MonoMod detour 失效的 ROM 上也走内置 Steam 跳过分支，避免继续尝试加载桌面 `steam_api64`。

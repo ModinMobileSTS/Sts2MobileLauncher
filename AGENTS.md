@@ -202,7 +202,7 @@ s2_re/
 - `GodotApp` 启动行为：
   - 首次向导未完成时会重定向回 `GameSettingsActivity`。
   - `getCommandLine()` 加 renderer/display/log 参数，并固定追加 `--force-steam off` 作为原版 Steam 初始化跳过兜底；日志等级由附加设置 `log_level`（默认 `info`，可选 `off` / `debug` / `very_debug`）转为 STS2 `-log <LogType> <LogLevel>` 命令行，覆盖 Generic/Network/Actions/GameSync/VisualSync；选择 `off` 时不配置 `godot.log` 且不追加 STS2 `-log` 参数；有当前 launch profile payload 的 `SlayTheSpire2.pck` 时传 `--main-pack <files>/payloads/<payload_id>/game/SlayTheSpire2.pck`，否则使用 `assets/bootstrap.pck`。设置页“系统”分区的 `android_performance_overlay_enabled` 默认关闭；开启后 `GodotApp` 写入 `<files>/launcher/enable_debug_menu.flag`，compat 层从 overlay 加载 `godot-debug-menu` 详细性能面板。
-  - APK manifest 默认不声明 `android:appCategory="game"` / `android:isGame="true"`，避免部分 OEM 游戏分类限频；`GodotApp` manifest 默认 `sensorLandscape`，并在 `onCreate` / `onResume` / Godot 主循环开始后按 `android_screen_rotation_mode` 原生调用 `setRequestedOrientation()`：`user_landscape` 为跟随系统横屏，`auto` 为 `SCREEN_ORIENTATION_SENSOR_LANDSCAPE` 并额外启用重力计强转，`landscape` 为普通横屏，`reverse_landscape` 为反向横屏；`HighRefreshRateController` 由设置页“系统”分区预加载下方的 `android_high_refresh_rate_enabled` 控制，默认开启时在 `onCreate` / `onResume` / 获得焦点 / Godot 主循环开始后请求当前显示尺寸下最高 display mode，并向 Godot render `SurfaceView` 发起 `Surface.setFrameRate()` / `SurfaceControl.Transaction.setFrameRate()`。
+  - APK manifest 默认声明 `android:appCategory="game"` / `android:isGame="true"`，让 OEM 游戏/GPU 调度识别 Godot 游戏 Activity；`GodotApp` manifest 默认 `sensorLandscape`，并在 `onCreate` / `onResume` / Godot 主循环开始后按 `android_screen_rotation_mode` 原生调用 `setRequestedOrientation()`：`user_landscape` 为跟随系统横屏，`auto` 为 `SCREEN_ORIENTATION_SENSOR_LANDSCAPE` 并额外启用重力计强转，`landscape` 为普通横屏，`reverse_landscape` 为反向横屏；`HighRefreshRateController` 由设置页“系统”分区预加载下方的 `android_high_refresh_rate_enabled` 控制，默认开启时在 `onCreate` / `onResume` / 获得焦点 / Godot 主循环开始后请求当前显示尺寸下最高 display mode，并向 Godot render `SurfaceView` 发起 `Surface.setFrameRate()` / `SurfaceControl.Transaction.setFrameRate()`。
   - 暴露 `launchGameSettingsFromGame()`、`restartToSettingsFromGame()`、`getGodotDataDir()`、`getSelectedGameDir()`、`getSelectedAccountRootDir()`、`getSelectedModsDir()`、`getSelectedLaunchContextJson()`、`getSelectedCompatPackDir()`、`getSelectedCompatOverlayPck()` 等静态桥给 C# 兼容层。
   - 维护当前 profile 的 `logs/godot.log` 与 `logs/android-launch.log`；应用内 logcat 统一采集到全局 `<files>/logs/sts2.log`，每次启动游戏时像 `godot.log` 一样归档旧 `sts2.log`。`sts2.log` 使用紧凑 `level tag message` 格式并遵循附加设置 `log_level`（off/info/debug/very_debug）；选择 `off` 时完全禁用 `godot.log` 与 `sts2.log`。`sts2.log` 只能抓到普通 app 可见的自身 UID/进程相关 logcat，完整设备级日志仍需 ADB。
 - 启动路径：
@@ -444,7 +444,7 @@ tools/android/sync-runtime-from-references.sh
 tools/package/build_importer_apk.sh
 ```
 
-正式 APK 默认启用高刷新兼容路径：manifest 不声明游戏分类标记，`GodotApp` 生命周期中按 `android_high_refresh_rate_enabled` 请求最高可用刷新率；设置页“系统”分区在预加载下方提供该开关，默认开启。设置页同一分区提供默认关闭的性能 overlay 开关，开启后下次启动加载 `godot-debug-menu` 详细面板（FPS、帧时间、CPU/GPU frame graph、硬件/渲染器信息）。该 overlay 源自 `godot-extended-libraries/godot-debug-menu`，MIT license，实际打包文件位于 `port-mod/overlay/addons/debug_menu/`。
+正式 APK 默认声明 Android 游戏分类标记，并启用高刷新兼容路径：`GodotApp` 生命周期中按 `android_high_refresh_rate_enabled` 请求最高可用刷新率；设置页“系统”分区在预加载下方提供该开关，默认开启。设置页同一分区提供默认关闭的性能 overlay 开关，开启后下次启动加载 `godot-debug-menu` 详细面板（FPS、帧时间、CPU/GPU frame graph、硬件/渲染器信息）。该 overlay 源自 `godot-extended-libraries/godot-debug-menu`，MIT license，实际打包文件位于 `port-mod/overlay/addons/debug_menu/`。
 
 脚本流程：
 
