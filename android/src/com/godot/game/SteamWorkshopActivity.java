@@ -113,10 +113,12 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private boolean downloadUiRefreshScheduled;
 	private long lastDownloadUiRefreshAtMs;
 	private boolean listDownloadUiStale;
+	private volatile boolean destroyed;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		destroyed = false;
 		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
 		SystemBarInsetsHelper.enableEdgeToEdge(this);
 		repository = new ExtraSettingsRepository(this);
@@ -136,6 +138,8 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 
 	@Override
 	protected void onDestroy() {
+		destroyed = true;
+		mainHandler.removeCallbacksAndMessages(null);
 		if (imageLoader != null) {
 			imageLoader.shutdown();
 		}
@@ -579,9 +583,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		new Thread(() -> {
 			try {
 				SteamWorkshopCatalog.SearchResult result = catalog.search(query, pageToLoad, WORKSHOP_PAGE_SIZE, sortOption, timeWindow);
-				runOnUiThread(() -> appendLoadedSearchResults(query, sortOption, timeWindow, result));
+				runOnUiThreadIfActive(() -> appendLoadedSearchResults(query, sortOption, timeWindow, result));
 			} catch (Exception exception) {
-				runOnUiThread(() -> {
+				runOnUiThreadIfActive(() -> {
 					if (query.equals(currentQuery) && sortOption == currentSortOption && timeWindow == currentTimeWindow) {
 						loadingMoreResults = false;
 						updateLoadMoreView();
@@ -1455,13 +1459,13 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 				}, task.cancellationToken);
 				ExtraSettingsRepository.PreparedModImport prepared = repository.prepareDownloadedModDirectory(result.getOutputDir(), item.getTitle());
 				SteamWorkshopDownloader.Result finalResult = result;
-				runOnUiThread(() -> {
+				runOnUiThreadIfActive(() -> {
 					task.markImporting(getString(R.string.workshop_importing_status));
 					updateDownloadProgressBindings(task.publishedFileId);
 					handlePreparedWorkshopImport(finalResult, prepared);
 				});
 			} catch (Exception exception) {
-				runOnUiThread(() -> {
+				runOnUiThreadIfActive(() -> {
 					downloadTasks.remove(item.getPublishedFileId());
 					clearDownloadQueue();
 					markDownloadUiStructureChanged();
@@ -1477,9 +1481,16 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void postDownloadProgress(String publishedFileId, SteamWorkshopDownloader.Progress progress) {
+		if (isUiUnavailable()) {
+			return;
+		}
 		pendingProgressUpdates.put(publishedFileId, progress);
 		if (progressDrainPosted.compareAndSet(false, true)) {
-			mainHandler.postDelayed(this::drainDownloadProgressUpdates, DOWNLOAD_PROGRESS_DRAIN_INTERVAL_MS);
+			mainHandler.postDelayed(() -> {
+				if (!isUiUnavailable()) {
+					drainDownloadProgressUpdates();
+				}
+			}, DOWNLOAD_PROGRESS_DRAIN_INTERVAL_MS);
 		}
 	}
 
@@ -1493,7 +1504,11 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			}
 		}
 		if (!pendingProgressUpdates.isEmpty() && progressDrainPosted.compareAndSet(false, true)) {
-			mainHandler.postDelayed(this::drainDownloadProgressUpdates, DOWNLOAD_PROGRESS_DRAIN_INTERVAL_MS);
+			mainHandler.postDelayed(() -> {
+				if (!isUiUnavailable()) {
+					drainDownloadProgressUpdates();
+				}
+			}, DOWNLOAD_PROGRESS_DRAIN_INTERVAL_MS);
 		}
 	}
 
@@ -1825,6 +1840,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		long delay = Math.max(0L, DOWNLOAD_UI_REFRESH_INTERVAL_MS - elapsed);
 		downloadUiRefreshScheduled = true;
 		mainHandler.postDelayed(() -> {
+			if (isUiUnavailable()) {
+				return;
+			}
 			downloadUiRefreshScheduled = false;
 			refreshDownloadProgressBindings();
 		}, delay);
@@ -1858,6 +1876,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		if (importBusy) {
 			return;
 		}
+		if (isUiUnavailable()) {
+			return;
+		}
 		SteamOperationProgressDialog progressDialog = new SteamOperationProgressDialog(this, getString(R.string.workshop_import_progress_title), getString(R.string.status_busy_import_mod));
 		progressDialog.show();
 		importBusy = true;
@@ -1876,7 +1897,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 				);
 				library.recordInstall(result.getItem(), importResult.installRoot, importResult.installedEntries);
 				SteamWorkshopDownloadCleaner.deleteImportedDownloadDirectory(this, result.getOutputDir());
-				runOnUiThread(() -> {
+				runOnUiThreadIfActive(() -> {
 					progressDialog.dismiss();
 					importBusy = false;
 					markWorkshopItemCurrent(result.getItem());
@@ -1887,7 +1908,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 					}
 				});
 			} catch (Exception exception) {
-				runOnUiThread(() -> {
+				runOnUiThreadIfActive(() -> {
 					progressDialog.dismiss();
 					importBusy = false;
 					finishDownloadTask(result.getItem().getPublishedFileId());
@@ -2069,12 +2090,12 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		new Thread(() -> {
 			try {
 				T value = operation.run();
-				runOnUiThread(() -> {
+				runOnUiThreadIfActive(() -> {
 					finishBusy(getString(R.string.workshop_status_idle));
 					success.run(value);
 				});
 			} catch (Exception exception) {
-				runOnUiThread(() -> {
+				runOnUiThreadIfActive(() -> {
 					finishBusy(getString(R.string.workshop_status_idle));
 					failure.run(exception);
 				});
@@ -2110,6 +2131,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void showMessage(String message) {
+		if (isUiUnavailable()) {
+			return;
+		}
 		View root = findViewById(android.R.id.content);
 		if (root != null) {
 			Snackbar.make(root, message, Snackbar.LENGTH_LONG).show();
@@ -2117,12 +2141,27 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void showError(Exception exception) {
+		if (isUiUnavailable()) {
+			return;
+		}
 		String message = userFacingErrorMessage(exception);
 		new MaterialAlertDialogBuilder(this)
 			.setTitle(R.string.error_operation_failed)
 			.setMessage(message)
 			.setPositiveButton(android.R.string.ok, null)
 			.show();
+	}
+
+	private void runOnUiThreadIfActive(Runnable action) {
+		runOnUiThread(() -> {
+			if (!isUiUnavailable()) {
+				action.run();
+			}
+		});
+	}
+
+	private boolean isUiUnavailable() {
+		return destroyed || isFinishing() || isDestroyed();
 	}
 
 	private String userFacingErrorMessage(Exception exception) {
@@ -2542,7 +2581,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 				try {
 					Bitmap bitmap = fetchBitmap(normalized);
 					memoryCache.put(normalized, bitmap);
-					activity.runOnUiThread(() -> {
+					activity.runOnUiThreadIfActive(() -> {
 						if (normalized.equals(target.getTag())) {
 							target.setImageBitmap(bitmap);
 						}
