@@ -394,6 +394,29 @@ public final class ExtraSettingsUi {
 		return button;
 	}
 
+	public static MaterialButton textButton(Context context, String text, int iconRes) {
+		MaterialButton button = new MaterialButton(context, null, com.google.android.material.R.attr.borderlessButtonStyle);
+		button.setText(text);
+		button.setTextColor(COLOR_PRIMARY);
+		button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+		button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+		button.setAllCaps(false);
+		button.setMinWidth(0);
+		button.setMinHeight(0);
+		button.setInsetTop(0);
+		button.setInsetBottom(0);
+		button.setBackgroundTintList(ColorStateList.valueOf(Color.TRANSPARENT));
+		button.setRippleColor(ColorStateList.valueOf(Color.argb(72, 201, 238, 211)));
+		button.setShapeAppearanceModel(ShapeAppearanceModel.builder().setAllCornerSizes(dp(context, 16)).build());
+		button.setPadding(dp(context, 8), dp(context, 6), dp(context, 8), dp(context, 6));
+		if (iconRes != 0) {
+			MaterialSymbols.applyButtonIcon(button, iconRes, ColorStateList.valueOf(COLOR_PRIMARY), 20);
+			button.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
+			button.setIconPadding(dp(context, 4));
+		}
+		return button;
+	}
+
 	public static MaterialCardView choiceCard(Context context, int iconRes, int titleRes, int subtitleRes, boolean selected) {
 		MaterialCardView card = clickableCard(context);
 		card.setCheckable(true);

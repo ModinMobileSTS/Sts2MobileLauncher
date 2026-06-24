@@ -112,6 +112,8 @@
     <string name="workshop_downloads_subtitle">当前 MOD 目录中已记录的创意工坊安装项。</string>
     <string name="workshop_downloading_section">下载中</string>
     <string name="workshop_downloaded_section">已下载</string>
+    <string name="workshop_update_all">一键更新(%1$d)</string>
+    <string name="workshop_update_all_started">已加入 %1$d 个更新任务。</string>
     <string name="workshop_no_active_downloads">当前没有下载任务。</string>
     <string name="workshop_loading_more">正在加载更多…</string>
     <string name="workshop_load_more_failed">加载更多失败：%1$s</string>

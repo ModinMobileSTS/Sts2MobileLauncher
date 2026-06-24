@@ -47,6 +47,7 @@ import com.google.android.material.textfield.TextInputLayout;
 import java.io.File;
 import java.io.IOException;
 import java.text.DateFormat;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -73,6 +74,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private static final int WORKSHOP_PAGE_SIZE = 30;
 	private static final long DOWNLOAD_PROGRESS_DRAIN_INTERVAL_MS = 100L;
 	private static final long DOWNLOAD_UI_REFRESH_INTERVAL_MS = 300L;
+	private static final int MAX_CONCURRENT_DOWNLOADS = 5;
 
 	private ExtraSettingsRepository repository;
 	private SteamWorkshopCatalog catalog;
@@ -103,6 +105,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private SteamWorkshopCatalog.SortOption currentSortOption = SteamWorkshopCatalog.SortOption.MOST_POPULAR;
 	private SteamWorkshopCatalog.TimeWindow currentTimeWindow = SteamWorkshopCatalog.TimeWindow.ONE_WEEK;
 	private final ArrayList<SteamWorkshopCatalog.Item> pendingDownloadQueue = new ArrayList<>();
+	private final ArrayDeque<PendingImport> pendingImportQueue = new ArrayDeque<>();
 	private boolean busy;
 	private boolean importBusy;
 	private boolean loadingMoreResults;
@@ -1102,7 +1105,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		downloadsContainer.removeAllViews();
 		List<SteamWorkshopLibrary.Entry> entries = library.listEntries();
 		addActiveDownloadsSection(downloadsContainer);
-		downloadsContainer.addView(ExtraSettingsUi.sectionTitle(this, R.string.workshop_downloaded_section), fullWidthTopMargin(18));
+		downloadsContainer.addView(buildDownloadedSectionHeader(entries), fullWidthTopMargin(18));
 		if (entries.isEmpty()) {
 			ExtraSettingsUi.addCardSpacing(downloadsContainer, buildEmptyCard(R.string.workshop_library_empty, R.string.workshop_library_empty_hint, R.drawable.ic_download_24));
 			setIdleStatus(getString(R.string.workshop_library_empty));
@@ -1113,6 +1116,56 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}
 		setIdleStatus(getString(R.string.workshop_library_summary, entries.size()));
 		maybeAutoCheckTrackedUpdates();
+	}
+
+	private View buildDownloadedSectionHeader(List<SteamWorkshopLibrary.Entry> entries) {
+		LinearLayout row = ExtraSettingsUi.horizontal(this);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		TextView title = ExtraSettingsUi.sectionTitle(this, R.string.workshop_downloaded_section);
+		row.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+		List<SteamWorkshopLibrary.Entry> updatable = updatableEntries(entries);
+		if (!updatable.isEmpty()) {
+			MaterialButton updateAll = ExtraSettingsUi.textButton(this, getString(R.string.workshop_update_all, updatable.size()), R.drawable.ic_sync_24);
+			updateAll.setOnClickListener(v -> updateAllDownloaded());
+			row.addView(updateAll);
+		}
+		return row;
+	}
+
+	private List<SteamWorkshopLibrary.Entry> updatableEntries(List<SteamWorkshopLibrary.Entry> entries) {
+		List<SteamWorkshopLibrary.Entry> updatable = new ArrayList<>();
+		for (SteamWorkshopLibrary.Entry entry : entries) {
+			if ("available".equals(entry.updateStatus)) {
+				updatable.add(entry);
+			}
+		}
+		return updatable;
+	}
+
+	private void updateAllDownloaded() {
+		List<SteamWorkshopLibrary.Entry> updatable = updatableEntries(library.listEntries());
+		if (updatable.isEmpty()) {
+			return;
+		}
+		Set<String> queuedIds = new LinkedHashSet<>();
+		for (SteamWorkshopCatalog.Item queued : pendingDownloadQueue) {
+			if (queued != null) {
+				queuedIds.add(queued.getPublishedFileId());
+			}
+		}
+		int added = 0;
+		for (SteamWorkshopLibrary.Entry entry : updatable) {
+			if (isDownloading(entry.publishedFileId) || !queuedIds.add(entry.publishedFileId)) {
+				continue;
+			}
+			pendingDownloadQueue.add(entryToItem(entry));
+			added++;
+		}
+		if (added == 0) {
+			return;
+		}
+		showMessage(getString(R.string.workshop_update_all_started, added));
+		pumpDownloadQueue();
 	}
 
 	private void addActiveDownloadsSection(LinearLayout parent) {
@@ -1416,10 +1469,6 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			cancelDownload(item.getPublishedFileId());
 			return;
 		}
-		if (importBusy) {
-			showMessage(getString(R.string.workshop_import_busy));
-			return;
-		}
 		if (checkPrerequisites) {
 			ensurePendingDownloadTask(item, getString(R.string.workshop_status_checking_prerequisites));
 			runOperation(
@@ -1441,7 +1490,17 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			);
 			return;
 		}
-		startDownloadAndImport(item);
+		enqueueDownload(item);
+	}
+
+	private void enqueueDownload(SteamWorkshopCatalog.Item item) {
+		for (SteamWorkshopCatalog.Item queued : pendingDownloadQueue) {
+			if (queued != null && queued.getPublishedFileId().equals(item.getPublishedFileId())) {
+				return;
+			}
+		}
+		pendingDownloadQueue.add(item);
+		pumpDownloadQueue();
 	}
 
 	private void startDownloadAndImport(SteamWorkshopCatalog.Item item) {
@@ -1462,12 +1521,12 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 				runOnUiThreadIfActive(() -> {
 					task.markImporting(getString(R.string.workshop_importing_status));
 					updateDownloadProgressBindings(task.publishedFileId);
-					handlePreparedWorkshopImport(finalResult, prepared);
+					enqueuePreparedWorkshopImport(finalResult, prepared);
+					pumpDownloadQueue();
 				});
 			} catch (Exception exception) {
 				runOnUiThreadIfActive(() -> {
 					downloadTasks.remove(item.getPublishedFileId());
-					clearDownloadQueue();
 					markDownloadUiStructureChanged();
 					refreshDownloadUi();
 					if (isCancelled(exception)) {
@@ -1475,6 +1534,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 					} else {
 						showError(exception);
 					}
+					pumpDownloadQueue();
 				});
 			}
 		});
@@ -1624,24 +1684,34 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void startNextQueuedDownload() {
-		if (importBusy) {
-			return;
-		}
-		if (pendingDownloadQueue.isEmpty()) {
-			showDownloads();
-			return;
-		}
-		SteamWorkshopCatalog.Item next = pendingDownloadQueue.remove(0);
-		showMessage(getString(R.string.workshop_download_queue_next, next.getTitle(), pendingDownloadQueue.size()));
-		downloadAndImport(next, false);
+		pumpDownloadQueue();
 	}
 
-	private void clearDownloadQueue() {
-		pendingDownloadQueue.clear();
-		downloadTasks.entrySet().removeIf(entry -> {
-			DownloadTask task = entry.getValue();
-			return task != null && task.isActive() && !task.downloadStarted && !task.importing;
-		});
+	private void pumpDownloadQueue() {
+		while (!pendingDownloadQueue.isEmpty() && activeDownloadCount() < MAX_CONCURRENT_DOWNLOADS) {
+			SteamWorkshopCatalog.Item next = pendingDownloadQueue.remove(0);
+			if (next == null) {
+				continue;
+			}
+			DownloadTask existing = downloadTasks.get(next.getPublishedFileId());
+			if (existing != null && existing.isActive() && existing.downloadStarted) {
+				continue;
+			}
+			startDownloadAndImport(next);
+		}
+		if (pendingDownloadQueue.isEmpty() && activeDownloadCount() == 0 && pendingImportQueue.isEmpty() && !importBusy) {
+			showDownloads();
+		}
+	}
+
+	private int activeDownloadCount() {
+		int count = 0;
+		for (DownloadTask task : downloadTasks.values()) {
+			if (task != null && task.isActive() && task.downloadStarted && !task.importing) {
+				count++;
+			}
+		}
+		return count;
 	}
 
 	private boolean isDownloading(String publishedFileId) {
@@ -1656,10 +1726,12 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}
 		task.cancel();
 		downloadTasks.remove(publishedFileId);
-		clearDownloadQueue();
+		pendingDownloadQueue.removeIf(item -> item != null && publishedFileId.equals(item.getPublishedFileId()));
+		pendingImportQueue.removeIf(pending -> pending != null && publishedFileId.equals(pending.result.getItem().getPublishedFileId()));
 		markDownloadUiStructureChanged();
 		refreshDownloadUi();
 		showMessage(getString(R.string.workshop_download_cancelled));
+		pumpDownloadQueue();
 	}
 
 	private void finishDownloadTask(String publishedFileId) {
@@ -1848,6 +1920,28 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}, delay);
 	}
 
+	private void enqueuePreparedWorkshopImport(SteamWorkshopDownloader.Result result, ExtraSettingsRepository.PreparedModImport prepared) {
+		pendingImportQueue.addLast(new PendingImport(result, prepared));
+		startNextImport();
+	}
+
+	private void startNextImport() {
+		if (importBusy || isUiUnavailable()) {
+			return;
+		}
+		PendingImport next = pendingImportQueue.pollFirst();
+		if (next == null) {
+			return;
+		}
+		handlePreparedWorkshopImport(next.result, next.prepared);
+	}
+
+	private void finishImportAndContinue() {
+		importBusy = false;
+		startNextImport();
+		pumpDownloadQueue();
+	}
+
 	private void handlePreparedWorkshopImport(SteamWorkshopDownloader.Result result, ExtraSettingsRepository.PreparedModImport prepared) {
 		String groupName = SteamWorkshopPreferences.getDownloadGroup(this);
 		String publishedFileId = result.getItem().getPublishedFileId();
@@ -1857,15 +1951,15 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 				() -> {
 					repository.discardPreparedModImport(prepared);
 					finishDownloadTask(result.getItem().getPublishedFileId());
-					clearDownloadQueue();
 					showMessage(getString(R.string.status_import_mod_cancelled));
+					finishImportAndContinue();
 				},
 				() -> commitPreparedWorkshopImport(result, prepared, true),
 				() -> {
 					repository.discardPreparedModImport(prepared);
 					finishDownloadTask(result.getItem().getPublishedFileId());
-					clearDownloadQueue();
 					showMessage(getString(R.string.status_import_mod_cancelled));
+					finishImportAndContinue();
 				});
 			return;
 		}
@@ -1899,21 +1993,17 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 				SteamWorkshopDownloadCleaner.deleteImportedDownloadDirectory(this, result.getOutputDir());
 				runOnUiThreadIfActive(() -> {
 					progressDialog.dismiss();
-					importBusy = false;
 					markWorkshopItemCurrent(result.getItem());
 					finishDownloadTask(result.getItem().getPublishedFileId());
 					showMessage(getString(R.string.workshop_import_done, importResult.importedName));
-					if (!pendingDownloadQueue.isEmpty()) {
-						startNextQueuedDownload();
-					}
+					finishImportAndContinue();
 				});
 			} catch (Exception exception) {
 				runOnUiThreadIfActive(() -> {
 					progressDialog.dismiss();
-					importBusy = false;
 					finishDownloadTask(result.getItem().getPublishedFileId());
-					clearDownloadQueue();
 					showError(exception);
+					finishImportAndContinue();
 				});
 			}
 		});
@@ -2427,6 +2517,16 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private interface Success<T> { void run(T value); }
 	private interface Failure { void run(Exception exception); }
 	private interface BoolConsumer { void accept(boolean value); }
+
+	private static final class PendingImport {
+		final SteamWorkshopDownloader.Result result;
+		final ExtraSettingsRepository.PreparedModImport prepared;
+
+		PendingImport(SteamWorkshopDownloader.Result result, ExtraSettingsRepository.PreparedModImport prepared) {
+			this.result = result;
+			this.prepared = prepared;
+		}
+	}
 
 	private static final class DownloadTask {
 		final SteamWorkshopCatalog.Item item;
