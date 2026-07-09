@@ -62,13 +62,17 @@ public final class ExtraSettingsRepository {
 	private static final String MOD_GROUP_MARKER_FILE_NAME = ".sts2_mod_group";
 	private static final String MOD_GROUP_CORE_NAME = "core";
 	private static final String MOD_GROUP_CONTENT_NAME = "content";
+	private static final String MOD_GROUP_UNGROUPED_NAME = "__root__";
 	private static final String SETTINGS_FILE_NAME = "settings.save";
 	private static final String PENDING_UNLOCK_ALL_FILE_NAME = "pending_unlock_all.flag";
 	private static final String MOD_PROFILE_PREFERENCES_NAME = "sts2_mod_profiles";
 	private static final String KEY_MOD_PROFILES = "profiles";
 	private static final String KEY_ACTIVE_MOD_PROFILE_ID = "active_profile_id";
+	private static final String KEY_MOD_GROUPS = "mod_groups";
 	private static final String KEY_MOD_GROUP_ORDER = "mod_group_order";
 	private static final String KEY_MOD_ORDER = "mod_order";
+	private static final String KEY_MOD_GROUP_ASSIGNMENTS = "mod_group_assignments";
+	private static final String KEY_HIDDEN_MOD_GROUPS = "hidden_mod_groups";
 	private static final String KEY_MOD_NOTES = "mod_notes";
 	private static final String DEFAULT_MOD_PROFILE_ID = "default";
 	private static final String KEY_ANDROID_GRAPHICS_PRESET = "android_graphics_preset";
@@ -739,9 +743,6 @@ public final class ExtraSettingsRepository {
 			File groupDirectory = getWorkshopGroupDir(rawGroupName);
 			if (groupDirectory != null) {
 				ensureDirectory(groupDirectory);
-				if (!groupDirectory.getCanonicalFile().equals(getModsRootDir().getCanonicalFile())) {
-					markModGroupDirectory(groupDirectory);
-				}
 			}
 			deleteRecursively(installRoot);
 			ensureDirectory(installRoot);
@@ -1097,6 +1098,7 @@ public final class ExtraSettingsRepository {
 			}
 			pruneEmptyDirectories(parent, getModsRootDir());
 		}
+		removeModGroupAssignment(modEntry.modId);
 		JSONObject settings = loadSettingsJson();
 		removeModEntry(settings, modEntry.modId);
 		removeModEntry(settings, modEntry.pckName);
@@ -1151,6 +1153,7 @@ public final class ExtraSettingsRepository {
 		JSONObject settings = loadSettingsJson();
 		if (modEntries != null) {
 			for (ModEntry modEntry : modEntries) {
+				removeModGroupAssignment(modEntry.modId);
 				removeModEntry(settings, modEntry.modId);
 				removeModEntry(settings, modEntry.pckName);
 			}
@@ -1160,36 +1163,45 @@ public final class ExtraSettingsRepository {
 
 	public List<String> listModGroups() {
 		List<String> groups = new ArrayList<>();
+		Set<String> hiddenGroups = new LinkedHashSet<>(loadHiddenModGroups());
+		for (String groupName : loadDeclaredModGroups()) {
+			addVisibleModGroup(groups, groupName, hiddenGroups);
+		}
 		File modsRoot = getModsRootDir();
 		File[] children = modsRoot.listFiles(file -> file.isDirectory() && !file.getName().startsWith(".") && !isSymbolicLink(file) && isModGroupDirectory(file));
 		if (children != null) {
 			for (File child : children) {
-				groups.add(child.getName());
+				addVisibleModGroup(groups, child.getName(), hiddenGroups);
 			}
+		}
+		for (String groupName : loadModGroupAssignments().values()) {
+			addVisibleModGroup(groups, groupName, hiddenGroups);
 		}
 		groups.sort(String::compareToIgnoreCase);
 		return groups;
 	}
 
 	public String createModGroup(String rawGroupName) throws Exception {
-		String groupName = sanitizeFileName(normalizeModGroupName(rawGroupName));
+		String groupName = sanitizeModGroupNameOrEmpty(rawGroupName);
 		if (TextUtils.isEmpty(groupName)) {
 			throw new IOException("Group name cannot be empty.");
 		}
-		File modsRoot = getModsRootDir();
-		ensureDirectory(modsRoot);
-		if (MOD_GROUP_CORE_NAME.equalsIgnoreCase(groupName) || MOD_GROUP_CONTENT_NAME.equalsIgnoreCase(groupName)) {
-			return groupName;
+		if (isReservedModGroupName(groupName)) {
+			return canonicalReservedModGroupName(groupName);
 		}
-		File groupDirectory = new File(modsRoot, groupName);
-		ensureDirectory(groupDirectory);
-		markModGroupDirectory(groupDirectory);
+		List<String> groups = loadDeclaredModGroups();
+		if (!containsStringIgnoreCase(groups, groupName)) {
+			groups.add(groupName);
+			saveDeclaredModGroups(groups);
+		}
+		removeHiddenModGroup(groupName);
+		addGroupIdToOrderIfMissing(groupName);
 		return groupName;
 	}
 
 	public String renameModGroup(String rawOldName, String rawNewName) throws Exception {
-		String oldName = sanitizeFileName(normalizeModGroupName(rawOldName));
-		String newName = sanitizeFileName(normalizeModGroupName(rawNewName));
+		String oldName = sanitizeModGroupNameOrEmpty(rawOldName);
+		String newName = sanitizeModGroupNameOrEmpty(rawNewName);
 		if (TextUtils.isEmpty(oldName)) {
 			throw new IOException("Group name cannot be empty.");
 		}
@@ -1202,33 +1214,23 @@ public final class ExtraSettingsRepository {
 		if (oldName.equals(newName)) {
 			return oldName;
 		}
-		File modsRoot = getModsRootDir();
-		File sourceDirectory = new File(modsRoot, oldName);
-		if (!sourceDirectory.isDirectory() || !isModGroupDirectory(sourceDirectory)) {
+		List<String> existingGroups = listModGroups();
+		if (!containsStringIgnoreCase(existingGroups, oldName)) {
 			throw new IOException("Group not found: " + oldName);
 		}
-		File targetDirectory = new File(modsRoot, newName);
-		if (targetDirectory.exists()) {
+		if (containsStringIgnoreCase(existingGroups, newName)) {
 			throw new IOException("Group already exists: " + newName);
 		}
-		if (!sourceDirectory.renameTo(targetDirectory)) {
-			copyRecursively(sourceDirectory, targetDirectory);
-			deleteRecursively(sourceDirectory);
+		List<String> groups = loadDeclaredModGroups();
+		boolean replaced = replaceStringIgnoreCase(groups, oldName, newName);
+		if (!replaced && !containsStringIgnoreCase(groups, newName)) {
+			groups.add(newName);
 		}
-		if (!isModGroupDirectory(targetDirectory)) {
-			markModGroupDirectory(targetDirectory);
-		}
-		List<String> groupOrder = loadModGroupOrder();
-		boolean orderChanged = false;
-		for (int i = 0; i < groupOrder.size(); i++) {
-			if (oldName.equals(groupOrder.get(i))) {
-				groupOrder.set(i, newName);
-				orderChanged = true;
-			}
-		}
-		if (orderChanged) {
-			saveModGroupOrder(groupOrder);
-		}
+		saveDeclaredModGroups(groups);
+		hideModGroup(oldName);
+		removeHiddenModGroup(newName);
+		reassignModsFromGroup(oldName, newName);
+		replaceGroupIdInOrder(oldName, newName);
 		List<String> modOrder = loadModOrder(oldName);
 		if (!modOrder.isEmpty()) {
 			saveModOrder(newName, modOrder);
@@ -1238,66 +1240,141 @@ public final class ExtraSettingsRepository {
 	}
 
 	public void deleteModGroup(String rawGroupName) throws Exception {
-		String groupName = sanitizeFileName(normalizeModGroupName(rawGroupName));
+		String groupName = sanitizeModGroupNameOrEmpty(rawGroupName);
 		if (TextUtils.isEmpty(groupName)) {
 			throw new IOException("Group name cannot be empty.");
 		}
 		if (isReservedModGroupName(groupName)) {
 			throw new IOException("Cannot delete reserved group: " + groupName);
 		}
-		File modsRoot = getModsRootDir();
-		File groupDirectory = new File(modsRoot, groupName);
-		if (!groupDirectory.isDirectory()) {
-			removeGroupIdFromOrder(groupName);
-			saveModOrder(groupName, new ArrayList<>());
-			return;
-		}
-		if (!isModGroupDirectory(groupDirectory)) {
-			throw new IOException("Not a user MOD group: " + groupName);
-		}
-		List<ModEntry> groupMods = listInstalledModManifestsUnder(groupDirectory);
-		for (ModEntry entry : groupMods) {
-			moveModToGroup(entry, "");
-		}
-		// After moves, remaining empty group dir (marker only) can be removed.
-		if (groupDirectory.isDirectory()) {
-			File[] remaining = groupDirectory.listFiles();
-			if (remaining != null) {
-				for (File child : remaining) {
-					if (MOD_GROUP_MARKER_FILE_NAME.equals(child.getName())) {
-						deleteIfExists(child);
-					}
-				}
-			}
-			// Only delete if empty or only leftover empty dirs after prune.
-			pruneEmptyDirectories(groupDirectory, modsRoot);
-			if (groupDirectory.isDirectory() && isModGroupDirectory(groupDirectory)) {
-				// Still marked and non-empty unexpected content: drop marker and try again.
-				deleteIfExists(new File(groupDirectory, MOD_GROUP_MARKER_FILE_NAME));
-				File[] leftover = groupDirectory.listFiles();
-				if (leftover == null || leftover.length == 0) {
-					//noinspection ResultOfMethodCallIgnored
-					groupDirectory.delete();
-				}
-			} else if (groupDirectory.isDirectory()) {
-				File[] leftover = groupDirectory.listFiles();
-				if (leftover == null || leftover.length == 0) {
-					//noinspection ResultOfMethodCallIgnored
-					groupDirectory.delete();
-				}
-			}
-		}
+		removeDeclaredModGroup(groupName);
+		hideModGroup(groupName);
+		reassignModsFromGroup(groupName, MOD_GROUP_UNGROUPED_NAME);
 		removeGroupIdFromOrder(groupName);
 		saveModOrder(groupName, new ArrayList<>());
 	}
 
 	private boolean isReservedModGroupName(String groupName) {
-		return MOD_GROUP_CORE_NAME.equalsIgnoreCase(groupName) || MOD_GROUP_CONTENT_NAME.equalsIgnoreCase(groupName);
+		return MOD_GROUP_CORE_NAME.equalsIgnoreCase(groupName)
+			|| "library".equalsIgnoreCase(groupName)
+			|| "libraries".equalsIgnoreCase(groupName)
+			|| MOD_GROUP_CONTENT_NAME.equalsIgnoreCase(groupName);
+	}
+
+	private String canonicalReservedModGroupName(String groupName) {
+		if (MOD_GROUP_CORE_NAME.equalsIgnoreCase(groupName) || "library".equalsIgnoreCase(groupName) || "libraries".equalsIgnoreCase(groupName)) {
+			return MOD_GROUP_CORE_NAME;
+		}
+		if (MOD_GROUP_CONTENT_NAME.equalsIgnoreCase(groupName)) {
+			return MOD_GROUP_CONTENT_NAME;
+		}
+		return groupName;
+	}
+
+	private String sanitizeModGroupNameOrEmpty(String rawGroupName) {
+		String normalized = normalizeModGroupName(rawGroupName);
+		if (TextUtils.isEmpty(normalized)) {
+			return "";
+		}
+		return sanitizeFileName(normalized);
+	}
+
+	private String normalizeAssignmentGroupName(String rawGroupName) {
+		String raw = rawGroupName == null ? "" : rawGroupName.trim();
+		if (TextUtils.isEmpty(raw) || MOD_GROUP_UNGROUPED_NAME.equals(raw)) {
+			return MOD_GROUP_UNGROUPED_NAME;
+		}
+		if (MOD_GROUP_CORE_NAME.equalsIgnoreCase(raw) || "library".equalsIgnoreCase(raw) || "libraries".equalsIgnoreCase(raw)) {
+			return MOD_GROUP_CORE_NAME;
+		}
+		if (MOD_GROUP_CONTENT_NAME.equalsIgnoreCase(raw)) {
+			return MOD_GROUP_CONTENT_NAME;
+		}
+		return sanitizeFileName(raw);
+	}
+
+	private void addVisibleModGroup(List<String> groups, String rawGroupName, Set<String> hiddenGroups) {
+		String groupName = sanitizeModGroupNameOrEmpty(rawGroupName);
+		if (TextUtils.isEmpty(groupName) || isReservedModGroupName(groupName) || containsStringIgnoreCase(hiddenGroups, groupName) || containsStringIgnoreCase(groups, groupName)) {
+			return;
+		}
+		groups.add(groupName);
+	}
+
+	private List<String> loadDeclaredModGroups() {
+		SharedPreferences preferences = context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE);
+		return sanitizeCustomGroupList(decodeStringList(preferences.getString(KEY_MOD_GROUPS, "")));
+	}
+
+	private void saveDeclaredModGroups(List<String> groupIds) {
+		SharedPreferences preferences = context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE);
+		preferences.edit().putString(KEY_MOD_GROUPS, encodeStringList(sanitizeCustomGroupList(groupIds))).apply();
+	}
+
+	private List<String> loadHiddenModGroups() {
+		SharedPreferences preferences = context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE);
+		return sanitizeCustomGroupList(decodeStringList(preferences.getString(KEY_HIDDEN_MOD_GROUPS, "")));
+	}
+
+	private void saveHiddenModGroups(List<String> groupIds) {
+		SharedPreferences preferences = context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE);
+		preferences.edit().putString(KEY_HIDDEN_MOD_GROUPS, encodeStringList(sanitizeCustomGroupList(groupIds))).apply();
+	}
+
+	private List<String> sanitizeCustomGroupList(List<String> rawGroups) {
+		List<String> groups = new ArrayList<>();
+		if (rawGroups == null) {
+			return groups;
+		}
+		for (String rawGroup : rawGroups) {
+			String groupName = sanitizeModGroupNameOrEmpty(rawGroup);
+			if (!TextUtils.isEmpty(groupName) && !isReservedModGroupName(groupName) && !containsStringIgnoreCase(groups, groupName)) {
+				groups.add(groupName);
+			}
+		}
+		return groups;
+	}
+
+	private void removeDeclaredModGroup(String groupName) {
+		List<String> groups = loadDeclaredModGroups();
+		if (removeStringIgnoreCase(groups, groupName)) {
+			saveDeclaredModGroups(groups);
+		}
+	}
+
+	private void hideModGroup(String groupName) {
+		List<String> hidden = loadHiddenModGroups();
+		if (!containsStringIgnoreCase(hidden, groupName)) {
+			hidden.add(groupName);
+			saveHiddenModGroups(hidden);
+		}
+	}
+
+	private void removeHiddenModGroup(String groupName) {
+		List<String> hidden = loadHiddenModGroups();
+		if (removeStringIgnoreCase(hidden, groupName)) {
+			saveHiddenModGroups(hidden);
+		}
+	}
+
+	private void addGroupIdToOrderIfMissing(String groupId) {
+		List<String> order = loadModGroupOrder();
+		if (!containsStringIgnoreCase(order, groupId)) {
+			order.add(groupId);
+			saveModGroupOrder(order);
+		}
+	}
+
+	private void replaceGroupIdInOrder(String oldName, String newName) {
+		List<String> order = loadModGroupOrder();
+		if (replaceStringIgnoreCase(order, oldName, newName)) {
+			saveModGroupOrder(order);
+		}
 	}
 
 	private void removeGroupIdFromOrder(String groupId) {
 		List<String> order = loadModGroupOrder();
-		if (order.remove(groupId)) {
+		if (removeStringIgnoreCase(order, groupId)) {
 			saveModGroupOrder(order);
 		}
 	}
@@ -1340,6 +1417,66 @@ public final class ExtraSettingsRepository {
 		}
 	}
 
+	public Map<String, String> loadModGroupAssignments() {
+		Map<String, String> assignments = new LinkedHashMap<>();
+		SharedPreferences preferences = context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE);
+		try {
+			JSONObject object = new JSONObject(preferences.getString(KEY_MOD_GROUP_ASSIGNMENTS, "{}"));
+			JSONArray names = object.names();
+			if (names == null) {
+				return assignments;
+			}
+			for (int i = 0; i < names.length(); i++) {
+				String modId = names.optString(i, "").trim();
+				String groupName = normalizeAssignmentGroupName(object.optString(modId, ""));
+				if (!TextUtils.isEmpty(modId) && !TextUtils.isEmpty(groupName)) {
+					assignments.put(modId, groupName);
+				}
+			}
+		} catch (Exception ignored) {
+		}
+		return assignments;
+	}
+
+	private void saveModGroupAssignments(Map<String, String> assignments) throws JSONException {
+		JSONObject object = new JSONObject();
+		if (assignments != null) {
+			for (Map.Entry<String, String> entry : assignments.entrySet()) {
+				String modId = entry.getKey() == null ? "" : entry.getKey().trim();
+				String groupName = normalizeAssignmentGroupName(entry.getValue());
+				if (!TextUtils.isEmpty(modId) && !TextUtils.isEmpty(groupName)) {
+					object.put(modId, groupName);
+				}
+			}
+		}
+		context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE)
+			.edit()
+			.putString(KEY_MOD_GROUP_ASSIGNMENTS, object.toString())
+			.apply();
+	}
+
+	private void reassignModsFromGroup(String oldGroupName, String newGroupName) throws JSONException {
+		Map<String, String> assignments = loadModGroupAssignments();
+		String targetGroup = normalizeAssignmentGroupName(newGroupName);
+		for (ModEntry entry : listInstalledModManifests()) {
+			String assigned = assignments.get(entry.modId);
+			if (oldGroupName.equals(assigned) || (TextUtils.isEmpty(assigned) && oldGroupName.equals(topLevelDirectory(entry.relativePath)))) {
+				assignments.put(entry.modId, targetGroup);
+			}
+		}
+		saveModGroupAssignments(assignments);
+	}
+
+	private void removeModGroupAssignment(String modId) throws JSONException {
+		if (TextUtils.isEmpty(modId)) {
+			return;
+		}
+		Map<String, String> assignments = loadModGroupAssignments();
+		if (assignments.remove(modId) != null) {
+			saveModGroupAssignments(assignments);
+		}
+	}
+
 	private String safeOrderKey(String value) {
 		return TextUtils.isEmpty(value) ? "__root__" : value.replace(':', '_');
 	}
@@ -1365,7 +1502,7 @@ public final class ExtraSettingsRepository {
 			JSONArray array = new JSONArray(encoded);
 			for (int i = 0; i < array.length(); i++) {
 				String value = array.optString(i, "");
-				if (!TextUtils.isEmpty(value) && !values.contains(value)) {
+				if (!TextUtils.isEmpty(value) && !containsStringIgnoreCase(values, value)) {
 					values.add(value);
 				}
 			}
@@ -1374,177 +1511,68 @@ public final class ExtraSettingsRepository {
 		return values;
 	}
 
+	private boolean containsStringIgnoreCase(Iterable<String> values, String candidate) {
+		if (TextUtils.isEmpty(candidate) || values == null) {
+			return false;
+		}
+		for (String value : values) {
+			if (candidate.equalsIgnoreCase(value)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean removeStringIgnoreCase(List<String> values, String candidate) {
+		if (TextUtils.isEmpty(candidate) || values == null) {
+			return false;
+		}
+		for (int i = values.size() - 1; i >= 0; i--) {
+			if (candidate.equalsIgnoreCase(values.get(i))) {
+				values.remove(i);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean replaceStringIgnoreCase(List<String> values, String oldValue, String newValue) {
+		if (TextUtils.isEmpty(oldValue) || TextUtils.isEmpty(newValue) || values == null) {
+			return false;
+		}
+		for (int i = 0; i < values.size(); i++) {
+			if (oldValue.equalsIgnoreCase(values.get(i))) {
+				values.set(i, newValue);
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public void moveModToGroup(ModEntry modEntry, String rawGroupName) throws Exception {
 		if (modEntry == null || TextUtils.isEmpty(modEntry.modId)) {
 			return;
 		}
-		String groupName = normalizeModGroupName(rawGroupName);
-		File modsRoot = getModsRootDir();
-		ensureDirectory(modsRoot);
-		File sourceDirectory = getModEntryDirectory(modEntry);
-		File targetGroupDirectory = TextUtils.isEmpty(groupName) ? modsRoot : new File(modsRoot, sanitizeFileName(groupName));
-		ensureDirectory(targetGroupDirectory);
-		if (!TextUtils.isEmpty(groupName)) {
-			markModGroupDirectory(targetGroupDirectory);
+		String groupName = normalizeAssignmentGroupName(rawGroupName);
+		if (!MOD_GROUP_UNGROUPED_NAME.equals(groupName) && !isReservedModGroupName(groupName)) {
+			createModGroup(groupName);
 		}
-		boolean targetIsRoot = targetGroupDirectory.getCanonicalFile().equals(modsRoot.getCanonicalFile());
-		if (!targetIsRoot && sourceDirectory != null && sourceDirectory.isDirectory()) {
-			String sourcePath = sourceDirectory.getCanonicalPath();
-			String targetGroupPath = targetGroupDirectory.getCanonicalPath();
-			if (sourcePath.equals(targetGroupPath) || sourcePath.startsWith(targetGroupPath + File.separator)) {
-				return;
-			}
-		}
-		if (!targetIsRoot && sourceDirectory != null && sourceDirectory.isDirectory() && !sourceDirectory.getCanonicalFile().equals(modsRoot.getCanonicalFile()) && !isModGroupDirectory(sourceDirectory) && shouldMoveWholeModDirectory(sourceDirectory, modEntry)) {
-			File targetDirectory = uniqueDirectory(new File(targetGroupDirectory, sourceDirectory.getName()));
-			String sourcePath = sourceDirectory.getCanonicalPath();
-			String targetPath = targetDirectory.getCanonicalPath();
-			if (targetPath.equals(sourcePath) || targetPath.startsWith(sourcePath + File.separator)) {
-				return;
-			}
-			if (!sourceDirectory.renameTo(targetDirectory)) {
-				copyRecursively(sourceDirectory, targetDirectory);
-				deleteRecursively(sourceDirectory);
-			}
-			pruneEmptyDirectories(sourceDirectory.getParentFile(), modsRoot);
-		} else {
-			moveModEntryFiles(modEntry, targetGroupDirectory);
-		}
-		normalizeRuntimeModAliases(modsRoot);
+		Map<String, String> assignments = loadModGroupAssignments();
+		assignments.put(modEntry.modId, groupName);
+		saveModGroupAssignments(assignments);
 	}
 
 	public void movePreparedImportFilesToGroup(PreparedModImport preparedImport, String rawGroupName) throws Exception {
-		if (preparedImport == null || preparedImport.stagingRoot == null) {
+		if (preparedImport == null || preparedImport.incomingEntries == null) {
 			return;
 		}
-		String groupName = sanitizeFileName(normalizeModGroupName(rawGroupName));
-		if (TextUtils.isEmpty(groupName)) {
-			return;
+		for (ModEntry entry : preparedImport.incomingEntries) {
+			moveModToGroup(entry, rawGroupName);
 		}
-		File modsRoot = getModsRootDir();
-		ensureDirectory(modsRoot);
-		File targetGroupDirectory = new File(modsRoot, groupName);
-		ensureDirectory(targetGroupDirectory);
-		markModGroupDirectory(targetGroupDirectory);
-		List<String> relativePaths = getPreparedImportRelativeFilePaths(preparedImport);
-		relativePaths.sort(String::compareToIgnoreCase);
-		Set<String> movedParents = new LinkedHashSet<>();
-		for (String relativePath : relativePaths) {
-			File source = resolveRelativeChild(modsRoot, relativePath);
-			File target = resolveRelativeChild(targetGroupDirectory, relativePath);
-			if (source == null || target == null || !source.isFile()) {
-				continue;
-			}
-			if (source.getCanonicalFile().equals(target.getCanonicalFile())) {
-				continue;
-			}
-			if (target.isFile()) {
-				deleteIfExists(target);
-			}
-			File targetParent = target.getParentFile();
-			if (targetParent != null) {
-				ensureDirectory(targetParent);
-			}
-			File sourceParent = source.getParentFile();
-			if (!source.renameTo(target)) {
-				copyRecursively(source, target);
-				deleteIfExists(source);
-			}
-			if (sourceParent != null) {
-				movedParents.add(sourceParent.getCanonicalPath());
-			}
-		}
-		for (String movedParent : movedParents) {
-			pruneEmptyDirectories(new File(movedParent), modsRoot);
-		}
-		normalizeRuntimeModAliases(modsRoot);
 	}
 
 	private boolean isModGroupDirectory(File directory) {
 		return new File(directory, MOD_GROUP_MARKER_FILE_NAME).isFile();
-	}
-
-	private void markModGroupDirectory(File directory) throws IOException {
-		File marker = new File(directory, MOD_GROUP_MARKER_FILE_NAME);
-		if (!marker.isFile()) {
-			writeTextFile(marker, "STS2 Android MOD group\n");
-		}
-	}
-
-	private boolean shouldMoveWholeModDirectory(File sourceDirectory, ModEntry modEntry) {
-		File[] manifests = sourceDirectory.listFiles((dir, name) -> name.toLowerCase(Locale.ROOT).endsWith(".json"));
-		if (manifests == null || manifests.length == 0) {
-			return true;
-		}
-		int parsedCount = 0;
-		for (File manifest : manifests) {
-			ModEntry parsed = tryParseModEntry(sourceDirectory, manifest);
-			if (parsed != null && !parsed.modId.equals(modEntry.modId)) {
-				return false;
-			}
-			if (parsed != null) {
-				parsedCount++;
-			}
-		}
-		return parsedCount <= 1 || sourceDirectory.getName().equals(modEntry.modId) || sourceDirectory.getName().equals(modEntry.pckName);
-	}
-
-	private void moveModEntryFiles(ModEntry modEntry, File targetDirectory) throws Exception {
-		File currentParent = modEntry.manifestFile.getParentFile();
-		if (currentParent != null && currentParent.getCanonicalFile().equals(targetDirectory.getCanonicalFile())) {
-			return;
-		}
-		List<File> sources = new ArrayList<>();
-		addIfFile(sources, modEntry.manifestFile);
-		File parent = modEntry.manifestFile.getParentFile();
-		if (parent != null) {
-			addIfFile(sources, new File(parent, modEntry.modId + ".json"));
-			addIfFile(sources, new File(parent, modEntry.modId + ".pck"));
-			addIfFile(sources, new File(parent, modEntry.modId + ".dll"));
-			if (!modEntry.modId.equals(modEntry.pckName)) {
-				addIfFile(sources, new File(parent, modEntry.pckName + ".pck"));
-				addIfFile(sources, new File(parent, modEntry.pckName + ".dll"));
-			}
-		}
-		Set<String> moved = new LinkedHashSet<>();
-		for (File source : sources) {
-			String canonical = source.getCanonicalPath();
-			if (!moved.add(canonical)) {
-				continue;
-			}
-			File target = uniqueFile(new File(targetDirectory, source.getName()));
-			if (!source.renameTo(target)) {
-				copyRecursively(source, target);
-				deleteIfExists(source);
-			}
-		}
-		if (parent != null) {
-			pruneEmptyDirectories(parent, getModsRootDir());
-		}
-	}
-
-	private void addIfFile(List<File> files, File file) {
-		if (file != null && file.isFile()) {
-			files.add(file);
-		}
-	}
-
-	private File getModEntryDirectory(ModEntry modEntry) {
-		File parent = modEntry.manifestFile.getParentFile();
-		File modsRoot = getModsRootDir();
-		if (parent == null) {
-			return null;
-		}
-		try {
-			File parentCanonical = parent.getCanonicalFile();
-			File rootCanonical = modsRoot.getCanonicalFile();
-			if (parentCanonical.equals(rootCanonical)) {
-				return parentCanonical;
-			}
-			return parentCanonical;
-		} catch (Exception ignored) {
-			return parent;
-		}
 	}
 
 	private String normalizeModGroupName(String rawGroupName) {
@@ -1581,38 +1609,23 @@ public final class ExtraSettingsRepository {
 		return null;
 	}
 
+	private String topLevelDirectory(String relativePath) {
+		if (TextUtils.isEmpty(relativePath)) {
+			return "";
+		}
+		String normalized = relativePath.replace('\\', '/');
+		int slash = normalized.indexOf('/');
+		if (slash <= 0) {
+			return "";
+		}
+		return normalized.substring(0, slash);
+	}
+
 	private boolean isModEntryUnderDirectory(ModEntry modEntry, File directory) {
 		if (modEntry == null || modEntry.manifestFile == null || directory == null) {
 			return false;
 		}
 		return isSameOrDescendant(modEntry.manifestFile, directory);
-	}
-
-	private File uniqueDirectory(File desired) {
-		File candidate = desired;
-		int index = 2;
-		while (candidate.exists()) {
-			candidate = new File(desired.getParentFile(), desired.getName() + "-" + index);
-			index++;
-		}
-		return candidate;
-	}
-
-	private File uniqueFile(File desired) {
-		if (!desired.exists()) {
-			return desired;
-		}
-		String name = desired.getName();
-		int dot = name.lastIndexOf('.');
-		String base = dot > 0 ? name.substring(0, dot) : name;
-		String extension = dot > 0 ? name.substring(dot) : "";
-		int index = 2;
-		File candidate;
-		do {
-			candidate = new File(desired.getParentFile(), base + "-" + index + extension);
-			index++;
-		} while (candidate.exists());
-		return candidate;
 	}
 
 	public void setModsEnabled(List<ModEntry> modEntries, boolean enabled) throws Exception {

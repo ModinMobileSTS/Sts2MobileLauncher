@@ -858,6 +858,7 @@ public final class ModsPage {
 		LinkedHashMap<String, ModGroupBucket> groups = new LinkedHashMap<>();
 		List<String> userGroups = repository.listModGroups();
 		Set<String> userGroupNames = new LinkedHashSet<>(userGroups);
+		Map<String, String> groupAssignments = repository.loadModGroupAssignments();
 		putGroup(groups, MOD_GROUP_CORE, context.getString(R.string.mod_group_core), false);
 		putGroup(groups, MOD_GROUP_CONTENT, context.getString(R.string.mod_group_content), false);
 		for (String groupName : userGroups) {
@@ -866,7 +867,7 @@ public final class ModsPage {
 			putGroup(groups, groupId, label, true);
 		}
 		for (ExtraSettingsRepository.ModEntry entry : mods) {
-			String groupId = groupIdForEntry(entry, userGroupNames);
+			String groupId = groupIdForEntry(entry, userGroupNames, groupAssignments);
 			ModGroupBucket bucket = groups.get(groupId);
 			if (bucket == null) {
 				bucket = putGroup(groups, groupId, groupLabel(groupId, groupId), true);
@@ -892,7 +893,11 @@ public final class ModsPage {
 		return bucket;
 	}
 
-	private String groupIdForEntry(ExtraSettingsRepository.ModEntry entry, Set<String> userGroupNames) {
+	private String groupIdForEntry(ExtraSettingsRepository.ModEntry entry, Set<String> userGroupNames, Map<String, String> groupAssignments) {
+		String assignedGroup = groupAssignments == null ? "" : groupAssignments.get(entry.modId);
+		if (!TextUtils.isEmpty(assignedGroup)) {
+			return normalizeGroupId(assignedGroup);
+		}
 		String top = topLevelDirectory(entry.relativePath);
 		if (!TextUtils.isEmpty(top)) {
 			String normalizedTop = normalizeGroupId(top);
@@ -1251,61 +1256,51 @@ public final class ModsPage {
 		if (entry == null || targetBucket == null) {
 			return;
 		}
-		boolean sameGroup = sourceBucket != null && sourceBucket.id.equals(targetBucket.id);
-		int adjustedTargetIndex = targetIndex;
-		if (sameGroup) {
-			for (int i = 0; i < targetBucket.entries.size(); i++) {
-				if (targetBucket.entries.get(i).modId.equals(entry.modId)) {
-					if (i < adjustedTargetIndex) {
-						adjustedTargetIndex--;
+		try {
+			boolean sameGroup = sourceBucket != null && sourceBucket.id.equals(targetBucket.id);
+			int adjustedTargetIndex = targetIndex;
+			if (sameGroup) {
+				for (int i = 0; i < targetBucket.entries.size(); i++) {
+					if (targetBucket.entries.get(i).modId.equals(entry.modId)) {
+						if (i < adjustedTargetIndex) {
+							adjustedTargetIndex--;
+						}
+						break;
 					}
-					break;
 				}
 			}
-		}
-		List<String> targetOrder = new ArrayList<>();
-		for (ExtraSettingsRepository.ModEntry mod : targetBucket.entries) {
-			if (!mod.modId.equals(entry.modId)) {
-				targetOrder.add(mod.modId);
-			}
-		}
-		int clamped = Math.max(0, Math.min(adjustedTargetIndex, targetOrder.size()));
-		targetOrder.add(clamped, entry.modId);
-		repository.saveModOrder(targetBucket.id, targetOrder);
-		if (!sameGroup && sourceBucket != null) {
-			List<String> sourceOrder = new ArrayList<>();
-			for (ExtraSettingsRepository.ModEntry mod : sourceBucket.entries) {
+			List<String> targetOrder = new ArrayList<>();
+			for (ExtraSettingsRepository.ModEntry mod : targetBucket.entries) {
 				if (!mod.modId.equals(entry.modId)) {
-					sourceOrder.add(mod.modId);
+					targetOrder.add(mod.modId);
 				}
 			}
-			repository.saveModOrder(sourceBucket.id, sourceOrder);
-		}
-
-		// Optimistic local reorder: keep scroll and avoid full page rebuild.
-		applyLocalModMove(entry, sourceBucket, targetBucket, clamped);
-		rebuildListItemsFromBuckets();
-
-		if (sameGroup) {
-			// Order-only change is already persisted via saveModOrder.
-			return;
-		}
-
-		// Cross-group needs filesystem move, but do not call runAsyncOperation
-		// (it refreshCurrentScreen and jumps the list to the top).
-		String targetGroup = targetBucket.id;
-		String targetLabel = targetBucket.label;
-		new Thread(() -> {
-			try {
-				repository.moveModToGroup(entry, MOD_GROUP_UNGROUPED.equals(targetGroup) ? "" : targetGroup);
-				mainHandler.post(() -> actions.showMessage(context.getString(R.string.status_move_mod_group_done, targetLabel)));
-			} catch (Exception exception) {
-				mainHandler.post(() -> {
-					actions.showError(exception);
-					refreshList();
-				});
+			int clamped = Math.max(0, Math.min(adjustedTargetIndex, targetOrder.size()));
+			targetOrder.add(clamped, entry.modId);
+			repository.saveModOrder(targetBucket.id, targetOrder);
+			if (!sameGroup) {
+				if (sourceBucket != null) {
+					List<String> sourceOrder = new ArrayList<>();
+					for (ExtraSettingsRepository.ModEntry mod : sourceBucket.entries) {
+						if (!mod.modId.equals(entry.modId)) {
+							sourceOrder.add(mod.modId);
+						}
+					}
+					repository.saveModOrder(sourceBucket.id, sourceOrder);
+				}
+				repository.moveModToGroup(entry, targetBucket.id);
 			}
-		}, "sts2-move-mod-group").start();
+
+			// Optimistic local reorder: keep scroll and avoid full page rebuild.
+			applyLocalModMove(entry, sourceBucket, targetBucket, clamped);
+			rebuildListItemsFromBuckets();
+			if (!sameGroup) {
+				actions.showMessage(context.getString(R.string.status_move_mod_group_done, targetBucket.label));
+			}
+		} catch (Exception exception) {
+			actions.showError(exception);
+			refreshList();
+		}
 	}
 
 	private void applyLocalModMove(ExtraSettingsRepository.ModEntry entry, ModGroupBucket sourceBucket, ModGroupBucket targetBucket, int targetIndex) {
@@ -1647,6 +1642,7 @@ public final class ModsPage {
 		List<String> groups = repository.listModGroups();
 		List<ExtraSettingsRepository.ModEntry> allMods = repository.listInstalledModManifests();
 		Set<String> userGroupNames = new LinkedHashSet<>(groups);
+		Map<String, String> groupAssignments = repository.loadModGroupAssignments();
 		if (groups.isEmpty()) {
 			TextView empty = ExtraSettingsUi.body(context, R.string.mod_group_empty_manage);
 			empty.setPadding(0, ExtraSettingsUi.dp(context, 12), 0, 0);
@@ -1656,7 +1652,7 @@ public final class ModsPage {
 		for (String groupName : groups) {
 			int count = 0;
 			for (ExtraSettingsRepository.ModEntry entry : allMods) {
-				if (groupName.equals(groupIdForEntry(entry, userGroupNames))) {
+				if (groupName.equals(groupIdForEntry(entry, userGroupNames, groupAssignments))) {
 					count++;
 				}
 			}
@@ -1763,9 +1759,10 @@ public final class ModsPage {
 	private void showPickModsForGroupDialog(String targetGroupName, BottomSheetDialog parentSheet) {
 		List<ExtraSettingsRepository.ModEntry> allMods = repository.listInstalledModManifests();
 		Set<String> userGroups = new LinkedHashSet<>(repository.listModGroups());
+		Map<String, String> groupAssignments = repository.loadModGroupAssignments();
 		Set<String> checked = new HashSet<>();
 		for (ExtraSettingsRepository.ModEntry entry : allMods) {
-			if (targetGroupName.equals(groupIdForEntry(entry, userGroups))) {
+			if (targetGroupName.equals(groupIdForEntry(entry, userGroups, groupAssignments))) {
 				checked.add(entry.modId);
 			}
 		}
@@ -1823,7 +1820,7 @@ public final class ModsPage {
 			.setPositiveButton(android.R.string.ok, (d, which) -> {
 				List<ExtraSettingsRepository.ModEntry> toMove = new ArrayList<>();
 				for (ExtraSettingsRepository.ModEntry entry : allMods) {
-					if (checked.contains(entry.modId) && !targetGroupName.equals(groupIdForEntry(entry, userGroups))) {
+					if (checked.contains(entry.modId) && !targetGroupName.equals(groupIdForEntry(entry, userGroups, groupAssignments))) {
 						toMove.add(entry);
 					}
 				}
@@ -1877,24 +1874,23 @@ public final class ModsPage {
 			actions.showMessage(context.getString(R.string.mod_group_move_none_selected));
 			return;
 		}
-		String label = groupLabel(targetGroupId, targetGroupId);
-		String moveTarget = MOD_GROUP_UNGROUPED.equals(targetGroupId) ? "" : targetGroupId;
-		int count = entries.size();
-		// Append moved mods to target order
-		List<String> order = new ArrayList<>(repository.loadModOrder(TextUtils.isEmpty(moveTarget) ? MOD_GROUP_CONTENT : targetGroupId));
-		for (ExtraSettingsRepository.ModEntry entry : entries) {
-			order.remove(entry.modId);
-			order.add(entry.modId);
-		}
-		if (!TextUtils.isEmpty(moveTarget)) {
-			repository.saveModOrder(targetGroupId, order);
-		}
-		actions.runAsyncOperation(context.getString(R.string.status_busy_batch_move_mods), () -> {
+		try {
+			String label = groupLabel(targetGroupId, targetGroupId);
+			int count = entries.size();
+			List<String> order = new ArrayList<>(repository.loadModOrder(targetGroupId));
 			for (ExtraSettingsRepository.ModEntry entry : entries) {
-				repository.moveModToGroup(entry, moveTarget);
+				order.remove(entry.modId);
+				order.add(entry.modId);
+				repository.moveModToGroup(entry, targetGroupId);
 			}
-			return context.getString(R.string.status_batch_move_mods_done, count, label);
-		});
+			repository.saveModOrder(targetGroupId, order);
+			actions.showMessage(context.getString(R.string.status_batch_move_mods_done, count, label));
+			rememberChipScroll();
+			refreshList();
+		} catch (Exception exception) {
+			actions.showError(exception);
+			refreshList();
+		}
 	}
 
 	// endregion
