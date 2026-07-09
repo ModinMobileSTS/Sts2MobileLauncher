@@ -5,10 +5,17 @@ import android.content.SharedPreferences;
 
 public final class SteamWorkshopPreferences {
 	public static final int DEFAULT_APP_ID = 2868840;
+	public static final String BRANCH_MODE_AUTO = "auto";
+	public static final String BRANCH_MODE_PUBLIC = "public";
+	public static final String BRANCH_MODE_PUBLIC_BETA = "public-beta";
+	public static final String BRANCH_MODE_CUSTOM = "custom";
+	public static final String BRANCH_MODE_ASK = "ask";
 	private static final String PREFERENCES_NAME = "sts2_steam_workshop";
 	private static final String KEY_AUTO_CHECK_UPDATES = "auto_check_updates";
 	private static final String KEY_DOWNLOAD_GROUP = "download_group";
 	private static final String KEY_CONCURRENT_CHUNKS = "concurrent_chunks";
+	private static final String KEY_DOWNLOAD_BRANCH_MODE = "download_branch_mode";
+	private static final String KEY_CUSTOM_DOWNLOAD_BRANCH = "custom_download_branch";
 	private static final String KEY_DIRECT_ACCESS_ENABLED = "direct_access_enabled";
 
 	private SteamWorkshopPreferences() {
@@ -38,6 +45,30 @@ public final class SteamWorkshopPreferences {
 		preferences(context).edit().putInt(KEY_CONCURRENT_CHUNKS, Math.max(1, Math.min(8, value))).apply();
 	}
 
+	public static String getDownloadBranchMode(Context context) {
+		String value = preferences(context).getString(KEY_DOWNLOAD_BRANCH_MODE, BRANCH_MODE_AUTO);
+		if (BRANCH_MODE_PUBLIC.equals(value) || BRANCH_MODE_PUBLIC_BETA.equals(value) || BRANCH_MODE_CUSTOM.equals(value) || BRANCH_MODE_ASK.equals(value)) {
+			return value;
+		}
+		return BRANCH_MODE_AUTO;
+	}
+
+	public static void setDownloadBranchMode(Context context, String mode) {
+		String value = mode == null ? BRANCH_MODE_AUTO : mode.trim();
+		if (!BRANCH_MODE_PUBLIC.equals(value) && !BRANCH_MODE_PUBLIC_BETA.equals(value) && !BRANCH_MODE_CUSTOM.equals(value) && !BRANCH_MODE_ASK.equals(value)) {
+			value = BRANCH_MODE_AUTO;
+		}
+		preferences(context).edit().putString(KEY_DOWNLOAD_BRANCH_MODE, value).apply();
+	}
+
+	public static String getCustomDownloadBranch(Context context) {
+		return sanitizeBranch(preferences(context).getString(KEY_CUSTOM_DOWNLOAD_BRANCH, ""));
+	}
+
+	public static void setCustomDownloadBranch(Context context, String branch) {
+		preferences(context).edit().putString(KEY_CUSTOM_DOWNLOAD_BRANCH, sanitizeBranch(branch)).apply();
+	}
+
 	public static boolean isDirectAccessEnabled(Context context) {
 		return preferences(context).getBoolean(KEY_DIRECT_ACCESS_ENABLED, true);
 	}
@@ -55,6 +86,11 @@ public final class SteamWorkshopPreferences {
 		if (trimmed.isEmpty()) {
 			return "workshop";
 		}
+		return trimmed.replace('\\', '_').replace('/', '_');
+	}
+
+	private static String sanitizeBranch(String value) {
+		String trimmed = value == null ? "" : value.trim();
 		return trimmed.replace('\\', '_').replace('/', '_');
 	}
 }

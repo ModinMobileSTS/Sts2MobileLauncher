@@ -62,9 +62,10 @@ class UgcWorkshopDownloader(
                     appId = request.appId,
                     depotId = item.depotId,
                     manifestId = item.manifestId,
+                    branch = request.branch,
                 )
             }.getOrElse {
-                log("Manifest request code unavailable, retrying without request code: ${it.message}")
+                log("Manifest request code unavailable for branch=${request.branch}, retrying without request code: ${it.message}")
                 0uL
             }
 

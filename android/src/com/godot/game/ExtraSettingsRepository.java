@@ -718,16 +718,24 @@ public final class ExtraSettingsRepository {
 	}
 
 	public WorkshopModImportResult commitPreparedWorkshopModImport(PreparedModImport preparedImport, String rawGroupName, String publishedFileId, boolean replaceExistingConflicts) throws Exception {
+		return commitPreparedWorkshopModImport(preparedImport, rawGroupName, publishedFileId, "public", replaceExistingConflicts);
+	}
+
+	public WorkshopModImportResult commitPreparedWorkshopModImport(PreparedModImport preparedImport, String rawGroupName, String publishedFileId, String workshopBranch, boolean replaceExistingConflicts) throws Exception {
 		if (preparedImport == null || preparedImport.stagingRoot == null || !preparedImport.stagingRoot.isDirectory()) {
 			throw new IOException("Prepared MOD import is no longer available.");
 		}
 		try {
-			List<ModImportConflict> idConflicts = replaceExistingConflicts ? findCurrentWorkshopImportConflicts(preparedImport, rawGroupName, publishedFileId) : Collections.emptyList();
+			List<ModImportConflict> idConflicts = replaceExistingConflicts ? findCurrentWorkshopImportConflicts(preparedImport, rawGroupName, publishedFileId, workshopBranch) : Collections.emptyList();
 			if (replaceExistingConflicts) {
 				deleteExistingImportConflicts(idConflicts);
 			}
-			File installRoot = getWorkshopItemInstallDir(rawGroupName, publishedFileId);
-			File groupDirectory = installRoot.getParentFile();
+			File installRoot = getWorkshopItemInstallDir(rawGroupName, publishedFileId, workshopBranch);
+			File branchDirectory = installRoot.getParentFile();
+			if (branchDirectory != null) {
+				ensureDirectory(branchDirectory);
+			}
+			File groupDirectory = getWorkshopGroupDir(rawGroupName);
 			if (groupDirectory != null) {
 				ensureDirectory(groupDirectory);
 				if (!groupDirectory.getCanonicalFile().equals(getModsRootDir().getCanonicalFile())) {
@@ -762,10 +770,14 @@ public final class ExtraSettingsRepository {
 	}
 
 	public List<ModImportConflict> findCurrentWorkshopImportConflicts(PreparedModImport preparedImport, String rawGroupName, String publishedFileId) {
+		return findCurrentWorkshopImportConflicts(preparedImport, rawGroupName, publishedFileId, "public");
+	}
+
+	public List<ModImportConflict> findCurrentWorkshopImportConflicts(PreparedModImport preparedImport, String rawGroupName, String publishedFileId, String workshopBranch) {
 		if (preparedImport == null) {
 			return Collections.emptyList();
 		}
-		File installRoot = getWorkshopItemInstallDir(rawGroupName, publishedFileId);
+		File installRoot = getWorkshopItemInstallDir(rawGroupName, publishedFileId, workshopBranch);
 		List<ModImportConflict> conflicts = findImportConflicts(preparedImport.incomingEntries);
 		if (conflicts.isEmpty()) {
 			return conflicts;
@@ -1107,11 +1119,23 @@ public final class ExtraSettingsRepository {
 	}
 
 	public File getWorkshopItemInstallDir(String rawGroupName, String publishedFileId) {
-		String groupName = sanitizeFileName(normalizeModGroupName(rawGroupName));
+		return getWorkshopItemInstallDir(rawGroupName, publishedFileId, "public");
+	}
+
+	public File getWorkshopItemInstallDir(String rawGroupName, String publishedFileId, String workshopBranch) {
 		String itemDirectoryName = sanitizeWorkshopPublishedFileId(publishedFileId);
-		File modsRoot = getModsRootDir();
-		File parent = TextUtils.isEmpty(groupName) ? modsRoot : new File(modsRoot, groupName);
+		File parent = getWorkshopGroupDir(rawGroupName);
+		String branchName = sanitizeWorkshopBranch(workshopBranch);
+		if (!TextUtils.isEmpty(branchName)) {
+			parent = new File(parent, branchName);
+		}
 		return new File(parent, itemDirectoryName);
+	}
+
+	private File getWorkshopGroupDir(String rawGroupName) {
+		String groupName = sanitizeFileName(normalizeModGroupName(rawGroupName));
+		File modsRoot = getModsRootDir();
+		return TextUtils.isEmpty(groupName) ? modsRoot : new File(modsRoot, groupName);
 	}
 
 	public void deleteWorkshopItemInstall(String installedRootPath, String publishedFileId, List<ModEntry> modEntries) throws Exception {
@@ -1403,6 +1427,11 @@ public final class ExtraSettingsRepository {
 	private String sanitizeWorkshopPublishedFileId(String publishedFileId) {
 		String sanitized = sanitizeFileName(publishedFileId == null ? "" : publishedFileId.trim());
 		return TextUtils.isEmpty(sanitized) ? "unknown_workshop_item" : sanitized;
+	}
+
+	private String sanitizeWorkshopBranch(String workshopBranch) {
+		String sanitized = sanitizeFileName(workshopBranch == null ? "" : workshopBranch.trim());
+		return TextUtils.isEmpty(sanitized) ? "public" : sanitized;
 	}
 
 	private File firstInstalledRootPath(String installedRootPath) {

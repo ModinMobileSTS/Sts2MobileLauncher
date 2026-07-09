@@ -42,22 +42,28 @@ class WorkshopDownloadEngine(
 
         try {
             send(DownloadEvent.StateChanged(DownloadState.Resolving))
-            emitLog("Resolving workshop metadata for app=${request.appId} publishedFileId=${request.publishedFileId}")
+            emitLog("Resolving workshop metadata for app=${request.appId} publishedFileId=${request.publishedFileId} branch=${request.branch}")
 
-            val resolved = resolver.resolve(request.appId, request.publishedFileId)
+            val resolved = resolver.resolve(request.appId, request.publishedFileId, request.branch, request.selectedVariant)
+            send(DownloadEvent.Resolved(resolved.resolution))
             metadataFile.writeText(resolved.metadataJson)
             emitLog("Metadata saved to ${metadataFile.name}")
 
             when (resolved) {
                 is ResolvedWorkshopItem.DirectUrlItem -> {
                     send(DownloadEvent.StateChanged(DownloadState.Downloading))
-                    emitLog("Using file_url direct download path")
+                    emitLog("Using file_url direct download path source=${resolved.resolution.source} fallback=${resolved.resolution.fallbackReason}")
                     directDownloader.download(request, resolved, ::emitEvent, ::emitLog)
                 }
 
                 is ResolvedWorkshopItem.UgcManifestItem -> {
                     send(DownloadEvent.StateChanged(DownloadState.Connecting))
-                    emitLog("Using UGC manifest path manifest=${resolved.manifestId} depot=${resolved.depotId}")
+                    emitLog(
+                        "Using UGC manifest path manifest=${resolved.manifestId} depot=${resolved.depotId} " +
+                            "branch=${request.branch} source=${resolved.resolution.source} " +
+                            "matched=${resolved.resolution.matchedBranchMin}..${resolved.resolution.matchedBranchMax} " +
+                            "fallback=${resolved.resolution.fallbackReason}",
+                    )
                     ugcWorkshopDownloader.download(request, resolved, ::emitEvent, ::emitLog)
                 }
             }

@@ -12,11 +12,22 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.runBlocking
 import okhttp3.Protocol
+import kotlinx.serialization.json.Json
 import top.apricityx.workshop.steam.protocol.SteamAccountSession
+import top.apricityx.workshop.steam.protocol.SteamDirectoryClient
+import top.apricityx.workshop.steam.protocol.SteamPublishedFileClient
 import top.apricityx.workshop.workshop.DownloadEvent
 import top.apricityx.workshop.workshop.DownloadState
+import top.apricityx.workshop.workshop.PublishedFileChangeHistoryProvider
+import top.apricityx.workshop.workshop.PublishedFileItemInfoProvider
+import top.apricityx.workshop.workshop.PublishedFileResolver
 import top.apricityx.workshop.workshop.WorkshopDownloadEngine
 import top.apricityx.workshop.workshop.WorkshopDownloadRequest
+import top.apricityx.workshop.workshop.WorkshopItemResolution
+import top.apricityx.workshop.workshop.WorkshopResolvedVariant
+import top.apricityx.workshop.workshop.WorkshopVariantCandidate
+import top.apricityx.workshop.workshop.WorkshopVariantResolver
+import top.apricityx.workshop.workshop.normalizeWorkshopBranch
 
 class SteamWorkshopDownloader(private val context: Context) {
     class CancellationToken {
@@ -40,30 +51,93 @@ class SteamWorkshopDownloader(private val context: Context) {
         val totalBytes: Long = 0L,
     )
 
+    data class BranchOption(
+        val branch: String,
+        val manifestId: String,
+        val depotId: String,
+        val source: String,
+        val fallbackReason: String,
+        val matchedBranchMin: String,
+        val matchedBranchMax: String,
+        val timestampEpochSeconds: Long,
+        val title: String,
+        val fileSizeBytes: Long,
+    )
+
     data class Result(
         val item: SteamWorkshopCatalog.Item,
         val outputDir: File,
+        val branch: String,
+        val manifestId: String,
+        val depotId: String,
+        val resolutionSource: String,
+        val fallbackReason: String,
+        val matchedBranchMin: String,
+        val matchedBranchMax: String,
     )
+
+    fun loadBranchOptions(item: SteamWorkshopCatalog.Item): List<BranchOption> = runBlocking {
+        loadBranchOptions(item, emptyList())
+    }
+
+    fun loadBranchOption(item: SteamWorkshopCatalog.Item, branch: String): BranchOption = runBlocking {
+        val normalizedBranch = normalizeWorkshopBranch(branch).ifBlank { "public" }
+        val options = loadBranchOptions(item, listOf(normalizedBranch))
+        selectBranchOption(options, normalizedBranch)
+            ?: throw IOException("Unable to resolve Steam Workshop content for branch: $normalizedBranch")
+    }
+
+    private suspend fun loadBranchOptions(
+        item: SteamWorkshopCatalog.Item,
+        extraBranches: Collection<String>,
+    ): List<BranchOption> {
+        val appContext = context.applicationContext
+        val identity = SteamClientIdentity(appContext)
+        val client = createWorkshopNetworkClient(appContext)
+        val account = createAccountSession(appContext, identity)
+        val appId = resolveAppId(item)
+        val publishedFileId = item.publishedFileId.toULongOrNull()
+            ?: throw IOException("Invalid Steam Workshop file id: ${item.publishedFileId}")
+        val directoryClient = SteamDirectoryClient(client)
+        val publishedFileClient = SteamPublishedFileClient(
+            directoryClient = directoryClient,
+            sessionFactory = { identity.createSession(client) },
+        )
+        val resolver = WorkshopVariantResolver(
+            publishedFileResolver = PublishedFileResolver(
+                client = client,
+                json = Json { ignoreUnknownKeys = true },
+                language = "schinese",
+            ),
+            itemInfoProvider = PublishedFileItemInfoProvider { providerAppId, providerPublishedFileId ->
+                publishedFileClient.getItemInfo(account, providerAppId, listOf(providerPublishedFileId))
+                    .firstOrNull { it.publishedFileId == providerPublishedFileId }
+            },
+            changeHistoryProvider = PublishedFileChangeHistoryProvider { providerPublishedFileId ->
+                publishedFileClient.getChangeHistory(account, providerPublishedFileId)
+            },
+        )
+        val options = resolver.resolveCandidates(appId, publishedFileId).map { it.toBranchOption() }
+        return addDefaultManifestBranchFallbackOptions(appContext, options, extraBranches)
+    }
 
     fun download(
         item: SteamWorkshopCatalog.Item,
         listener: ((Progress) -> Unit)? = null,
         cancellationToken: CancellationToken? = null,
+    ): Result = download(item, null, listener, cancellationToken)
+
+    fun download(
+        item: SteamWorkshopCatalog.Item,
+        selectedOption: BranchOption?,
+        listener: ((Progress) -> Unit)? = null,
+        cancellationToken: CancellationToken? = null,
     ): Result = runBlocking {
         val appContext = context.applicationContext
-        val auth = SteamAuthStore.readAuthMaterial(appContext)
         val identity = SteamClientIdentity(appContext)
         val client = createWorkshopNetworkClient(appContext)
         cancellationToken?.throwIfCancelled()
-        val account = auth?.let {
-            val steamId = authSteamIdOrResolve(appContext)
-            SteamAccountSession(
-                accountName = it.accountName,
-                steamId = steamId,
-                refreshToken = it.refreshToken,
-                machineName = identity.machineName,
-            )
-        }
+        val account = createAccountSession(appContext, identity)
         val outputDir = prepareOutputDir(appContext, item.publishedFileId.toString())
         val engine = WorkshopDownloadEngine.createDefault(
             client = client,
@@ -79,14 +153,19 @@ class SteamWorkshopDownloader(private val context: Context) {
             allowPublicCdnFallbackOnSessionFailure = true,
             publishedFileLanguage = "schinese",
         )
-        var lastMessage = "Resolving workshop item..."
+        val selectedVariant = selectedOption?.toResolvedVariant()
+        val branch = normalizeWorkshopBranch(selectedOption?.branch ?: selectedVariant?.branch ?: "public")
+        var resolvedResolution: WorkshopItemResolution? = null
+        var lastMessage = "Resolving workshop item ($branch)..."
         emit(listener, Progress(1, lastMessage))
         engine.download(
             WorkshopDownloadRequest(
-                appId = item.appId.toUInt(),
+                appId = resolveAppId(item),
                 publishedFileId = item.publishedFileId.toULongOrNull()
                     ?: throw IOException("Invalid Steam Workshop file id: ${item.publishedFileId}"),
                 outputDir = outputDir,
+                branch = branch,
+                selectedVariant = selectedVariant,
             ),
         ).collect { event ->
             cancellationToken?.throwIfCancelled()
@@ -94,6 +173,9 @@ class SteamWorkshopDownloader(private val context: Context) {
                 is DownloadEvent.StateChanged -> {
                     lastMessage = stateLabel(event.state)
                     emit(listener, Progress(statePercent(event.state), lastMessage))
+                }
+                is DownloadEvent.Resolved -> {
+                    resolvedResolution = event.resolution
                 }
                 is DownloadEvent.Progress -> {
                     val totalBytes = event.totalBytes
@@ -115,7 +197,18 @@ class SteamWorkshopDownloader(private val context: Context) {
                 is DownloadEvent.LogAppended -> Unit
             }
         }
-        Result(item, outputDir)
+        val finalResolution = resolvedResolution
+        Result(
+            item = item,
+            outputDir = outputDir,
+            branch = branch,
+            manifestId = finalResolution?.manifestId?.toString() ?: selectedOption?.manifestId.orEmpty(),
+            depotId = finalResolution?.depotId?.toString() ?: selectedOption?.depotId.orEmpty(),
+            resolutionSource = finalResolution?.source ?: selectedOption?.source.orEmpty(),
+            fallbackReason = finalResolution?.fallbackReason ?: selectedOption?.fallbackReason.orEmpty(),
+            matchedBranchMin = finalResolution?.matchedBranchMin ?: selectedOption?.matchedBranchMin.orEmpty(),
+            matchedBranchMax = finalResolution?.matchedBranchMax ?: selectedOption?.matchedBranchMax.orEmpty(),
+        )
     }
 
     private fun buildProgressLabel(event: DownloadEvent.Progress, fallback: String): String {
@@ -208,6 +301,142 @@ class SteamWorkshopDownloader(private val context: Context) {
             lower.contains("unable to download")
     }
 
+    private fun addDefaultManifestBranchFallbackOptions(
+        context: Context,
+        options: List<BranchOption>,
+        extraBranches: Collection<String> = emptyList(),
+    ): List<BranchOption> {
+        val defaultManifestOption = options.firstOrNull { option ->
+            option.manifestId.isNotBlank() && option.source == SOURCE_CM_MANIFEST_ID
+        } ?: options.firstOrNull { option ->
+            option.manifestId.isNotBlank() && option.source == SOURCE_WEBAPI_HCONTENT_FILE
+        } ?: options.firstOrNull { option ->
+            option.manifestId.isNotBlank()
+        } ?: return options
+
+        val branches = linkedSetOf("public")
+        branches.addAll(selectedPayloadBranches(context))
+        extraBranches.map(::normalizeWorkshopBranch).filter(String::isNotBlank).forEach(branches::add)
+        branches.add("public-beta")
+
+        val result = options.toMutableList()
+        for (branchValue in branches) {
+            val branch = normalizeWorkshopBranch(branchValue)
+            if (branch.isBlank()) {
+                continue
+            }
+            val alreadyPresent = result.any { option ->
+                normalizeWorkshopBranch(option.branch) == branch &&
+                    option.manifestId == defaultManifestOption.manifestId &&
+                    option.depotId == defaultManifestOption.depotId
+            }
+            if (alreadyPresent) {
+                continue
+            }
+            result += defaultManifestOption.copy(
+                branch = branch,
+                source = SOURCE_BRANCH_DEFAULT_MANIFEST,
+                fallbackReason = "no_branch_specific_snapshot_for_branch=$branch; using_default_manifest=${defaultManifestOption.manifestId}",
+                matchedBranchMin = "",
+                matchedBranchMax = "",
+            )
+        }
+        return result.sortedWith(
+            compareBy<BranchOption> { branchOptionSourceRank(it.source) }
+                .thenBy { branchOptionSortKey(it.branch) }
+                .thenByDescending { it.timestampEpochSeconds }
+                .thenBy { it.manifestId },
+        )
+    }
+
+    private fun selectBranchOption(options: List<BranchOption>, branch: String): BranchOption? {
+        val normalizedBranch = normalizeWorkshopBranch(branch).ifBlank { "public" }
+        options.firstOrNull { normalizeWorkshopBranch(it.branch) == normalizedBranch }?.let { return it }
+        val direct = options.firstOrNull { it.source == SOURCE_DIRECT_FILE_URL } ?: return null
+        return direct.copy(
+            branch = normalizedBranch,
+            fallbackReason = "direct_file_url_ignores_branch=$normalizedBranch",
+        )
+    }
+
+    private fun selectedPayloadBranches(context: Context): List<String> {
+        val payload = runCatching { LaunchProfileManager(context).selectedPayload }.getOrNull() ?: return emptyList()
+        val manifest = payload.manifest
+        val branches = linkedSetOf<String>()
+        manifest.optJSONObject("source")
+            ?.optJSONObject("steam")
+            ?.optString("branch")
+            ?.let(branches::add)
+        manifest.optJSONObject("identity")
+            ?.optString("branch")
+            ?.let(branches::add)
+        manifest.optJSONObject("identity")
+            ?.optJSONObject("release_info")
+            ?.optString("branch")
+            ?.let(branches::add)
+        manifest.optJSONObject("game")
+            ?.optJSONObject("release_info")
+            ?.optString("branch")
+            ?.let(branches::add)
+        if (payload.version.trim().equals("v0.108.0", ignoreCase = true) || payload.version.trim().equals("0.108.0", ignoreCase = true)) {
+            branches.add("public-beta")
+        }
+        return branches.map(::normalizeWorkshopBranch).filter(String::isNotBlank).distinct()
+    }
+
+    private fun branchOptionSourceRank(source: String): Int = when (source) {
+        SOURCE_AUTHOR_SNAPSHOT -> 0
+        SOURCE_CHANGE_HISTORY_SNAPSHOT -> 1
+        SOURCE_CM_MANIFEST_ID -> 2
+        SOURCE_BRANCH_DEFAULT_MANIFEST -> 3
+        SOURCE_WEBAPI_HCONTENT_FILE -> 4
+        SOURCE_DIRECT_FILE_URL -> 5
+        else -> 9
+    }
+
+    private fun branchOptionSortKey(branch: String): Int = when (normalizeWorkshopBranch(branch)) {
+        "public" -> 0
+        "public-beta" -> 1
+        else -> 2
+    }
+
+    private fun WorkshopVariantCandidate.toBranchOption(): BranchOption = BranchOption(
+        branch = normalizeWorkshopBranch(branch),
+        manifestId = manifestId?.toString().orEmpty(),
+        depotId = depotId?.toString().orEmpty(),
+        source = source,
+        fallbackReason = fallbackReason,
+        matchedBranchMin = matchedBranchMin,
+        matchedBranchMax = matchedBranchMax,
+        timestampEpochSeconds = timestampEpochSeconds,
+        title = title,
+        fileSizeBytes = fileSizeBytes ?: 0L,
+    )
+
+    private fun BranchOption.toResolvedVariant(): WorkshopResolvedVariant = WorkshopResolvedVariant(
+        branch = normalizeWorkshopBranch(branch),
+        manifestId = manifestId.trim().takeIf(String::isNotBlank)?.toULongOrNull(),
+        depotId = depotId.trim().takeIf(String::isNotBlank)?.toUIntOrNull(),
+        source = source,
+        fallbackReason = fallbackReason,
+        matchedBranchMin = matchedBranchMin,
+        matchedBranchMax = matchedBranchMax,
+        timestampEpochSeconds = timestampEpochSeconds,
+    )
+
+    private fun resolveAppId(item: SteamWorkshopCatalog.Item): UInt =
+        (if (item.appId > 0) item.appId else SteamWorkshopPreferences.DEFAULT_APP_ID).toUInt()
+
+    private fun createAccountSession(context: Context, identity: SteamClientIdentity): SteamAccountSession? {
+        val auth = SteamAuthStore.readAuthMaterial(context) ?: return null
+        return SteamAccountSession(
+            accountName = auth.accountName,
+            steamId = authSteamIdOrResolve(context),
+            refreshToken = auth.refreshToken,
+            machineName = identity.machineName,
+        )
+    }
+
     private fun prepareOutputDir(context: Context, publishedFileId: String): File {
         val root = File(File(context.filesDir, "workshop"), "downloads")
         if (!root.isDirectory && !root.mkdirs()) {
@@ -245,5 +474,14 @@ class SteamWorkshopDownloader(private val context: Context) {
 
     private fun emit(listener: ((Progress) -> Unit)?, progress: Progress) {
         listener?.invoke(progress)
+    }
+
+    companion object {
+        private const val SOURCE_AUTHOR_SNAPSHOT = "cm_get_item_info_author_snapshot"
+        private const val SOURCE_CHANGE_HISTORY_SNAPSHOT = "cm_get_change_history_snapshot"
+        private const val SOURCE_CM_MANIFEST_ID = "cm_get_item_info_manifest_id"
+        private const val SOURCE_BRANCH_DEFAULT_MANIFEST = "requested_branch_default_manifest"
+        private const val SOURCE_WEBAPI_HCONTENT_FILE = "webapi_hcontent_file"
+        private const val SOURCE_DIRECT_FILE_URL = "direct_file_url"
     }
 }

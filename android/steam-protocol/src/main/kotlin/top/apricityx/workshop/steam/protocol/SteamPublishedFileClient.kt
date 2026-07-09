@@ -1,7 +1,12 @@
 package top.apricityx.workshop.steam.protocol
 
+import top.apricityx.workshop.steam.proto.CPublishedFile_GetChangeHistory_Request
+import top.apricityx.workshop.steam.proto.CPublishedFile_GetChangeHistory_Response
+import top.apricityx.workshop.steam.proto.CPublishedFile_GetItemInfo_Request
+import top.apricityx.workshop.steam.proto.CPublishedFile_GetItemInfo_Response
 import top.apricityx.workshop.steam.proto.CPublishedFile_QueryFiles_Request
 import top.apricityx.workshop.steam.proto.CPublishedFile_QueryFiles_Response
+import top.apricityx.workshop.steam.proto.EPublishedFileRevision
 
 data class SteamPublishedFileQuery(
     val appId: UInt,
@@ -31,6 +36,29 @@ data class SteamPublishedFileItem(
     val views: Int,
     val timeCreatedEpochSeconds: Long,
     val timeUpdatedEpochSeconds: Long,
+)
+
+data class SteamPublishedFileItemInfo(
+    val publishedFileId: ULong,
+    val timeUpdatedEpochSeconds: Long,
+    val manifestId: ULong,
+    val revision: Int,
+    val authorSnapshots: List<SteamPublishedFileAuthorSnapshot>,
+)
+
+data class SteamPublishedFileAuthorSnapshot(
+    val timestampEpochSeconds: Long,
+    val gameBranchMin: String,
+    val gameBranchMax: String,
+    val manifestId: ULong,
+)
+
+data class SteamPublishedFileChangeLog(
+    val timestampEpochSeconds: Long,
+    val savedSnapshot: Boolean,
+    val gameBranchMin: String,
+    val gameBranchMax: String,
+    val manifestId: ULong,
 )
 
 class SteamPublishedFileClient(
@@ -73,6 +101,129 @@ class SteamPublishedFileClient(
             }
         }
     }
+
+    suspend fun getItemInfo(
+        account: SteamAccountSession?,
+        appId: UInt,
+        publishedFileIds: List<ULong>,
+        desiredRevision: EPublishedFileRevision = EPublishedFileRevision.k_EPublishedFileRevision_AuthorSnapshot,
+    ): List<SteamPublishedFileItemInfo> {
+        val ids = publishedFileIds
+            .filter { it > 0uL }
+            .distinct()
+            .take(100)
+        if (ids.isEmpty()) {
+            return emptyList()
+        }
+        val cmServers = directoryClient.loadServers()
+        return sessionFactory().use { session ->
+            try {
+                if (account != null && account.steamId > 0L && account.refreshToken.isNotBlank()) {
+                    session.connectWithRefreshToken(cmServers, account)
+                } else {
+                    session.connectAnonymous(cmServers)
+                }
+                val request = CPublishedFile_GetItemInfo_Request.newBuilder()
+                    .setAppid(appId.toInt())
+                    .setDesiredRevision(desiredRevision)
+                    .apply {
+                        ids.forEach { id ->
+                            addWorkshopItems(
+                                CPublishedFile_GetItemInfo_Request.WorkshopItem.newBuilder()
+                                    .setPublishedFileId(id.toLong())
+                                    .setDesiredRevision(desiredRevision)
+                                    .build(),
+                            )
+                        }
+                    }
+                    .build()
+                val response = session.callServiceMethod(
+                    methodName = "PublishedFile.GetItemInfo#1",
+                    request = request,
+                    parser = CPublishedFile_GetItemInfo_Response.parser(),
+                )
+                response.workshopItemsList.mapNotNull(::toPublishedFileItemInfo)
+            } catch (error: Throwable) {
+                throw when (error) {
+                    is SteamProtocolException -> error
+                    else -> SteamProtocolException("Failed to get Steam published file item info", error)
+                }
+            }
+        }
+    }
+
+    private fun toPublishedFileItemInfo(
+        item: CPublishedFile_GetItemInfo_Response.WorkshopItemInfo,
+    ): SteamPublishedFileItemInfo? =
+        item.publishedFileId.takeIf { it > 0L }?.toULong()?.let { publishedFileId ->
+            SteamPublishedFileItemInfo(
+                publishedFileId = publishedFileId,
+                timeUpdatedEpochSeconds = item.timeUpdated.toLong(),
+                manifestId = item.manifestId.toULong(),
+                revision = item.revision.number,
+                authorSnapshots = item.authorSnapshotsList.mapNotNull { snapshot ->
+                    snapshot.manifestId.takeIf { it > 0L }?.toULong()?.let { manifestId ->
+                        SteamPublishedFileAuthorSnapshot(
+                            timestampEpochSeconds = snapshot.timestamp.toLong(),
+                            gameBranchMin = snapshot.gameBranchMin,
+                            gameBranchMax = snapshot.gameBranchMax,
+                            manifestId = manifestId,
+                        )
+                    }
+                },
+            )
+        }
+
+    suspend fun getChangeHistory(
+        account: SteamAccountSession?,
+        publishedFileId: ULong,
+        count: Int = 50,
+        language: Int = STEAM_LANGUAGE_SIMPLIFIED_CHINESE,
+    ): List<SteamPublishedFileChangeLog> {
+        if (publishedFileId <= 0uL) {
+            return emptyList()
+        }
+        val cmServers = directoryClient.loadServers()
+        return sessionFactory().use { session ->
+            try {
+                if (account != null && account.steamId > 0L && account.refreshToken.isNotBlank()) {
+                    session.connectWithRefreshToken(cmServers, account)
+                } else {
+                    session.connectAnonymous(cmServers)
+                }
+                val request = CPublishedFile_GetChangeHistory_Request.newBuilder()
+                    .setPublishedfileid(publishedFileId.toLong())
+                    .setStartindex(0)
+                    .setCount(count.coerceIn(1, 100))
+                    .setLanguage(language)
+                    .build()
+                val response = session.callServiceMethod(
+                    methodName = "PublishedFile.GetChangeHistory#1",
+                    request = request,
+                    parser = CPublishedFile_GetChangeHistory_Response.parser(),
+                )
+                response.changesList.mapNotNull(::toPublishedFileChangeLog)
+            } catch (error: Throwable) {
+                throw when (error) {
+                    is SteamProtocolException -> error
+                    else -> SteamProtocolException("Failed to get Steam published file change history", error)
+                }
+            }
+        }
+    }
+
+    private fun toPublishedFileChangeLog(
+        change: CPublishedFile_GetChangeHistory_Response.ChangeLog,
+    ): SteamPublishedFileChangeLog? =
+        change.manifestId.takeIf { it > 0L }?.toULong()?.let { manifestId ->
+            SteamPublishedFileChangeLog(
+                timestampEpochSeconds = change.timestamp.toLong(),
+                savedSnapshot = change.savedSnapshot,
+                gameBranchMin = change.snapshotGameBranchMin,
+                gameBranchMax = change.snapshotGameBranchMax,
+                manifestId = manifestId,
+            )
+        }
 
     private fun toPublishedFileItem(
         detail: top.apricityx.workshop.steam.proto.PublishedFileDetails,

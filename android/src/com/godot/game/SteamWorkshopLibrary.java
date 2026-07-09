@@ -40,11 +40,16 @@ public final class SteamWorkshopLibrary {
 	}
 
 	public synchronized Entry recordInstall(SteamWorkshopCatalog.Item item, File installRoot, List<ExtraSettingsRepository.ModEntry> importedMods) throws Exception {
+		return recordInstall(item, installRoot, importedMods, InstallContext.empty());
+	}
+
+	public synchronized Entry recordInstall(SteamWorkshopCatalog.Item item, File installRoot, List<ExtraSettingsRepository.ModEntry> importedMods, InstallContext installContext) throws Exception {
 		ensureRoot();
+		InstallContext safeContext = installContext == null ? InstallContext.empty() : installContext;
 		List<Entry> entries = readEntries();
 		Map<String, Entry> byId = new LinkedHashMap<>();
 		for (Entry entry : entries) {
-			byId.put(entry.publishedFileId, entry);
+			byId.put(entry.key(), entry);
 		}
 		List<String> modIds = new ArrayList<>();
 		if (importedMods != null) {
@@ -73,9 +78,19 @@ public final class SteamWorkshopLibrary {
 			installedRootPath,
 			modIds,
 			directorySize(installRoot),
-			sha1InstalledRoot(installRoot)
+			sha1InstalledRoot(installRoot),
+			safeContext.workshopBranch,
+			safeContext.branchMode,
+			safeContext.payloadId,
+			safeContext.payloadVersion,
+			safeContext.payloadSts2DllSha256,
+			safeContext.resolvedManifestId,
+			safeContext.resolutionSource,
+			safeContext.matchedBranchMin,
+			safeContext.matchedBranchMax,
+			safeContext.fallbackReason
 		);
-		byId.put(updated.publishedFileId, updated);
+		byId.put(updated.key(), updated);
 		writeEntries(new ArrayList<>(byId.values()));
 		return updated;
 	}
@@ -119,6 +134,21 @@ public final class SteamWorkshopLibrary {
 		List<Entry> kept = new ArrayList<>();
 		for (Entry entry : entries) {
 			if (!publishedFileId.equals(entry.publishedFileId)) {
+				kept.add(entry);
+			}
+		}
+		writeEntries(kept);
+	}
+
+	public synchronized void removeEntry(String publishedFileId, String workshopBranch) throws Exception {
+		if (TextUtils.isEmpty(publishedFileId)) {
+			return;
+		}
+		String key = entryKey(publishedFileId, workshopBranch);
+		List<Entry> entries = readEntries();
+		List<Entry> kept = new ArrayList<>();
+		for (Entry entry : entries) {
+			if (!key.equals(entry.key())) {
 				kept.add(entry);
 			}
 		}
@@ -256,6 +286,71 @@ public final class SteamWorkshopLibrary {
 		return builder.toString();
 	}
 
+	private static String entryKey(String publishedFileId, String workshopBranch) {
+		return sanitizeKeyPart(publishedFileId) + "@" + sanitizeKeyPart(normalizeBranch(workshopBranch));
+	}
+
+	private static String normalizeBranch(String workshopBranch) {
+		String trimmed = workshopBranch == null ? "" : workshopBranch.trim();
+		return trimmed.isEmpty() ? "public" : trimmed;
+	}
+
+	private static String sanitizeKeyPart(String value) {
+		String trimmed = value == null ? "" : value.trim();
+		if (trimmed.isEmpty()) {
+			return "unknown";
+		}
+		return trimmed.replace('\\', '_').replace('/', '_').replace('@', '_');
+	}
+
+	public static final class InstallContext {
+		public final String workshopBranch;
+		public final String branchMode;
+		public final String payloadId;
+		public final String payloadVersion;
+		public final String payloadSts2DllSha256;
+		public final String resolvedManifestId;
+		public final String resolutionSource;
+		public final String matchedBranchMin;
+		public final String matchedBranchMax;
+		public final String fallbackReason;
+
+		InstallContext(String workshopBranch, String branchMode, String payloadId, String payloadVersion, String payloadSts2DllSha256, String resolvedManifestId, String resolutionSource, String matchedBranchMin, String matchedBranchMax, String fallbackReason) {
+			this.workshopBranch = normalizeBranch(workshopBranch);
+			this.branchMode = branchMode == null ? "manual" : branchMode;
+			this.payloadId = payloadId == null ? "" : payloadId;
+			this.payloadVersion = payloadVersion == null ? "" : payloadVersion;
+			this.payloadSts2DllSha256 = payloadSts2DllSha256 == null ? "" : payloadSts2DllSha256;
+			this.resolvedManifestId = resolvedManifestId == null ? "" : resolvedManifestId;
+			this.resolutionSource = resolutionSource == null ? "" : resolutionSource;
+			this.matchedBranchMin = matchedBranchMin == null ? "" : matchedBranchMin;
+			this.matchedBranchMax = matchedBranchMax == null ? "" : matchedBranchMax;
+			this.fallbackReason = fallbackReason == null ? "" : fallbackReason;
+		}
+
+		static InstallContext empty() {
+			return new InstallContext("public", "legacy", "", "", "", "", "", "", "", "");
+		}
+
+		public static InstallContext fromDownloadResult(SteamWorkshopDownloader.Result result) {
+			if (result == null) {
+				return empty();
+			}
+			return new InstallContext(
+				result.getBranch(),
+				"manual",
+				"",
+				"",
+				"",
+				result.getManifestId(),
+				result.getResolutionSource(),
+				result.getMatchedBranchMin(),
+				result.getMatchedBranchMax(),
+				result.getFallbackReason()
+			);
+		}
+	}
+
 	public static final class Entry {
 		public final String appId;
 		public final String publishedFileId;
@@ -274,8 +369,18 @@ public final class SteamWorkshopLibrary {
 		public final List<String> importedModIds;
 		public final long installedBytes;
 		public final String installedSha1;
+		public final String workshopBranch;
+		public final String branchMode;
+		public final String payloadId;
+		public final String payloadVersion;
+		public final String payloadSts2DllSha256;
+		public final String resolvedManifestId;
+		public final String resolutionSource;
+		public final String matchedBranchMin;
+		public final String matchedBranchMax;
+		public final String fallbackReason;
 
-		Entry(String appId, String publishedFileId, String gameTitle, String title, String description, String previewUrl, long fileSizeBytes, long installedRemoteUpdatedAtMs, long installedAtMs, long lastCheckedAtMs, long remoteUpdatedAtMs, String updateStatus, String lastError, String installedRootPath, List<String> importedModIds, long installedBytes, String installedSha1) {
+		Entry(String appId, String publishedFileId, String gameTitle, String title, String description, String previewUrl, long fileSizeBytes, long installedRemoteUpdatedAtMs, long installedAtMs, long lastCheckedAtMs, long remoteUpdatedAtMs, String updateStatus, String lastError, String installedRootPath, List<String> importedModIds, long installedBytes, String installedSha1, String workshopBranch, String branchMode, String payloadId, String payloadVersion, String payloadSts2DllSha256, String resolvedManifestId, String resolutionSource, String matchedBranchMin, String matchedBranchMax, String fallbackReason) {
 			this.appId = appId == null ? "" : appId;
 			this.publishedFileId = publishedFileId == null ? "" : publishedFileId;
 			this.gameTitle = gameTitle == null ? "" : gameTitle;
@@ -293,14 +398,28 @@ public final class SteamWorkshopLibrary {
 			this.importedModIds = importedModIds == null ? new ArrayList<>() : new ArrayList<>(importedModIds);
 			this.installedBytes = Math.max(0L, installedBytes);
 			this.installedSha1 = installedSha1 == null ? "" : installedSha1;
+			this.workshopBranch = normalizeBranch(workshopBranch);
+			this.branchMode = branchMode == null ? "" : branchMode;
+			this.payloadId = payloadId == null ? "" : payloadId;
+			this.payloadVersion = payloadVersion == null ? "" : payloadVersion;
+			this.payloadSts2DllSha256 = payloadSts2DllSha256 == null ? "" : payloadSts2DllSha256;
+			this.resolvedManifestId = resolvedManifestId == null ? "" : resolvedManifestId;
+			this.resolutionSource = resolutionSource == null ? "" : resolutionSource;
+			this.matchedBranchMin = matchedBranchMin == null ? "" : matchedBranchMin;
+			this.matchedBranchMax = matchedBranchMax == null ? "" : matchedBranchMax;
+			this.fallbackReason = fallbackReason == null ? "" : fallbackReason;
+		}
+
+		String key() {
+			return entryKey(publishedFileId, workshopBranch);
 		}
 
 		Entry withRemoteDetail(SteamWorkshopCatalog.Item item, long checkedAtMs, long remoteUpdatedAtMs, String status, String error) {
-			return new Entry(appId, publishedFileId, gameTitle, item.getTitle(), item.getDescription(), item.getPreviewUrl(), item.getFileSizeBytes(), installedRemoteUpdatedAtMs, installedAtMs, checkedAtMs, remoteUpdatedAtMs, status, error, installedRootPath, importedModIds, installedBytes, installedSha1);
+			return new Entry(appId, publishedFileId, gameTitle, item.getTitle(), item.getDescription(), item.getPreviewUrl(), item.getFileSizeBytes(), installedRemoteUpdatedAtMs, installedAtMs, checkedAtMs, remoteUpdatedAtMs, status, error, installedRootPath, importedModIds, installedBytes, installedSha1, workshopBranch, branchMode, payloadId, payloadVersion, payloadSts2DllSha256, resolvedManifestId, resolutionSource, matchedBranchMin, matchedBranchMax, fallbackReason);
 		}
 
 		Entry withCheckResult(long checkedAtMs, long remoteUpdatedAtMs, String status, String error) {
-			return new Entry(appId, publishedFileId, gameTitle, title, description, previewUrl, fileSizeBytes, installedRemoteUpdatedAtMs, installedAtMs, checkedAtMs, remoteUpdatedAtMs, status, error, installedRootPath, importedModIds, installedBytes, installedSha1);
+			return new Entry(appId, publishedFileId, gameTitle, title, description, previewUrl, fileSizeBytes, installedRemoteUpdatedAtMs, installedAtMs, checkedAtMs, remoteUpdatedAtMs, status, error, installedRootPath, importedModIds, installedBytes, installedSha1, workshopBranch, branchMode, payloadId, payloadVersion, payloadSts2DllSha256, resolvedManifestId, resolutionSource, matchedBranchMin, matchedBranchMax, fallbackReason);
 		}
 
 		JSONObject toJson() throws Exception {
@@ -321,6 +440,16 @@ public final class SteamWorkshopLibrary {
 			object.put("installed_root_path", installedRootPath);
 			object.put("installed_bytes", installedBytes);
 			object.put("installed_sha1", installedSha1);
+			object.put("workshop_branch", workshopBranch);
+			object.put("branch_mode", branchMode);
+			object.put("payload_id", payloadId);
+			object.put("payload_version", payloadVersion);
+			object.put("payload_sts2_dll_sha256", payloadSts2DllSha256);
+			object.put("resolved_manifest_id", resolvedManifestId);
+			object.put("resolution_source", resolutionSource);
+			object.put("matched_branch_min", matchedBranchMin);
+			object.put("matched_branch_max", matchedBranchMax);
+			object.put("fallback_reason", fallbackReason);
 			JSONArray ids = new JSONArray();
 			for (String id : importedModIds) {
 				ids.put(id);
@@ -357,7 +486,17 @@ public final class SteamWorkshopLibrary {
 				object.optString("installed_root_path", ""),
 				modIds,
 				object.optLong("installed_bytes", 0L),
-				object.optString("installed_sha1", "")
+				object.optString("installed_sha1", ""),
+				object.optString("workshop_branch", "public"),
+				object.optString("branch_mode", "legacy"),
+				object.optString("payload_id", ""),
+				object.optString("payload_version", ""),
+				object.optString("payload_sts2_dll_sha256", ""),
+				object.optString("resolved_manifest_id", ""),
+				object.optString("resolution_source", ""),
+				object.optString("matched_branch_min", ""),
+				object.optString("matched_branch_max", ""),
+				object.optString("fallback_reason", "")
 			);
 		}
 	}

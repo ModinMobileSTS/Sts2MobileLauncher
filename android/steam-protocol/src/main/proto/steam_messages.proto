@@ -297,6 +297,75 @@ message PublishedFileDetails {
   optional bool maybe_inappropriate_violence = 66;
 }
 
+enum EPublishedFileRevision {
+  k_EPublishedFileRevision_Default = 0;
+  k_EPublishedFileRevision_Latest = 1;
+  k_EPublishedFileRevision_ApprovedSnapshot = 2;
+  k_EPublishedFileRevision_ApprovedSnapshot_China = 3;
+  k_EPublishedFileRevision_RejectedSnapshot = 4;
+  k_EPublishedFileRevision_RejectedSnapshot_China = 5;
+  k_EPublishedFileRevision_AuthorSnapshot = 6;
+}
+
+message PublishedFileAuthorSnapshot {
+  optional uint32 timestamp = 1;
+  optional string game_branch_min = 2 [default = ""];
+  optional string game_branch_max = 3 [default = ""];
+  optional fixed64 manifest_id = 4;
+}
+
+message CPublishedFile_GetItemInfo_Request {
+  message WorkshopItem {
+    optional fixed64 published_file_id = 1;
+    optional uint32 time_updated = 2;
+    optional EPublishedFileRevision desired_revision = 3 [default = k_EPublishedFileRevision_Default];
+  }
+
+  optional uint32 appid = 1;
+  optional uint32 last_time_updated = 2;
+  repeated WorkshopItem workshop_items = 3;
+  optional EPublishedFileRevision desired_revision = 4 [default = k_EPublishedFileRevision_Default];
+}
+
+message CPublishedFile_GetItemInfo_Response {
+  message WorkshopItemInfo {
+    optional fixed64 published_file_id = 1;
+    optional uint32 time_updated = 2;
+    optional fixed64 manifest_id = 3;
+    optional uint32 flags = 4;
+    optional EPublishedFileRevision revision = 5 [default = k_EPublishedFileRevision_Default];
+    repeated PublishedFileAuthorSnapshot author_snapshots = 6;
+  }
+
+  optional uint32 update_time = 1;
+  repeated WorkshopItemInfo workshop_items = 2;
+  repeated fixed64 private_items = 3;
+}
+
+message CPublishedFile_GetChangeHistory_Request {
+  optional fixed64 publishedfileid = 1;
+  optional bool total_only = 2;
+  optional uint32 startindex = 3;
+  optional uint32 count = 4;
+  optional int32 language = 5 [default = 0];
+}
+
+message CPublishedFile_GetChangeHistory_Response {
+  message ChangeLog {
+    optional uint32 timestamp = 1;
+    optional string change_description = 2 [default = ""];
+    optional int32 language = 3;
+    optional bool saved_snapshot = 4;
+    optional string snapshot_game_branch_min = 5 [default = ""];
+    optional string snapshot_game_branch_max = 6 [default = ""];
+    optional fixed64 manifest_id = 7;
+    optional uint32 accountid = 8;
+  }
+
+  repeated ChangeLog changes = 1;
+  optional uint32 total = 2;
+}
+
 message CPublishedFile_QueryFiles_Request {
   optional uint32 query_type = 1;
   optional uint32 page = 2;
