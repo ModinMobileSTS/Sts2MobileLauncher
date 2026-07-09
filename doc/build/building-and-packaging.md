@@ -48,6 +48,7 @@ STS2_ORIGINAL_V103_REFERENCE_DIR=/path/to/v0.103.x/bin/Debug
 STS2_ORIGINAL_V1061_REFERENCE_DIR=/path/to/v0.106.1/bin/Debug
 STS2_ORIGINAL_V1070_REFERENCE_DIR=/path/to/v0.107.0/bin/Debug
 STS2_ORIGINAL_V1071_REFERENCE_DIR=/path/to/v0.107.1/bin/Debug
+STS2_ORIGINAL_V1080_REFERENCE_DIR=/path/to/v0.108.0/bin/Debug
 ```
 
 `STS2_ORIGINAL_*_REFERENCE_DIR` 目录需包含 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll`。这些是 compile gate 引用，不提交到仓库。
@@ -106,10 +107,12 @@ android/assets/dotnet_bcl/STS2Mobile.dll
 android/assets/port_compat.pck
 ```
 
-默认 `ReferenceFlavor` 来自 `local.properties` 的 `compat.default_reference_flavor`（示例为 `original-v0.107.1`）。可临时覆盖：
+默认 `ReferenceFlavor` 来自 `local.properties` 的 `compat.default_reference_flavor`（示例为 `original-v0.108.0`）。可临时覆盖：
 
 ```bash
-# 当前稳定版 v0.107.1
+# 当前稳定版 v0.108.0
+REFERENCE_FLAVOR=original-v0.108.0 tools/android/build-port-mod.sh
+# stable v0.107.1
 REFERENCE_FLAVOR=original-v0.107.1 tools/android/build-port-mod.sh
 # 旧 beta v0.107.0
 REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
@@ -142,7 +145,8 @@ android/assets/compat_packs/sts2-android-compat.zip
 - `v0.103.x`（支持 `v0.103.2` / `v0.103.3`，`ReferenceFlavor=original`）
 - `v0.106.1-beta`（旧 beta，`ReferenceFlavor=original-v0.106.1`）
 - `v0.107.0-beta`（旧 beta，`ReferenceFlavor=original-v0.107.0`）
-- `v0.107.1`（当前稳定版，`ReferenceFlavor=original-v0.107.1`）
+- `v0.107.1`（stable，`ReferenceFlavor=original-v0.107.1`）
+- `v0.108.0`（当前稳定版，`ReferenceFlavor=original-v0.108.0`）
 
 输出到：
 
@@ -166,7 +170,7 @@ legacy 模式读取 `tools/android/bundled-compat-packs.json`（或 `local.prope
 
 ```bash
 cd port-mod
-./tools/build-compat-matrix.sh --target v0.107.1
+./tools/build-compat-matrix.sh --target v0.108.0
 ./tools/build-compat-matrix.sh
 ```
 
@@ -274,6 +278,7 @@ tools/package/build_android_body_zip.sh \
 - `SlayTheSpire2.pck` 由临时 Godot 工程通过 Android `--export-pack` 重新生成，启用 ETC2/ASTC 导入，并过滤 PC 用的 BPTC/S3TC 纹理、`.godot/mono` publish、桌面 native runtime 等。
 - 字体 import 会在临时工程中关闭 MSDF 大 fontdata 设置，以接近移植版体积；Sentry autoload/GDExtension 会同时在 `project.godot` 与 `project.binary` 中禁用。
 - 临时工程会从 `.tscn` / `.tres` 引用合成缺失的 `.uid` sidecar，确保重导出的 `.godot/uid_cache.bin` 继续匹配原场景里的 `uid://...` 引用，避免 Android 首帧资源绑定崩溃。
+- Spine `.atlas` / `.skel` 导入产物是平台无关资源；若 headless Linux export 环境没有 Spine editor importer，脚本会从源工程 `.godot/imported` 注入 `.spatlas` / `.spskel` 与对应 `.atlas.import` / `.skel.import` remap 到最终 PCK，并在缺失时失败，避免主菜单、地图节点或战斗场景黑屏。
 - 产物仍满足 `validate_payload_zip.py` 与当前 launcher 导入格式，可在导入版 APK 中当普通 payload zip 导入；输入 PC zip 若包含单一顶层目录（例如 `Slay the Spire 2/...`），脚本会自动识别并在输出 zip 中展平。
 
 常用本地示例：
@@ -285,11 +290,11 @@ tools/package/build_android_body_zip.sh \
   --source-dir "/path/to/s201033" \
   --out "dist/payload/sts2-v0.103.3-android-body.zip"
 
-# v0.107.1 当前稳定版：PC zip + 对应源码/反导出工程
+# v0.108.0 当前稳定版：PC zip + 对应源码/反导出工程
 tools/package/build_android_body_zip.sh \
-  --pc-zip "/path/to/sts2-v0.107.1.zip" \
-  --source-dir "/path/to/s201071" \
-  --out "dist/payload/sts2-v0.107.1-android-body.zip"
+  --pc-zip "/path/to/sts2-v0.108.0.zip" \
+  --source-dir "/path/to/s201080" \
+  --out "dist/payload/sts2-v0.108.0-android-body.zip"
 ```
 
 临时工程和 Godot 日志默认写入 `.agent/tmp/android-body-build/`，该目录不入库；生成的 zip 应留在 `dist/` 或其他本地输出目录，不要提交。
@@ -303,10 +308,11 @@ tools/android/gradle-with-s2-env.sh :compileMonoDebugJavaWithJavac
 # payload zip 校验
 tools/package/validate_payload_zip.py "/path/to/SlayTheSpire2.zip"
 
-# 当前 beta compile gate（通过脚本自动传 CompatReferenceDir）
-REFERENCE_FLAVOR=original-v0.107.1 tools/android/build-port-mod.sh
+# 当前 stable compile gate（通过脚本自动传 CompatReferenceDir）
+REFERENCE_FLAVOR=original-v0.108.0 tools/android/build-port-mod.sh
 
-# v0.103.x / 旧 beta compile gate
+# v0.107.1 / v0.103.x / 旧 beta compile gate
+REFERENCE_FLAVOR=original-v0.107.1 tools/android/build-port-mod.sh
 REFERENCE_FLAVOR=original tools/android/build-port-mod.sh
 REFERENCE_FLAVOR=original-v0.106.1 tools/android/build-port-mod.sh
 REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
@@ -320,8 +326,8 @@ tools/android/generate-material-symbol-vectors.py --check
 
 # standalone dotnet 编译也可显式传入 CompatReferenceDir
 "$DOTNET_BIN" build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj \
-  -p:ReferenceFlavor=original-v0.107.1 \
-  -p:CompatReferenceDir="$STS2_ORIGINAL_V1071_REFERENCE_DIR" -v:q
+  -p:ReferenceFlavor=original-v0.108.0 \
+  -p:CompatReferenceDir="$STS2_ORIGINAL_V1080_REFERENCE_DIR" -v:q
 ```
 
 ## 13. ADB 自动化调试

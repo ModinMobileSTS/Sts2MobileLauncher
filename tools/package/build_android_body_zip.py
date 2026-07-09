@@ -29,6 +29,7 @@ PCK_HEADER_FORMAT = "<IIIIIIQQ16I"
 PCK_HEADER_SIZE = struct.calcsize(PCK_HEADER_FORMAT)
 PCK_ALIGNMENT = 16
 ZIP_COMPRESSION_LEVEL = 9
+SPINE_IMPORTED_SUFFIXES = (".spatlas", ".spskel")
 
 REQUIRED_ZIP_ENTRIES = {
     "release_info.json",
@@ -82,7 +83,7 @@ advanced_options=false
 dedicated_server=false
 custom_features=""
 export_filter="all_resources"
-include_filter="*.tpsheet"
+include_filter="*.tpsheet,*.atlas.import,*.skel.import,*.spatlas,*.spskel"
 exclude_filter=".git/*,.git/**,.cache/*,.cache/**,build/*,build/**,android/*,android/**,bin/*,bin/**,obj/*,obj/**,.godot/mono/*,.godot/mono/**,*.pdb"
 export_path="build/android-body/SlayTheSpire2.pck"
 patches=PackedStringArray()
@@ -157,6 +158,14 @@ def sha256_file(path: Path) -> str:
 
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def md5_file_bytes(path: Path) -> bytes:
+    digest = hashlib.md5()
+    with path.open("rb") as fp:
+        for chunk in iter(lambda: fp.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.digest()
 
 
 def resolve_path(value: str | None, root: Path) -> Path | None:
@@ -290,13 +299,15 @@ def should_exclude_pck_entry(path: str) -> bool:
     return False
 
 
-def rewrite_filtered_pck(src: Path, dest: Path) -> dict:
+def rewrite_filtered_pck(src: Path, dest: Path, extra_files: Sequence[tuple[str, Path]] | None = None) -> dict:
     info = read_pck(src)
     included = [entry for entry in info.entries if not should_exclude_pck_entry(entry.path)]
     excluded = len(info.entries) - len(included)
+    existing_paths = {entry.path for entry in included}
+    extra_entries = [(path, file_path) for path, file_path in (extra_files or []) if path not in existing_paths]
     file_base = align(PCK_HEADER_SIZE)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    new_entries: list[tuple[PckEntry, int]] = []
+    new_entries: list[tuple[str, int, int, bytes, int]] = []
     current = file_base
     with src.open("rb") as src_fp, dest.open("wb") as out:
         out.write(b"\0" * file_base)
@@ -314,21 +325,36 @@ def rewrite_filtered_pck(src: Path, dest: Path) -> dict:
                 out.write(chunk)
                 remaining -= len(chunk)
                 current += len(chunk)
-            new_entries.append((entry, aligned - file_base))
+            new_entries.append((entry.path, aligned - file_base, entry.size, entry.md5, entry.flags))
+
+        for entry_path, file_path in extra_entries:
+            if not file_path.is_file():
+                raise BuildError(f"Missing extra PCK entry source for {entry_path}: {file_path}")
+            aligned = align(current)
+            if aligned > current:
+                out.write(b"\0" * (aligned - current))
+                current = aligned
+            size = file_path.stat().st_size
+            with file_path.open("rb") as extra_fp:
+                for chunk in iter(lambda: extra_fp.read(1024 * 1024), b""):
+                    out.write(chunk)
+                    current += len(chunk)
+            new_entries.append((entry_path, aligned - file_base, size, md5_file_bytes(file_path), 0))
+
         dir_base = align(current)
         if dir_base > current:
             out.write(b"\0" * (dir_base - current))
             current = dir_base
         out.write(struct.pack("<I", len(new_entries)))
-        for entry, relative_offset in new_entries:
-            encoded = entry.path.encode("utf-8")
+        for entry_path, relative_offset, entry_size, entry_md5, entry_flags in new_entries:
+            encoded = entry_path.encode("utf-8")
             padded_len = len(encoded) + ((4 - (len(encoded) % 4)) % 4)
             out.write(struct.pack("<I", padded_len))
             out.write(encoded)
             out.write(b"\0" * (padded_len - len(encoded)))
-            out.write(struct.pack("<QQ", relative_offset, entry.size))
-            out.write(entry.md5)
-            out.write(struct.pack("<I", entry.flags))
+            out.write(struct.pack("<QQ", relative_offset, entry_size))
+            out.write(entry_md5)
+            out.write(struct.pack("<I", entry_flags))
         end = out.tell()
         out.seek(0)
         header = struct.pack(
@@ -349,8 +375,10 @@ def rewrite_filtered_pck(src: Path, dest: Path) -> dict:
         "input_size": src.stat().st_size,
         "output_size": dest.stat().st_size,
         "input_files": len(info.entries),
-        "output_files": len(included),
+        "output_files": len(new_entries),
         "excluded_files": excluded,
+        "extra_files": len(extra_entries),
+        "extra_bytes": sum(file_path.stat().st_size for _, file_path in extra_entries),
     }
 
 
@@ -360,9 +388,10 @@ def pck_stats(path: Path) -> dict:
     by_top: dict[str, dict[str, int]] = {}
     for entry in info.entries:
         key = pck_path_key(entry.path).replace("\\", "/")
+        lower_key = key.lower()
         suffix = Path(key).suffix.lower() or "<none>"
-        for special in (".astc.ctex", ".etc2.ctex", ".s3tc.ctex", ".bptc.ctex", ".ctex", ".fontdata"):
-            if key.lower().endswith(special):
+        for special in (".astc.ctex", ".etc2.ctex", ".s3tc.ctex", ".bptc.ctex", ".ctex", ".fontdata", ".atlas.import", ".skel.import", ".spatlas", ".spskel"):
+            if lower_key.endswith(special):
                 suffix = special
                 break
         top = key.split("/", 1)[0]
@@ -372,7 +401,7 @@ def pck_stats(path: Path) -> dict:
         top_bucket = by_top.setdefault(top, {"count": 0, "bytes": 0})
         top_bucket["count"] += 1
         top_bucket["bytes"] += entry.size
-    variants = {name: by_suffix.get(name, {"count": 0, "bytes": 0}) for name in (".astc.ctex", ".etc2.ctex", ".s3tc.ctex", ".bptc.ctex", ".ctex", ".fontdata")}
+    variants = {name: by_suffix.get(name, {"count": 0, "bytes": 0}) for name in (".astc.ctex", ".etc2.ctex", ".s3tc.ctex", ".bptc.ctex", ".ctex", ".fontdata", ".atlas.import", ".skel.import", ".spatlas", ".spskel")}
     return {
         "path": str(path),
         "size": path.stat().st_size,
@@ -512,6 +541,43 @@ def copy_project(source_dir: Path, project_dir: Path) -> None:
             return ignored
         shutil.copytree(source_dir, project_dir, ignore=ignore)
     (project_dir / ".godot/imported").mkdir(parents=True, exist_ok=True)
+
+
+def copy_spine_imported_artifacts(source_dir: Path, project_dir: Path) -> dict:
+    source_imported = source_dir / ".godot/imported"
+    dest_imported = project_dir / ".godot/imported"
+    copied = 0
+    total_bytes = 0
+    missing_imported_dir = not source_imported.is_dir()
+    if missing_imported_dir:
+        return {"files": 0, "bytes": 0, "source_imported_dir_missing": True}
+
+    dest_imported.mkdir(parents=True, exist_ok=True)
+    for source in source_imported.iterdir():
+        if not source.is_file() or not source.name.lower().endswith(SPINE_IMPORTED_SUFFIXES):
+            continue
+        dest = dest_imported / source.name
+        shutil.copy2(source, dest)
+        copied += 1
+        total_bytes += dest.stat().st_size
+
+    return {"files": copied, "bytes": total_bytes, "source_imported_dir_missing": False}
+
+
+def collect_spine_pck_extra_files(source_dir: Path, project_dir: Path) -> list[tuple[str, Path]]:
+    extras: dict[str, Path] = {}
+    for import_file in list(project_dir.rglob("*.atlas.import")) + list(project_dir.rglob("*.skel.import")):
+        if ".godot" in import_file.parts:
+            continue
+        extras[import_file.relative_to(project_dir).as_posix()] = import_file
+
+    source_imported = source_dir / ".godot/imported"
+    if source_imported.is_dir():
+        for imported in source_imported.iterdir():
+            if imported.is_file() and imported.name.lower().endswith(SPINE_IMPORTED_SUFFIXES):
+                extras[(Path(".godot/imported") / imported.name).as_posix()] = imported
+
+    return sorted(extras.items(), key=lambda item: item[0])
 
 
 def copy_reference_native_support(port_reference: Path | None, project_dir: Path) -> list[str]:
@@ -778,6 +844,13 @@ def validate_optimized_stats(stats: dict) -> None:
     if bptc or s3tc:
         raise BuildError(f"Optimized PCK still contains desktop texture imports: bptc={bptc}, s3tc={s3tc}")
 
+    missing_spine = []
+    for suffix in (".atlas.import", ".skel.import", ".spatlas", ".spskel"):
+        if variants[suffix]["count"] <= 0:
+            missing_spine.append(suffix)
+    if missing_spine:
+        raise BuildError("Optimized PCK is missing Spine import artifacts: " + ", ".join(missing_spine))
+
 
 def package_zip(pc_zip: Path, pck: Path, out_zip: Path, manifest: dict, keep_data_basenames: set[str]) -> dict:
     out_zip.parent.mkdir(parents=True, exist_ok=True)
@@ -899,6 +972,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     native_copied = copy_reference_native_support(port_reference, project_dir)
     if native_copied:
         log("Copied reference GDExtension helper dirs: " + ", ".join(native_copied))
+    spine_imports = copy_spine_imported_artifacts(source_dir, project_dir)
+    if spine_imports["files"]:
+        log(f"Copied Spine imported artifacts: files={spine_imports['files']} bytes={spine_imports['bytes']}")
     patch_info = patch_project_files(project_dir)
     write_export_preset(project_dir)
     log(f"Patch info: {json.dumps(patch_info, ensure_ascii=False)}")
@@ -906,7 +982,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     env = build_env(root, godot_home, dotnet_root, nuget_packages)
     raw_pck = export_android_pck(project_dir, godot_bin, env, logs_dir)
     filtered_pck = build_root / "SlayTheSpire2.pck"
-    filter_info = rewrite_filtered_pck(raw_pck, filtered_pck)
+    spine_pck_extras = collect_spine_pck_extra_files(source_dir, project_dir)
+    filter_info = rewrite_filtered_pck(raw_pck, filtered_pck, extra_files=spine_pck_extras)
     optimized_stats = pck_stats(filtered_pck)
     validate_optimized_stats(optimized_stats)
     keep_data_basenames = load_keep_data_basenames(pc_zip)
@@ -930,6 +1007,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         },
         "patch_info": patch_info,
         "native_support_copied_for_export": native_copied,
+        "spine_imported_artifacts_copied": spine_imports,
         "pck_filter": filter_info,
         "optimized_pck": optimized_stats,
     }
@@ -950,7 +1028,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"etc2={variants['.etc2.ctex']['count']}, "
         f"bptc={variants['.bptc.ctex']['count']}, "
         f"s3tc={variants['.s3tc.ctex']['count']}, "
-        f"fontdata={variants['.fontdata']['bytes'] / 1024 / 1024:.1f} MiB"
+        f"fontdata={variants['.fontdata']['bytes'] / 1024 / 1024:.1f} MiB, "
+        f"spine_atlas={variants['.spatlas']['count']}, "
+        f"spine_skel={variants['.spskel']['count']}"
     )
     log(f"Work manifest: {build_root / 'android_body_manifest.json'}")
     return 0

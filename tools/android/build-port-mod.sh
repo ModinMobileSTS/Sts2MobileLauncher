@@ -8,11 +8,36 @@ source "$ROOT/tools/env/load-local-config.sh"
 sts2_init_env
 
 DOTNET_BIN="$(sts2_config_path DOTNET_BIN build.dotnet "${DOTNET_BIN:-}")"
-REFERENCE_FLAVOR="${REFERENCE_FLAVOR:-$(sts2_config_value '' compat.default_reference_flavor original-v0.107.1)}"
+REFERENCE_FLAVOR="${REFERENCE_FLAVOR:-$(sts2_config_value '' compat.default_reference_flavor original-v0.108.0)}"
 COMPAT_REFERENCE_DIR="$(sts2_compat_reference_dir_for_flavor "$REFERENCE_FLAVOR")"
 PROJECT="$ROOT/port-mod/STS2AndroidPortCompat/STS2Mobile.csproj"
 OUTPUT="$ROOT/port-mod/STS2AndroidPortCompat/bin/Debug/net9.0/STS2Mobile.dll"
 TARGET="$ROOT/android/assets/dotnet_bcl/STS2Mobile.dll"
+
+_sts2_compile_constants_for_flavor() {
+  case "$1" in
+    original)
+      printf '%s\n' "STS2_TARGET_103X"
+      ;;
+    original-v0.106.1)
+      printf '%s\n' "STS2_TARGET_1061"
+      ;;
+    original-v0.107.0)
+      printf '%s\n' "STS2_TARGET_1070"
+      ;;
+    original-v0.107.1)
+      printf '%s\n' "STS2_TARGET_1071"
+      ;;
+    original-v0.108.0)
+      printf '%s\n' "STS2_TARGET_1080"
+      ;;
+    *)
+      printf '%s\n' ""
+      ;;
+  esac
+}
+
+COMPILE_CONSTANTS="${COMPAT_COMPILE_CONSTANTS:-$(_sts2_compile_constants_for_flavor "$REFERENCE_FLAVOR")}"
 
 sts2_require_executable "$DOTNET_BIN" "dotnet"
 sts2_require_value "$COMPAT_REFERENCE_DIR" "compat reference dir for ReferenceFlavor=$REFERENCE_FLAVOR"
@@ -29,15 +54,21 @@ if ! git -C "$ROOT/port-mod" diff --quiet --ignore-submodules -- 2>/dev/null || 
   GIT_DIRTY="true"
 fi
 BUILD_TIMESTAMP_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-"$DOTNET_BIN" build "$PROJECT" \
-  -p:ReferenceFlavor="$REFERENCE_FLAVOR" \
-  -p:CompatReferenceDir="$COMPAT_REFERENCE_DIR" \
-  -p:_CompatGitBranch="$GIT_BRANCH" \
-  -p:_CompatGitCommit="$GIT_COMMIT" \
-  -p:_CompatGitCommitSubject="$GIT_SUBJECT" \
-  -p:_CompatGitDirty="$GIT_DIRTY" \
-  -p:_CompatBuildTimestampUtc="$BUILD_TIMESTAMP_UTC" \
-  -v:q
+MSBUILD_ARGS=(
+  "$PROJECT"
+  "-p:ReferenceFlavor=$REFERENCE_FLAVOR"
+  "-p:CompatReferenceDir=$COMPAT_REFERENCE_DIR"
+  "-p:_CompatGitBranch=$GIT_BRANCH"
+  "-p:_CompatGitCommit=$GIT_COMMIT"
+  "-p:_CompatGitCommitSubject=$GIT_SUBJECT"
+  "-p:_CompatGitDirty=$GIT_DIRTY"
+  "-p:_CompatBuildTimestampUtc=$BUILD_TIMESTAMP_UTC"
+  "-v:q"
+)
+if [[ -n "$COMPILE_CONSTANTS" ]]; then
+  MSBUILD_ARGS+=("-p:DefineConstants=$COMPILE_CONSTANTS")
+fi
+"$DOTNET_BIN" build "${MSBUILD_ARGS[@]}"
 if [[ ! -f "$OUTPUT" ]]; then
   echo "Expected build output missing: $OUTPUT" >&2
   exit 1

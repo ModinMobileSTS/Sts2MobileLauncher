@@ -378,7 +378,7 @@ STS2 商店页面来自当前代码：
 ```text
 STS2_STEAM_APP_ID = 2868840
 DEFAULT_BRANCH = public
-KNOWN_SUPPORTED_GAME_VERSIONS = v0.103.2, v0.103.3, v0.106.1, v0.107.0, v0.107.1
+KNOWN_SUPPORTED_GAME_VERSIONS = v0.103.2, v0.103.3, v0.106.1, v0.107.0, v0.107.1, v0.108.0
 ```
 
 Phase 0 输出文件建议：
@@ -752,7 +752,7 @@ Steam 多文件下载没有单个 source zip sha256，可在 manifest 中记录�
 如果 Steam 下载到的版本不在当前支持矩阵：
 
 - 允许安装，但启动前按现有逻辑提示兼容包不匹配。
-- 下载页应提前显示“当前兼容包支持版本：v0.103.x / v0.106.1-beta / v0.107.0-beta / v0.107.1；Steam 分支可能下载到未支持版本”。
+- 下载页应提前显示“当前兼容包支持版本：v0.103.x / v0.106.1-beta / v0.107.0-beta / v0.107.1 / v0.108.0；Steam 分支可能下载到未支持版本”。
 
 ## 10. Phase 3：Steam Cloud 手动拉取 / 清单
 

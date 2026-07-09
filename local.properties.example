@@ -20,7 +20,7 @@ android.release_keystore_password=android
 android.release_keystore_alias=androiddebugkey
 
 # Compatibility build defaults.
-compat.default_reference_flavor=original-v0.107.1
+compat.default_reference_flavor=original-v0.108.0
 # Use "matrix" for one schema-2 family pack. Set "legacy" only when you need
 # per-version branch packs for back-compat diagnostics.
 compat.pack_build_mode=matrix
