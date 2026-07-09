@@ -49,6 +49,7 @@ class SteamWorkshopDownloader(private val context: Context) {
         val message: String,
         val downloadedBytes: Long = 0L,
         val totalBytes: Long = 0L,
+        val indeterminate: Boolean = false,
     )
 
     data class BranchOption(
@@ -156,8 +157,10 @@ class SteamWorkshopDownloader(private val context: Context) {
         val selectedVariant = selectedOption?.toResolvedVariant()
         val branch = normalizeWorkshopBranch(selectedOption?.branch ?: selectedVariant?.branch ?: "public")
         var resolvedResolution: WorkshopItemResolution? = null
+        var sawDeterminateProgress = false
+        var lastPercent = 0
         var lastMessage = "Resolving workshop item ($branch)..."
-        emit(listener, Progress(1, lastMessage))
+        emit(listener, Progress(0, lastMessage, indeterminate = true))
         engine.download(
             WorkshopDownloadRequest(
                 appId = resolveAppId(item),
@@ -172,23 +175,36 @@ class SteamWorkshopDownloader(private val context: Context) {
             when (event) {
                 is DownloadEvent.StateChanged -> {
                     lastMessage = stateLabel(event.state)
-                    emit(listener, Progress(statePercent(event.state), lastMessage))
+                    val pendingState = isPendingDownloadState(event.state)
+                    val percent = if (sawDeterminateProgress && pendingState) lastPercent else statePercent(event.state)
+                    emit(listener, Progress(
+                        percent,
+                        lastMessage,
+                        indeterminate = !sawDeterminateProgress && pendingState,
+                    ))
                 }
                 is DownloadEvent.Resolved -> {
                     resolvedResolution = event.resolution
                 }
                 is DownloadEvent.Progress -> {
                     val totalBytes = event.totalBytes
-                    val percent = if (totalBytes != null && totalBytes > 0L) {
+                    val hasKnownTotal = totalBytes != null && totalBytes > 0L
+                    val percent = if (hasKnownTotal) {
                         ((event.writtenBytes.coerceAtLeast(0L) * 100L) / totalBytes).toInt().coerceIn(0, 100)
                     } else {
                         0
                     }
+                    if (hasKnownTotal) {
+                        sawDeterminateProgress = true
+                        lastPercent = percent
+                    }
                     val label = buildProgressLabel(event, lastMessage)
-                    emit(listener, Progress(percent, label, event.writtenBytes, event.totalBytes ?: 0L))
+                    emit(listener, Progress(percent, label, event.writtenBytes, event.totalBytes ?: 0L, indeterminate = !hasKnownTotal))
                 }
                 is DownloadEvent.FileCompleted -> {
-                    emit(listener, Progress(96, event.file.relativePath))
+                    sawDeterminateProgress = true
+                    lastPercent = 96
+                    emit(listener, Progress(lastPercent, event.file.relativePath))
                 }
                 is DownloadEvent.Completed -> {
                     emit(listener, Progress(100, "Workshop download complete."))
@@ -247,6 +263,17 @@ class SteamWorkshopDownloader(private val context: Context) {
             DownloadState.Paused -> 0
             DownloadState.Success -> 100
             DownloadState.Failed -> 0
+        }
+
+    private fun isPendingDownloadState(state: DownloadState): Boolean =
+        when (state) {
+            DownloadState.Idle,
+            DownloadState.Resolving,
+            DownloadState.Connecting,
+            DownloadState.Downloading,
+            DownloadState.Paused -> true
+            DownloadState.Success,
+            DownloadState.Failed -> false
         }
 
     private fun userFacingFailureMessage(message: String): String {

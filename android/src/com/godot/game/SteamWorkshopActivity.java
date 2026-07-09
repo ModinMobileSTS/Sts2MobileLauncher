@@ -17,6 +17,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Process;
+import android.os.SystemClock;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.text.format.Formatter;
@@ -987,8 +988,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		FrameLayout frame = new FrameLayout(this);
 		int size = ExtraSettingsUi.dp(this, 48);
 		ProgressRingDrawable ring = new ProgressRingDrawable(ExtraSettingsUi.COLOR_PRIMARY, ExtraSettingsUi.COLOR_SURFACE_VARIANT);
-		ring.setProgress(task.percent);
 		frame.setBackground(ring);
+		ring.setProgress(task.percent);
+		ring.setIndeterminate(task.indeterminate);
 		FrameLayout stop = new FrameLayout(this);
 		stop.setClickable(true);
 		stop.setFocusable(true);
@@ -1211,7 +1213,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		title.setMaxLines(2);
 		title.setEllipsize(TextUtils.TruncateAt.END);
 		texts.addView(title);
-		TextView progressText = ExtraSettingsUi.caption(this, getString(R.string.workshop_download_progress_line, task.percent, task.message));
+		TextView progressText = ExtraSettingsUi.caption(this, downloadProgressLine(task));
 		texts.addView(progressText, fullWidthTopMargin(5));
 		registerDownloadProgressBinding(task.publishedFileId, progressText, null, progressText);
 		row.addView(buildActiveDownloadControl(task, false));
@@ -1795,8 +1797,10 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}
 		int percent = progress.getPercent();
 		String message = progress.getMessage();
-		boolean visualChanged = task.percent != percent || !TextUtils.equals(task.message, message);
+		boolean indeterminate = progress.getIndeterminate();
+		boolean visualChanged = task.percent != percent || task.indeterminate != indeterminate || !TextUtils.equals(task.message, message);
 		task.percent = percent;
+		task.indeterminate = indeterminate;
 		task.message = message;
 		task.downloadedBytes = progress.getDownloadedBytes();
 		task.totalBytes = progress.getTotalBytes();
@@ -1812,7 +1816,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			downloadTasks.put(item.getPublishedFileId(), task);
 		}
 		task.message = TextUtils.isEmpty(message) ? item.getTitle() : message;
-		task.percent = Math.max(1, task.percent);
+		if (!task.downloadStarted) {
+			task.indeterminate = true;
+		}
 		markDownloadUiStructureChanged();
 		refreshDownloadUi();
 		return task;
@@ -2090,6 +2096,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			return;
 		}
 		bindings.remove(binding);
+		if (binding.ring != null) {
+			binding.ring.setIndeterminate(false);
+		}
 		if (bindings.isEmpty()) {
 			downloadProgressBindings.remove(binding.publishedFileId);
 		}
@@ -2117,15 +2126,27 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}
 	}
 
+	private String downloadProgressLine(DownloadTask task) {
+		if (task == null) {
+			return "";
+		}
+		String message = TextUtils.isEmpty(task.message) ? task.item.getTitle() : task.message;
+		if (task.indeterminate) {
+			return message;
+		}
+		return getString(R.string.workshop_download_progress_line, task.percent, message);
+	}
+
 	private void updateDownloadProgressBinding(DownloadProgressBinding binding, DownloadTask task) {
 		if (binding == null || task == null || !task.isActive()) {
 			return;
 		}
 		if (binding.ring != null) {
 			binding.ring.setProgress(task.percent);
+			binding.ring.setIndeterminate(task.indeterminate);
 		}
 		if (binding.progressText != null) {
-			binding.progressText.setText(getString(R.string.workshop_download_progress_line, task.percent, task.message));
+			binding.progressText.setText(downloadProgressLine(task));
 		}
 	}
 
@@ -2964,10 +2985,11 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		final SteamWorkshopCatalog.Item item;
 		final String publishedFileId;
 		final SteamWorkshopDownloader.CancellationToken cancellationToken = new SteamWorkshopDownloader.CancellationToken();
-		int percent = 1;
+		int percent;
 		String message = "";
 		long downloadedBytes;
 		long totalBytes;
+		boolean indeterminate = true;
 		boolean downloadStarted;
 		boolean importing;
 		boolean cancelled;
@@ -2990,12 +3012,14 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		void markDownloading(String message) {
 			downloadStarted = true;
 			importing = false;
+			indeterminate = true;
 			this.message = message == null ? "" : message;
 		}
 
 		void markImporting(String message) {
 			downloadStarted = true;
 			importing = true;
+			indeterminate = false;
 			percent = 100;
 			this.message = message == null ? "" : message;
 		}
@@ -3015,12 +3039,17 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}
 	}
 
-	private static final class ProgressRingDrawable extends Drawable {
+	private static final class ProgressRingDrawable extends Drawable implements Runnable {
 		private static final int START_ANGLE = -90;
+		private static final long INDETERMINATE_FRAME_MS = 16L;
+		private static final long INDETERMINATE_ROTATION_MS = 1200L;
+		private static final float INDETERMINATE_MIN_SWEEP = 42f;
+		private static final float INDETERMINATE_SWEEP_DELTA = 118f;
 		private final Paint trackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 		private final Paint progressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 		private final RectF arcBounds = new RectF();
 		private int progress;
+		private boolean indeterminate;
 
 		ProgressRingDrawable(int progressColor, int trackColor) {
 			trackPaint.setStyle(Paint.Style.STROKE);
@@ -3033,6 +3062,21 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 
 		void setProgress(int progress) {
 			this.progress = Math.max(0, Math.min(100, progress));
+			if (!indeterminate) {
+				invalidateSelf();
+			}
+		}
+
+		void setIndeterminate(boolean indeterminate) {
+			if (this.indeterminate == indeterminate) {
+				return;
+			}
+			this.indeterminate = indeterminate;
+			if (indeterminate && isVisible()) {
+				scheduleNextFrame();
+			} else {
+				unscheduleSelf(this);
+			}
 			invalidateSelf();
 		}
 
@@ -3046,7 +3090,35 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			float inset = stroke / 2f + 2f;
 			arcBounds.set(getBounds().left + inset, getBounds().top + inset, getBounds().right - inset, getBounds().bottom - inset);
 			canvas.drawArc(arcBounds, 0, 360, false, trackPaint);
+			if (indeterminate) {
+				float phase = (SystemClock.uptimeMillis() % INDETERMINATE_ROTATION_MS) / (float) INDETERMINATE_ROTATION_MS;
+				float angle = phase * 360f;
+				float sweepWave = (float) ((Math.sin(phase * Math.PI * 2.0 - Math.PI / 2.0) + 1.0) * 0.5);
+				float sweep = INDETERMINATE_MIN_SWEEP + INDETERMINATE_SWEEP_DELTA * sweepWave;
+				canvas.drawArc(arcBounds, START_ANGLE + angle - sweep * 0.5f, sweep, false, progressPaint);
+				return;
+			}
 			canvas.drawArc(arcBounds, START_ANGLE, 360f * progress / 100f, false, progressPaint);
+		}
+
+		@Override
+		public void run() {
+			if (!indeterminate || !isVisible()) {
+				return;
+			}
+			invalidateSelf();
+			scheduleNextFrame();
+		}
+
+		@Override
+		public boolean setVisible(boolean visible, boolean restart) {
+			boolean changed = super.setVisible(visible, restart);
+			if (visible && indeterminate) {
+				scheduleNextFrame();
+			} else if (!visible) {
+				unscheduleSelf(this);
+			}
+			return changed;
 		}
 
 		@Override
@@ -3066,6 +3138,11 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		@Override
 		public int getOpacity() {
 			return PixelFormat.TRANSLUCENT;
+		}
+
+		private void scheduleNextFrame() {
+			unscheduleSelf(this);
+			scheduleSelf(this, SystemClock.uptimeMillis() + INDETERMINATE_FRAME_MS);
 		}
 	}
 
