@@ -1945,6 +1945,16 @@ public final class ExtraSettingsRepository {
 		return modSettings != null && modSettings.optBoolean("mods_enabled", false);
 	}
 
+	private boolean isLocalModSource(String source) {
+		if (TextUtils.isEmpty(source)) {
+			return true;
+		}
+		String normalized = source.trim().toLowerCase(Locale.ROOT).replace('-', '_');
+		return MOD_SOURCE_MODS_DIRECTORY.equals(normalized)
+			|| "modsdirectory".equals(normalized)
+			|| "local".equals(normalized);
+	}
+
 	public boolean isModDisabled(JSONObject settings, String modId) throws JSONException {
 		return isModDisabled(settings, modId, modId);
 	}
@@ -1973,7 +1983,7 @@ public final class ExtraSettingsRepository {
 			}
 			String name = item.optString("name", "");
 			String source = item.optString("source", "");
-			if ((modId.equals(name) || pckName.equals(name)) && (source.isEmpty() || MOD_SOURCE_MODS_DIRECTORY.equals(source))) {
+			if ((modId.equals(name) || pckName.equals(name)) && isLocalModSource(source)) {
 				return true;
 			}
 		}
@@ -1994,6 +2004,51 @@ public final class ExtraSettingsRepository {
 		removeLegacyDisabledModEntry(modSettings, modId);
 	}
 
+	public List<String> loadRuntimeModListOrder(JSONObject settings) throws JSONException {
+		List<String> order = new ArrayList<>();
+		JSONObject modSettings = ensureModSettings(settings);
+		JSONArray modList = modSettings.optJSONArray("mod_list");
+		if (modList == null) {
+			return order;
+		}
+		for (int i = 0; i < modList.length(); i++) {
+			JSONObject item = modList.optJSONObject(i);
+			if (item == null) {
+				continue;
+			}
+			String source = item.optString("source", "");
+			if (!isLocalModSource(source)) {
+				continue;
+			}
+			String id = firstNonEmpty(item.optString("id", ""), item.optString("name", "")).trim();
+			if (!TextUtils.isEmpty(id)) {
+				order.add(id);
+			}
+		}
+		return order;
+	}
+
+	public void saveRuntimeModListOrder(List<ModEntry> orderedEntries) throws Exception {
+		JSONObject settings = loadSettingsJson();
+		JSONObject modSettings = ensureModSettings(settings);
+		JSONArray newModList = new JSONArray();
+		Set<String> seen = new LinkedHashSet<>();
+		if (orderedEntries != null) {
+			for (ModEntry entry : orderedEntries) {
+				if (entry == null || TextUtils.isEmpty(entry.modId) || !seen.add(entry.modId)) {
+					continue;
+				}
+				JSONObject item = new JSONObject();
+				item.put("id", entry.modId);
+				item.put("source", MOD_SOURCE_MODS_DIRECTORY);
+				item.put("is_enabled", !isModDisabled(settings, entry));
+				newModList.put(item);
+			}
+		}
+		modSettings.put("mod_list", newModList);
+		saveSettingsJson(settings);
+	}
+
 	private void removeModEntry(JSONObject settings, String modId) throws JSONException {
 		JSONObject modSettings = ensureModSettings(settings);
 		JSONArray modList = modSettings.optJSONArray("mod_list");
@@ -2006,7 +2061,7 @@ public final class ExtraSettingsRepository {
 				}
 				String id = item.optString("id", "");
 				String source = item.optString("source", "");
-				if (modId.equals(id) && MOD_SOURCE_MODS_DIRECTORY.equals(source)) {
+				if (modId.equals(id) && isLocalModSource(source)) {
 					continue;
 				}
 				newModList.put(item);
@@ -2027,7 +2082,7 @@ public final class ExtraSettingsRepository {
 			}
 			String id = item.optString("id", "");
 			String source = item.optString("source", "");
-			if (modId.equals(id) && (source.isEmpty() || MOD_SOURCE_MODS_DIRECTORY.equals(source))) {
+			if (modId.equals(id) && isLocalModSource(source)) {
 				return item;
 			}
 		}
@@ -2060,7 +2115,7 @@ public final class ExtraSettingsRepository {
 			}
 			String name = item.optString("name", "");
 			String source = item.optString("source", "");
-			if (modId.equals(name) && (source.isEmpty() || MOD_SOURCE_MODS_DIRECTORY.equals(source))) {
+			if (modId.equals(name) && isLocalModSource(source)) {
 				continue;
 			}
 			newDisabledMods.put(item);

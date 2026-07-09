@@ -2751,15 +2751,9 @@ public final class ModsPage {
 			return;
 		}
 
-		// Flatten UI load order across groups for order checks (enabled only).
-		List<ExtraSettingsRepository.ModEntry> ordered = flattenLoadOrder(enabledMods);
-		Map<String, Integer> orderIndex = new HashMap<>();
-		for (int i = 0; i < ordered.size(); i++) {
-			orderIndex.put(ordered.get(i).modId, i);
-			if (!TextUtils.isEmpty(ordered.get(i).pckName)) {
-				orderIndex.putIfAbsent(ordered.get(i).pckName, i);
-			}
-		}
+		// Check only the flat ModSettings.ModList order saved for the game.
+		// Missing entries have no explicit manual order, and UI groups must not imply one.
+		Map<String, Integer> orderIndex = loadRuntimeManualOrderIndex();
 
 		for (ExtraSettingsRepository.ModEntry entry : enabledMods) {
 			List<ModIssue> issues = new ArrayList<>();
@@ -2871,17 +2865,46 @@ public final class ModsPage {
 		return null;
 	}
 
-	/**
-	 * Flattens the same group/order model the list UI uses so load-order checks
-	 * match what the user sees when dragging MODs.
-	 */
-	private List<ExtraSettingsRepository.ModEntry> flattenLoadOrder(List<ExtraSettingsRepository.ModEntry> mods) {
-		List<ModGroupBucket> buckets = buildModGroups(new ArrayList<>(mods));
-		List<ExtraSettingsRepository.ModEntry> ordered = new ArrayList<>();
-		for (ModGroupBucket bucket : buckets) {
-			ordered.addAll(bucket.entries);
+	private Map<String, Integer> loadRuntimeManualOrderIndex() {
+		Map<String, Integer> orderIndex = new HashMap<>();
+		try {
+			JSONObject settings = cachedSettings != null ? cachedSettings : repository.loadSettingsJson();
+			List<String> order = repository.loadRuntimeModListOrder(settings);
+			for (int i = 0; i < order.size(); i++) {
+				String id = order.get(i);
+				if (!TextUtils.isEmpty(id)) {
+					// Match the game's dictionary assignment: later duplicate entries win.
+					orderIndex.put(id, i);
+				}
+			}
+		} catch (Exception ignored) {
 		}
-		return ordered;
+		return orderIndex;
+	}
+
+	private Map<String, Integer> fallbackScanOrderIndex(List<ExtraSettingsRepository.ModEntry> mods) {
+		Map<String, Integer> fallbackIndex = new HashMap<>();
+		for (int i = 0; i < mods.size(); i++) {
+			ExtraSettingsRepository.ModEntry entry = mods.get(i);
+			if (entry != null && !TextUtils.isEmpty(entry.modId)) {
+				fallbackIndex.putIfAbsent(entry.modId, i);
+			}
+		}
+		return fallbackIndex;
+	}
+
+	private Comparator<ExtraSettingsRepository.ModEntry> runtimeManualOrderComparator(Map<String, Integer> manualIndex, Map<String, Integer> fallbackIndex) {
+		return Comparator
+			.comparingInt((ExtraSettingsRepository.ModEntry entry) -> runtimeManualPriority(entry == null ? "" : entry.modId, manualIndex, fallbackIndex))
+			.thenComparing(entry -> entry == null || entry.relativePath == null ? "" : entry.relativePath, String::compareToIgnoreCase);
+	}
+
+	private int runtimeManualPriority(String modId, Map<String, Integer> manualIndex, Map<String, Integer> fallbackIndex) {
+		Integer manual = manualIndex.get(modId);
+		if (manual != null) {
+			return manual;
+		}
+		return 1_000_000 + fallbackIndex.getOrDefault(modId, Integer.MAX_VALUE / 2);
 	}
 
 	/**
@@ -3207,153 +3230,66 @@ public final class ModsPage {
 	}
 
 	/**
-	 * Fixes UI load order among enabled MODs:
-	 * 1) global dependency topology
-	 * 2) inter-group edges so a group that owns a dependency is ordered before a group that owns a dependent
-	 * 3) within each group, enabled mods sorted by global topo rank
+	 * Rewrites the flat runtime MOD order used by the game's ModSettings.ModList.
+	 * UI groups remain only presentation/file organization and are not part of runtime sorting.
 	 */
-	private void autoFixLoadOrder() {
+	private void autoFixLoadOrder() throws Exception {
 		List<ExtraSettingsRepository.ModEntry> allMods = repository.listInstalledModManifests();
 		if (allMods.isEmpty()) {
 			return;
 		}
-		List<ModGroupBucket> buckets = buildModGroups(new ArrayList<>(allMods));
-		Map<String, String> groupOf = new HashMap<>();
-		Map<String, Integer> originalIndex = new HashMap<>();
 		List<ExtraSettingsRepository.ModEntry> enabled = new ArrayList<>();
+		List<ExtraSettingsRepository.ModEntry> disabled = new ArrayList<>();
 		Map<String, ExtraSettingsRepository.ModEntry> byId = new HashMap<>();
 		Map<String, ExtraSettingsRepository.ModEntry> byPckName = new HashMap<>();
-		int index = 0;
-		for (ModGroupBucket bucket : buckets) {
-			for (ExtraSettingsRepository.ModEntry entry : bucket.entries) {
-				groupOf.put(entry.modId, bucket.id);
-				originalIndex.put(entry.modId, index++);
-				byId.put(entry.modId, entry);
-				if (!TextUtils.isEmpty(entry.pckName)) {
-					byPckName.put(entry.pckName, entry);
-				}
-				if (!isModDisabledSafe(entry)) {
-					enabled.add(entry);
-				}
+		for (ExtraSettingsRepository.ModEntry entry : allMods) {
+			byId.put(entry.modId, entry);
+			if (!TextUtils.isEmpty(entry.pckName)) {
+				byPckName.put(entry.pckName, entry);
+			}
+			if (isModDisabledSafe(entry)) {
+				disabled.add(entry);
+			} else {
+				enabled.add(entry);
 			}
 		}
 		if (enabled.isEmpty()) {
 			return;
 		}
 
-		Map<String, Integer> topoIndex = computeModTopoIndex(enabled, byId, byPckName, originalIndex);
-
-		// Inter-group constraints: if M in G2 depends on D in G1, G1 must come before G2.
-		LinkedHashMap<String, Integer> groupIndegree = new LinkedHashMap<>();
-		Map<String, Set<String>> groupDependents = new HashMap<>();
-		List<String> groupIds = new ArrayList<>();
-		for (ModGroupBucket bucket : buckets) {
-			groupIds.add(bucket.id);
-			groupIndegree.put(bucket.id, 0);
-			groupDependents.put(bucket.id, new LinkedHashSet<>());
+		Map<String, Integer> manualIndex = loadRuntimeManualOrderIndex();
+		Map<String, Integer> fallbackIndex = fallbackScanOrderIndex(allMods);
+		List<String> sortedEnabledIds = computeRuntimeTopoSortedIds(enabled, byId, byPckName, manualIndex, fallbackIndex);
+		List<ExtraSettingsRepository.ModEntry> orderedEntries = new ArrayList<>();
+		Set<String> added = new LinkedHashSet<>();
+		for (String id : sortedEnabledIds) {
+			ExtraSettingsRepository.ModEntry entry = byId.get(id);
+			if (entry != null && added.add(entry.modId)) {
+				orderedEntries.add(entry);
+			}
 		}
+		enabled.sort(runtimeManualOrderComparator(manualIndex, fallbackIndex));
 		for (ExtraSettingsRepository.ModEntry entry : enabled) {
-			String groupId = groupOf.get(entry.modId);
-			if (groupId == null) {
-				continue;
-			}
-			for (ExtraSettingsRepository.ModDependency dependency : entry.dependencies) {
-				ExtraSettingsRepository.ModEntry depEntry = findInstalledDependency(dependency.id, byId, byPckName);
-				if (depEntry == null || isModDisabledSafe(depEntry)) {
-					continue;
-				}
-				String depGroup = groupOf.get(depEntry.modId);
-				if (depGroup == null || depGroup.equals(groupId)) {
-					continue;
-				}
-				// Edge depGroup -> groupId
-				if (groupDependents.get(depGroup).add(groupId)) {
-					groupIndegree.put(groupId, groupIndegree.get(groupId) + 1);
-				}
+			if (added.add(entry.modId)) {
+				orderedEntries.add(entry);
 			}
 		}
-
-		List<String> readyGroups = new ArrayList<>();
-		for (String groupId : groupIds) {
-			if (groupIndegree.get(groupId) == 0) {
-				readyGroups.add(groupId);
+		disabled.sort(runtimeManualOrderComparator(manualIndex, fallbackIndex));
+		for (ExtraSettingsRepository.ModEntry entry : disabled) {
+			if (added.add(entry.modId)) {
+				orderedEntries.add(entry);
 			}
 		}
-		// Stable by previous group order, then min topo of enabled members.
-		List<String> previousGroupOrder = repository.loadModGroupOrder();
-		readyGroups.sort((a, b) -> {
-			int byPrev = Integer.compare(orderIndex(previousGroupOrder, a), orderIndex(previousGroupOrder, b));
-			if (byPrev != 0) {
-				return byPrev;
-			}
-			return Integer.compare(minTopoInGroup(a, groupOf, topoIndex), minTopoInGroup(b, groupOf, topoIndex));
-		});
-
-		List<String> sortedGroups = new ArrayList<>();
-		while (!readyGroups.isEmpty()) {
-			String groupId = readyGroups.remove(0);
-			sortedGroups.add(groupId);
-			List<String> newly = new ArrayList<>();
-			for (String dependent : groupDependents.get(groupId)) {
-				int value = groupIndegree.get(dependent) - 1;
-				groupIndegree.put(dependent, value);
-				if (value == 0) {
-					newly.add(dependent);
-				}
-			}
-			newly.sort((a, b) -> {
-				int byPrev = Integer.compare(orderIndex(previousGroupOrder, a), orderIndex(previousGroupOrder, b));
-				if (byPrev != 0) {
-					return byPrev;
-				}
-				return Integer.compare(minTopoInGroup(a, groupOf, topoIndex), minTopoInGroup(b, groupOf, topoIndex));
-			});
-			readyGroups.addAll(newly);
-			readyGroups.sort((a, b) -> {
-				int byPrev = Integer.compare(orderIndex(previousGroupOrder, a), orderIndex(previousGroupOrder, b));
-				if (byPrev != 0) {
-					return byPrev;
-				}
-				return Integer.compare(minTopoInGroup(a, groupOf, topoIndex), minTopoInGroup(b, groupOf, topoIndex));
-			});
-		}
-		for (String groupId : groupIds) {
-			if (!sortedGroups.contains(groupId)) {
-				sortedGroups.add(groupId);
-			}
-		}
-		repository.saveModGroupOrder(sortedGroups, true);
-
-		// Within each group: enabled by global topo, then disabled in prior relative order.
-		for (ModGroupBucket bucket : buckets) {
-			List<ExtraSettingsRepository.ModEntry> enabledInGroup = new ArrayList<>();
-			List<ExtraSettingsRepository.ModEntry> disabledInGroup = new ArrayList<>();
-			for (ExtraSettingsRepository.ModEntry entry : bucket.entries) {
-				if (isModDisabledSafe(entry)) {
-					disabledInGroup.add(entry);
-				} else {
-					enabledInGroup.add(entry);
-				}
-			}
-			enabledInGroup.sort(Comparator
-				.comparingInt((ExtraSettingsRepository.ModEntry entry) -> topoIndex.getOrDefault(entry.modId, Integer.MAX_VALUE))
-				.thenComparingInt(entry -> originalIndex.getOrDefault(entry.modId, Integer.MAX_VALUE)));
-			List<String> order = new ArrayList<>();
-			for (ExtraSettingsRepository.ModEntry entry : enabledInGroup) {
-				order.add(entry.modId);
-			}
-			for (ExtraSettingsRepository.ModEntry entry : disabledInGroup) {
-				order.add(entry.modId);
-			}
-			repository.saveModOrder(bucket.id, order, true);
-		}
+		repository.saveRuntimeModListOrder(orderedEntries);
+		cachedSettings = repository.loadSettingsJson();
 	}
 
-	private Map<String, Integer> computeModTopoIndex(
+	private List<String> computeRuntimeTopoSortedIds(
 		List<ExtraSettingsRepository.ModEntry> enabled,
 		Map<String, ExtraSettingsRepository.ModEntry> byId,
 		Map<String, ExtraSettingsRepository.ModEntry> byPckName,
-		Map<String, Integer> originalIndex
+		Map<String, Integer> manualIndex,
+		Map<String, Integer> fallbackIndex
 	) {
 		Map<String, Integer> indegree = new HashMap<>();
 		Map<String, List<String>> dependents = new HashMap<>();
@@ -3371,13 +3307,14 @@ public final class ModsPage {
 				dependents.get(depEntry.modId).add(entry.modId);
 			}
 		}
+		Comparator<String> priorityComparator = Comparator.comparingInt(id -> runtimeManualPriority(id, manualIndex, fallbackIndex));
 		List<String> ready = new ArrayList<>();
 		for (ExtraSettingsRepository.ModEntry entry : enabled) {
 			if (indegree.get(entry.modId) == 0) {
 				ready.add(entry.modId);
 			}
 		}
-		ready.sort(Comparator.comparingInt(id -> originalIndex.getOrDefault(id, Integer.MAX_VALUE)));
+		ready.sort(priorityComparator);
 		List<String> sorted = new ArrayList<>();
 		while (!ready.isEmpty()) {
 			String id = ready.remove(0);
@@ -3390,34 +3327,16 @@ public final class ModsPage {
 					newly.add(dependent);
 				}
 			}
-			newly.sort(Comparator.comparingInt(item -> originalIndex.getOrDefault(item, Integer.MAX_VALUE)));
+			newly.sort(priorityComparator);
 			ready.addAll(newly);
-			ready.sort(Comparator.comparingInt(item -> originalIndex.getOrDefault(item, Integer.MAX_VALUE)));
+			ready.sort(priorityComparator);
 		}
 		for (ExtraSettingsRepository.ModEntry entry : enabled) {
 			if (!sorted.contains(entry.modId)) {
 				sorted.add(entry.modId);
 			}
 		}
-		Map<String, Integer> topoIndex = new HashMap<>();
-		for (int i = 0; i < sorted.size(); i++) {
-			topoIndex.put(sorted.get(i), i);
-		}
-		return topoIndex;
-	}
-
-	private int minTopoInGroup(String groupId, Map<String, String> groupOf, Map<String, Integer> topoIndex) {
-		int min = Integer.MAX_VALUE;
-		for (Map.Entry<String, String> mapping : groupOf.entrySet()) {
-			if (!groupId.equals(mapping.getValue())) {
-				continue;
-			}
-			Integer pos = topoIndex.get(mapping.getKey());
-			if (pos != null) {
-				min = Math.min(min, pos);
-			}
-		}
-		return min;
+		return sorted;
 	}
 
 	private void appendLine(StringBuilder builder, String label, String value) {
