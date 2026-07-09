@@ -1186,6 +1186,121 @@ public final class ExtraSettingsRepository {
 		return groupName;
 	}
 
+	public String renameModGroup(String rawOldName, String rawNewName) throws Exception {
+		String oldName = sanitizeFileName(normalizeModGroupName(rawOldName));
+		String newName = sanitizeFileName(normalizeModGroupName(rawNewName));
+		if (TextUtils.isEmpty(oldName)) {
+			throw new IOException("Group name cannot be empty.");
+		}
+		if (TextUtils.isEmpty(newName)) {
+			throw new IOException("Group name cannot be empty.");
+		}
+		if (isReservedModGroupName(oldName) || isReservedModGroupName(newName)) {
+			throw new IOException("Cannot rename reserved group: " + oldName + " -> " + newName);
+		}
+		if (oldName.equals(newName)) {
+			return oldName;
+		}
+		File modsRoot = getModsRootDir();
+		File sourceDirectory = new File(modsRoot, oldName);
+		if (!sourceDirectory.isDirectory() || !isModGroupDirectory(sourceDirectory)) {
+			throw new IOException("Group not found: " + oldName);
+		}
+		File targetDirectory = new File(modsRoot, newName);
+		if (targetDirectory.exists()) {
+			throw new IOException("Group already exists: " + newName);
+		}
+		if (!sourceDirectory.renameTo(targetDirectory)) {
+			copyRecursively(sourceDirectory, targetDirectory);
+			deleteRecursively(sourceDirectory);
+		}
+		if (!isModGroupDirectory(targetDirectory)) {
+			markModGroupDirectory(targetDirectory);
+		}
+		List<String> groupOrder = loadModGroupOrder();
+		boolean orderChanged = false;
+		for (int i = 0; i < groupOrder.size(); i++) {
+			if (oldName.equals(groupOrder.get(i))) {
+				groupOrder.set(i, newName);
+				orderChanged = true;
+			}
+		}
+		if (orderChanged) {
+			saveModGroupOrder(groupOrder);
+		}
+		List<String> modOrder = loadModOrder(oldName);
+		if (!modOrder.isEmpty()) {
+			saveModOrder(newName, modOrder);
+			saveModOrder(oldName, new ArrayList<>());
+		}
+		return newName;
+	}
+
+	public void deleteModGroup(String rawGroupName) throws Exception {
+		String groupName = sanitizeFileName(normalizeModGroupName(rawGroupName));
+		if (TextUtils.isEmpty(groupName)) {
+			throw new IOException("Group name cannot be empty.");
+		}
+		if (isReservedModGroupName(groupName)) {
+			throw new IOException("Cannot delete reserved group: " + groupName);
+		}
+		File modsRoot = getModsRootDir();
+		File groupDirectory = new File(modsRoot, groupName);
+		if (!groupDirectory.isDirectory()) {
+			removeGroupIdFromOrder(groupName);
+			saveModOrder(groupName, new ArrayList<>());
+			return;
+		}
+		if (!isModGroupDirectory(groupDirectory)) {
+			throw new IOException("Not a user MOD group: " + groupName);
+		}
+		List<ModEntry> groupMods = listInstalledModManifestsUnder(groupDirectory);
+		for (ModEntry entry : groupMods) {
+			moveModToGroup(entry, "");
+		}
+		// After moves, remaining empty group dir (marker only) can be removed.
+		if (groupDirectory.isDirectory()) {
+			File[] remaining = groupDirectory.listFiles();
+			if (remaining != null) {
+				for (File child : remaining) {
+					if (MOD_GROUP_MARKER_FILE_NAME.equals(child.getName())) {
+						deleteIfExists(child);
+					}
+				}
+			}
+			// Only delete if empty or only leftover empty dirs after prune.
+			pruneEmptyDirectories(groupDirectory, modsRoot);
+			if (groupDirectory.isDirectory() && isModGroupDirectory(groupDirectory)) {
+				// Still marked and non-empty unexpected content: drop marker and try again.
+				deleteIfExists(new File(groupDirectory, MOD_GROUP_MARKER_FILE_NAME));
+				File[] leftover = groupDirectory.listFiles();
+				if (leftover == null || leftover.length == 0) {
+					//noinspection ResultOfMethodCallIgnored
+					groupDirectory.delete();
+				}
+			} else if (groupDirectory.isDirectory()) {
+				File[] leftover = groupDirectory.listFiles();
+				if (leftover == null || leftover.length == 0) {
+					//noinspection ResultOfMethodCallIgnored
+					groupDirectory.delete();
+				}
+			}
+		}
+		removeGroupIdFromOrder(groupName);
+		saveModOrder(groupName, new ArrayList<>());
+	}
+
+	private boolean isReservedModGroupName(String groupName) {
+		return MOD_GROUP_CORE_NAME.equalsIgnoreCase(groupName) || MOD_GROUP_CONTENT_NAME.equalsIgnoreCase(groupName);
+	}
+
+	private void removeGroupIdFromOrder(String groupId) {
+		List<String> order = loadModGroupOrder();
+		if (order.remove(groupId)) {
+			saveModGroupOrder(order);
+		}
+	}
+
 	public List<String> loadModGroupOrder() {
 		SharedPreferences preferences = context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE);
 		return decodeStringList(preferences.getString(KEY_MOD_GROUP_ORDER, ""));
