@@ -69,6 +69,7 @@ public final class ExtraSettingsRepository {
 	private static final String KEY_ACTIVE_MOD_PROFILE_ID = "active_profile_id";
 	private static final String KEY_MOD_GROUP_ORDER = "mod_group_order";
 	private static final String KEY_MOD_ORDER = "mod_order";
+	private static final String KEY_MOD_NOTES = "mod_notes";
 	private static final String DEFAULT_MOD_PROFILE_ID = "default";
 	private static final String KEY_ANDROID_GRAPHICS_PRESET = "android_graphics_preset";
 	private static final String KEY_ANDROID_DISPLAY_PRESET = "android_display_preset";
@@ -1307,8 +1308,17 @@ public final class ExtraSettingsRepository {
 	}
 
 	public void saveModGroupOrder(List<String> groupIds) {
+		saveModGroupOrder(groupIds, false);
+	}
+
+	public void saveModGroupOrder(List<String> groupIds, boolean sync) {
 		SharedPreferences preferences = context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE);
-		preferences.edit().putString(KEY_MOD_GROUP_ORDER, encodeStringList(groupIds)).apply();
+		SharedPreferences.Editor editor = preferences.edit().putString(KEY_MOD_GROUP_ORDER, encodeStringList(groupIds));
+		if (sync) {
+			editor.commit();
+		} else {
+			editor.apply();
+		}
 	}
 
 	public List<String> loadModOrder(String groupId) {
@@ -1317,8 +1327,17 @@ public final class ExtraSettingsRepository {
 	}
 
 	public void saveModOrder(String groupId, List<String> modIds) {
+		saveModOrder(groupId, modIds, false);
+	}
+
+	public void saveModOrder(String groupId, List<String> modIds, boolean sync) {
 		SharedPreferences preferences = context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE);
-		preferences.edit().putString(KEY_MOD_ORDER + ":" + safeOrderKey(groupId), encodeStringList(modIds)).apply();
+		SharedPreferences.Editor editor = preferences.edit().putString(KEY_MOD_ORDER + ":" + safeOrderKey(groupId), encodeStringList(modIds));
+		if (sync) {
+			editor.commit();
+		} else {
+			editor.apply();
+		}
 	}
 
 	private String safeOrderKey(String value) {
@@ -2106,11 +2125,39 @@ public final class ExtraSettingsRepository {
 			String authors = readAuthors(manifest);
 			String description = firstNonEmpty(manifest.optString("description", ""), manifest.optString("desc", ""), manifest.optString("Description", ""));
 			String category = readCategory(manifest);
-			List<String> dependencies = readDependencies(manifest);
+			String minGameVersion = firstNonEmpty(
+				manifest.optString("min_game_version", ""),
+				manifest.optString("minGameVersion", ""),
+				manifest.optString("game_version", "")
+			).trim();
+			boolean declaredHasPck = manifest.has("has_pck")
+				? manifest.optBoolean("has_pck", false)
+				: manifest.optBoolean("hasPck", false);
+			boolean declaredHasDll = manifest.has("has_dll")
+				? manifest.optBoolean("has_dll", false)
+				: manifest.optBoolean("hasDll", false);
+			List<ModDependency> dependencies = readDependencies(manifest);
 			File parent = manifestFile.getParentFile();
-			boolean hasPck = hasSibling(parent, modId, ".pck") || hasSibling(parent, pckName, ".pck");
-			boolean hasDll = hasSibling(parent, modId, ".dll") || hasSibling(parent, pckName, ".dll");
-			return new ModEntry(manifestFile, modId, pckName, displayName, getRelativePath(rootDirectory, manifestFile), version, authors, description, category, dependencies, hasPck, hasDll);
+			// Game loads <modId>.pck / <modId>.dll; also accept pckName for loosely packaged MODs.
+			boolean hasPck = hasExactSibling(parent, modId, ".pck") || hasExactSibling(parent, pckName, ".pck");
+			boolean hasDll = hasExactSibling(parent, modId, ".dll") || hasExactSibling(parent, pckName, ".dll");
+			return new ModEntry(
+				manifestFile,
+				modId,
+				pckName,
+				displayName,
+				getRelativePath(rootDirectory, manifestFile),
+				version,
+				authors,
+				description,
+				category,
+				minGameVersion,
+				dependencies,
+				declaredHasPck,
+				declaredHasDll,
+				hasPck,
+				hasDll
+			);
 		} catch (Exception ignored) {
 			return null;
 		}
@@ -2140,14 +2187,21 @@ public final class ExtraSettingsRepository {
 	}
 
 	private boolean hasSibling(File parent, String modId, String extension) {
-		if (parent == null || !parent.isDirectory()) {
+		if (parent == null || !parent.isDirectory() || TextUtils.isEmpty(modId)) {
 			return false;
 		}
-		if (new File(parent, modId + extension).isFile()) {
+		if (hasExactSibling(parent, modId, extension)) {
 			return true;
 		}
 		File[] files = parent.listFiles((dir, name) -> name.toLowerCase(Locale.ROOT).endsWith(extension));
 		return files != null && files.length > 0;
+	}
+
+	private boolean hasExactSibling(File parent, String baseName, String extension) {
+		if (parent == null || !parent.isDirectory() || TextUtils.isEmpty(baseName) || TextUtils.isEmpty(extension)) {
+			return false;
+		}
+		return new File(parent, baseName + extension).isFile();
 	}
 
 	private String readAuthors(JSONObject manifest) {
@@ -2208,35 +2262,95 @@ public final class ExtraSettingsRepository {
 		}
 	}
 
-	private List<String> readDependencies(JSONObject manifest) {
-		Set<String> dependencies = new LinkedHashSet<>();
-		readDependencyArray(manifest.optJSONArray("dependencies"), dependencies);
-		readDependencyArray(manifest.optJSONArray("optional_dependencies"), dependencies);
-		readDependencyArray(manifest.optJSONArray("load_after"), dependencies);
-		return new ArrayList<>(dependencies);
+	/**
+	 * Reads required dependencies from the manifest {@code dependencies} key only
+	 * (not optional_dependencies / load_after). Matches original {@code ModManifest}.
+	 */
+	private List<ModDependency> readDependencies(JSONObject manifest) {
+		List<ModDependency> dependencies = new ArrayList<>();
+		Set<String> seen = new LinkedHashSet<>();
+		readDependencyArray(manifest.optJSONArray("dependencies"), dependencies, seen);
+		return dependencies;
 	}
 
-	private void readDependencyArray(JSONArray array, Set<String> out) {
+	private void readDependencyArray(JSONArray array, List<ModDependency> out, Set<String> seen) {
 		if (array == null) {
 			return;
 		}
 		for (int i = 0; i < array.length(); i++) {
 			Object item = array.opt(i);
-			String label;
+			String id;
+			String minVersion = "";
 			if (item instanceof JSONObject object) {
-				label = firstNonEmpty(object.optString("id", ""), object.optString("name", ""), object.optString("mod_id", ""));
-				String version = firstNonEmpty(object.optString("version", ""), object.optString("min_version", ""));
-				if (!TextUtils.isEmpty(version)) {
-					label = label + " " + version;
-				}
+				id = firstNonEmpty(object.optString("id", ""), object.optString("name", ""), object.optString("mod_id", ""));
+				minVersion = firstNonEmpty(object.optString("min_version", ""), object.optString("version", ""));
 			} else {
-				label = String.valueOf(item);
+				id = item == null ? "" : String.valueOf(item).trim();
 			}
-			label = label == null ? "" : label.trim();
-			if (!label.isEmpty()) {
-				out.add(label);
+			id = id == null ? "" : id.trim();
+			if (id.isEmpty() || seen.contains(id)) {
+				continue;
 			}
+			seen.add(id);
+			out.add(new ModDependency(id, minVersion == null ? "" : minVersion.trim()));
 		}
+	}
+
+	public String getModNote(String modId) {
+		if (TextUtils.isEmpty(modId)) {
+			return "";
+		}
+		SharedPreferences preferences = context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE);
+		try {
+			JSONObject notes = new JSONObject(preferences.getString(KEY_MOD_NOTES, "{}"));
+			return notes.optString(modId, "").trim();
+		} catch (Exception ignored) {
+			return "";
+		}
+	}
+
+	public void setModNote(String modId, String note) throws JSONException {
+		if (TextUtils.isEmpty(modId)) {
+			return;
+		}
+		SharedPreferences preferences = context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE);
+		JSONObject notes;
+		try {
+			notes = new JSONObject(preferences.getString(KEY_MOD_NOTES, "{}"));
+		} catch (Exception ignored) {
+			notes = new JSONObject();
+		}
+		String trimmed = note == null ? "" : note.trim();
+		if (TextUtils.isEmpty(trimmed)) {
+			notes.remove(modId);
+		} else {
+			notes.put(modId, trimmed);
+		}
+		preferences.edit().putString(KEY_MOD_NOTES, notes.toString()).apply();
+	}
+
+	public Map<String, String> loadAllModNotes() {
+		Map<String, String> result = new LinkedHashMap<>();
+		SharedPreferences preferences = context.getSharedPreferences(MOD_PROFILE_PREFERENCES_NAME, Context.MODE_PRIVATE);
+		try {
+			JSONObject notes = new JSONObject(preferences.getString(KEY_MOD_NOTES, "{}"));
+			JSONArray names = notes.names();
+			if (names == null) {
+				return result;
+			}
+			for (int i = 0; i < names.length(); i++) {
+				String modId = names.optString(i, "").trim();
+				if (TextUtils.isEmpty(modId)) {
+					continue;
+				}
+				String note = notes.optString(modId, "").trim();
+				if (!TextUtils.isEmpty(note)) {
+					result.put(modId, note);
+				}
+			}
+		} catch (Exception ignored) {
+		}
+		return result;
 	}
 
 	private String firstNonEmpty(String... values) {
@@ -2887,6 +3001,23 @@ public final class ExtraSettingsRepository {
 		}
 	}
 
+	public static final class ModDependency {
+		public final String id;
+		public final String minVersion;
+
+		public ModDependency(String id, String minVersion) {
+			this.id = id == null ? "" : id.trim();
+			this.minVersion = minVersion == null ? "" : minVersion.trim();
+		}
+
+		public String displayLabel() {
+			if (TextUtils.isEmpty(minVersion)) {
+				return id;
+			}
+			return id + " ≥" + minVersion;
+		}
+	}
+
 	public static final class ModEntry {
 		public final File manifestFile;
 		public final String modId;
@@ -2897,11 +3028,37 @@ public final class ExtraSettingsRepository {
 		public final String authors;
 		public final String description;
 		public final String category;
-		public final List<String> dependencies;
+		public final String minGameVersion;
+		/** Required dependencies from the manifest {@code dependencies} key. */
+		public final List<ModDependency> dependencies;
+		/** Display labels for dependencies (legacy-friendly). */
+		public final List<String> dependencyLabels;
+		/** Value of manifest {@code has_pck}. */
+		public final boolean declaredHasPck;
+		/** Value of manifest {@code has_dll}. */
+		public final boolean declaredHasDll;
+		/** Whether a matching .pck file exists next to the manifest. */
 		public final boolean hasPck;
+		/** Whether a matching .dll file exists next to the manifest. */
 		public final boolean hasDll;
 
-		ModEntry(File manifestFile, String modId, String pckName, String displayName, String relativePath, String version, String authors, String description, String category, List<String> dependencies, boolean hasPck, boolean hasDll) {
+		ModEntry(
+			File manifestFile,
+			String modId,
+			String pckName,
+			String displayName,
+			String relativePath,
+			String version,
+			String authors,
+			String description,
+			String category,
+			String minGameVersion,
+			List<ModDependency> dependencies,
+			boolean declaredHasPck,
+			boolean declaredHasDll,
+			boolean hasPck,
+			boolean hasDll
+		) {
 			this.manifestFile = manifestFile;
 			this.modId = modId;
 			this.pckName = TextUtils.isEmpty(pckName) ? modId : pckName;
@@ -2911,9 +3068,22 @@ public final class ExtraSettingsRepository {
 			this.authors = authors;
 			this.description = description;
 			this.category = category == null ? "" : category;
-			this.dependencies = Collections.unmodifiableList(new ArrayList<>(dependencies));
+			this.minGameVersion = minGameVersion == null ? "" : minGameVersion;
+			this.dependencies = Collections.unmodifiableList(new ArrayList<>(dependencies == null ? Collections.emptyList() : dependencies));
+			List<String> labels = new ArrayList<>();
+			for (ModDependency dependency : this.dependencies) {
+				labels.add(dependency.displayLabel());
+			}
+			this.dependencyLabels = Collections.unmodifiableList(labels);
+			this.declaredHasPck = declaredHasPck;
+			this.declaredHasDll = declaredHasDll;
 			this.hasPck = hasPck;
 			this.hasDll = hasDll;
+		}
+
+		/** Folder containing the MOD payload (parent of the manifest file). */
+		public File directory() {
+			return manifestFile == null ? null : manifestFile.getParentFile();
 		}
 	}
 }

@@ -680,6 +680,31 @@
     <string name="mod_detail_files_format">%1$s · %2$s</string>
     <string name="mod_detail_dependencies">Dependencies</string>
     <string name="mod_detail_path">Manifest path</string>
+    <string name="mod_detail_min_game_version">Min game version</string>
+    <string name="mod_detail_open_folder">Open folder</string>
+    <string name="mod_note_action">Note</string>
+    <string name="mod_note_title">MOD display name note</string>
+    <string name="mod_note_hint">Custom name (leave empty to clear)</string>
+    <string name="mod_note_saved">Note saved.</string>
+    <string name="mod_note_cleared">Note cleared.</string>
+    <string name="mod_issues_title">MOD issues</string>
+    <string name="mod_issues_count_format">%1$d</string>
+    <string name="mod_issues_empty">No issues detected.</string>
+    <string name="mod_issues_summary_format">%1$d MOD(s) need attention</string>
+    <string name="mod_issues_auto_fix_order">Fix load order</string>
+    <string name="mod_issues_auto_fix_done">Load order fixed.</string>
+    <string name="mod_issues_auto_enable_deps">Enable disabled dependencies</string>
+    <string name="mod_issues_auto_enable_deps_done">Enabled %1$d disabled dependenc(ies).</string>
+    <string name="mod_issues_auto_fix_all">Auto-fix all</string>
+    <string name="mod_issues_auto_fix_all_done">Auto-fix finished.</string>
+    <string name="mod_issue_missing_dependency">Missing dependency: %1$s</string>
+    <string name="mod_issue_dependency_disabled">Dependency disabled: %1$s</string>
+    <string name="mod_issue_dependency_version">Dependency %1$s is %2$s, requires ≥%3$s</string>
+    <string name="mod_issue_min_game_version">Requires game ≥%1$s (current %2$s)</string>
+    <string name="mod_issue_min_game_version_unknown">Requires game ≥%1$s (current game version unknown)</string>
+    <string name="mod_issue_missing_pck">Manifest has_pck=true but %1$s.pck was not found</string>
+    <string name="mod_issue_missing_dll">Manifest has_dll=true but %1$s.dll was not found</string>
+    <string name="mod_issue_load_order">Load order: depends on %1$s which is listed after this MOD</string>
     <string name="status_busy_delete_mod">Deleting MOD…</string>
     <string name="mod_batch_empty">Select at least one MOD first.</string>
     <string name="mod_selected_count_format">%1$d selected</string>

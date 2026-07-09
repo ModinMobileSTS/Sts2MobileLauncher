@@ -3,6 +3,7 @@ package com.godot.game;
 import android.animation.ValueAnimator;
 import android.content.ClipData;
 import android.content.Context;
+import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -17,11 +18,13 @@ import android.os.Vibrator;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.text.style.UnderlineSpan;
 import android.util.TypedValue;
 import android.view.DragEvent;
 import android.view.Gravity;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -35,10 +38,15 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import android.graphics.drawable.ColorDrawable;
+import android.text.SpannableString;
+
 import androidx.appcompat.widget.PopupMenu;
+import androidx.core.widget.NestedScrollView;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
@@ -47,8 +55,10 @@ import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.shape.ShapeAppearanceModel;
 import org.json.JSONObject;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -103,8 +113,12 @@ public final class ModsPage {
 	private final Set<String> fullDescriptionModIds = new HashSet<>();
 	private final Set<String> collapsedGroupIds = new HashSet<>();
 	private final List<ExtraSettingsRepository.ModEntry> currentFilteredMods = new ArrayList<>();
+	private final List<ExtraSettingsRepository.ModEntry> currentAllMods = new ArrayList<>();
 	private final List<ModGroupBucket> currentBuckets = new ArrayList<>();
 	private final List<ListItem> listItems = new ArrayList<>();
+	private final Map<String, List<ModIssue>> issuesByModId = new LinkedHashMap<>();
+	private final List<ModIssue> currentIssues = new ArrayList<>();
+	private final Map<String, String> modNotesById = new HashMap<>();
 
 	private RecyclerView recyclerView;
 	private ModsListAdapter adapter;
@@ -112,6 +126,8 @@ public final class ModsPage {
 	private LinearLayout bottomPanelContent;
 	private EditText searchInput;
 	private HorizontalScrollView chipScrollView;
+	private View warningAction;
+	private TextView warningCountView;
 	private int chipScrollX;
 	private boolean suppressChipScrollCapture;
 	private String filter = "all";
@@ -124,6 +140,8 @@ public final class ModsPage {
 	private int dragGhostIndex = -1;
 	private boolean dragGhostForGroup;
 	private BottomSheetDialog groupManageSheet;
+	private BottomSheetDialog issuesSheet;
+	private String currentGameVersion = "";
 
 	public ModsPage(Context context, ExtraSettingsRepository repository, ExtraSettingsActions actions) {
 		this.context = context;
@@ -166,10 +184,43 @@ public final class ModsPage {
 		row.setMinimumHeight(ExtraSettingsUi.dp(context, 78));
 		row.setPadding(ExtraSettingsUi.dp(context, 16), ExtraSettingsUi.dp(context, 18), ExtraSettingsUi.dp(context, 16), ExtraSettingsUi.dp(context, 14));
 		SystemBarInsetsHelper.applySystemBarPadding(row, true, false, false, false);
+
+		LinearLayout titleCluster = ExtraSettingsUi.horizontal(context);
+		titleCluster.setGravity(Gravity.CENTER_VERTICAL);
 		TextView title = ExtraSettingsUi.text(context, context.getString(R.string.tab_mods), 22, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
 		title.setSingleLine(true);
 		title.setEllipsize(TextUtils.TruncateAt.END);
-		row.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+		titleCluster.addView(title, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+		LinearLayout warningChip = ExtraSettingsUi.horizontal(context);
+		warningChip.setGravity(Gravity.CENTER_VERTICAL);
+		warningChip.setPadding(ExtraSettingsUi.dp(context, 8), ExtraSettingsUi.dp(context, 4), ExtraSettingsUi.dp(context, 10), ExtraSettingsUi.dp(context, 4));
+		GradientDrawable warningBg = new GradientDrawable();
+		warningBg.setColor(Color.argb(40, Color.red(ExtraSettingsUi.COLOR_WARNING), Color.green(ExtraSettingsUi.COLOR_WARNING), Color.blue(ExtraSettingsUi.COLOR_WARNING)));
+		warningBg.setCornerRadius(ExtraSettingsUi.dp(context, 999));
+		warningChip.setBackground(warningBg);
+		warningChip.setClickable(true);
+		warningChip.setFocusable(true);
+		TypedValue outValue = new TypedValue();
+		if (context.getTheme().resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)) {
+			warningChip.setForeground(context.getDrawable(outValue.resourceId));
+		}
+		ImageView warningIcon = ExtraSettingsUi.icon(context, R.drawable.ic_error_outline_24, ExtraSettingsUi.COLOR_WARNING, 18);
+		warningChip.addView(warningIcon);
+		warningCountView = ExtraSettingsUi.text(context, "", 13, ExtraSettingsUi.COLOR_WARNING, Typeface.BOLD);
+		warningCountView.setSingleLine(true);
+		LinearLayout.LayoutParams countParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		countParams.setMarginStart(ExtraSettingsUi.dp(context, 4));
+		warningChip.addView(warningCountView, countParams);
+		warningChip.setOnClickListener(v -> showModIssuesSheet());
+		warningChip.setContentDescription(context.getString(R.string.mod_issues_title));
+		warningChip.setVisibility(View.GONE);
+		warningAction = warningChip;
+		LinearLayout.LayoutParams warningParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		warningParams.setMarginStart(ExtraSettingsUi.dp(context, 8));
+		titleCluster.addView(warningChip, warningParams);
+
+		row.addView(titleCluster, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 		try {
 			JSONObject settings = repository.loadSettingsJson();
 			TextView label = ExtraSettingsUi.text(context, context.getString(R.string.mod_master_switch), 16, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
@@ -631,11 +682,17 @@ public final class ModsPage {
 	private void refreshList() {
 		clearDragGhost(false);
 		currentFilteredMods.clear();
+		currentAllMods.clear();
 		currentBuckets.clear();
 		listItems.clear();
 		try {
 			cachedSettings = repository.loadSettingsJson();
+			modNotesById.clear();
+			modNotesById.putAll(repository.loadAllModNotes());
+			currentGameVersion = resolveCurrentGameVersion();
 			List<ExtraSettingsRepository.ModEntry> allMods = repository.listInstalledModManifests();
+			currentAllMods.addAll(allMods);
+			rebuildModIssues(allMods);
 			List<ExtraSettingsRepository.ModEntry> filtered = filterMods(cachedSettings, allMods);
 			sortMods(filtered);
 			currentFilteredMods.addAll(filtered);
@@ -667,11 +724,15 @@ public final class ModsPage {
 			}
 			submitListPreservingScroll(new ArrayList<>(listItems));
 			updateSelectionActionsPanel();
+			updateWarningBadge();
 		} catch (Exception exception) {
 			listItems.clear();
 			listItems.add(ListItem.error(exception));
 			submitListPreservingScroll(new ArrayList<>(listItems));
 			updateSelectionActionsPanel();
+			issuesByModId.clear();
+			currentIssues.clear();
+			updateWarningBadge();
 		}
 	}
 
@@ -697,6 +758,11 @@ public final class ModsPage {
 		}
 		if (listItems.isEmpty()) {
 			listItems.add(ListItem.empty(R.string.mod_no_filter_results));
+		}
+		// Order-sensitive checks (dependency load order) must track drag reorder.
+		if (!currentAllMods.isEmpty()) {
+			rebuildModIssues(currentAllMods);
+			updateWarningBadge();
 		}
 		submitListPreservingScroll(new ArrayList<>(listItems));
 	}
@@ -746,7 +812,8 @@ public final class ModsPage {
 			if ("missing".equals(filter) && !missingFiles) {
 				continue;
 			}
-			String haystack = (entry.displayName + " " + entry.modId + " " + entry.pckName + " " + entry.version + " " + entry.authors + " " + entry.description + " " + entry.category + " " + entry.relativePath + " " + TextUtils.join(" ", entry.dependencies)).toLowerCase(Locale.ROOT);
+			String note = noteFor(entry.modId);
+			String haystack = (entry.displayName + " " + note + " " + entry.modId + " " + entry.pckName + " " + entry.version + " " + entry.authors + " " + entry.description + " " + entry.category + " " + entry.relativePath + " " + TextUtils.join(" ", entry.dependencyLabels)).toLowerCase(Locale.ROOT);
 			if (!query.isEmpty() && !haystack.contains(query)) {
 				continue;
 			}
@@ -1955,6 +2022,12 @@ public final class ModsPage {
 		title.setSingleLine(true);
 		title.setEllipsize(TextUtils.TruncateAt.END);
 		textColumn.addView(title);
+		TextView originalName = ExtraSettingsUi.text(context, "", 12, ExtraSettingsUi.COLOR_MUTED, Typeface.NORMAL);
+		originalName.setTag("original_name");
+		originalName.setSingleLine(true);
+		originalName.setEllipsize(TextUtils.TruncateAt.END);
+		originalName.setVisibility(View.GONE);
+		textColumn.addView(originalName);
 		TextView meta = ExtraSettingsUi.caption(context, "");
 		meta.setTag("meta");
 		meta.setSingleLine(true);
@@ -2032,6 +2105,7 @@ public final class ModsPage {
 		private final MaterialCardView card;
 		private final ImageView handle;
 		private final TextView title;
+		private final TextView originalName;
 		private final TextView meta;
 		private final MaterialSwitch switchView;
 		private final LinearLayout details;
@@ -2044,6 +2118,7 @@ public final class ModsPage {
 			card = (MaterialCardView) itemView;
 			handle = itemView.findViewWithTag("handle");
 			title = itemView.findViewWithTag("title");
+			originalName = itemView.findViewWithTag("original_name");
 			meta = itemView.findViewWithTag("meta");
 			switchView = itemView.findViewWithTag("switch");
 			details = itemView.findViewWithTag("details");
@@ -2059,9 +2134,10 @@ public final class ModsPage {
 			enabledState[0] = enabled;
 			boolean selected = selectedModIds.contains(entry.modId);
 			boolean expanded = expandedModIds.contains(entry.modId);
-			title.setText(emptyToDash(entry.displayName));
+			boolean hasIssues = issuesByModId.containsKey(entry.modId);
+			bindTitle(entry);
 			meta.setText(compactMeta(entry));
-			applyModCardStyle(card, enabled, selected);
+			applyModCardStyle(card, enabled, selected, hasIssues);
 			switchView.setOnCheckedChangeListener(null);
 			switchView.setChecked(enabled);
 			switchView.setEnabled(selectedModIds.isEmpty());
@@ -2070,7 +2146,13 @@ public final class ModsPage {
 					repository.saveSetting(root -> repository.setModDisabled(root, entry.modId, !isChecked));
 					cachedSettings = repository.loadSettingsJson();
 					enabledState[0] = isChecked;
-					applyModCardStyle(card, isChecked, selectedModIds.contains(entry.modId));
+					applyModCardStyle(card, isChecked, selectedModIds.contains(entry.modId), issuesByModId.containsKey(entry.modId));
+					// Re-evaluate dependency disabled issues when toggles change.
+					rebuildModIssues(currentAllMods.isEmpty() ? repository.listInstalledModManifests() : currentAllMods);
+					updateWarningBadge();
+					if (adapter != null) {
+						adapter.notifyItemRangeChanged(0, adapter.getItemCount(), PAYLOAD_SELECTION);
+					}
 				} catch (Exception exception) {
 					buttonView.setChecked(!isChecked);
 					actions.showError(exception);
@@ -2098,13 +2180,30 @@ public final class ModsPage {
 			});
 		}
 
+		void bindTitle(ExtraSettingsRepository.ModEntry entry) {
+			String note = noteFor(entry.modId);
+			if (!TextUtils.isEmpty(note)) {
+				title.setText(note);
+				if (originalName != null) {
+					originalName.setVisibility(View.VISIBLE);
+					originalName.setText(emptyToDash(entry.displayName));
+				}
+			} else {
+				title.setText(emptyToDash(entry.displayName));
+				if (originalName != null) {
+					originalName.setVisibility(View.GONE);
+					originalName.setText("");
+				}
+			}
+		}
+
 		void applySelectionState(ExtraSettingsRepository.ModEntry entry) {
 			if (entry == null) {
 				return;
 			}
 			boolean enabled = enabledState[0];
 			boolean selected = selectedModIds.contains(entry.modId);
-			applyModCardStyle(card, enabled, selected);
+			applyModCardStyle(card, enabled, selected, issuesByModId.containsKey(entry.modId));
 			switchView.setEnabled(selectedModIds.isEmpty());
 			// Update select button label in details if present
 			View select = details.findViewWithTag("select_btn");
@@ -2157,20 +2256,32 @@ public final class ModsPage {
 				body.addView(more);
 			}
 			addDetailRow(body, R.drawable.ic_code_24, displayCategory(entry));
-			addDetailRow(body, R.drawable.ic_article_24, entry.relativePath);
+			addPathDetailRow(body, entry);
 			addDetailRow(body, R.drawable.ic_person_24, context.getString(R.string.mod_detail_author) + ": " + emptyToDash(entry.authors));
 			addDetailRow(body, R.drawable.ic_layers_24, context.getString(R.string.mod_detail_dependencies) + ": " + dependenciesText(entry));
+			if (!TextUtils.isEmpty(entry.minGameVersion)) {
+				addDetailRow(body, R.drawable.ic_badge_24, context.getString(R.string.mod_detail_min_game_version) + ": " + entry.minGameVersion);
+			}
+			List<ModIssue> issues = issuesByModId.get(entry.modId);
+			if (issues != null && !issues.isEmpty()) {
+				for (ModIssue issue : issues) {
+					addIssueDetailRow(body, issue.message);
+				}
+			}
 
 			LinearLayout actionsRow = ExtraSettingsUi.horizontal(context);
 			actionsRow.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
 			MaterialButton select = detailIconButton(R.drawable.ic_check_circle_24, selectedModIds.contains(entry.modId) ? R.string.mod_action_unselect : R.string.mod_action_select);
 			select.setTag("select_btn");
+			MaterialButton note = detailIconButton(R.drawable.ic_edit_24, R.string.mod_note_action);
 			MaterialButton info = detailIconButton(R.drawable.ic_info_24, R.string.mod_action_info);
 			MaterialButton delete = detailIconButton(R.drawable.ic_delete_24, R.string.delete);
 			select.setOnClickListener(v -> toggleSelected(entry.modId));
+			note.setOnClickListener(v -> showModNoteDialog(entry));
 			info.setOnClickListener(v -> showModDetails(entry, enabledState[0]));
 			delete.setOnClickListener(v -> confirmDelete(entry));
 			actionsRow.addView(select);
+			actionsRow.addView(note);
 			actionsRow.addView(info);
 			actionsRow.addView(delete);
 			LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -2392,6 +2503,46 @@ public final class ModsPage {
 		parent.addView(row, params);
 	}
 
+	private void addPathDetailRow(LinearLayout parent, ExtraSettingsRepository.ModEntry entry) {
+		if (entry == null || TextUtils.isEmpty(entry.relativePath)) {
+			return;
+		}
+		LinearLayout row = ExtraSettingsUi.horizontal(context);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		row.addView(ExtraSettingsUi.icon(context, R.drawable.ic_article_24, ExtraSettingsUi.COLOR_MUTED, 16));
+		TextView text = ExtraSettingsUi.caption(context, entry.relativePath);
+		text.setTextColor(ExtraSettingsUi.COLOR_PRIMARY);
+		SpannableString spannable = new SpannableString(entry.relativePath);
+		spannable.setSpan(new UnderlineSpan(), 0, spannable.length(), 0);
+		text.setText(spannable);
+		text.setClickable(true);
+		text.setFocusable(true);
+		text.setOnClickListener(v -> openModFolder(entry));
+		LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		textParams.setMarginStart(ExtraSettingsUi.dp(context, 6));
+		row.addView(text, textParams);
+		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		params.topMargin = ExtraSettingsUi.dp(context, 6);
+		parent.addView(row, params);
+	}
+
+	private void addIssueDetailRow(LinearLayout parent, String message) {
+		if (TextUtils.isEmpty(message)) {
+			return;
+		}
+		LinearLayout row = ExtraSettingsUi.horizontal(context);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		row.addView(ExtraSettingsUi.icon(context, R.drawable.ic_error_outline_24, ExtraSettingsUi.COLOR_WARNING, 16));
+		TextView text = ExtraSettingsUi.caption(context, message);
+		text.setTextColor(ExtraSettingsUi.COLOR_WARNING);
+		LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		textParams.setMarginStart(ExtraSettingsUi.dp(context, 6));
+		row.addView(text, textParams);
+		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		params.topMargin = ExtraSettingsUi.dp(context, 6);
+		parent.addView(row, params);
+	}
+
 	private String compactMeta(ExtraSettingsRepository.ModEntry entry) {
 		List<String> parts = new ArrayList<>();
 		if (!TextUtils.isEmpty(entry.version)) {
@@ -2407,14 +2558,24 @@ public final class ModsPage {
 	}
 
 	private String dependenciesText(ExtraSettingsRepository.ModEntry entry) {
-		return entry.dependencies.isEmpty() ? "—" : TextUtils.join(", ", entry.dependencies);
+		return entry.dependencyLabels.isEmpty() ? "—" : TextUtils.join(", ", entry.dependencyLabels);
 	}
 
-	private void applyModCardStyle(MaterialCardView card, boolean enabled, boolean selected) {
-		int background = selected ? Color.rgb(30, 50, 39) : ExtraSettingsUi.COLOR_SURFACE_CONTAINER;
-		int border = selected ? ExtraSettingsUi.COLOR_PRIMARY : (enabled ? Color.rgb(72, 104, 84) : ExtraSettingsUi.COLOR_OUTLINE);
+	private void applyModCardStyle(MaterialCardView card, boolean enabled, boolean selected, boolean hasIssues) {
+		int background;
+		int border;
+		if (selected) {
+			background = Color.rgb(30, 50, 39);
+			border = ExtraSettingsUi.COLOR_PRIMARY;
+		} else if (hasIssues) {
+			background = Color.rgb(48, 40, 24);
+			border = ExtraSettingsUi.COLOR_WARNING;
+		} else {
+			background = ExtraSettingsUi.COLOR_SURFACE_CONTAINER;
+			border = enabled ? Color.rgb(72, 104, 84) : ExtraSettingsUi.COLOR_OUTLINE;
+		}
 		card.setCardBackgroundColor(background);
-		card.setStrokeWidth(ExtraSettingsUi.dp(context, selected ? 2 : 1));
+		card.setStrokeWidth(ExtraSettingsUi.dp(context, selected || hasIssues ? 2 : 1));
 		card.setStrokeColor(border);
 	}
 
@@ -2422,6 +2583,22 @@ public final class ModsPage {
 
 	private String emptyToDash(String value) {
 		return TextUtils.isEmpty(value) ? "—" : value;
+	}
+
+	private String noteFor(String modId) {
+		if (TextUtils.isEmpty(modId)) {
+			return "";
+		}
+		String note = modNotesById.get(modId);
+		return note == null ? "" : note.trim();
+	}
+
+	private String displayNameFor(ExtraSettingsRepository.ModEntry entry) {
+		if (entry == null) {
+			return "";
+		}
+		String note = noteFor(entry.modId);
+		return TextUtils.isEmpty(note) ? entry.displayName : note;
 	}
 
 	private String displayCategory(ExtraSettingsRepository.ModEntry entry) {
@@ -2448,26 +2625,831 @@ public final class ModsPage {
 
 	private void showModDetails(ExtraSettingsRepository.ModEntry entry, boolean enabled) {
 		StringBuilder message = new StringBuilder();
+		String note = noteFor(entry.modId);
+		if (!TextUtils.isEmpty(note)) {
+			appendLine(message, context.getString(R.string.mod_note_action), note);
+		}
 		appendLine(message, context.getString(R.string.mod_detail_status), enabled ? context.getString(R.string.mod_enabled) : context.getString(R.string.mod_disabled));
 		appendLine(message, "ID", entry.modId);
 		appendLine(message, context.getString(R.string.mod_detail_category), displayCategory(entry));
 		appendLine(message, context.getString(R.string.mod_detail_version), entry.version);
+		appendLine(message, context.getString(R.string.mod_detail_min_game_version), entry.minGameVersion);
 		appendLine(message, context.getString(R.string.mod_detail_author), entry.authors);
-		appendLine(message, context.getString(R.string.mod_detail_files), context.getString(R.string.mod_detail_files_format, entry.hasPck ? "PCK" : "—", entry.hasDll ? "DLL" : "—"));
-		appendLine(message, context.getString(R.string.mod_detail_dependencies), entry.dependencies.isEmpty() ? "—" : TextUtils.join(", ", entry.dependencies));
+		appendLine(message, context.getString(R.string.mod_detail_files), context.getString(R.string.mod_detail_files_format,
+			entry.declaredHasPck ? (entry.hasPck ? "PCK" : "PCK✗") : (entry.hasPck ? "PCK?" : "—"),
+			entry.declaredHasDll ? (entry.hasDll ? "DLL" : "DLL✗") : (entry.hasDll ? "DLL?" : "—")));
+		appendLine(message, context.getString(R.string.mod_detail_dependencies), entry.dependencyLabels.isEmpty() ? "—" : TextUtils.join(", ", entry.dependencyLabels));
 		appendLine(message, context.getString(R.string.mod_detail_path), entry.relativePath);
+		List<ModIssue> issues = issuesByModId.get(entry.modId);
+		if (issues != null && !issues.isEmpty()) {
+			message.append('\n').append(context.getString(R.string.mod_issues_title)).append(":\n");
+			for (ModIssue issue : issues) {
+				message.append("• ").append(issue.message).append('\n');
+			}
+		}
 		if (!TextUtils.isEmpty(entry.description)) {
 			message.append('\n').append(entry.description);
 		}
 		new MaterialAlertDialogBuilder(context)
-			.setTitle(entry.displayName)
+			.setTitle(displayNameFor(entry))
 			.setMessage(message.toString().trim())
+			.setNeutralButton(R.string.mod_detail_open_folder, (dialog, which) -> openModFolder(entry))
 			.setPositiveButton(android.R.string.ok, null)
 			.show();
 	}
 
+	private void showModNoteDialog(ExtraSettingsRepository.ModEntry entry) {
+		EditText input = new EditText(context);
+		input.setHint(R.string.mod_note_hint);
+		input.setSingleLine(true);
+		input.setText(noteFor(entry.modId));
+		input.setSelection(input.getText() == null ? 0 : input.getText().length());
+		new MaterialAlertDialogBuilder(context)
+			.setTitle(R.string.mod_note_title)
+			.setMessage(entry.displayName + "\n" + entry.modId)
+			.setView(input)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(android.R.string.ok, (dialog, which) -> {
+				try {
+					String note = input.getText() == null ? "" : input.getText().toString();
+					repository.setModNote(entry.modId, note);
+					if (TextUtils.isEmpty(note.trim())) {
+						modNotesById.remove(entry.modId);
+						actions.showMessage(context.getString(R.string.mod_note_cleared));
+					} else {
+						modNotesById.put(entry.modId, note.trim());
+						actions.showMessage(context.getString(R.string.mod_note_saved));
+					}
+					refreshList();
+				} catch (Exception exception) {
+					actions.showError(exception);
+				}
+			})
+			.show();
+	}
+
+	private void openModFolder(ExtraSettingsRepository.ModEntry entry) {
+		if (entry == null) {
+			return;
+		}
+		File folder = entry.directory();
+		if (folder == null || !folder.isDirectory()) {
+			folder = entry.manifestFile;
+		}
+		try {
+			context.startActivity(FileBrowserActivity.createIntent(context, folder));
+		} catch (Exception exception) {
+			actions.showError(exception);
+		}
+	}
+
+	private void updateWarningBadge() {
+		if (warningAction == null || warningCountView == null) {
+			return;
+		}
+		int problemModCount = issuesByModId.size();
+		if (problemModCount <= 0) {
+			warningAction.setVisibility(View.GONE);
+			return;
+		}
+		warningAction.setVisibility(View.VISIBLE);
+		warningCountView.setText(context.getString(R.string.mod_issues_count_format, problemModCount));
+		warningAction.setContentDescription(context.getString(R.string.mod_issues_summary_format, problemModCount));
+	}
+
+	private String resolveCurrentGameVersion() {
+		try {
+			LaunchProfileManager.GamePayload payload = new LaunchProfileManager(context).getSelectedPayload();
+			if (payload != null && !TextUtils.isEmpty(payload.version)) {
+				return payload.version.trim();
+			}
+		} catch (Exception ignored) {
+		}
+		return "";
+	}
+
+	private void rebuildModIssues(List<ExtraSettingsRepository.ModEntry> allMods) {
+		issuesByModId.clear();
+		currentIssues.clear();
+		if (allMods == null || allMods.isEmpty()) {
+			return;
+		}
+		// Only surface issues for enabled MODs; disabled ones are intentionally inactive.
+		List<ExtraSettingsRepository.ModEntry> enabledMods = new ArrayList<>();
+		Map<String, ExtraSettingsRepository.ModEntry> byId = new HashMap<>();
+		Map<String, ExtraSettingsRepository.ModEntry> byPckName = new HashMap<>();
+		for (ExtraSettingsRepository.ModEntry entry : allMods) {
+			byId.put(entry.modId, entry);
+			if (!TextUtils.isEmpty(entry.pckName)) {
+				byPckName.put(entry.pckName, entry);
+			}
+			if (!isModDisabledSafe(entry)) {
+				enabledMods.add(entry);
+			}
+		}
+		if (enabledMods.isEmpty()) {
+			return;
+		}
+
+		// Flatten UI load order across groups for order checks (enabled only).
+		List<ExtraSettingsRepository.ModEntry> ordered = flattenLoadOrder(enabledMods);
+		Map<String, Integer> orderIndex = new HashMap<>();
+		for (int i = 0; i < ordered.size(); i++) {
+			orderIndex.put(ordered.get(i).modId, i);
+			if (!TextUtils.isEmpty(ordered.get(i).pckName)) {
+				orderIndex.putIfAbsent(ordered.get(i).pckName, i);
+			}
+		}
+
+		for (ExtraSettingsRepository.ModEntry entry : enabledMods) {
+			List<ModIssue> issues = new ArrayList<>();
+
+			if (entry.declaredHasPck && !entry.hasPck) {
+				issues.add(new ModIssue(entry.modId, displayNameFor(entry), ModIssue.TYPE_MISSING_PCK,
+					context.getString(R.string.mod_issue_missing_pck, entry.modId)));
+			}
+			if (entry.declaredHasDll && !entry.hasDll) {
+				issues.add(new ModIssue(entry.modId, displayNameFor(entry), ModIssue.TYPE_MISSING_DLL,
+					context.getString(R.string.mod_issue_missing_dll, entry.modId)));
+			}
+
+			if (!TextUtils.isEmpty(entry.minGameVersion)) {
+				if (TextUtils.isEmpty(currentGameVersion)) {
+					issues.add(new ModIssue(entry.modId, displayNameFor(entry), ModIssue.TYPE_GAME_VERSION,
+						context.getString(R.string.mod_issue_min_game_version_unknown, entry.minGameVersion)));
+				} else if (compareVersions(currentGameVersion, entry.minGameVersion) < 0) {
+					issues.add(new ModIssue(entry.modId, displayNameFor(entry), ModIssue.TYPE_GAME_VERSION,
+						context.getString(R.string.mod_issue_min_game_version, entry.minGameVersion, currentGameVersion)));
+				}
+			}
+
+			for (ExtraSettingsRepository.ModDependency dependency : entry.dependencies) {
+				if (TextUtils.isEmpty(dependency.id)) {
+					continue;
+				}
+				ExtraSettingsRepository.ModEntry depEntry = findInstalledDependency(dependency.id, byId, byPckName);
+				if (depEntry == null) {
+					issues.add(new ModIssue(
+						entry.modId,
+						displayNameFor(entry),
+						ModIssue.TYPE_DEPENDENCY,
+						context.getString(R.string.mod_issue_missing_dependency, dependency.displayLabel()),
+						dependency.id
+					));
+					continue;
+				}
+				boolean depDisabled = isModDisabledSafe(depEntry);
+				if (depDisabled) {
+					issues.add(new ModIssue(
+						entry.modId,
+						displayNameFor(entry),
+						ModIssue.TYPE_DEPENDENCY_DISABLED,
+						context.getString(R.string.mod_issue_dependency_disabled, dependency.id),
+						depEntry.modId
+					));
+					// Disabled deps are not part of the active load order.
+					continue;
+				}
+				if (!TextUtils.isEmpty(dependency.minVersion)
+					&& !TextUtils.isEmpty(depEntry.version)
+					&& compareVersions(depEntry.version, dependency.minVersion) < 0) {
+					issues.add(new ModIssue(
+						entry.modId,
+						displayNameFor(entry),
+						ModIssue.TYPE_DEPENDENCY,
+						context.getString(R.string.mod_issue_dependency_version, dependency.id, depEntry.version, dependency.minVersion),
+						depEntry.modId
+					));
+				}
+				Integer selfIndex = orderIndex.get(entry.modId);
+				Integer depIndex = orderIndex.get(depEntry.modId);
+				if (selfIndex != null && depIndex != null && depIndex > selfIndex) {
+					issues.add(new ModIssue(
+						entry.modId,
+						displayNameFor(entry),
+						ModIssue.TYPE_LOAD_ORDER,
+						context.getString(R.string.mod_issue_load_order, depEntry.modId),
+						depEntry.modId
+					));
+				}
+			}
+
+			if (!issues.isEmpty()) {
+				issuesByModId.put(entry.modId, issues);
+				currentIssues.addAll(issues);
+			}
+		}
+	}
+
+	private ExtraSettingsRepository.ModEntry findInstalledDependency(
+		String dependencyId,
+		Map<String, ExtraSettingsRepository.ModEntry> byId,
+		Map<String, ExtraSettingsRepository.ModEntry> byPckName
+	) {
+		if (TextUtils.isEmpty(dependencyId)) {
+			return null;
+		}
+		ExtraSettingsRepository.ModEntry entry = byId.get(dependencyId);
+		if (entry != null) {
+			return entry;
+		}
+		entry = byPckName.get(dependencyId);
+		if (entry != null) {
+			return entry;
+		}
+		// Case-insensitive fallback for loosely authored manifests.
+		for (Map.Entry<String, ExtraSettingsRepository.ModEntry> candidate : byId.entrySet()) {
+			if (dependencyId.equalsIgnoreCase(candidate.getKey())) {
+				return candidate.getValue();
+			}
+		}
+		for (Map.Entry<String, ExtraSettingsRepository.ModEntry> candidate : byPckName.entrySet()) {
+			if (dependencyId.equalsIgnoreCase(candidate.getKey())) {
+				return candidate.getValue();
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Flattens the same group/order model the list UI uses so load-order checks
+	 * match what the user sees when dragging MODs.
+	 */
+	private List<ExtraSettingsRepository.ModEntry> flattenLoadOrder(List<ExtraSettingsRepository.ModEntry> mods) {
+		List<ModGroupBucket> buckets = buildModGroups(new ArrayList<>(mods));
+		List<ExtraSettingsRepository.ModEntry> ordered = new ArrayList<>();
+		for (ModGroupBucket bucket : buckets) {
+			ordered.addAll(bucket.entries);
+		}
+		return ordered;
+	}
+
+	/**
+	 * Loose semantic compare for game/mod versions (leading {@code v} allowed).
+	 * Returns negative if left &lt; right, positive if left &gt; right, 0 if equal/unparseable both sides match.
+	 */
+	private int compareVersions(String left, String right) {
+		int[] leftParts = parseVersionParts(left);
+		int[] rightParts = parseVersionParts(right);
+		if (leftParts == null || rightParts == null) {
+			return String.valueOf(left).compareToIgnoreCase(String.valueOf(right));
+		}
+		int len = Math.max(leftParts.length, rightParts.length);
+		for (int i = 0; i < len; i++) {
+			int l = i < leftParts.length ? leftParts[i] : 0;
+			int r = i < rightParts.length ? rightParts[i] : 0;
+			if (l != r) {
+				return Integer.compare(l, r);
+			}
+		}
+		return 0;
+	}
+
+	private int[] parseVersionParts(String raw) {
+		if (TextUtils.isEmpty(raw)) {
+			return null;
+		}
+		String value = raw.trim();
+		if (value.startsWith("v") || value.startsWith("V")) {
+			value = value.substring(1);
+		}
+		int cut = value.length();
+		for (int i = 0; i < value.length(); i++) {
+			char c = value.charAt(i);
+			if (c == '-' || c == '+' || c == ' ') {
+				cut = i;
+				break;
+			}
+		}
+		value = value.substring(0, cut);
+		String[] chunks = value.split("\\.");
+		if (chunks.length == 0) {
+			return null;
+		}
+		int[] parts = new int[chunks.length];
+		for (int i = 0; i < chunks.length; i++) {
+			String chunk = chunks[i].replaceAll("[^0-9].*$", "");
+			if (chunk.isEmpty()) {
+				return null;
+			}
+			try {
+				parts[i] = Integer.parseInt(chunk);
+			} catch (NumberFormatException exception) {
+				return null;
+			}
+		}
+		return parts;
+	}
+
+	private void showModIssuesSheet() {
+		if (issuesSheet != null) {
+			try {
+				issuesSheet.dismiss();
+			} catch (Exception ignored) {
+			}
+		}
+		BottomSheetDialog dialog = new BottomSheetDialog(context);
+		issuesSheet = dialog;
+		dialog.setContentView(buildModIssuesContent(dialog));
+		configureModIssuesBottomSheet(dialog);
+		dialog.show();
+	}
+
+	/**
+	 * Opens at the normal content-height expanded state (not full-screen).
+	 * Sheet body is not draggable so list scrolling never dismisses it;
+	 * only the top handle can pull down to close or pull up to re-expand.
+	 */
+	private void configureModIssuesBottomSheet(BottomSheetDialog dialog) {
+		dialog.setOnShowListener(unused -> {
+			Window window = dialog.getWindow();
+			if (window != null) {
+				window.setDimAmount(0.56f);
+				window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+			}
+			FrameLayout bottomSheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+			if (bottomSheet != null) {
+				// Keep wrap-content so Material sizes to content, not MATCH_PARENT full screen.
+				ViewGroup.LayoutParams params = bottomSheet.getLayoutParams();
+				if (params != null) {
+					params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+					bottomSheet.setLayoutParams(params);
+				}
+			}
+			BottomSheetBehavior<FrameLayout> behavior = dialog.getBehavior();
+			behavior.setFitToContents(true);
+			behavior.setSkipCollapsed(true);
+			behavior.setPeekHeight(BottomSheetBehavior.PEEK_HEIGHT_AUTO);
+			behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
+			behavior.setDraggable(false);
+		});
+	}
+
+	private View buildModIssuesContent(BottomSheetDialog dialog) {
+		LinearLayout root = ExtraSettingsUi.vertical(context);
+		root.setPadding(ExtraSettingsUi.dp(context, 24), ExtraSettingsUi.dp(context, 4), ExtraSettingsUi.dp(context, 24), ExtraSettingsUi.dp(context, 24));
+		GradientDrawable bg = new GradientDrawable();
+		bg.setColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
+		float radius = ExtraSettingsUi.dp(context, 28);
+		bg.setCornerRadii(new float[] { radius, radius, radius, radius, 0, 0, 0, 0 });
+		root.setBackground(bg);
+
+		// Large hit target for handle-only drag/dismiss.
+		FrameLayout handleTarget = new FrameLayout(context);
+		handleTarget.setPadding(0, ExtraSettingsUi.dp(context, 10), 0, ExtraSettingsUi.dp(context, 12));
+		View handle = new View(context);
+		GradientDrawable handleBg = new GradientDrawable();
+		handleBg.setColor(ExtraSettingsUi.COLOR_OUTLINE);
+		handleBg.setCornerRadius(ExtraSettingsUi.dp(context, 2));
+		handle.setBackground(handleBg);
+		handleTarget.addView(handle, new FrameLayout.LayoutParams(ExtraSettingsUi.dp(context, 40), ExtraSettingsUi.dp(context, 4), Gravity.CENTER));
+		root.addView(handleTarget, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ExtraSettingsUi.dp(context, 36)));
+		attachIssuesSheetHandle(handleTarget, dialog);
+
+		root.addView(ExtraSettingsUi.sectionTitle(context, context.getString(R.string.mod_issues_title)));
+		if (issuesByModId.isEmpty()) {
+			TextView empty = ExtraSettingsUi.body(context, R.string.mod_issues_empty);
+			empty.setPadding(0, ExtraSettingsUi.dp(context, 12), 0, 0);
+			root.addView(empty);
+			return root;
+		}
+
+		TextView summary = ExtraSettingsUi.body(context, context.getString(R.string.mod_issues_summary_format, issuesByModId.size()));
+		summary.setTextColor(ExtraSettingsUi.COLOR_WARNING);
+		LinearLayout.LayoutParams summaryParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		summaryParams.bottomMargin = ExtraSettingsUi.dp(context, 8);
+		root.addView(summary, summaryParams);
+
+		boolean hasOrderIssue = false;
+		boolean hasDisabledDep = false;
+		for (ModIssue issue : currentIssues) {
+			if (ModIssue.TYPE_LOAD_ORDER.equals(issue.type)) {
+				hasOrderIssue = true;
+			}
+			if (ModIssue.TYPE_DEPENDENCY_DISABLED.equals(issue.type)) {
+				hasDisabledDep = true;
+			}
+		}
+		LinearLayout actions = ExtraSettingsUi.vertical(context);
+		LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		actionsParams.bottomMargin = ExtraSettingsUi.dp(context, 8);
+		if (hasOrderIssue && hasDisabledDep) {
+			MaterialButton fixAll = ExtraSettingsUi.tonalButton(context, R.string.mod_issues_auto_fix_all, R.drawable.ic_build_24);
+			fixAll.setOnClickListener(v -> runIssueAutoFix(dialog, true, true));
+			actions.addView(fixAll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		}
+		if (hasDisabledDep) {
+			MaterialButton enableDeps = ExtraSettingsUi.tonalButton(context, R.string.mod_issues_auto_enable_deps, R.drawable.ic_check_circle_24);
+			LinearLayout.LayoutParams enableParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			enableParams.topMargin = ExtraSettingsUi.dp(context, 8);
+			enableDeps.setOnClickListener(v -> runIssueAutoFix(dialog, true, false));
+			actions.addView(enableDeps, enableParams);
+		}
+		if (hasOrderIssue) {
+			MaterialButton fixOrder = ExtraSettingsUi.tonalButton(context, R.string.mod_issues_auto_fix_order, R.drawable.ic_sort_24);
+			LinearLayout.LayoutParams fixParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			fixParams.topMargin = ExtraSettingsUi.dp(context, 8);
+			fixOrder.setOnClickListener(v -> runIssueAutoFix(dialog, false, true));
+			actions.addView(fixOrder, fixParams);
+		}
+		if (actions.getChildCount() > 0) {
+			root.addView(actions, actionsParams);
+		}
+
+		NestedScrollView scrollView = new NestedScrollView(context);
+		scrollView.setFillViewport(false);
+		scrollView.setNestedScrollingEnabled(true);
+		// Content gestures must never be treated as sheet drag.
+		scrollView.setOnTouchListener((view, event) -> {
+			view.getParent().requestDisallowInterceptTouchEvent(true);
+			return false;
+		});
+		LinearLayout list = ExtraSettingsUi.vertical(context);
+		for (Map.Entry<String, List<ModIssue>> entry : issuesByModId.entrySet()) {
+			List<ModIssue> issues = entry.getValue();
+			if (issues == null || issues.isEmpty()) {
+				continue;
+			}
+			MaterialCardView card = ExtraSettingsUi.card(context);
+			card.setStrokeColor(ExtraSettingsUi.COLOR_WARNING);
+			card.setStrokeWidth(ExtraSettingsUi.dp(context, 1));
+			LinearLayout content = ExtraSettingsUi.cardContent(context, card);
+			content.addView(ExtraSettingsUi.text(context, issues.get(0).displayName, 15, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD));
+			TextView idLine = ExtraSettingsUi.caption(context, entry.getKey());
+			idLine.setTextColor(ExtraSettingsUi.COLOR_MUTED);
+			content.addView(idLine);
+			for (ModIssue issue : issues) {
+				TextView issueLine = ExtraSettingsUi.caption(context, "• " + issue.message);
+				issueLine.setTextColor(ExtraSettingsUi.COLOR_WARNING);
+				LinearLayout.LayoutParams issueParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+				issueParams.topMargin = ExtraSettingsUi.dp(context, 4);
+				content.addView(issueLine, issueParams);
+			}
+			LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			cardParams.topMargin = ExtraSettingsUi.dp(context, 8);
+			list.addView(card, cardParams);
+		}
+		scrollView.addView(list, new NestedScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		// Cap scroll height so sheet stays content-expanded and can still scroll long lists.
+		int maxScroll = (int) (context.getResources().getDisplayMetrics().heightPixels * 0.55f);
+		LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		scrollView.setMinimumHeight(0);
+		root.addView(scrollView, scrollParams);
+		scrollView.post(() -> {
+			if (scrollView.getChildCount() == 0) {
+				return;
+			}
+			View child = scrollView.getChildAt(0);
+			int contentHeight = child.getMeasuredHeight();
+			ViewGroup.LayoutParams lp = scrollView.getLayoutParams();
+			if (lp != null) {
+				lp.height = Math.min(Math.max(contentHeight, 1), maxScroll);
+				scrollView.setLayoutParams(lp);
+			}
+		});
+		return root;
+	}
+
+	/** Handle-only sheet control: pull down to dismiss, pull up to re-expand. */
+	private void attachIssuesSheetHandle(View handleTarget, BottomSheetDialog dialog) {
+		final float[] downRawY = new float[1];
+		int dismissDistance = ExtraSettingsUi.dp(context, 36);
+		int expandDistance = ExtraSettingsUi.dp(context, 24);
+		handleTarget.setOnTouchListener((view, event) -> {
+			BottomSheetBehavior<FrameLayout> behavior = dialog.getBehavior();
+			switch (event.getActionMasked()) {
+				case MotionEvent.ACTION_DOWN:
+					downRawY[0] = event.getRawY();
+					view.getParent().requestDisallowInterceptTouchEvent(true);
+					return true;
+				case MotionEvent.ACTION_MOVE:
+					return true;
+				case MotionEvent.ACTION_UP:
+				case MotionEvent.ACTION_CANCEL:
+					view.getParent().requestDisallowInterceptTouchEvent(false);
+					float delta = event.getRawY() - downRawY[0];
+					if (delta >= dismissDistance) {
+						dialog.dismiss();
+					} else if (delta <= -expandDistance) {
+						behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
+					}
+					return true;
+				default:
+					return true;
+			}
+		});
+	}
+
+	private void runIssueAutoFix(BottomSheetDialog dialog, boolean enableDeps, boolean fixOrder) {
+		try {
+			String message;
+			if (enableDeps && fixOrder) {
+				int enabled = autoEnableDisabledDependencies();
+				autoFixLoadOrder();
+				message = context.getString(R.string.mod_issues_auto_fix_all_done)
+					+ (enabled > 0 ? " " + context.getString(R.string.mod_issues_auto_enable_deps_done, enabled) : "");
+			} else if (enableDeps) {
+				int enabled = autoEnableDisabledDependencies();
+				message = context.getString(R.string.mod_issues_auto_enable_deps_done, enabled);
+			} else {
+				autoFixLoadOrder();
+				message = context.getString(R.string.mod_issues_auto_fix_done);
+			}
+			dialog.dismiss();
+			actions.showMessage(message);
+			refreshList();
+		} catch (Exception exception) {
+			actions.showError(exception);
+		}
+	}
+
+	/** Enables installed dependencies that are currently disabled. Returns count enabled. */
+	private int autoEnableDisabledDependencies() throws Exception {
+		Set<String> toEnable = new LinkedHashSet<>();
+		for (ModIssue issue : currentIssues) {
+			if (ModIssue.TYPE_DEPENDENCY_DISABLED.equals(issue.type) && !TextUtils.isEmpty(issue.relatedModId)) {
+				toEnable.add(issue.relatedModId);
+			}
+		}
+		if (toEnable.isEmpty()) {
+			// Re-scan in case issue list is stale.
+			List<ExtraSettingsRepository.ModEntry> allMods = repository.listInstalledModManifests();
+			Map<String, ExtraSettingsRepository.ModEntry> byId = new HashMap<>();
+			Map<String, ExtraSettingsRepository.ModEntry> byPckName = new HashMap<>();
+			for (ExtraSettingsRepository.ModEntry entry : allMods) {
+				byId.put(entry.modId, entry);
+				if (!TextUtils.isEmpty(entry.pckName)) {
+					byPckName.put(entry.pckName, entry);
+				}
+			}
+			for (ExtraSettingsRepository.ModEntry entry : allMods) {
+				if (isModDisabledSafe(entry)) {
+					continue;
+				}
+				for (ExtraSettingsRepository.ModDependency dependency : entry.dependencies) {
+					ExtraSettingsRepository.ModEntry dep = findInstalledDependency(dependency.id, byId, byPckName);
+					if (dep != null && isModDisabledSafe(dep)) {
+						toEnable.add(dep.modId);
+					}
+				}
+			}
+		}
+		if (toEnable.isEmpty()) {
+			return 0;
+		}
+		repository.saveSetting(root -> {
+			for (String modId : toEnable) {
+				repository.setModDisabled(root, modId, false);
+			}
+		});
+		cachedSettings = repository.loadSettingsJson();
+		return toEnable.size();
+	}
+
+	/**
+	 * Fixes UI load order among enabled MODs:
+	 * 1) global dependency topology
+	 * 2) inter-group edges so a group that owns a dependency is ordered before a group that owns a dependent
+	 * 3) within each group, enabled mods sorted by global topo rank
+	 */
+	private void autoFixLoadOrder() {
+		List<ExtraSettingsRepository.ModEntry> allMods = repository.listInstalledModManifests();
+		if (allMods.isEmpty()) {
+			return;
+		}
+		List<ModGroupBucket> buckets = buildModGroups(new ArrayList<>(allMods));
+		Map<String, String> groupOf = new HashMap<>();
+		Map<String, Integer> originalIndex = new HashMap<>();
+		List<ExtraSettingsRepository.ModEntry> enabled = new ArrayList<>();
+		Map<String, ExtraSettingsRepository.ModEntry> byId = new HashMap<>();
+		Map<String, ExtraSettingsRepository.ModEntry> byPckName = new HashMap<>();
+		int index = 0;
+		for (ModGroupBucket bucket : buckets) {
+			for (ExtraSettingsRepository.ModEntry entry : bucket.entries) {
+				groupOf.put(entry.modId, bucket.id);
+				originalIndex.put(entry.modId, index++);
+				byId.put(entry.modId, entry);
+				if (!TextUtils.isEmpty(entry.pckName)) {
+					byPckName.put(entry.pckName, entry);
+				}
+				if (!isModDisabledSafe(entry)) {
+					enabled.add(entry);
+				}
+			}
+		}
+		if (enabled.isEmpty()) {
+			return;
+		}
+
+		Map<String, Integer> topoIndex = computeModTopoIndex(enabled, byId, byPckName, originalIndex);
+
+		// Inter-group constraints: if M in G2 depends on D in G1, G1 must come before G2.
+		LinkedHashMap<String, Integer> groupIndegree = new LinkedHashMap<>();
+		Map<String, Set<String>> groupDependents = new HashMap<>();
+		List<String> groupIds = new ArrayList<>();
+		for (ModGroupBucket bucket : buckets) {
+			groupIds.add(bucket.id);
+			groupIndegree.put(bucket.id, 0);
+			groupDependents.put(bucket.id, new LinkedHashSet<>());
+		}
+		for (ExtraSettingsRepository.ModEntry entry : enabled) {
+			String groupId = groupOf.get(entry.modId);
+			if (groupId == null) {
+				continue;
+			}
+			for (ExtraSettingsRepository.ModDependency dependency : entry.dependencies) {
+				ExtraSettingsRepository.ModEntry depEntry = findInstalledDependency(dependency.id, byId, byPckName);
+				if (depEntry == null || isModDisabledSafe(depEntry)) {
+					continue;
+				}
+				String depGroup = groupOf.get(depEntry.modId);
+				if (depGroup == null || depGroup.equals(groupId)) {
+					continue;
+				}
+				// Edge depGroup -> groupId
+				if (groupDependents.get(depGroup).add(groupId)) {
+					groupIndegree.put(groupId, groupIndegree.get(groupId) + 1);
+				}
+			}
+		}
+
+		List<String> readyGroups = new ArrayList<>();
+		for (String groupId : groupIds) {
+			if (groupIndegree.get(groupId) == 0) {
+				readyGroups.add(groupId);
+			}
+		}
+		// Stable by previous group order, then min topo of enabled members.
+		List<String> previousGroupOrder = repository.loadModGroupOrder();
+		readyGroups.sort((a, b) -> {
+			int byPrev = Integer.compare(orderIndex(previousGroupOrder, a), orderIndex(previousGroupOrder, b));
+			if (byPrev != 0) {
+				return byPrev;
+			}
+			return Integer.compare(minTopoInGroup(a, groupOf, topoIndex), minTopoInGroup(b, groupOf, topoIndex));
+		});
+
+		List<String> sortedGroups = new ArrayList<>();
+		while (!readyGroups.isEmpty()) {
+			String groupId = readyGroups.remove(0);
+			sortedGroups.add(groupId);
+			List<String> newly = new ArrayList<>();
+			for (String dependent : groupDependents.get(groupId)) {
+				int value = groupIndegree.get(dependent) - 1;
+				groupIndegree.put(dependent, value);
+				if (value == 0) {
+					newly.add(dependent);
+				}
+			}
+			newly.sort((a, b) -> {
+				int byPrev = Integer.compare(orderIndex(previousGroupOrder, a), orderIndex(previousGroupOrder, b));
+				if (byPrev != 0) {
+					return byPrev;
+				}
+				return Integer.compare(minTopoInGroup(a, groupOf, topoIndex), minTopoInGroup(b, groupOf, topoIndex));
+			});
+			readyGroups.addAll(newly);
+			readyGroups.sort((a, b) -> {
+				int byPrev = Integer.compare(orderIndex(previousGroupOrder, a), orderIndex(previousGroupOrder, b));
+				if (byPrev != 0) {
+					return byPrev;
+				}
+				return Integer.compare(minTopoInGroup(a, groupOf, topoIndex), minTopoInGroup(b, groupOf, topoIndex));
+			});
+		}
+		for (String groupId : groupIds) {
+			if (!sortedGroups.contains(groupId)) {
+				sortedGroups.add(groupId);
+			}
+		}
+		repository.saveModGroupOrder(sortedGroups, true);
+
+		// Within each group: enabled by global topo, then disabled in prior relative order.
+		for (ModGroupBucket bucket : buckets) {
+			List<ExtraSettingsRepository.ModEntry> enabledInGroup = new ArrayList<>();
+			List<ExtraSettingsRepository.ModEntry> disabledInGroup = new ArrayList<>();
+			for (ExtraSettingsRepository.ModEntry entry : bucket.entries) {
+				if (isModDisabledSafe(entry)) {
+					disabledInGroup.add(entry);
+				} else {
+					enabledInGroup.add(entry);
+				}
+			}
+			enabledInGroup.sort(Comparator
+				.comparingInt((ExtraSettingsRepository.ModEntry entry) -> topoIndex.getOrDefault(entry.modId, Integer.MAX_VALUE))
+				.thenComparingInt(entry -> originalIndex.getOrDefault(entry.modId, Integer.MAX_VALUE)));
+			List<String> order = new ArrayList<>();
+			for (ExtraSettingsRepository.ModEntry entry : enabledInGroup) {
+				order.add(entry.modId);
+			}
+			for (ExtraSettingsRepository.ModEntry entry : disabledInGroup) {
+				order.add(entry.modId);
+			}
+			repository.saveModOrder(bucket.id, order, true);
+		}
+	}
+
+	private Map<String, Integer> computeModTopoIndex(
+		List<ExtraSettingsRepository.ModEntry> enabled,
+		Map<String, ExtraSettingsRepository.ModEntry> byId,
+		Map<String, ExtraSettingsRepository.ModEntry> byPckName,
+		Map<String, Integer> originalIndex
+	) {
+		Map<String, Integer> indegree = new HashMap<>();
+		Map<String, List<String>> dependents = new HashMap<>();
+		for (ExtraSettingsRepository.ModEntry entry : enabled) {
+			indegree.put(entry.modId, 0);
+			dependents.put(entry.modId, new ArrayList<>());
+		}
+		for (ExtraSettingsRepository.ModEntry entry : enabled) {
+			for (ExtraSettingsRepository.ModDependency dependency : entry.dependencies) {
+				ExtraSettingsRepository.ModEntry depEntry = findInstalledDependency(dependency.id, byId, byPckName);
+				if (depEntry == null || isModDisabledSafe(depEntry) || !indegree.containsKey(depEntry.modId)) {
+					continue;
+				}
+				indegree.put(entry.modId, indegree.get(entry.modId) + 1);
+				dependents.get(depEntry.modId).add(entry.modId);
+			}
+		}
+		List<String> ready = new ArrayList<>();
+		for (ExtraSettingsRepository.ModEntry entry : enabled) {
+			if (indegree.get(entry.modId) == 0) {
+				ready.add(entry.modId);
+			}
+		}
+		ready.sort(Comparator.comparingInt(id -> originalIndex.getOrDefault(id, Integer.MAX_VALUE)));
+		List<String> sorted = new ArrayList<>();
+		while (!ready.isEmpty()) {
+			String id = ready.remove(0);
+			sorted.add(id);
+			List<String> newly = new ArrayList<>();
+			for (String dependent : dependents.get(id)) {
+				int value = indegree.get(dependent) - 1;
+				indegree.put(dependent, value);
+				if (value == 0) {
+					newly.add(dependent);
+				}
+			}
+			newly.sort(Comparator.comparingInt(item -> originalIndex.getOrDefault(item, Integer.MAX_VALUE)));
+			ready.addAll(newly);
+			ready.sort(Comparator.comparingInt(item -> originalIndex.getOrDefault(item, Integer.MAX_VALUE)));
+		}
+		for (ExtraSettingsRepository.ModEntry entry : enabled) {
+			if (!sorted.contains(entry.modId)) {
+				sorted.add(entry.modId);
+			}
+		}
+		Map<String, Integer> topoIndex = new HashMap<>();
+		for (int i = 0; i < sorted.size(); i++) {
+			topoIndex.put(sorted.get(i), i);
+		}
+		return topoIndex;
+	}
+
+	private int minTopoInGroup(String groupId, Map<String, String> groupOf, Map<String, Integer> topoIndex) {
+		int min = Integer.MAX_VALUE;
+		for (Map.Entry<String, String> mapping : groupOf.entrySet()) {
+			if (!groupId.equals(mapping.getValue())) {
+				continue;
+			}
+			Integer pos = topoIndex.get(mapping.getKey());
+			if (pos != null) {
+				min = Math.min(min, pos);
+			}
+		}
+		return min;
+	}
+
 	private void appendLine(StringBuilder builder, String label, String value) {
 		builder.append(label).append(": ").append(emptyToDash(value)).append('\n');
+	}
+
+	private static final class ModIssue {
+		static final String TYPE_DEPENDENCY = "dependency";
+		static final String TYPE_DEPENDENCY_DISABLED = "dependency_disabled";
+		static final String TYPE_GAME_VERSION = "game_version";
+		static final String TYPE_MISSING_PCK = "missing_pck";
+		static final String TYPE_MISSING_DLL = "missing_dll";
+		static final String TYPE_LOAD_ORDER = "load_order";
+
+		final String modId;
+		final String displayName;
+		final String type;
+		final String message;
+		/** Related MOD id for auto-fix (e.g. disabled dependency to enable). */
+		final String relatedModId;
+
+		ModIssue(String modId, String displayName, String type, String message) {
+			this(modId, displayName, type, message, "");
+		}
+
+		ModIssue(String modId, String displayName, String type, String message, String relatedModId) {
+			this.modId = modId;
+			this.displayName = displayName;
+			this.type = type;
+			this.message = message;
+			this.relatedModId = relatedModId == null ? "" : relatedModId;
+		}
 	}
 
 	private void showCreateProfileDialog() {

@@ -680,6 +680,31 @@
     <string name="mod_detail_files_format">%1$s · %2$s</string>
     <string name="mod_detail_dependencies">依赖</string>
     <string name="mod_detail_path">清单路径</string>
+    <string name="mod_detail_min_game_version">最低游戏版本</string>
+    <string name="mod_detail_open_folder">打开所在文件夹</string>
+    <string name="mod_note_action">备注</string>
+    <string name="mod_note_title">MOD 显示名称备注</string>
+    <string name="mod_note_hint">自定义名称（留空清除）</string>
+    <string name="mod_note_saved">备注已保存。</string>
+    <string name="mod_note_cleared">备注已清除。</string>
+    <string name="mod_issues_title">MOD 问题</string>
+    <string name="mod_issues_count_format">%1$d</string>
+    <string name="mod_issues_empty">未检测到问题。</string>
+    <string name="mod_issues_summary_format">%1$d 个 MOD 需要关注</string>
+    <string name="mod_issues_auto_fix_order">自动修复加载顺序</string>
+    <string name="mod_issues_auto_fix_done">加载顺序已修复。</string>
+    <string name="mod_issues_auto_enable_deps">启用已禁用的依赖</string>
+    <string name="mod_issues_auto_enable_deps_done">已启用 %1$d 个被禁用的依赖。</string>
+    <string name="mod_issues_auto_fix_all">一键自动修复</string>
+    <string name="mod_issues_auto_fix_all_done">可自动修复的问题已处理。</string>
+    <string name="mod_issue_missing_dependency">缺少依赖：%1$s</string>
+    <string name="mod_issue_dependency_disabled">依赖已禁用：%1$s</string>
+    <string name="mod_issue_dependency_version">依赖 %1$s 版本为 %2$s，需要 ≥%3$s</string>
+    <string name="mod_issue_min_game_version">需要游戏版本 ≥%1$s（当前 %2$s）</string>
+    <string name="mod_issue_min_game_version_unknown">需要游戏版本 ≥%1$s（当前游戏版本未知）</string>
+    <string name="mod_issue_missing_pck">清单声明 has_pck=true，但未找到 %1$s.pck</string>
+    <string name="mod_issue_missing_dll">清单声明 has_dll=true，但未找到 %1$s.dll</string>
+    <string name="mod_issue_load_order">加载顺序：依赖 %1$s 排在本 MOD 之后</string>
     <string name="status_busy_delete_mod">正在删除 MOD…</string>
     <string name="mod_batch_empty">请先选择至少一个 MOD。</string>
     <string name="mod_selected_count_format">已选择 %1$d 个</string>

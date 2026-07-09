@@ -920,7 +920,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		appendLine(message, getString(R.string.mod_detail_version), entry.version);
 		appendLine(message, getString(R.string.mod_detail_author), entry.authors);
 		appendLine(message, getString(R.string.mod_detail_files), getString(R.string.mod_detail_files_format, entry.hasPck ? "PCK" : "—", entry.hasDll ? "DLL" : "—"));
-		appendLine(message, getString(R.string.mod_detail_dependencies), entry.dependencies.isEmpty() ? "—" : TextUtils.join(", ", entry.dependencies));
+		appendLine(message, getString(R.string.mod_detail_dependencies), entry.dependencyLabels.isEmpty() ? "—" : TextUtils.join(", ", entry.dependencyLabels));
 		appendLine(message, getString(R.string.mod_detail_path), entry.relativePath);
 		if (!TextUtils.isEmpty(entry.description)) {
 			message.append('\n').append(entry.description);

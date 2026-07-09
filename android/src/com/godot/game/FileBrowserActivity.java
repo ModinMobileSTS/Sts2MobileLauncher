@@ -41,6 +41,8 @@ import java.util.List;
 import java.util.Locale;
 
 public class FileBrowserActivity extends AppCompatActivity {
+	public static final String EXTRA_INITIAL_PATH = "com.godot.game.extra.FILE_BROWSER_INITIAL_PATH";
+
 	private static final int REQUEST_IMPORT_DOCUMENTS = 3001;
 	private static final int REQUEST_IMPORT_TREE = 3002;
 	private static final int REQUEST_EXPORT_TREE = 3003;
@@ -82,7 +84,7 @@ public class FileBrowserActivity extends AppCompatActivity {
 		bindViews();
 
 		rootDirectory = getFilesDir();
-		currentDirectory = rootDirectory;
+		currentDirectory = resolveInitialDirectory(getIntent() == null ? null : getIntent().getStringExtra(EXTRA_INITIAL_PATH));
 		FileBrowserSupport.ensureDirectory(rootDirectory);
 
 		adapter = new FileBrowserAdapter();
@@ -97,6 +99,42 @@ public class FileBrowserActivity extends AppCompatActivity {
 		});
 
 		refreshEntries();
+	}
+
+	/**
+	 * Opens the file browser under the app private files root, optionally starting at
+	 * {@code initialPath} when it is an existing directory inside that root.
+	 */
+	public static Intent createIntent(android.content.Context context, File initialDirectory) {
+		Intent intent = new Intent(context, FileBrowserActivity.class);
+		if (initialDirectory != null) {
+			intent.putExtra(EXTRA_INITIAL_PATH, initialDirectory.getAbsolutePath());
+		}
+		return intent;
+	}
+
+	private File resolveInitialDirectory(String initialPath) {
+		if (TextUtils.isEmpty(initialPath) || rootDirectory == null) {
+			return rootDirectory;
+		}
+		try {
+			File candidate = new File(initialPath);
+			if (!candidate.exists()) {
+				candidate = candidate.getParentFile();
+			}
+			if (candidate == null || !candidate.isDirectory()) {
+				return rootDirectory;
+			}
+			File rootCanonical = rootDirectory.getCanonicalFile();
+			File candidateCanonical = candidate.getCanonicalFile();
+			String rootPath = rootCanonical.getAbsolutePath();
+			String candidatePath = candidateCanonical.getAbsolutePath();
+			if (candidatePath.equals(rootPath) || candidatePath.startsWith(rootPath + File.separator)) {
+				return candidateCanonical;
+			}
+		} catch (Exception ignored) {
+		}
+		return rootDirectory;
 	}
 
 	@Override

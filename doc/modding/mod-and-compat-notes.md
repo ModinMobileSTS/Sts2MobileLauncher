@@ -44,7 +44,7 @@ mod_manifest.json
 
 `ModsPage` 采用紧凑 Material 3 顶栏：顶部为 MOD 总开关和药丸搜索框，导入、分组、创意工坊、排序、筛选、MOD 方案入口统一放在可横向滚动的 Chip 操作组中。NexusMods 商店 Activity 仍保留在工程内，但主 MOD 页入口暂时隐藏。
 
-MOD 卡片默认折叠，只显示左侧拖拽手柄、名称、版本/作者和启用开关；展开后显示完整描述、分类/路径、作者、依赖，以及右下角图标按钮：选中、信息、删除；超长描述默认截断到 10 行并提供“显示更多”。MOD 列表按“前置库 / 内容模组 / 用户新建分组”分区，分组右侧可收起/展开。长按卡片左侧手柄可跨分组或组内拖拽排序，长按分组 header 可移动整个分组；拖拽开始会触发一次轻微震动反馈，列表中会插入半透明虚线 ghost 占位并用 LayoutTransition 平滑让位。用户新建分组会在对应 MOD 根目录下写入 `.sts2_mod_group` 标记文件，便于空分组也能被识别；不要把该标记误认为游戏 MOD manifest。组顺序与组内 MOD 顺序保存在本地 `sts2_mod_profiles` SharedPreferences，不影响游戏运行时 manifest 语义。
+MOD 卡片默认折叠，只显示左侧拖拽手柄、名称、版本/作者和启用开关；展开后显示完整描述、分类、可点击跳转文件浏览器的清单路径（主题色+下划线）、作者、依赖、最低游戏版本，以及右下角图标按钮：选中、备注、信息、删除；超长描述默认截断到 10 行并提供“显示更多”。可为每个 MOD 设置本地显示备注名（保存在 `sts2_mod_profiles` 的 `mod_notes`），有备注时卡片主标题显示备注名，下方以灰色小字显示原名。启动器会自动探查清单 `dependencies`、`min_game_version`、`has_pck`/`has_dll` 与对应文件、以及 UI 列表加载顺序是否把被依赖 MOD 排在依赖它的 MOD 之后：有问题时该 MOD 卡片以黄色描边高亮，AppBar 标题旁显示黄色警告图标与问题 MOD 数量，点击打开 BottomSheet 列出具体问题；若存在顺序问题，BottomSheet 提供“自动修复加载顺序”按钮（按依赖拓扑排序重写组顺序与组内顺序）。MOD 列表按“前置库 / 内容模组 / 用户新建分组”分区，分组右侧可收起/展开。长按卡片左侧手柄可跨分组或组内拖拽排序，长按分组 header 可移动整个分组；拖拽开始会触发一次轻微震动反馈，列表中会插入半透明虚线 ghost 占位并用 LayoutTransition 平滑让位。用户新建分组会在对应 MOD 根目录下写入 `.sts2_mod_group` 标记文件，便于空分组也能被识别；不要把该标记误认为游戏 MOD manifest。组顺序与组内 MOD 顺序保存在本地 `sts2_mod_profiles` SharedPreferences；游戏进程内仍会按原版 `ModManager` 再做依赖拓扑排序，启动器顺序检查主要服务于列表组织与依赖可读性。
 
 导入 MOD 时，Android shell 会先把选择的 zip/文件解包到 cache staging 目录并解析 manifest。如果发现新导入 manifest 的 `id` 与已安装 MOD 相同，会弹出冲突 Dialog，说明“连体现象”：界面可能显示两个项目，但任何一个开关都会按同 ID 同时影响两个。Dialog 会用信息卡分别展示原 MOD 和新 MOD，用户可选择保留原 MOD（丢弃本次 staging）或使用新 MOD（删除同 ID 原 MOD 后提交 staging）。该规则同样服务 Nexus 下载导入路径，避免同 ID manifest 在 `<files>/mods` 或隔离 MOD 根中长期并存。
 
