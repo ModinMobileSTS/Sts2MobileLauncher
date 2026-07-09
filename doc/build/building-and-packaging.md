@@ -172,7 +172,28 @@ cd port-mod
 
 `--target` 只构建单个 target；不带参数会构建 `targets/active/` 下所有目标。未来停止维护旧版本时，将对应目录移到 `targets/archived/`，默认 matrix 构建就不会再内置它；需要临时导出 legacy 目标时可用 `BUILD_ARCHIVED_TARGETS=1`。
 
-## 7. 生成启动器 Material Symbols 矢量图
+## 7. 游戏版本更新后的 port-mod 语法树审计
+
+游戏更新后，可先把旧/新版本的 GDRE C# 源码导出目录放在仓库外，再运行语法树级别审计工具，快速找出原版类型、方法签名、方法体和 `port-mod` Harmony/反射触达点的变化：
+
+```bash
+tools/port_mod_ast_audit.py \
+  --old-source ../s2_original/s201071 \
+  --new-source ../s2_original/s201080 \
+  --port-mod port-mod/STS2AndroidPortCompat \
+  --out .agent/reports/v108-port-mod-ast-audit
+```
+
+输出目录包含：
+
+- `summary.md`：人工阅读入口，优先列出 `port-mod` 命中的缺失目标、签名变化和实现变化。
+- `port_mod_refs.csv`：每个 Harmony/反射引用的解析结果，可按 `status` 过滤。
+- `member_changes.csv`：两个源码版本之间的类型成员变化清单。
+- `audit.json`：完整机器可读结果。
+
+该工具是纯 Python，无第三方依赖；它不编译源码，也不会修改 `port-mod`。`dynamic_type_expression` 表示目标类型来自 `__instance.GetType()` 或外部 MOD/库，需要人工按调用上下文确认；`external_or_self_reference` 表示系统库、Harmony/Godot 或 `port-mod` 自身引用，通常不是游戏版本迁移风险。
+
+## 8. 生成启动器 Material Symbols 矢量图
 
 启动器原生 Android UI 使用 `MaterialSymbols` helper 加载 `android/res/drawable/ic_ms_*.xml`。这些文件由 bundled `android/res/font/material_symbols_rounded.ttf` 离线生成，保留 Google Material Symbols Rounded 官方轮廓，但运行时不再依赖系统字体 ligature，避免部分 ROM（例如关闭 MIUI 优化后）把图标显示成 `settings` / `play_arrow` 这类 glyph 名称。
 
@@ -194,7 +215,7 @@ tools/android/generate-material-symbol-vectors.py
 tools/android/generate-material-symbol-vectors.py --check
 ```
 
-## 8. 构建导入版 APK
+## 9. 构建导入版 APK
 
 导入版不内置游戏 zip：
 
@@ -212,7 +233,7 @@ tools/package/build_importer_apk.sh
 
 正式 APK 默认声明 `android:appCategory="game"` / `android:isGame="true"`，让 OEM 游戏/GPU 调度识别 `GodotApp`；同时采用高刷新兼容模式，`GodotApp` 会在启动、恢复前台、获得焦点和 Godot 主循环开始后向 `WindowManager.LayoutParams.preferredDisplayModeId`、`preferredRefreshRate`、`Surface.setFrameRate()` 与 `SurfaceControl.Transaction.setFrameRate()` 请求当前显示尺寸下最高刷新率。设置页“系统”分区提供默认关闭的“Show performance overlay”开关；开启后下次启动会加载 `godot-debug-menu`，显示 FPS、帧时间、CPU/GPU frame graph 和渲染器/硬件信息。
 
-## 9. 构建直装版 APK
+## 10. 构建直装版 APK
 
 直装版临时内置本地 PC zip。启动器会按内置 zip 的 SHA-256 判断当前 APK 自带本体是否已导入；如果用户从旧直装版升级且只导入过旧 APK 的本体，新 APK 首次进入主界面后会自动导入当前内置 zip，并为新 payload 创建/选择默认启动配置。
 
@@ -236,7 +257,7 @@ tools/package/build_direct_apk.sh
 6. 执行 Gradle task。
 7. 复制 APK 到 `android.direct.dist`（默认 `dist/sts2-re-direct.apk`），脚本退出时删除临时 zip。
 
-## 10. 生成 Android 优化本体 zip（可选）
+## 11. 生成 Android 优化本体 zip（可选）
 
 如果同时拥有某个版本的 PC 原版 zip 与匹配的 Godot 源码/反导出工程，可以重新用 Android export preset 导入资源，生成更适合移动端导入的本体 zip：
 
@@ -273,7 +294,7 @@ tools/package/build_android_body_zip.sh \
 
 临时工程和 Godot 日志默认写入 `.agent/tmp/android-body-build/`，该目录不入库；生成的 zip 应留在 `dist/` 或其他本地输出目录，不要提交。
 
-## 11. 局部检查
+## 12. 局部检查
 
 ```bash
 # Java/Kotlin/Steam 子模块编译检查
@@ -303,7 +324,7 @@ tools/android/generate-material-symbol-vectors.py --check
   -p:CompatReferenceDir="$STS2_ORIGINAL_V1071_REFERENCE_DIR" -v:q
 ```
 
-## 12. ADB 自动化调试
+## 13. ADB 自动化调试
 
 连接设备后可用 `tools/debug/sts2-adb-debug.sh` 直接安装、配置、导入测试文件、执行启动准备、启动游戏并采集日志/性能 trace：
 
@@ -316,7 +337,7 @@ tools/debug/sts2-adb-debug.sh launch --mode perf --preload aggressive --logcat-d
 
 脚本默认使用 `run-as com.megacrit.sts2re` 把本地 payload/compat/MOD 文件推入 app 私有 `files/automation/inbox/<run_id>/`，再触发应用内 `DebugAutomationActivity` 复用正常导入/准备/启动逻辑。结果拉回 `.agent/debug/runs/<run_id>/`，设备侧结果保存在 `<files>/automation/runs/<run_id>/`。精确测试某个 MOD、某个 compat target、某组 preload 设置的示例见 [`adb-automation-debugging.md`](adb-automation-debugging.md)。
 
-## 13. 构建后基本验证
+## 14. 构建后基本验证
 
 ```bash
 adb install -r dist/sts2-re-importer.apk

@@ -122,6 +122,7 @@ s2_re/
     tools/build-compat-pack.sh     # 导出独立可安装 compat pack zip
     tools/build-compat-matrix.sh   # 单 checkout 构建 schema 2 family compat pack
   tools/
+    port_mod_ast_audit.py          # 游戏版本更新后对比两版 C# 语法结构，并把变化映射到 port-mod Harmony/反射触达点
     android/
       env-from-s2.sh               # 兼容旧名称：source 后加载 .env 中的 JDK/Android SDK
       gradle-with-s2-env.sh        # 在 android/ 下带本机环境执行 Gradle
@@ -495,6 +496,14 @@ tools/android/stage-bundled-compat-packs.sh
 
 # legacy 分支模式，仅用于回退诊断
 COMPAT_PACK_BUILD_MODE=legacy tools/android/stage-bundled-compat-packs.sh
+
+# 游戏版本更新后，先对比旧/新 GDRE C# 源码并映射 port-mod 触达点
+# summary.md / port_mod_refs.csv / member_changes.csv 输出到 .agent/reports/，不提交。
+tools/port_mod_ast_audit.py \
+  --old-source ../s2_original/s201071 \
+  --new-source ../s2_original/s201080 \
+  --port-mod port-mod/STS2AndroidPortCompat \
+  --out .agent/reports/v108-port-mod-ast-audit
 
 # 刷新 Android 启动器 Material Symbols 官方轮廓 vector drawable
 # 需要 Python 包 fontTools；若系统 Python 禁止全局安装，可用 .agent/ 下的临时 venv。

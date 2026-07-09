@@ -129,6 +129,16 @@ This now builds the flattened schema-2 family pack from one checkout by default.
 COMPAT_PACK_BUILD_MODE=legacy tools/android/stage-bundled-compat-packs.sh
 ```
 
+When bringing up a new game version, run the source-level port compatibility audit before editing targets or patches:
+```bash
+tools/port_mod_ast_audit.py \
+  --old-source ../s2_original/s201071 \
+  --new-source ../s2_original/s201080 \
+  --port-mod port-mod/STS2AndroidPortCompat \
+  --out .agent/reports/v108-port-mod-ast-audit
+```
+See [`doc/build/building-and-packaging.md`](doc/build/building-and-packaging.md) for report details and status meanings.
+
 ### 6. Build the Importer APK
 Run the build script. This will output an "Importer APK" that **DOES NOT** contain the base game (the recommended, legally compliant distribution method):
 ```bash
