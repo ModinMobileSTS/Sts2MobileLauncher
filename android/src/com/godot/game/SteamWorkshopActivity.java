@@ -829,7 +829,8 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}
 		SteamWorkshopLibrary.Entry entry = findLibraryEntry(item.getPublishedFileId());
 		boolean localInstalled = entry != null && !findInstalledModsForWorkshop(item, entry).isEmpty();
-		if (entry != null && localInstalled && !hasWorkshopUpdate(item, entry)) {
+		boolean updateAvailable = entry != null && localInstalled && hasWorkshopUpdate(item, entry);
+		if (entry != null && localInstalled && !updateAvailable) {
 			MaterialButton details = wide
 				? ExtraSettingsUi.outlineButton(this, R.string.workshop_view_details, R.drawable.ic_info_24)
 				: ExtraSettingsUi.iconButton(this, R.drawable.ic_info_24);
@@ -848,7 +849,13 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			? ExtraSettingsUi.filledButton(this, labelRes, R.drawable.ic_download_24)
 			: ExtraSettingsUi.iconButton(this, R.drawable.ic_download_24);
 		download.setContentDescription(getString(labelRes));
-		download.setOnClickListener(v -> downloadAndImport(item));
+		download.setOnClickListener(v -> {
+			if (updateAvailable) {
+				downloadWorkshopUpdate(entry, item);
+			} else {
+				downloadAndImport(item);
+			}
+		});
 		if (!wide) {
 			download.setMinWidth(ExtraSettingsUi.dp(this, 48));
 			download.setMinimumWidth(ExtraSettingsUi.dp(this, 48));
@@ -1163,7 +1170,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			if (isDownloading(entry.publishedFileId) || !queuedIds.add(entry.publishedFileId)) {
 				continue;
 			}
-			pendingDownloadQueue.add(new PendingDownload(entryToItem(entry), null));
+			pendingDownloadQueue.add(new PendingDownload(entryToItem(entry), fixedWorkshopUpdateBranchOption(entry), true));
 			added++;
 		}
 		if (added == 0) {
@@ -1245,8 +1252,10 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		MaterialButton web = libraryIconButton(R.drawable.ic_open_in_new_24, R.string.workshop_open_item);
 		MaterialButton delete = libraryIconButton(R.drawable.ic_delete_24, R.string.workshop_delete_record);
 		primary.setOnClickListener(v -> {
-			if (!localInstalled || updateAvailable) {
+			if (!localInstalled) {
 				downloadAndImport(item);
+			} else if (updateAvailable) {
+				downloadWorkshopUpdate(entry, item);
 			} else {
 				showInstalledWorkshopModDetails(item, entry);
 			}
@@ -1501,17 +1510,48 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		enqueueDownload(item);
 	}
 
+	private void downloadWorkshopUpdate(SteamWorkshopLibrary.Entry entry, SteamWorkshopCatalog.Item item) {
+		if (item == null) {
+			return;
+		}
+		if (entry == null) {
+			downloadAndImport(item);
+			return;
+		}
+		DownloadTask activeTask = downloadTasks.get(item.getPublishedFileId());
+		if (activeTask != null && activeTask.isActive() && activeTask.downloadStarted) {
+			cancelDownload(item.getPublishedFileId());
+			return;
+		}
+		enqueueDownload(item, fixedWorkshopUpdateBranchOption(entry), true);
+	}
+
+	private SteamWorkshopDownloader.BranchOption fixedWorkshopUpdateBranchOption(SteamWorkshopLibrary.Entry entry) {
+		String branch = entry == null ? "" : entry.workshopBranch;
+		if (entry != null && "legacy".equals(entry.branchMode)) {
+			String inferred = resolvePreferredWorkshopDownloadBranch();
+			if (!TextUtils.isEmpty(inferred)) {
+				branch = inferred;
+			}
+		}
+		return fixedWorkshopBranchOption(branch);
+	}
+
 	private void enqueueDownload(SteamWorkshopCatalog.Item item) {
-		enqueueDownload(item, null);
+		enqueueDownload(item, null, false);
 	}
 
 	private void enqueueDownload(SteamWorkshopCatalog.Item item, SteamWorkshopDownloader.BranchOption selectedOption) {
+		enqueueDownload(item, selectedOption, false);
+	}
+
+	private void enqueueDownload(SteamWorkshopCatalog.Item item, SteamWorkshopDownloader.BranchOption selectedOption, boolean updateExisting) {
 		for (PendingDownload queued : pendingDownloadQueue) {
 			if (queued != null && queued.item != null && queued.item.getPublishedFileId().equals(item.getPublishedFileId())) {
 				return;
 			}
 		}
-		pendingDownloadQueue.add(new PendingDownload(item, selectedOption));
+		pendingDownloadQueue.add(new PendingDownload(item, selectedOption, updateExisting));
 		pumpDownloadQueue();
 	}
 
@@ -1661,6 +1701,10 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void startDownloadAndImport(SteamWorkshopCatalog.Item item, SteamWorkshopDownloader.BranchOption selectedOption) {
+		startDownloadAndImport(item, selectedOption, false);
+	}
+
+	private void startDownloadAndImport(SteamWorkshopCatalog.Item item, SteamWorkshopDownloader.BranchOption selectedOption, boolean updateExisting) {
 		DownloadTask task = ensurePendingDownloadTask(item, getString(R.string.workshop_status_downloading));
 		task.markDownloading(getString(R.string.workshop_status_downloading));
 		updateDownloadProgressBindings(task.publishedFileId);
@@ -1669,7 +1713,8 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			SteamWorkshopDownloader.Result result = null;
 			try {
 				SteamWorkshopDownloader downloader = new SteamWorkshopDownloader(this);
-				result = downloader.download(item, selectedOption, progress -> {
+				SteamWorkshopDownloader.BranchOption downloadOption = resolveDownloadBranchOptionIfNeeded(downloader, item, selectedOption);
+				result = downloader.download(item, downloadOption, progress -> {
 					postDownloadProgress(item.getPublishedFileId(), progress);
 					return kotlin.Unit.INSTANCE;
 				}, task.cancellationToken);
@@ -1678,7 +1723,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 				runOnUiThreadIfActive(() -> {
 					task.markImporting(getString(R.string.workshop_importing_status));
 					updateDownloadProgressBindings(task.publishedFileId);
-					enqueuePreparedWorkshopImport(finalResult, prepared);
+					enqueuePreparedWorkshopImport(finalResult, prepared, updateExisting);
 					pumpDownloadQueue();
 				});
 			} catch (Exception exception) {
@@ -1695,6 +1740,20 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 				});
 			}
 		});
+	}
+
+	private SteamWorkshopDownloader.BranchOption resolveDownloadBranchOptionIfNeeded(SteamWorkshopDownloader downloader, SteamWorkshopCatalog.Item item, SteamWorkshopDownloader.BranchOption selectedOption) throws Exception {
+		if (downloader == null || item == null || selectedOption == null) {
+			return selectedOption;
+		}
+		if (!TextUtils.isEmpty(selectedOption.getManifestId()) || !TextUtils.isEmpty(selectedOption.getSource())) {
+			return selectedOption;
+		}
+		String branch = sanitizeWorkshopBranch(selectedOption.getBranch());
+		if (TextUtils.isEmpty(branch)) {
+			return selectedOption;
+		}
+		return downloader.loadBranchOption(item, branch);
 	}
 
 	private void postDownloadProgress(String publishedFileId, SteamWorkshopDownloader.Progress progress) {
@@ -1860,10 +1919,10 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 					promptWorkshopBranchSelection(next.item);
 					return;
 				}
-				startDownloadAndImport(next.item, fixedWorkshopBranchOption(branch));
+				startDownloadAndImport(next.item, fixedWorkshopBranchOption(branch), next.updateExisting);
 				continue;
 			}
-			startDownloadAndImport(next.item, next.selectedOption);
+			startDownloadAndImport(next.item, next.selectedOption, next.updateExisting);
 		}
 		if (pendingDownloadQueue.isEmpty() && activeDownloadCount() == 0 && pendingImportQueue.isEmpty() && !importBusy && !branchDialogActive) {
 			showDownloads();
@@ -2086,8 +2145,8 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}, delay);
 	}
 
-	private void enqueuePreparedWorkshopImport(SteamWorkshopDownloader.Result result, ExtraSettingsRepository.PreparedModImport prepared) {
-		pendingImportQueue.addLast(new PendingImport(result, prepared));
+	private void enqueuePreparedWorkshopImport(SteamWorkshopDownloader.Result result, ExtraSettingsRepository.PreparedModImport prepared, boolean updateExisting) {
+		pendingImportQueue.addLast(new PendingImport(result, prepared, updateExisting));
 		startNextImport();
 	}
 
@@ -2099,7 +2158,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		if (next == null) {
 			return;
 		}
-		handlePreparedWorkshopImport(next.result, next.prepared);
+		handlePreparedWorkshopImport(next.result, next.prepared, next.updateExisting);
 	}
 
 	private void finishImportAndContinue() {
@@ -2108,7 +2167,11 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		pumpDownloadQueue();
 	}
 
-	private void handlePreparedWorkshopImport(SteamWorkshopDownloader.Result result, ExtraSettingsRepository.PreparedModImport prepared) {
+	private void handlePreparedWorkshopImport(SteamWorkshopDownloader.Result result, ExtraSettingsRepository.PreparedModImport prepared, boolean updateExisting) {
+		if (updateExisting) {
+			commitPreparedWorkshopImport(result, prepared, true);
+			return;
+		}
 		String groupName = SteamWorkshopPreferences.getDownloadGroup(this);
 		String publishedFileId = result.getItem().getPublishedFileId();
 		String workshopBranch = result.getBranch();
@@ -2872,20 +2935,28 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private static final class PendingDownload {
 		final SteamWorkshopCatalog.Item item;
 		final SteamWorkshopDownloader.BranchOption selectedOption;
+		final boolean updateExisting;
 
 		PendingDownload(SteamWorkshopCatalog.Item item, SteamWorkshopDownloader.BranchOption selectedOption) {
+			this(item, selectedOption, false);
+		}
+
+		PendingDownload(SteamWorkshopCatalog.Item item, SteamWorkshopDownloader.BranchOption selectedOption, boolean updateExisting) {
 			this.item = item;
 			this.selectedOption = selectedOption;
+			this.updateExisting = updateExisting;
 		}
 	}
 
 	private static final class PendingImport {
 		final SteamWorkshopDownloader.Result result;
 		final ExtraSettingsRepository.PreparedModImport prepared;
+		final boolean updateExisting;
 
-		PendingImport(SteamWorkshopDownloader.Result result, ExtraSettingsRepository.PreparedModImport prepared) {
+		PendingImport(SteamWorkshopDownloader.Result result, ExtraSettingsRepository.PreparedModImport prepared, boolean updateExisting) {
 			this.result = result;
 			this.prepared = prepared;
+			this.updateExisting = updateExisting;
 		}
 	}
 

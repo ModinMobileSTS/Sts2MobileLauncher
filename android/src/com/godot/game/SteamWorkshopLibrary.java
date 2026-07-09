@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public final class SteamWorkshopLibrary {
 	private static final String INDEX_FILE_NAME = "index.json";
@@ -34,7 +35,7 @@ public final class SteamWorkshopLibrary {
 	}
 
 	public synchronized List<Entry> listEntries() {
-		List<Entry> entries = readEntries();
+		List<Entry> entries = normalizeEntries(readEntries());
 		entries.sort(Comparator.comparingLong((Entry entry) -> entry.installedAtMs).reversed());
 		return entries;
 	}
@@ -46,11 +47,7 @@ public final class SteamWorkshopLibrary {
 	public synchronized Entry recordInstall(SteamWorkshopCatalog.Item item, File installRoot, List<ExtraSettingsRepository.ModEntry> importedMods, InstallContext installContext) throws Exception {
 		ensureRoot();
 		InstallContext safeContext = installContext == null ? InstallContext.empty() : installContext;
-		List<Entry> entries = readEntries();
-		Map<String, Entry> byId = new LinkedHashMap<>();
-		for (Entry entry : entries) {
-			byId.put(entry.key(), entry);
-		}
+		List<Entry> entries = normalizeEntries(readEntries());
 		List<String> modIds = new ArrayList<>();
 		if (importedMods != null) {
 			for (ExtraSettingsRepository.ModEntry mod : importedMods) {
@@ -90,6 +87,12 @@ public final class SteamWorkshopLibrary {
 			safeContext.matchedBranchMax,
 			safeContext.fallbackReason
 		);
+		Map<String, Entry> byId = new LinkedHashMap<>();
+		for (Entry entry : entries) {
+			if (!shouldDropSupersededEntry(entry, updated)) {
+				byId.put(entry.key(), entry);
+			}
+		}
 		byId.put(updated.key(), updated);
 		writeEntries(new ArrayList<>(byId.values()));
 		return updated;
@@ -97,7 +100,7 @@ public final class SteamWorkshopLibrary {
 
 	public synchronized UpdateSummary updateCheckResults(Map<String, SteamWorkshopCatalog.Item> details) throws Exception {
 		long now = System.currentTimeMillis();
-		List<Entry> entries = readEntries();
+		List<Entry> entries = normalizeEntries(readEntries());
 		int available = 0;
 		int current = 0;
 		int failed = 0;
@@ -148,7 +151,8 @@ public final class SteamWorkshopLibrary {
 		List<Entry> entries = readEntries();
 		List<Entry> kept = new ArrayList<>();
 		for (Entry entry : entries) {
-			if (!key.equals(entry.key())) {
+			boolean removeEntry = key.equals(entry.key()) || (publishedFileId.equals(entry.publishedFileId) && isLegacyEntry(entry));
+			if (!removeEntry) {
 				kept.add(entry);
 			}
 		}
@@ -288,6 +292,46 @@ public final class SteamWorkshopLibrary {
 
 	private static String entryKey(String publishedFileId, String workshopBranch) {
 		return sanitizeKeyPart(publishedFileId) + "@" + sanitizeKeyPart(normalizeBranch(workshopBranch));
+	}
+
+	private static List<Entry> normalizeEntries(List<Entry> entries) {
+		if (entries == null || entries.isEmpty()) {
+			return new ArrayList<>();
+		}
+		Set<String> idsWithModernEntry = new java.util.LinkedHashSet<>();
+		for (Entry entry : entries) {
+			if (entry != null && !isLegacyEntry(entry)) {
+				idsWithModernEntry.add(entry.publishedFileId);
+			}
+		}
+		Map<String, Entry> byKey = new LinkedHashMap<>();
+		for (Entry entry : entries) {
+			if (entry == null) {
+				continue;
+			}
+			if (idsWithModernEntry.contains(entry.publishedFileId) && isLegacyEntry(entry)) {
+				continue;
+			}
+			Entry previous = byKey.get(entry.key());
+			if (previous == null || entry.installedAtMs >= previous.installedAtMs) {
+				byKey.put(entry.key(), entry);
+			}
+		}
+		return new ArrayList<>(byKey.values());
+	}
+
+	private static boolean shouldDropSupersededEntry(Entry existing, Entry installed) {
+		if (existing == null || installed == null) {
+			return false;
+		}
+		if (existing.key().equals(installed.key())) {
+			return true;
+		}
+		return existing.publishedFileId.equals(installed.publishedFileId) && isLegacyEntry(existing);
+	}
+
+	private static boolean isLegacyEntry(Entry entry) {
+		return entry != null && "legacy".equals(entry.branchMode);
 	}
 
 	private static String normalizeBranch(String workshopBranch) {
