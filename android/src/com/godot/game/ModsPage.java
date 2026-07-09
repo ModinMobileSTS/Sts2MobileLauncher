@@ -827,7 +827,7 @@ public final class ModsPage {
 
 	private void sortMods(List<ExtraSettingsRepository.ModEntry> mods) {
 		if (SORT_NAME.equals(sortMode)) {
-			mods.sort(Comparator.comparing(entry -> entry.displayName == null ? "" : entry.displayName, String::compareToIgnoreCase));
+			mods.sort(Comparator.comparing(this::displayNameFor, String::compareToIgnoreCase));
 			return;
 		}
 		mods.sort((first, second) -> Long.compare(second.manifestFile.lastModified(), first.manifestFile.lastModified()));
@@ -1790,12 +1790,13 @@ public final class ModsPage {
 			list.removeAllViews();
 			String query = search.getText() == null ? "" : search.getText().toString().trim().toLowerCase(Locale.ROOT);
 			for (ExtraSettingsRepository.ModEntry entry : allMods) {
-				String haystack = (entry.displayName + " " + entry.modId + " " + entry.authors).toLowerCase(Locale.ROOT);
+				String displayName = displayNameFor(entry);
+				String haystack = (displayName + " " + entry.displayName + " " + entry.modId + " " + entry.authors).toLowerCase(Locale.ROOT);
 				if (!query.isEmpty() && !haystack.contains(query)) {
 					continue;
 				}
 				CheckBox checkBox = new CheckBox(context);
-				checkBox.setText(emptyToDash(entry.displayName) + "\n" + entry.modId);
+				checkBox.setText(emptyToDash(displayName) + "\n" + entry.modId);
 				checkBox.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
 				checkBox.setChecked(checked.contains(entry.modId));
 				checkBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -2025,12 +2026,6 @@ public final class ModsPage {
 		title.setSingleLine(true);
 		title.setEllipsize(TextUtils.TruncateAt.END);
 		textColumn.addView(title);
-		TextView originalName = ExtraSettingsUi.text(context, "", 12, ExtraSettingsUi.COLOR_MUTED, Typeface.NORMAL);
-		originalName.setTag("original_name");
-		originalName.setSingleLine(true);
-		originalName.setEllipsize(TextUtils.TruncateAt.END);
-		originalName.setVisibility(View.GONE);
-		textColumn.addView(originalName);
 		TextView meta = ExtraSettingsUi.caption(context, "");
 		meta.setTag("meta");
 		meta.setSingleLine(true);
@@ -2108,7 +2103,6 @@ public final class ModsPage {
 		private final MaterialCardView card;
 		private final ImageView handle;
 		private final TextView title;
-		private final TextView originalName;
 		private final TextView meta;
 		private final MaterialSwitch switchView;
 		private final LinearLayout details;
@@ -2121,7 +2115,6 @@ public final class ModsPage {
 			card = (MaterialCardView) itemView;
 			handle = itemView.findViewWithTag("handle");
 			title = itemView.findViewWithTag("title");
-			originalName = itemView.findViewWithTag("original_name");
 			meta = itemView.findViewWithTag("meta");
 			switchView = itemView.findViewWithTag("switch");
 			details = itemView.findViewWithTag("details");
@@ -2184,20 +2177,7 @@ public final class ModsPage {
 		}
 
 		void bindTitle(ExtraSettingsRepository.ModEntry entry) {
-			String note = noteFor(entry.modId);
-			if (!TextUtils.isEmpty(note)) {
-				title.setText(note);
-				if (originalName != null) {
-					originalName.setVisibility(View.VISIBLE);
-					originalName.setText(emptyToDash(entry.displayName));
-				}
-			} else {
-				title.setText(emptyToDash(entry.displayName));
-				if (originalName != null) {
-					originalName.setVisibility(View.GONE);
-					originalName.setText("");
-				}
-			}
+			title.setText(emptyToDash(displayNameFor(entry)));
 		}
 
 		void applySelectionState(ExtraSettingsRepository.ModEntry entry) {
@@ -2548,6 +2528,9 @@ public final class ModsPage {
 
 	private String compactMeta(ExtraSettingsRepository.ModEntry entry) {
 		List<String> parts = new ArrayList<>();
+		if (!TextUtils.isEmpty(noteFor(entry.modId)) && !TextUtils.isEmpty(entry.displayName)) {
+			parts.add(entry.displayName);
+		}
 		if (!TextUtils.isEmpty(entry.version)) {
 			parts.add("v" + entry.version.replaceFirst("^[vV]", ""));
 		}
@@ -2601,7 +2584,7 @@ public final class ModsPage {
 			return "";
 		}
 		String note = noteFor(entry.modId);
-		return TextUtils.isEmpty(note) ? entry.displayName : note;
+		return TextUtils.isEmpty(note) ? (entry.displayName == null ? "" : entry.displayName) : note;
 	}
 
 	private String displayCategory(ExtraSettingsRepository.ModEntry entry) {
