@@ -16,8 +16,11 @@ import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.text.Editable;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.text.style.ForegroundColorSpan;
 import android.text.style.UnderlineSpan;
 import android.util.TypedValue;
 import android.view.DragEvent;
@@ -3093,21 +3096,8 @@ public final class ModsPage {
 			if (issues == null || issues.isEmpty()) {
 				continue;
 			}
-			MaterialCardView card = ExtraSettingsUi.card(context);
-			card.setStrokeColor(ExtraSettingsUi.COLOR_WARNING);
-			card.setStrokeWidth(ExtraSettingsUi.dp(context, 1));
-			LinearLayout content = ExtraSettingsUi.cardContent(context, card);
-			content.addView(ExtraSettingsUi.text(context, issues.get(0).displayName, 15, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD));
-			TextView idLine = ExtraSettingsUi.caption(context, entry.getKey());
-			idLine.setTextColor(ExtraSettingsUi.COLOR_MUTED);
-			content.addView(idLine);
-			for (ModIssue issue : issues) {
-				TextView issueLine = ExtraSettingsUi.caption(context, "• " + issue.message);
-				issueLine.setTextColor(ExtraSettingsUi.COLOR_WARNING);
-				LinearLayout.LayoutParams issueParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-				issueParams.topMargin = ExtraSettingsUi.dp(context, 4);
-				content.addView(issueLine, issueParams);
-			}
+			ExtraSettingsRepository.ModEntry modEntry = findCurrentModEntry(entry.getKey());
+			View card = buildIssueCard(entry.getKey(), modEntry, issues);
 			LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
 			cardParams.topMargin = ExtraSettingsUi.dp(context, 8);
 			list.addView(card, cardParams);
@@ -3131,6 +3121,103 @@ public final class ModsPage {
 			}
 		});
 		return root;
+	}
+
+	private View buildIssueCard(String modId, ExtraSettingsRepository.ModEntry modEntry, List<ModIssue> issues) {
+		MaterialCardView card = ExtraSettingsUi.card(context);
+		card.setRadius(ExtraSettingsUi.dp(context, 12));
+		card.setCardBackgroundColor(Color.rgb(54, 33, 31));
+		card.setStrokeColor(ExtraSettingsUi.COLOR_ERROR);
+		card.setStrokeWidth(ExtraSettingsUi.dp(context, 3));
+
+		LinearLayout content = ExtraSettingsUi.vertical(context);
+		content.setPadding(ExtraSettingsUi.dp(context, 14), ExtraSettingsUi.dp(context, 12), ExtraSettingsUi.dp(context, 14), ExtraSettingsUi.dp(context, 12));
+		card.addView(content, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+		String titleText = issues.isEmpty() ? modId : issues.get(0).displayName;
+		TextView title = ExtraSettingsUi.text(context, emptyToDash(titleText), 16, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
+		title.setSingleLine(true);
+		title.setEllipsize(TextUtils.TruncateAt.END);
+		content.addView(title);
+
+		TextView meta = ExtraSettingsUi.caption(context, modEntry == null ? modId : compactMeta(modEntry));
+		meta.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT);
+		meta.setSingleLine(true);
+		meta.setEllipsize(TextUtils.TruncateAt.END);
+		LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		metaParams.topMargin = ExtraSettingsUi.dp(context, 2);
+		content.addView(meta, metaParams);
+
+		for (int i = 0; i < issues.size(); i++) {
+			content.addView(buildIssueWarningRow(issues.get(i)), issueRowParams(i == 0));
+		}
+		return card;
+	}
+
+	private LinearLayout.LayoutParams issueRowParams(boolean first) {
+		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		params.topMargin = ExtraSettingsUi.dp(context, first ? 10 : 6);
+		return params;
+	}
+
+	private View buildIssueWarningRow(ModIssue issue) {
+		LinearLayout row = ExtraSettingsUi.horizontal(context);
+		row.setGravity(Gravity.TOP);
+		ImageView icon = ExtraSettingsUi.icon(context, R.drawable.ic_error_outline_24, ExtraSettingsUi.COLOR_ERROR, 16);
+		LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(context, 16), ExtraSettingsUi.dp(context, 16));
+		iconParams.topMargin = ExtraSettingsUi.dp(context, 1);
+		row.addView(icon, iconParams);
+
+		TextView text = ExtraSettingsUi.text(context, "", 13, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.NORMAL);
+		text.setLineSpacing(ExtraSettingsUi.dp(context, 2), 1.0f);
+		text.setText(highlightIssueMessage(issue));
+		LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		textParams.setMarginStart(ExtraSettingsUi.dp(context, 7));
+		row.addView(text, textParams);
+		return row;
+	}
+
+	private CharSequence highlightIssueMessage(ModIssue issue) {
+		String message = issue == null ? "" : issue.message;
+		SpannableStringBuilder builder = new SpannableStringBuilder(message);
+		String key = issueHighlightKey(issue);
+		if (TextUtils.isEmpty(key) || TextUtils.isEmpty(message)) {
+			return builder;
+		}
+		String lowerMessage = message.toLowerCase(Locale.ROOT);
+		String lowerKey = key.toLowerCase(Locale.ROOT);
+		int start = lowerMessage.indexOf(lowerKey);
+		while (start >= 0) {
+			int end = start + key.length();
+			builder.setSpan(new ForegroundColorSpan(ExtraSettingsUi.COLOR_ERROR), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+			start = lowerMessage.indexOf(lowerKey, end);
+		}
+		return builder;
+	}
+
+	private String issueHighlightKey(ModIssue issue) {
+		if (issue == null) {
+			return "";
+		}
+		if (!TextUtils.isEmpty(issue.relatedModId)) {
+			return issue.relatedModId;
+		}
+		if (ModIssue.TYPE_MISSING_PCK.equals(issue.type) || ModIssue.TYPE_MISSING_DLL.equals(issue.type)) {
+			return issue.modId;
+		}
+		return "";
+	}
+
+	private ExtraSettingsRepository.ModEntry findCurrentModEntry(String modId) {
+		if (TextUtils.isEmpty(modId)) {
+			return null;
+		}
+		for (ExtraSettingsRepository.ModEntry entry : currentAllMods) {
+			if (entry != null && modId.equals(entry.modId)) {
+				return entry;
+			}
+		}
+		return null;
 	}
 
 	/** Handle-only sheet control: pull down to dismiss, pull up to re-expand. */
