@@ -253,9 +253,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private View buildAppBar(boolean backMode, int titleRes, Runnable navigation, boolean showSearch) {
 		FrameLayout bar = new FrameLayout(this);
 		bar.setBackgroundColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
-		int topInset = statusBarHeight();
-		bar.setPadding(ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 8) + topInset, ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 8));
-		bar.setMinimumHeight(ExtraSettingsUi.dp(this, 64) + topInset);
+		bar.setPadding(ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 8));
+		bar.setMinimumHeight(ExtraSettingsUi.dp(this, 64));
+		SystemBarInsetsHelper.applySystemBarPadding(bar, true, true, false, true);
 
 		LinearLayout row = ExtraSettingsUi.horizontal(this);
 		row.setGravity(Gravity.CENTER_VERTICAL);
@@ -314,14 +314,6 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			row.addView(web);
 		}
 		return bar;
-	}
-
-	private int statusBarHeight() {
-		int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
-		if (resourceId > 0) {
-			return getResources().getDimensionPixelSize(resourceId);
-		}
-		return 0;
 	}
 
 	private LinearLayout buildDrawer() {

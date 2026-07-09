@@ -14,6 +14,7 @@ import android.widget.TextView;
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.snackbar.Snackbar;
 
 import java.io.File;
@@ -48,12 +49,16 @@ public class TextEditorActivity extends AppCompatActivity {
 		SystemBarInsetsHelper.enableEdgeToEdge(this);
 		setContentView(R.layout.activity_text_editor);
 
-		bindViews();
+		MaterialToolbar toolbar = findViewById(R.id.toolbar);
+		setSupportActionBar(toolbar);
 		if (getSupportActionBar() != null) {
 			getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 			getSupportActionBar().setTitle(R.string.text_editor_title);
 		}
-		AppBarContentOverlapHelper.install(this);
+		SystemBarInsetsHelper.applySystemBarPadding(toolbar, true, true, false, true);
+		SystemBarInsetsHelper.applySystemBarPaddingWithIme(findViewById(R.id.content_container), false, true, true, true);
+
+		bindViews();
 
 		String filePath = getIntent().getStringExtra(EXTRA_FILE_PATH);
 		String rootPath = getIntent().getStringExtra(EXTRA_ROOT_PATH);

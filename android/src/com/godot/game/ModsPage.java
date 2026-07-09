@@ -148,7 +148,7 @@ public final class ModsPage {
 		row.setGravity(Gravity.CENTER_VERTICAL);
 		row.setMinimumHeight(ExtraSettingsUi.dp(context, 78));
 		row.setPadding(ExtraSettingsUi.dp(context, 16), ExtraSettingsUi.dp(context, 18), ExtraSettingsUi.dp(context, 16), ExtraSettingsUi.dp(context, 14));
-		SystemBarInsetsHelper.applySystemBarPaddingAndGrow(row, true, false, false, false);
+		SystemBarInsetsHelper.applySystemBarPadding(row, true, false, false, false);
 		TextView title = ExtraSettingsUi.text(context, context.getString(R.string.tab_mods), 22, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
 		title.setSingleLine(true);
 		title.setEllipsize(TextUtils.TruncateAt.END);

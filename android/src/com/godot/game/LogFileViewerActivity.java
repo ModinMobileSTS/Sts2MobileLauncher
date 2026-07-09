@@ -6,6 +6,8 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.google.android.material.appbar.MaterialToolbar;
+
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -39,15 +41,18 @@ public class LogFileViewerActivity extends AppCompatActivity {
 		SystemBarInsetsHelper.enableEdgeToEdge(this);
 		setContentView(R.layout.activity_log_file_viewer);
 
-		titleText = findViewById(R.id.text_log_content_title);
-		metaText = findViewById(R.id.text_log_content_meta);
-		contentText = findViewById(R.id.text_log_content);
-
+		MaterialToolbar toolbar = findViewById(R.id.toolbar);
+		setSupportActionBar(toolbar);
 		if (getSupportActionBar() != null) {
 			getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 			getSupportActionBar().setTitle(R.string.log_file_viewer_title);
 		}
-		AppBarContentOverlapHelper.install(this);
+		SystemBarInsetsHelper.applySystemBarPadding(toolbar, true, true, false, true);
+		SystemBarInsetsHelper.applySystemBarPadding(findViewById(R.id.content_container), false, true, true, true);
+
+		titleText = findViewById(R.id.text_log_content_title);
+		metaText = findViewById(R.id.text_log_content_meta);
+		contentText = findViewById(R.id.text_log_content);
 
 		String filePath = getIntent().getStringExtra(EXTRA_FILE_PATH);
 		String displayName = getIntent().getStringExtra(EXTRA_DISPLAY_NAME);

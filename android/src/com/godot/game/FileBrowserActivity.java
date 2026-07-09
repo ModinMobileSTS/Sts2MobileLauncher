@@ -23,6 +23,7 @@ import androidx.documentfile.provider.DocumentFile;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.snackbar.Snackbar;
 
 import java.io.BufferedInputStream;
@@ -69,12 +70,16 @@ public class FileBrowserActivity extends AppCompatActivity {
 		SystemBarInsetsHelper.enableEdgeToEdge(this);
 		setContentView(R.layout.activity_file_browser);
 
-		bindViews();
+		MaterialToolbar toolbar = findViewById(R.id.toolbar);
+		setSupportActionBar(toolbar);
 		if (getSupportActionBar() != null) {
 			getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 			getSupportActionBar().setTitle(R.string.file_browser_title);
 		}
-		AppBarContentOverlapHelper.install(this);
+		SystemBarInsetsHelper.applySystemBarPadding(toolbar, true, true, false, true);
+		SystemBarInsetsHelper.applySystemBarPadding(findViewById(R.id.content_container), false, true, true, true);
+
+		bindViews();
 
 		rootDirectory = getFilesDir();
 		currentDirectory = rootDirectory;

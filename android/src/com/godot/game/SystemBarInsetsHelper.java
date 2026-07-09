@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.graphics.Color;
 import android.os.Build;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.Window;
 
 import androidx.core.graphics.Insets;
@@ -13,7 +12,22 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
+import java.util.WeakHashMap;
+
+/**
+ * Edge-to-edge helpers for launcher/tool activities.
+ *
+ * <p>Insets are applied as direct {@link WindowInsetsCompat} values on scaffold edges
+ * (top chrome, bottom nav, side rail, scroll content). Geometry-based "overlap" padding
+ * is intentionally not used — it feedback-loops with layout and is unreliable on
+ * cutout / multi-window / OEM builds.
+ */
 final class SystemBarInsetsHelper {
+	private static final int INSET_TYPE_MASK =
+		WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout();
+
+	private static final WeakHashMap<View, BasePadding> BASE_PADDING = new WeakHashMap<>();
+
 	private SystemBarInsetsHelper() {
 	}
 
@@ -37,114 +51,103 @@ final class SystemBarInsetsHelper {
 		controller.setAppearanceLightNavigationBars(false);
 	}
 
+	/**
+	 * Apply system bar + display cutout insets as extra padding on selected sides.
+	 * Base padding is captured once from the view's current padding when first installed.
+	 * <p>
+	 * Prefer {@code wrap_content} (or content-sized minHeight without inset) for top chrome so
+	 * top padding alone grows the bar under the status bar / cutout.
+	 */
 	static void applySystemBarPadding(View view, boolean top, boolean right, boolean bottom, boolean left) {
 		applySystemBarPadding(view, top, right, bottom, left, false);
 	}
 
+	/**
+	 * Same as {@link #applySystemBarPadding(View, boolean, boolean, boolean, boolean)}.
+	 * The former "grow height" path mutated LayoutParams from geometry overlap and is removed;
+	 * top/bottom padding on wrap_content views is sufficient.
+	 */
 	static void applySystemBarPaddingAndGrow(View view, boolean top, boolean right, boolean bottom, boolean left) {
+		applySystemBarPadding(view, top, right, bottom, left, false);
+	}
+
+	/**
+	 * Apply system bars/cutout on selected sides, and use {@code max(navigationBars, ime)} for bottom
+	 * when {@code bottom} is true so soft keyboards clear content under edge-to-edge + adjustResize.
+	 */
+	static void applySystemBarPaddingWithIme(View view, boolean top, boolean right, boolean bottom, boolean left) {
 		applySystemBarPadding(view, top, right, bottom, left, true);
 	}
 
-	private static void applySystemBarPadding(View view, boolean top, boolean right, boolean bottom, boolean left, boolean growHeight) {
+	private static void applySystemBarPadding(
+		View view,
+		boolean top,
+		boolean right,
+		boolean bottom,
+		boolean left,
+		boolean bottomIncludesIme
+	) {
 		if (view == null) {
 			return;
 		}
+		if (!(top || right || bottom || left)) {
+			return;
+		}
 
-		int originalLeft = view.getPaddingLeft();
-		int originalTop = view.getPaddingTop();
-		int originalRight = view.getPaddingRight();
-		int originalBottom = view.getPaddingBottom();
-		int originalMinHeight = view.getMinimumHeight();
-		ViewGroup.LayoutParams originalLayoutParams = view.getLayoutParams();
-		int originalLayoutHeight = originalLayoutParams == null ? ViewGroup.LayoutParams.WRAP_CONTENT : originalLayoutParams.height;
-		InsetsHolder insetsHolder = new InsetsHolder();
+		BasePadding base = BASE_PADDING.get(view);
+		if (base == null) {
+			base = new BasePadding(
+				view.getPaddingLeft(),
+				view.getPaddingTop(),
+				view.getPaddingRight(),
+				view.getPaddingBottom()
+			);
+			BASE_PADDING.put(view, base);
+		}
 
-		Runnable updatePadding = () -> {
-			InsetsHolder overlap = calculateOverlap(view, insetsHolder);
-			int extraTop = top ? overlap.top : 0;
-			int extraRight = right ? overlap.right : 0;
-			int extraBottom = bottom ? overlap.bottom : 0;
-			int extraLeft = left ? overlap.left : 0;
-
-			int desiredLeft = originalLeft + extraLeft;
-			int desiredTop = originalTop + extraTop;
-			int desiredRight = originalRight + extraRight;
-			int desiredBottom = originalBottom + extraBottom;
-			if (view.getPaddingLeft() != desiredLeft
-				|| view.getPaddingTop() != desiredTop
-				|| view.getPaddingRight() != desiredRight
-				|| view.getPaddingBottom() != desiredBottom) {
-				view.setPadding(desiredLeft, desiredTop, desiredRight, desiredBottom);
-			}
-
-			if (growHeight) {
-				int extraHeight = extraTop + extraBottom;
-				int desiredMinHeight = originalMinHeight + extraHeight;
-				if (view.getMinimumHeight() != desiredMinHeight) {
-					view.setMinimumHeight(desiredMinHeight);
-				}
-				ViewGroup.LayoutParams layoutParams = view.getLayoutParams();
-				if (layoutParams != null && originalLayoutHeight > 0) {
-					int desiredHeight = originalLayoutHeight + extraHeight;
-					if (layoutParams.height != desiredHeight) {
-						layoutParams.height = desiredHeight;
-						view.setLayoutParams(layoutParams);
-					}
-				}
-			}
-		};
-
+		final BasePadding basePadding = base;
 		ViewCompat.setOnApplyWindowInsetsListener(view, (target, windowInsets) -> {
-			Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-			insetsHolder.left = insets.left;
-			insetsHolder.top = insets.top;
-			insetsHolder.right = insets.right;
-			insetsHolder.bottom = insets.bottom;
-			updatePadding.run();
+			Insets systemInsets = windowInsets.getInsets(INSET_TYPE_MASK);
+			int extraLeft = left ? systemInsets.left : 0;
+			int extraTop = top ? systemInsets.top : 0;
+			int extraRight = right ? systemInsets.right : 0;
+			int extraBottom = 0;
+			if (bottom) {
+				if (bottomIncludesIme) {
+					Insets imeInsets = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
+					extraBottom = Math.max(systemInsets.bottom, imeInsets.bottom);
+				} else {
+					extraBottom = systemInsets.bottom;
+				}
+			}
+
+			int desiredLeft = basePadding.left + extraLeft;
+			int desiredTop = basePadding.top + extraTop;
+			int desiredRight = basePadding.right + extraRight;
+			int desiredBottom = basePadding.bottom + extraBottom;
+			if (target.getPaddingLeft() != desiredLeft
+				|| target.getPaddingTop() != desiredTop
+				|| target.getPaddingRight() != desiredRight
+				|| target.getPaddingBottom() != desiredBottom) {
+				target.setPadding(desiredLeft, desiredTop, desiredRight, desiredBottom);
+			}
+			// Do not consume: multiple scaffold edges (top bar + bottom nav + content) each need the same insets.
 			return windowInsets;
 		});
-		view.addOnLayoutChangeListener((target, leftValue, topValue, rightValue, bottomValue, oldLeft, oldTop, oldRight, oldBottom) -> updatePadding.run());
-		view.post(() -> {
-			updatePadding.run();
-			ViewCompat.requestApplyInsets(view);
-		});
+		ViewCompat.requestApplyInsets(view);
 	}
 
-	private static InsetsHolder calculateOverlap(View view, InsetsHolder systemBars) {
-		InsetsHolder overlap = new InsetsHolder();
-		if (view == null || systemBars == null || view.getWidth() <= 0 || view.getHeight() <= 0) {
-			return overlap;
+	private static final class BasePadding {
+		final int left;
+		final int top;
+		final int right;
+		final int bottom;
+
+		BasePadding(int left, int top, int right, int bottom) {
+			this.left = left;
+			this.top = top;
+			this.right = right;
+			this.bottom = bottom;
 		}
-		View rootView = view.getRootView();
-		if (rootView == null || rootView.getWidth() <= 0 || rootView.getHeight() <= 0) {
-			return overlap;
-		}
-
-		int[] viewLocation = new int[2];
-		int[] rootLocation = new int[2];
-		view.getLocationInWindow(viewLocation);
-		rootView.getLocationInWindow(rootLocation);
-
-		int viewLeft = viewLocation[0];
-		int viewTop = viewLocation[1];
-		int viewRight = viewLeft + view.getWidth();
-		int viewBottom = viewTop + view.getHeight();
-		int safeLeft = rootLocation[0] + systemBars.left;
-		int safeTop = rootLocation[1] + systemBars.top;
-		int safeRight = rootLocation[0] + rootView.getWidth() - systemBars.right;
-		int safeBottom = rootLocation[1] + rootView.getHeight() - systemBars.bottom;
-
-		overlap.left = Math.max(0, safeLeft - viewLeft);
-		overlap.top = Math.max(0, safeTop - viewTop);
-		overlap.right = Math.max(0, viewRight - safeRight);
-		overlap.bottom = Math.max(0, viewBottom - safeBottom);
-		return overlap;
-	}
-
-	private static final class InsetsHolder {
-		int left;
-		int top;
-		int right;
-		int bottom;
 	}
 }

@@ -27,7 +27,8 @@ public class Sts2CrashActivity extends AppCompatActivity {
 		SystemBarInsetsHelper.enableEdgeToEdge(this);
 		StartupHealthTracker.clearPendingLaunchState(this);
 		setContentView(R.layout.activity_sts2_crash);
-		SystemBarInsetsHelper.applySystemBarPaddingAndGrow(findViewById(R.id.toolbar_crash), true, false, false, false);
+		// Toolbar consumes top (status/cutout); content root consumes horizontal + bottom so children share one scaffold.
+		SystemBarInsetsHelper.applySystemBarPadding(findViewById(R.id.toolbar_crash), true, false, false, false);
 		SystemBarInsetsHelper.applySystemBarPadding(findViewById(android.R.id.content), false, true, true, true);
 
 		config = CustomActivityOnCrash.getConfigFromIntent(getIntent());
