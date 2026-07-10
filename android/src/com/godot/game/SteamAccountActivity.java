@@ -1,21 +1,27 @@
 package com.godot.game;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.DialogInterface;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Html;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.ProgressBar;
 import android.widget.ScrollView;
-import android.widget.Spinner;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AlertDialog;
@@ -27,11 +33,16 @@ import com.godot.game.steam.cloud.Sts2SteamCloudClient;
 import com.godot.game.steam.cloud.Sts2SteamCloudSyncManager;
 import com.godot.game.steam.core.SteamSettings;
 import com.godot.game.steam.download.Sts2SteamPayloadDownloader;
+import com.godot.game.steam.ui.SteamDownloadProgressPanel;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.snackbar.Snackbar;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
 
 import java.util.Arrays;
 import java.util.List;
@@ -46,12 +57,48 @@ import in.dragonbra.javasteam.steam.authentication.AuthenticationException;
 public class SteamAccountActivity extends AppCompatActivity {
 	private static final int SAFETY_NOTICE_COUNTDOWN_SECONDS = 5;
 	private static final long SAFETY_NOTICE_COUNTDOWN_INTERVAL_MS = 1000L;
+	private static final int TAB_DOWNLOAD = 0;
+	private static final int TAB_CLOUD = 1;
+	private static final int TAB_ACCOUNT = 2;
+	private static final int BRANCH_PUBLIC = 0;
+	private static final int BRANCH_BETA = 1;
+	private static final int BRANCH_CUSTOM = 2;
 
-	private TextView statusText;
-	private TextView progressText;
-	private ProgressBar progressBar;
-	private LinearLayout root;
+	private LinearLayout tabContent;
+	private LinearLayout downloadPage;
+	private LinearLayout cloudPage;
+	private LinearLayout accountPage;
+	private TextView profileNameView;
+	private TextView profileIdView;
+	private TextView profileBadgeView;
+	private TextView accountProfileNameView;
+	private TextView accountProfileIdView;
+	private TextView accountProfileBadgeView;
+	private TextView accountUsernameValueView;
+	private TextView accountSteamIdValueView;
+	private TextView tokenStatusView;
+	private TextView accountLastErrorView;
+	private LinearLayout accountLastErrorRow;
+	private TextView cloudStatusBodyView;
+	private TextView cloudPathView;
+	private TextView cloudModeValueView;
+	private MaterialSwitch settingsSaveSwitch;
+	private View downloadSetupBlock;
+	private SteamDownloadProgressPanel downloadProgressPanel;
+	private MaterialCardView branchPublicCard;
+	private MaterialCardView branchBetaCard;
+	private MaterialCardView branchCustomCard;
+	private LinearLayout branchCustomDetails;
+	private TextInputEditText customBranchInput;
+	private MaterialButton downloadButton;
+	private View radioPublic;
+	private View radioBeta;
+	private View radioCustom;
 	private boolean busy;
+	private boolean downloadingPayload;
+	private int selectedTab = TAB_DOWNLOAD;
+	private int selectedBranch = BRANCH_PUBLIC;
+	private PayloadManager.ImportControl activeDownloadControl;
 	private SteamOperationProgressDialog operationDialog;
 
 	@Override
@@ -62,6 +109,14 @@ public class SteamAccountActivity extends AppCompatActivity {
 		buildUi();
 		refreshStatus();
 		showFirstOpenSafetyNoticeIfNeeded();
+	}
+
+	@Override
+	protected void onDestroy() {
+		if (downloadProgressPanel != null) {
+			downloadProgressPanel.stopAnimations();
+		}
+		super.onDestroy();
 	}
 
 	private void showFirstOpenSafetyNoticeIfNeeded() {
@@ -122,43 +177,560 @@ public class SteamAccountActivity extends AppCompatActivity {
 	}
 
 	private void buildUi() {
+		LinearLayout shell = ExtraSettingsUi.vertical(this);
+		shell.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
+		SystemBarInsetsHelper.applySystemBarPadding(shell, true, true, true, true);
+
+		shell.addView(buildProfileHeader(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		shell.addView(buildSegmentedTabs(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
 		ScrollView scroll = new ScrollView(this);
 		scroll.setFillViewport(false);
 		scroll.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
-		root = ExtraSettingsUi.vertical(this);
-		root.setPadding(0, ExtraSettingsUi.dp(this, 24), 0, ExtraSettingsUi.dp(this, 32));
-		SystemBarInsetsHelper.applySystemBarPadding(root, true, false, false, false);
-		SystemBarInsetsHelper.applySystemBarPadding(scroll, false, true, true, true);
-		ExtraSettingsUi.addResponsiveScrollContent(this, scroll, root);
-		setContentView(scroll);
-		populateRoot();
+		tabContent = ExtraSettingsUi.vertical(this);
+		tabContent.setPadding(0, ExtraSettingsUi.dp(this, 12), 0, ExtraSettingsUi.dp(this, 28));
+		downloadPage = ExtraSettingsUi.vertical(this);
+		cloudPage = ExtraSettingsUi.vertical(this);
+		accountPage = ExtraSettingsUi.vertical(this);
+		populateDownloadTab(downloadPage);
+		populateCloudTab(cloudPage);
+		populateAccountTab(accountPage);
+		tabContent.addView(downloadPage, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		tabContent.addView(cloudPage, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		tabContent.addView(accountPage, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		ExtraSettingsUi.addResponsiveScrollContent(this, scroll, tabContent);
+		shell.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+		setContentView(shell);
+		showTab(selectedTab);
 	}
 
-	private void populateRoot() {
-		root.removeAllViews();
-		root.addView(ExtraSettingsUi.title(this, R.string.steam_account_title));
-		ExtraSettingsUi.addCardSpacing(root, buildStatusCard());
-		ExtraSettingsUi.addCardSpacing(root, buildDownloadCard());
-		ExtraSettingsUi.addCardSpacing(root, buildCloudCard());
-		MaterialButton safetyNotice = ExtraSettingsUi.outlineButton(this, R.string.steam_account_safety_notice_open, R.drawable.ic_info_24);
-		safetyNotice.setOnClickListener(v -> showSafetyNoticeDialog(false));
-		ExtraSettingsUi.addCardSpacing(root, safetyNotice);
+	private View buildProfileHeader() {
+		LinearLayout header = ExtraSettingsUi.horizontal(this);
+		header.setGravity(Gravity.CENTER_VERTICAL);
+		int padH = ExtraSettingsUi.pageHorizontalPadding(this);
+		header.setPadding(padH, ExtraSettingsUi.dp(this, 14), padH, ExtraSettingsUi.dp(this, 10));
+		header.setBackgroundColor(Color.argb(220, 25, 29, 38));
+
+		header.addView(ExtraSettingsUi.iconCircle(this, R.drawable.ic_steam_24, ExtraSettingsUi.COLOR_PRIMARY_CONTAINER, ExtraSettingsUi.COLOR_ON_PRIMARY_CONTAINER));
+
+		LinearLayout texts = ExtraSettingsUi.vertical(this);
+		LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		textParams.setMarginStart(ExtraSettingsUi.dp(this, 12));
+		header.addView(texts, textParams);
+
+		LinearLayout nameRow = ExtraSettingsUi.horizontal(this);
+		nameRow.setGravity(Gravity.CENTER_VERTICAL);
+		profileNameView = ExtraSettingsUi.label(this, R.string.steam_not_logged_in);
+		nameRow.addView(profileNameView);
+		profileBadgeView = createBadge(getString(R.string.steam_center_offline_badge), false);
+		LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		badgeParams.setMarginStart(ExtraSettingsUi.dp(this, 8));
+		nameRow.addView(profileBadgeView, badgeParams);
+		texts.addView(nameRow);
+
+		profileIdView = ExtraSettingsUi.caption(this, getString(R.string.steam_center_steamid_format, getString(R.string.unknown)));
+		profileIdView.setTypeface(Typeface.MONOSPACE);
+		LinearLayout.LayoutParams idParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		idParams.topMargin = ExtraSettingsUi.dp(this, 2);
+		texts.addView(profileIdView, idParams);
+
+		MaterialButton logout = ExtraSettingsUi.iconButton(this, R.drawable.ic_delete_24);
+		logout.setContentDescription(getString(R.string.steam_logout));
+		logout.setOnClickListener(v -> confirmLogout());
+		header.addView(logout);
+		return header;
 	}
 
-	private View buildStatusCard() {
-		MaterialCardView card = ExtraSettingsUi.card(this);
+	private View buildSegmentedTabs() {
+		LinearLayout wrap = ExtraSettingsUi.vertical(this);
+		int padH = ExtraSettingsUi.pageHorizontalPadding(this);
+		wrap.setPadding(padH, ExtraSettingsUi.dp(this, 4), padH, ExtraSettingsUi.dp(this, 4));
+
+		MaterialButtonToggleGroup group = new MaterialButtonToggleGroup(this);
+		group.setSingleSelection(true);
+		group.setSelectionRequired(true);
+		group.setBackgroundColor(Color.TRANSPARENT);
+
+		MaterialButton download = segmentedButton(R.string.steam_center_tab_download);
+		MaterialButton cloud = segmentedButton(R.string.steam_center_tab_cloud);
+		MaterialButton account = segmentedButton(R.string.steam_center_tab_account);
+		download.setId(View.generateViewId());
+		cloud.setId(View.generateViewId());
+		account.setId(View.generateViewId());
+		group.addView(download, segmentedParams());
+		group.addView(cloud, segmentedParams());
+		group.addView(account, segmentedParams());
+		group.check(selectedTab == TAB_CLOUD ? cloud.getId() : (selectedTab == TAB_ACCOUNT ? account.getId() : download.getId()));
+		group.addOnButtonCheckedListener((buttonGroup, checkedId, isChecked) -> {
+			if (!isChecked) {
+				return;
+			}
+			if (checkedId == cloud.getId()) {
+				showTab(TAB_CLOUD);
+			} else if (checkedId == account.getId()) {
+				showTab(TAB_ACCOUNT);
+			} else {
+				showTab(TAB_DOWNLOAD);
+			}
+		});
+		wrap.addView(group, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		return wrap;
+	}
+
+	private MaterialButton segmentedButton(int textRes) {
+		MaterialButton button = new MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle);
+		button.setText(textRes);
+		button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+		button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+		button.setCheckable(true);
+		button.setMinHeight(ExtraSettingsUi.dp(this, 44));
+		button.setInsetTop(0);
+		button.setInsetBottom(0);
+		button.setPadding(ExtraSettingsUi.dp(this, 4), 0, ExtraSettingsUi.dp(this, 4), 0);
+		button.setTextColor(new ColorStateList(
+			new int[][] { new int[] { android.R.attr.state_checked }, new int[] {} },
+			new int[] { ExtraSettingsUi.COLOR_PRIMARY, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT }
+		));
+		button.setBackgroundTintList(new ColorStateList(
+			new int[][] { new int[] { android.R.attr.state_checked }, new int[] {} },
+			new int[] { ExtraSettingsUi.COLOR_SURFACE_VARIANT, Color.TRANSPARENT }
+		));
+		button.setStrokeColor(ColorStateList.valueOf(ExtraSettingsUi.COLOR_OUTLINE));
+		button.setStrokeWidth(ExtraSettingsUi.dp(this, 1));
+		button.setCornerRadius(ExtraSettingsUi.dp(this, 16));
+		return button;
+	}
+
+	private LinearLayout.LayoutParams segmentedParams() {
+		return new LinearLayout.LayoutParams(0, ExtraSettingsUi.dp(this, 46), 1f);
+	}
+
+	private void showTab(int tab) {
+		selectedTab = tab;
+		if (downloadPage != null) {
+			downloadPage.setVisibility(tab == TAB_DOWNLOAD ? View.VISIBLE : View.GONE);
+		}
+		if (cloudPage != null) {
+			cloudPage.setVisibility(tab == TAB_CLOUD ? View.VISIBLE : View.GONE);
+		}
+		if (accountPage != null) {
+			accountPage.setVisibility(tab == TAB_ACCOUNT ? View.VISIBLE : View.GONE);
+		}
+		refreshStatusOnly();
+		updateDownloadUiVisibility();
+	}
+
+	private void populateDownloadTab(LinearLayout root) {
+		ExtraSettingsUi.addCardSpacing(root, buildBranchSection());
+
+		downloadSetupBlock = ExtraSettingsUi.vertical(this);
+		MaterialCardView setupCard = ExtraSettingsUi.card(this);
+		LinearLayout setupContent = ExtraSettingsUi.cardContent(this, setupCard);
+		downloadButton = ExtraSettingsUi.filledButton(this, R.string.steam_payload_download_button, R.drawable.ic_download_24);
+		downloadButton.setOnClickListener(v -> startPayloadDownload());
+		setupContent.addView(downloadButton);
+		((LinearLayout) downloadSetupBlock).addView(setupCard);
+		ExtraSettingsUi.addCardSpacing(root, downloadSetupBlock);
+
+		downloadProgressPanel = new SteamDownloadProgressPanel(this);
+		downloadProgressPanel.setCancelListener(v -> {
+			if (activeDownloadControl != null) {
+				activeDownloadControl.cancel();
+				downloadProgressPanel.setCancelEnabled(false);
+			}
+		});
+		downloadProgressPanel.getView().setVisibility(View.GONE);
+		ExtraSettingsUi.addCardSpacing(root, downloadProgressPanel.getView());
+	}
+
+	private View buildBranchSection() {
+		LinearLayout section = ExtraSettingsUi.vertical(this);
+		TextView title = ExtraSettingsUi.caption(this, getString(R.string.steam_branch_section_title).toUpperCase(Locale.getDefault()));
+		title.setTypeface(Typeface.DEFAULT_BOLD);
+		title.setLetterSpacing(0.08f);
+		section.addView(title);
+
+		branchPublicCard = buildBranchCard(
+			BRANCH_PUBLIC,
+			R.string.steam_branch_public_label,
+			R.string.steam_branch_public_badge,
+			R.string.steam_branch_public_desc,
+			false
+		);
+		branchBetaCard = buildBranchCard(
+			BRANCH_BETA,
+			R.string.steam_branch_beta_label,
+			R.string.steam_branch_beta_badge,
+			R.string.steam_branch_beta_desc,
+			true
+		);
+		branchCustomCard = buildBranchCard(
+			BRANCH_CUSTOM,
+			R.string.steam_branch_custom_label,
+			R.string.steam_branch_custom_badge,
+			R.string.steam_branch_custom_desc,
+			false
+		);
+		LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		cardParams.topMargin = ExtraSettingsUi.dp(this, 8);
+		section.addView(branchPublicCard, cardParams);
+		section.addView(branchBetaCard, copyParams(cardParams));
+		section.addView(branchCustomCard, copyParams(cardParams));
+		applyBranchSelection();
+		return section;
+	}
+
+	private LinearLayout.LayoutParams copyParams(LinearLayout.LayoutParams source) {
+		LinearLayout.LayoutParams copy = new LinearLayout.LayoutParams(source.width, source.height);
+		copy.topMargin = source.topMargin;
+		return copy;
+	}
+
+	private MaterialCardView buildBranchCard(int branch, int labelRes, int badgeRes, int descRes, boolean warningBadge) {
+		MaterialCardView card = ExtraSettingsUi.clickableCard(this);
+		// Base gray stroke; styleBranchCard refreshes selected/unselected colors.
+		card.setStrokeWidth(ExtraSettingsUi.dp(this, 2));
+		card.setStrokeColor(Color.rgb(90, 98, 112));
 		LinearLayout content = ExtraSettingsUi.cardContent(this, card);
-		content.addView(ExtraSettingsUi.iconTitleRow(this, R.drawable.ic_badge_24, R.string.steam_account_status_title, R.string.steam_account_status_subtitle, null));
-		statusText = ExtraSettingsUi.body(this, "");
-		ExtraSettingsUi.addSmallSpacing(content, statusText);
-		progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-		progressBar.setMax(100);
-		progressBar.setVisibility(View.GONE);
-		ExtraSettingsUi.addSmallSpacing(content, progressBar);
-		progressText = ExtraSettingsUi.caption(this, "");
-		ExtraSettingsUi.addSmallSpacing(content, progressText);
+		content.setPadding(ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 14));
 
+		LinearLayout row = ExtraSettingsUi.horizontal(this);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		View radio = createRadioDot(false);
+		if (branch == BRANCH_PUBLIC) {
+			radioPublic = radio;
+		} else if (branch == BRANCH_BETA) {
+			radioBeta = radio;
+		} else {
+			radioCustom = radio;
+		}
+		row.addView(radio);
+
+		LinearLayout texts = ExtraSettingsUi.vertical(this);
+		LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		textParams.setMarginStart(ExtraSettingsUi.dp(this, 12));
+		row.addView(texts, textParams);
+
+		LinearLayout titleRow = ExtraSettingsUi.horizontal(this);
+		titleRow.setGravity(Gravity.CENTER_VERTICAL);
+		TextView label = ExtraSettingsUi.label(this, labelRes);
+		label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+		titleRow.addView(label);
+		TextView badge = createBadge(getString(badgeRes), !warningBadge);
+		if (warningBadge) {
+			badge.setTextColor(ExtraSettingsUi.COLOR_WARNING);
+			GradientDrawable bg = new GradientDrawable();
+			bg.setColor(Color.argb(60, 255, 201, 111));
+			bg.setCornerRadius(ExtraSettingsUi.dp(this, 8));
+			badge.setBackground(bg);
+		}
+		LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		badgeParams.setMarginStart(ExtraSettingsUi.dp(this, 8));
+		titleRow.addView(badge, badgeParams);
+		texts.addView(titleRow);
+
+		TextView desc = ExtraSettingsUi.caption(this, getString(descRes));
+		LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		descParams.topMargin = ExtraSettingsUi.dp(this, 3);
+		texts.addView(desc, descParams);
+		content.addView(row);
+
+		if (branch == BRANCH_CUSTOM) {
+			branchCustomDetails = ExtraSettingsUi.vertical(this);
+			branchCustomDetails.setVisibility(View.GONE);
+			LinearLayout.LayoutParams detailsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			detailsParams.topMargin = ExtraSettingsUi.dp(this, 12);
+			content.addView(branchCustomDetails, detailsParams);
+			branchCustomDetails.addView(ExtraSettingsUi.divider(this));
+			TextInputLayout inputLayout = new TextInputLayout(this);
+			inputLayout.setHint(getString(R.string.steam_branch_custom_hint));
+			inputLayout.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
+			inputLayout.setBoxBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
+			customBranchInput = new TextInputEditText(inputLayout.getContext());
+			customBranchInput.setSingleLine(true);
+			customBranchInput.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+			customBranchInput.setHintTextColor(ExtraSettingsUi.COLOR_MUTED);
+			inputLayout.addView(customBranchInput);
+			LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			inputParams.topMargin = ExtraSettingsUi.dp(this, 10);
+			branchCustomDetails.addView(inputLayout, inputParams);
+		}
+
+		card.setOnClickListener(v -> {
+			if (busy) {
+				return;
+			}
+			selectedBranch = branch;
+			applyBranchSelection();
+		});
+		return card;
+	}
+
+	private void applyBranchSelection() {
+		styleBranchCard(branchPublicCard, radioPublic, selectedBranch == BRANCH_PUBLIC);
+		styleBranchCard(branchBetaCard, radioBeta, selectedBranch == BRANCH_BETA);
+		styleBranchCard(branchCustomCard, radioCustom, selectedBranch == BRANCH_CUSTOM);
+		if (branchCustomDetails != null) {
+			branchCustomDetails.setVisibility(selectedBranch == BRANCH_CUSTOM ? View.VISIBLE : View.GONE);
+		}
+	}
+
+	private void styleBranchCard(MaterialCardView card, View radio, boolean selected) {
+		if (card == null) {
+			return;
+		}
+		// Unselected: gray outline; selected: theme primary outline (clearer than bg alone).
+		int grayStroke = Color.rgb(90, 98, 112);
+		card.setStrokeWidth(ExtraSettingsUi.dp(this, selected ? 2.5f : 2f));
+		card.setStrokeColor(selected ? ExtraSettingsUi.COLOR_PRIMARY : grayStroke);
+		card.setCardBackgroundColor(selected ? Color.rgb(30, 50, 39) : Color.rgb(24, 28, 36));
+		if (radio instanceof ViewGroup) {
+			View inner = ((ViewGroup) radio).getChildCount() > 0 ? ((ViewGroup) radio).getChildAt(0) : null;
+			if (inner != null) {
+				GradientDrawable fill = new GradientDrawable();
+				fill.setShape(GradientDrawable.OVAL);
+				fill.setColor(selected ? ExtraSettingsUi.COLOR_PRIMARY : Color.TRANSPARENT);
+				inner.setBackground(fill);
+			}
+			GradientDrawable outer = new GradientDrawable();
+			outer.setShape(GradientDrawable.OVAL);
+			outer.setStroke(ExtraSettingsUi.dp(this, 2), selected ? ExtraSettingsUi.COLOR_PRIMARY : grayStroke);
+			outer.setColor(Color.TRANSPARENT);
+			radio.setBackground(outer);
+		}
+	}
+
+	private View createRadioDot(boolean selected) {
+		FrameLayout outer = new FrameLayout(this);
+		int size = ExtraSettingsUi.dp(this, 20);
+		outer.setLayoutParams(new LinearLayout.LayoutParams(size, size));
+		GradientDrawable ring = new GradientDrawable();
+		ring.setShape(GradientDrawable.OVAL);
+		ring.setStroke(ExtraSettingsUi.dp(this, 2), selected ? ExtraSettingsUi.COLOR_PRIMARY : ExtraSettingsUi.COLOR_OUTLINE);
+		ring.setColor(Color.TRANSPARENT);
+		outer.setBackground(ring);
+		View inner = new View(this);
+		int innerSize = ExtraSettingsUi.dp(this, 10);
+		FrameLayout.LayoutParams innerParams = new FrameLayout.LayoutParams(innerSize, innerSize, Gravity.CENTER);
+		GradientDrawable fill = new GradientDrawable();
+		fill.setShape(GradientDrawable.OVAL);
+		fill.setColor(selected ? ExtraSettingsUi.COLOR_PRIMARY : Color.TRANSPARENT);
+		inner.setBackground(fill);
+		outer.addView(inner, innerParams);
+		return outer;
+	}
+
+	private void populateCloudTab(LinearLayout root) {
+		MaterialCardView statusCard = ExtraSettingsUi.card(this);
+		LinearLayout statusContent = ExtraSettingsUi.cardContent(this, statusCard);
+		statusContent.addView(ExtraSettingsUi.iconTitleRow(this, R.drawable.ic_cloud_sync_24, R.string.steam_cloud_title, R.string.steam_cloud_subtitle, null));
+		cloudStatusBodyView = ExtraSettingsUi.body(this, "");
+		ExtraSettingsUi.addSmallSpacing(statusContent, cloudStatusBodyView);
+
+		TextView pathLabel = ExtraSettingsUi.caption(this, getString(R.string.steam_cloud_path_label));
+		ExtraSettingsUi.addSmallSpacing(statusContent, pathLabel);
+		LinearLayout pathRow = ExtraSettingsUi.horizontal(this);
+		pathRow.setGravity(Gravity.CENTER_VERTICAL);
+		pathRow.setPadding(ExtraSettingsUi.dp(this, 10), ExtraSettingsUi.dp(this, 10), ExtraSettingsUi.dp(this, 10), ExtraSettingsUi.dp(this, 10));
+		GradientDrawable pathBg = new GradientDrawable();
+		pathBg.setColor(ExtraSettingsUi.COLOR_SURFACE);
+		pathBg.setCornerRadius(ExtraSettingsUi.dp(this, 12));
+		pathBg.setStroke(ExtraSettingsUi.dp(this, 1), ExtraSettingsUi.COLOR_OUTLINE);
+		pathRow.setBackground(pathBg);
+		cloudPathView = ExtraSettingsUi.caption(this, "");
+		cloudPathView.setTypeface(Typeface.MONOSPACE);
+		cloudPathView.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT);
+		pathRow.addView(cloudPathView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+		MaterialButton copy = ExtraSettingsUi.iconButton(this, R.drawable.ic_content_copy_24);
+		copy.setContentDescription(getString(R.string.file_browser_copy));
+		copy.setOnClickListener(v -> {
+			CharSequence path = cloudPathView.getText();
+			if (!TextUtils.isEmpty(path)) {
+				ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+				if (clipboard != null) {
+					clipboard.setPrimaryClip(ClipData.newPlainText("steam-cloud-path", path));
+					showMessage(getString(R.string.steam_cloud_path_copied));
+				}
+			}
+		});
+		pathRow.addView(copy);
+		ExtraSettingsUi.addSmallSpacing(statusContent, pathRow);
+
+		MaterialCardView modeRow = ExtraSettingsUi.clickableCard(this);
+		LinearLayout modeContent = ExtraSettingsUi.cardContent(this, modeRow);
+		LinearLayout modeInner = ExtraSettingsUi.horizontal(this);
+		modeInner.setGravity(Gravity.CENTER_VERTICAL);
+		LinearLayout modeTexts = ExtraSettingsUi.vertical(this);
+		modeTexts.addView(ExtraSettingsUi.label(this, R.string.steam_cloud_mode_title));
+		cloudModeValueView = ExtraSettingsUi.caption(this, cloudModeLabel(SteamSettings.getCloudMode(this)));
+		LinearLayout.LayoutParams modeValueParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		modeValueParams.topMargin = ExtraSettingsUi.dp(this, 2);
+		modeTexts.addView(cloudModeValueView, modeValueParams);
+		modeInner.addView(modeTexts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+		modeInner.addView(ExtraSettingsUi.icon(this, R.drawable.ic_chevron_right_24, ExtraSettingsUi.COLOR_MUTED, 20));
+		modeContent.addView(modeInner);
+		// Nested card clicks can be flaky; also surface busy state instead of silent no-op.
+		View.OnClickListener openModeSheet = v -> {
+			if (busy) {
+				showMessage(getString(R.string.steam_status_cloud_busy));
+				return;
+			}
+			showCloudModeBottomSheet();
+		};
+		modeRow.setOnClickListener(openModeSheet);
+		modeContent.setOnClickListener(openModeSheet);
+		modeInner.setOnClickListener(openModeSheet);
+		ExtraSettingsUi.addSmallSpacing(statusContent, modeRow);
+
+		settingsSaveSwitch = new MaterialSwitch(this);
+		settingsSaveSwitch.setText(R.string.steam_cloud_sync_settings_save);
+		settingsSaveSwitch.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+		settingsSaveSwitch.setChecked(SteamSettings.shouldSyncSettingsSave(this));
+		settingsSaveSwitch.setOnCheckedChangeListener((button, checked) -> SteamSettings.setSyncSettingsSave(this, checked));
+		ExtraSettingsUi.addSmallSpacing(statusContent, settingsSaveSwitch);
+		TextView settingsHint = ExtraSettingsUi.caption(this, getString(R.string.steam_cloud_sync_settings_save_hint));
+		ExtraSettingsUi.addSmallSpacing(statusContent, settingsHint);
+		ExtraSettingsUi.addCardSpacing(root, statusCard);
+
+		LinearLayout actions = ExtraSettingsUi.vertical(this);
 		LinearLayout row1 = ExtraSettingsUi.horizontal(this);
+		row1.addView(buildCloudActionTile(R.drawable.ic_sync_24, R.string.steam_cloud_refresh, R.string.steam_cloud_action_refresh_hint, v -> runCloudOperation(operation -> operation.refreshManifest(this::setProgress))), gridParams(0));
+		row1.addView(buildCloudActionTile(R.drawable.ic_download_24, R.string.steam_cloud_pull, R.string.steam_cloud_action_pull_hint, v -> confirmCloudOverwrite()), gridParams(8));
+		actions.addView(row1);
+		LinearLayout row2 = ExtraSettingsUi.horizontal(this);
+		LinearLayout.LayoutParams row2Params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		row2Params.topMargin = ExtraSettingsUi.dp(this, 8);
+		actions.addView(row2, row2Params);
+		row2.addView(buildCloudActionTile(R.drawable.ic_upload_file_24, R.string.steam_cloud_push, R.string.steam_cloud_action_push_hint, v -> runCloudOperationWithConflictPrompt(operation -> operation.pushLocalChanges(false, this::setProgress))), gridParams(0));
+		row2.addView(buildCloudActionTile(R.drawable.ic_upload_file_24, R.string.steam_cloud_force_push, R.string.steam_cloud_action_force_hint, v -> confirmForcePush()), gridParams(8));
+		ExtraSettingsUi.addCardSpacing(root, actions);
+	}
+
+	private View buildCloudActionTile(int iconRes, int titleRes, int hintRes, View.OnClickListener listener) {
+		MaterialCardView card = ExtraSettingsUi.clickableCard(this);
+		LinearLayout content = ExtraSettingsUi.cardContent(this, card);
+		content.setGravity(Gravity.CENTER_HORIZONTAL);
+		content.setPadding(ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 16), ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 16));
+		content.addView(ExtraSettingsUi.iconCircle(this, iconRes, ExtraSettingsUi.COLOR_SECONDARY_CONTAINER, ExtraSettingsUi.COLOR_PRIMARY));
+		TextView title = ExtraSettingsUi.label(this, titleRes);
+		title.setGravity(Gravity.CENTER);
+		title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+		LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		titleParams.topMargin = ExtraSettingsUi.dp(this, 10);
+		content.addView(title, titleParams);
+		TextView hint = ExtraSettingsUi.caption(this, getString(hintRes));
+		hint.setGravity(Gravity.CENTER);
+		LinearLayout.LayoutParams hintParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		hintParams.topMargin = ExtraSettingsUi.dp(this, 4);
+		content.addView(hint, hintParams);
+		card.setOnClickListener(listener);
+		return card;
+	}
+
+	private LinearLayout.LayoutParams gridParams(int marginStartDp) {
+		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		if (marginStartDp > 0) {
+			params.setMarginStart(ExtraSettingsUi.dp(this, marginStartDp));
+		}
+		return params;
+	}
+
+	private void populateAccountTab(LinearLayout root) {
+		// Discord-style profile: gradient banner stays behind the avatar ring.
+		MaterialCardView profileCard = ExtraSettingsUi.card(this);
+		profileCard.setPadding(0, 0, 0, 0);
+		profileCard.setClipChildren(false);
+		profileCard.setClipToPadding(false);
+		profileCard.setClipToOutline(false);
+		LinearLayout profileRoot = ExtraSettingsUi.vertical(this);
+		profileRoot.setClipChildren(false);
+		profileRoot.setClipToPadding(false);
+		profileCard.addView(profileRoot, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+		int bannerHeight = ExtraSettingsUi.dp(this, 96);
+		int avatarSize = ExtraSettingsUi.dp(this, 80);
+		int avatarOverlap = avatarSize / 2;
+		FrameLayout header = new FrameLayout(this);
+		header.setClipChildren(false);
+		header.setClipToPadding(false);
+		// Extra height so the avatar (half on banner) is not clipped by siblings.
+		LinearLayout.LayoutParams headerParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, bannerHeight + avatarOverlap + ExtraSettingsUi.dp(this, 8));
+		profileRoot.addView(header, headerParams);
+
+		View banner = new View(this);
+		GradientDrawable bannerBg = new GradientDrawable(
+			GradientDrawable.Orientation.TL_BR,
+			new int[] { Color.rgb(31, 79, 49), Color.rgb(25, 29, 38), Color.rgb(42, 47, 61) }
+		);
+		banner.setBackground(bannerBg);
+		header.addView(banner, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, bannerHeight));
+
+		FrameLayout avatarWrap = new FrameLayout(this);
+		GradientDrawable avatarRing = new GradientDrawable();
+		avatarRing.setShape(GradientDrawable.OVAL);
+		avatarRing.setColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
+		avatarRing.setStroke(ExtraSettingsUi.dp(this, 5), ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
+		avatarWrap.setBackground(avatarRing);
+		avatarWrap.setElevation(ExtraSettingsUi.dp(this, 6));
+		FrameLayout.LayoutParams avatarWrapParams = new FrameLayout.LayoutParams(avatarSize, avatarSize);
+		avatarWrapParams.gravity = Gravity.START | Gravity.TOP;
+		avatarWrapParams.leftMargin = ExtraSettingsUi.dp(this, 18);
+		avatarWrapParams.topMargin = bannerHeight - avatarOverlap;
+		header.addView(avatarWrap, avatarWrapParams);
+
+		// Inner circle sized smaller than ring so the ring stroke remains visible.
+		LinearLayout avatarInner = new LinearLayout(this);
+		avatarInner.setGravity(Gravity.CENTER);
+		GradientDrawable avatarFill = new GradientDrawable();
+		avatarFill.setShape(GradientDrawable.OVAL);
+		avatarFill.setColor(ExtraSettingsUi.COLOR_PRIMARY_CONTAINER);
+		avatarInner.setBackground(avatarFill);
+		int innerSize = avatarSize - ExtraSettingsUi.dp(this, 10);
+		FrameLayout.LayoutParams avatarInnerParams = new FrameLayout.LayoutParams(innerSize, innerSize, Gravity.CENTER);
+		avatarWrap.addView(avatarInner, avatarInnerParams);
+		android.widget.ImageView steamIcon = ExtraSettingsUi.icon(this, R.drawable.ic_steam_24, ExtraSettingsUi.COLOR_ON_PRIMARY_CONTAINER, 36);
+		avatarInner.addView(steamIcon);
+
+		LinearLayout body = ExtraSettingsUi.vertical(this);
+		body.setPadding(ExtraSettingsUi.dp(this, 18), ExtraSettingsUi.dp(this, 4), ExtraSettingsUi.dp(this, 18), ExtraSettingsUi.dp(this, 18));
+		profileRoot.addView(body);
+
+		LinearLayout nameRow = ExtraSettingsUi.horizontal(this);
+		nameRow.setGravity(Gravity.CENTER_VERTICAL);
+		accountProfileNameView = ExtraSettingsUi.text(this, getString(R.string.steam_not_logged_in), 22, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
+		nameRow.addView(accountProfileNameView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+		accountProfileBadgeView = createBadge(getString(R.string.steam_center_offline_badge), false);
+		nameRow.addView(accountProfileBadgeView);
+		body.addView(nameRow);
+
+		accountProfileIdView = ExtraSettingsUi.caption(this, getString(R.string.steam_center_steamid_format, getString(R.string.unknown)));
+		accountProfileIdView.setTypeface(Typeface.MONOSPACE);
+		LinearLayout.LayoutParams idParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		idParams.topMargin = ExtraSettingsUi.dp(this, 4);
+		body.addView(accountProfileIdView, idParams);
+
+		MaterialCardView fieldsCard = ExtraSettingsUi.card(this);
+		fieldsCard.setRadius(ExtraSettingsUi.dp(this, 16));
+		fieldsCard.setCardBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
+		LinearLayout fields = ExtraSettingsUi.cardContent(this, fieldsCard);
+		fields.setPadding(ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 12), ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 12));
+		accountUsernameValueView = addProfileField(fields, R.string.steam_account_profile_username, getString(R.string.steam_not_logged_in), false);
+		fields.addView(ExtraSettingsUi.divider(this), dividerParams());
+		accountSteamIdValueView = addProfileField(fields, R.string.steam_account_profile_steamid, getString(R.string.unknown), true);
+		fields.addView(ExtraSettingsUi.divider(this), dividerParams());
+		tokenStatusView = addProfileField(fields, R.string.steam_account_profile_token, getString(R.string.steam_account_token_status_empty), false);
+		accountLastErrorRow = ExtraSettingsUi.vertical(this);
+		accountLastErrorRow.setVisibility(View.GONE);
+		accountLastErrorRow.addView(ExtraSettingsUi.divider(this), dividerParams());
+		accountLastErrorView = addProfileField(accountLastErrorRow, R.string.steam_account_profile_last_error, "", false);
+		accountLastErrorView.setTextColor(ExtraSettingsUi.COLOR_ERROR);
+		fields.addView(accountLastErrorRow);
+		LinearLayout.LayoutParams fieldsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		fieldsParams.topMargin = ExtraSettingsUi.dp(this, 16);
+		body.addView(fieldsCard, fieldsParams);
+
+		LinearLayout actions = ExtraSettingsUi.horizontal(this);
 		MaterialButton login = ExtraSettingsUi.tonalButton(this, R.string.steam_login, R.drawable.ic_badge_24);
 		MaterialButton verify = ExtraSettingsUi.outlineButton(this, R.string.steam_verify_login, R.drawable.ic_check_circle_24);
 		login.setOnClickListener(v -> showLoginDialog());
@@ -166,12 +738,51 @@ public class SteamAccountActivity extends AppCompatActivity {
 			String steamId = SteamLoginCoordinator.verifyRefreshToken(this);
 			return getString(R.string.steam_status_verified, steamId);
 		}));
-		row1.addView(login, weighted(0));
-		row1.addView(verify, weighted(10));
-		ExtraSettingsUi.addSmallSpacing(content, row1);
+		actions.addView(login, weighted(0));
+		actions.addView(verify, weighted(10));
+		LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		actionsParams.topMargin = ExtraSettingsUi.dp(this, 14);
+		body.addView(actions, actionsParams);
 
 		MaterialButton logout = ExtraSettingsUi.outlineButton(this, R.string.steam_logout, R.drawable.ic_delete_24);
-		logout.setOnClickListener(v -> new MaterialAlertDialogBuilder(this)
+		logout.setOnClickListener(v -> confirmLogout());
+		LinearLayout.LayoutParams logoutParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		logoutParams.topMargin = ExtraSettingsUi.dp(this, 8);
+		body.addView(logout, logoutParams);
+
+		ExtraSettingsUi.addCardSpacing(root, profileCard);
+
+		MaterialButton openSafety = ExtraSettingsUi.outlineButton(this, R.string.steam_account_safety_notice_open, R.drawable.ic_info_24);
+		openSafety.setOnClickListener(v -> showSafetyNoticeDialog(false));
+		ExtraSettingsUi.addCardSpacing(root, openSafety);
+	}
+
+	private TextView addProfileField(LinearLayout parent, int labelRes, String value, boolean mono) {
+		LinearLayout field = ExtraSettingsUi.vertical(this);
+		TextView label = ExtraSettingsUi.caption(this, getString(labelRes).toUpperCase(Locale.getDefault()));
+		label.setTypeface(Typeface.DEFAULT_BOLD);
+		label.setLetterSpacing(0.06f);
+		field.addView(label);
+		TextView valueView = ExtraSettingsUi.text(this, value == null ? "" : value, 15, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
+		if (mono) {
+			valueView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+		}
+		LinearLayout.LayoutParams valueParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		valueParams.topMargin = ExtraSettingsUi.dp(this, 3);
+		field.addView(valueView, valueParams);
+		parent.addView(field, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		return valueView;
+	}
+
+	private LinearLayout.LayoutParams dividerParams() {
+		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ExtraSettingsUi.dp(this, 1));
+		params.topMargin = ExtraSettingsUi.dp(this, 10);
+		params.bottomMargin = ExtraSettingsUi.dp(this, 10);
+		return params;
+	}
+
+	private void confirmLogout() {
+		new MaterialAlertDialogBuilder(this)
 			.setTitle(R.string.steam_logout_confirm_title)
 			.setMessage(R.string.steam_logout_confirm_message)
 			.setNegativeButton(android.R.string.cancel, null)
@@ -180,98 +791,170 @@ public class SteamAccountActivity extends AppCompatActivity {
 				refreshStatus();
 				showMessage(getString(R.string.steam_logged_out));
 			})
-			.show());
-		ExtraSettingsUi.addSmallSpacing(content, logout);
-		return card;
+			.show();
 	}
 
-	private View buildDownloadCard() {
-		MaterialCardView card = ExtraSettingsUi.card(this);
-		LinearLayout content = ExtraSettingsUi.cardContent(this, card);
-		content.addView(ExtraSettingsUi.iconTitleRow(this, R.drawable.ic_download_24, R.string.steam_payload_download_title, R.string.steam_payload_download_subtitle, null));
-		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(this, getString(R.string.steam_payload_download_hint)));
-		MaterialButton download = ExtraSettingsUi.tonalButton(this, R.string.steam_payload_download_button, R.drawable.ic_download_24);
-		download.setOnClickListener(v -> showDownloadBranchDialog());
-		ExtraSettingsUi.addSmallSpacing(content, download);
-		return card;
-	}
+	private void showCloudModeBottomSheet() {
+		try {
+			List<String> values = Arrays.asList(
+				SteamSettings.CLOUD_MODE_OFF,
+				SteamSettings.CLOUD_MODE_MANUAL,
+				SteamSettings.CLOUD_MODE_PULL_ON_LAUNCH,
+				SteamSettings.CLOUD_MODE_FULL_AUTO
+			);
+			List<String> labels = Arrays.asList(
+				getString(R.string.steam_cloud_mode_off),
+				getString(R.string.steam_cloud_mode_manual),
+				getString(R.string.steam_cloud_mode_pull_on_launch),
+				getString(R.string.steam_cloud_mode_full_auto)
+			);
+			List<String> descriptions = Arrays.asList(
+				getString(R.string.steam_cloud_mode_off_desc),
+				getString(R.string.steam_cloud_mode_manual_desc),
+				getString(R.string.steam_cloud_mode_pull_on_launch_desc),
+				getString(R.string.steam_cloud_mode_full_auto_desc)
+			);
+			int[] icons = {
+				R.drawable.ic_close_24,
+				R.drawable.ic_touch_app_24,
+				R.drawable.ic_download_24,
+				R.drawable.ic_cloud_sync_24
+			};
+			String current = SteamSettings.getCloudMode(this);
+			BottomSheetDialog dialog = new BottomSheetDialog(this);
+			LinearLayout sheetRoot = ExtraSettingsUi.vertical(this);
+			sheetRoot.setBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
+			int pad = ExtraSettingsUi.dp(this, 20);
+			sheetRoot.setPadding(pad, ExtraSettingsUi.dp(this, 12), pad, ExtraSettingsUi.dp(this, 28));
 
-	private View buildCloudCard() {
-		MaterialCardView card = ExtraSettingsUi.card(this);
-		LinearLayout content = ExtraSettingsUi.cardContent(this, card);
-		content.addView(ExtraSettingsUi.iconTitleRow(this, R.drawable.ic_steam_24, R.string.steam_cloud_title, R.string.steam_cloud_subtitle, null));
-		Sts2SteamCloudSyncManager.Status status = new Sts2SteamCloudSyncManager(this).getStatus();
-		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.body(this, getString(R.string.steam_cloud_profile_status, status.profileId, status.remoteFileCount, status.hasBaseline ? getString(R.string.yes) : getString(R.string.no))));
-		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(this, status.accountRoot.getAbsolutePath()));
+			View handle = new View(this);
+			GradientDrawable handleBg = new GradientDrawable();
+			handleBg.setColor(ExtraSettingsUi.COLOR_OUTLINE);
+			handleBg.setCornerRadius(ExtraSettingsUi.dp(this, 100));
+			handle.setBackground(handleBg);
+			LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 36), ExtraSettingsUi.dp(this, 4));
+			handleParams.gravity = Gravity.CENTER_HORIZONTAL;
+			handleParams.bottomMargin = ExtraSettingsUi.dp(this, 12);
+			sheetRoot.addView(handle, handleParams);
+			sheetRoot.addView(ExtraSettingsUi.sectionTitle(this, R.string.steam_cloud_mode_title));
 
-		LinearLayout modeRow = ExtraSettingsUi.horizontal(this);
-		modeRow.addView(ExtraSettingsUi.body(this, R.string.steam_cloud_mode_title), weighted(0));
-		Spinner modeSpinner = new Spinner(this);
-		List<String> labels = Arrays.asList(
-			getString(R.string.steam_cloud_mode_off),
-			getString(R.string.steam_cloud_mode_manual),
-			getString(R.string.steam_cloud_mode_pull_on_launch),
-			getString(R.string.steam_cloud_mode_full_auto)
-		);
-		List<String> values = Arrays.asList(SteamSettings.CLOUD_MODE_OFF, SteamSettings.CLOUD_MODE_MANUAL, SteamSettings.CLOUD_MODE_PULL_ON_LAUNCH, SteamSettings.CLOUD_MODE_FULL_AUTO);
-		ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, labels);
-		adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-		modeSpinner.setAdapter(adapter);
-		modeSpinner.setSelection(Math.max(0, values.indexOf(SteamSettings.getCloudMode(this))), false);
-		modeSpinner.post(() -> modeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-			@Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-				SteamSettings.setCloudMode(SteamAccountActivity.this, values.get(position));
-				refreshStatusOnly();
+			for (int i = 0; i < values.size(); i++) {
+				final int index = i;
+				boolean selected = values.get(i).equals(current);
+				MaterialCardView option = ExtraSettingsUi.clickableCard(this);
+				option.setStrokeWidth(ExtraSettingsUi.dp(this, selected ? 2.5f : 2f));
+				option.setStrokeColor(selected ? ExtraSettingsUi.COLOR_PRIMARY : Color.rgb(90, 98, 112));
+				option.setCardBackgroundColor(selected ? Color.rgb(30, 50, 39) : Color.rgb(24, 28, 36));
+				LinearLayout optionContent = ExtraSettingsUi.cardContent(this, option);
+				LinearLayout row = ExtraSettingsUi.horizontal(this);
+				row.setGravity(Gravity.CENTER_VERTICAL);
+				int iconBg = selected ? ExtraSettingsUi.COLOR_PRIMARY_CONTAINER : ExtraSettingsUi.COLOR_SECONDARY_CONTAINER;
+				int iconTint = selected ? ExtraSettingsUi.COLOR_ON_PRIMARY_CONTAINER : ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT;
+				row.addView(ExtraSettingsUi.iconCircle(this, icons[i], iconBg, iconTint));
+				LinearLayout texts = ExtraSettingsUi.vertical(this);
+				LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+				textParams.setMarginStart(ExtraSettingsUi.dp(this, 12));
+				row.addView(texts, textParams);
+				TextView label = ExtraSettingsUi.sectionTitle(this, labels.get(i));
+				label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+				texts.addView(label);
+				TextView desc = ExtraSettingsUi.caption(this, descriptions.get(i));
+				LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+				descParams.topMargin = ExtraSettingsUi.dp(this, 4);
+				texts.addView(desc, descParams);
+				optionContent.addView(row);
+				option.setOnClickListener(v -> {
+					SteamSettings.setCloudMode(this, values.get(index));
+					refreshStatusOnly();
+					dialog.dismiss();
+				});
+				LinearLayout.LayoutParams optionParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+				optionParams.topMargin = ExtraSettingsUi.dp(this, 10);
+				sheetRoot.addView(option, optionParams);
 			}
-			@Override public void onNothingSelected(AdapterView<?> parent) {}
-		}));
-		modeRow.addView(modeSpinner, weighted(10));
-		ExtraSettingsUi.addSmallSpacing(content, modeRow);
 
-		MaterialSwitch settingsSwitch = new MaterialSwitch(this);
-		settingsSwitch.setText(R.string.steam_cloud_sync_settings_save);
-		settingsSwitch.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT);
-		settingsSwitch.setChecked(SteamSettings.shouldSyncSettingsSave(this));
-		settingsSwitch.setOnCheckedChangeListener((button, checked) -> SteamSettings.setSyncSettingsSave(this, checked));
-		ExtraSettingsUi.addSmallSpacing(content, settingsSwitch);
-
-		LinearLayout row1 = ExtraSettingsUi.horizontal(this);
-		MaterialButton refresh = ExtraSettingsUi.outlineButton(this, R.string.steam_cloud_refresh, R.drawable.ic_sync_24);
-		MaterialButton pull = ExtraSettingsUi.tonalButton(this, R.string.steam_cloud_pull, R.drawable.ic_download_24);
-		refresh.setOnClickListener(v -> runCloudOperation(operation -> operation.refreshManifest(this::setProgress)));
-		pull.setOnClickListener(v -> confirmCloudOverwrite(false));
-		row1.addView(refresh, weighted(0));
-		row1.addView(pull, weighted(10));
-		ExtraSettingsUi.addSmallSpacing(content, row1);
-
-		LinearLayout row2 = ExtraSettingsUi.horizontal(this);
-		MaterialButton push = ExtraSettingsUi.outlineButton(this, R.string.steam_cloud_push, R.drawable.ic_upload_file_24);
-		MaterialButton forcePush = ExtraSettingsUi.outlineButton(this, R.string.steam_cloud_force_push, R.drawable.ic_upload_file_24);
-		push.setOnClickListener(v -> runCloudOperationWithConflictPrompt(operation -> operation.pushLocalChanges(false, this::setProgress)));
-		forcePush.setOnClickListener(v -> confirmForcePush());
-		row2.addView(push, weighted(0));
-		row2.addView(forcePush, weighted(10));
-		ExtraSettingsUi.addSmallSpacing(content, row2);
-		return card;
+			ScrollView scroll = new ScrollView(this);
+			scroll.setFillViewport(true);
+			scroll.addView(sheetRoot, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+			dialog.setContentView(scroll);
+			dialog.setOnShowListener(shown -> {
+				FrameLayout bottomSheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+				if (bottomSheet != null) {
+					bottomSheet.setBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
+					ViewGroup.LayoutParams params = bottomSheet.getLayoutParams();
+					if (params != null) {
+						params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+						bottomSheet.setLayoutParams(params);
+					}
+					com.google.android.material.bottomsheet.BottomSheetBehavior<FrameLayout> behavior =
+						com.google.android.material.bottomsheet.BottomSheetBehavior.from(bottomSheet);
+					behavior.setSkipCollapsed(true);
+					behavior.setState(com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED);
+					behavior.setDraggable(true);
+				}
+				if (dialog.getWindow() != null) {
+					dialog.getWindow().setDimAmount(0.48f);
+				}
+			});
+			dialog.show();
+		} catch (RuntimeException error) {
+			android.util.Log.e("Sts2Re", "showCloudModeBottomSheet failed", error);
+			// Fallback if BottomSheet cannot show: simple list dialog keeps mode selectable.
+			List<String> labels = Arrays.asList(
+				getString(R.string.steam_cloud_mode_off),
+				getString(R.string.steam_cloud_mode_manual),
+				getString(R.string.steam_cloud_mode_pull_on_launch),
+				getString(R.string.steam_cloud_mode_full_auto)
+			);
+			List<String> values = Arrays.asList(
+				SteamSettings.CLOUD_MODE_OFF,
+				SteamSettings.CLOUD_MODE_MANUAL,
+				SteamSettings.CLOUD_MODE_PULL_ON_LAUNCH,
+				SteamSettings.CLOUD_MODE_FULL_AUTO
+			);
+			int selected = Math.max(0, values.indexOf(SteamSettings.getCloudMode(this)));
+			new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.steam_cloud_mode_title)
+				.setSingleChoiceItems(labels.toArray(new String[0]), selected, (d, which) -> {
+					SteamSettings.setCloudMode(this, values.get(which));
+					refreshStatusOnly();
+					d.dismiss();
+				})
+				.setNegativeButton(android.R.string.cancel, null)
+				.show();
+		}
 	}
 
 	private void showLoginDialog() {
 		LinearLayout content = ExtraSettingsUi.vertical(this);
 		int padding = ExtraSettingsUi.dp(this, 8);
 		content.setPadding(padding, padding, padding, 0);
-		EditText username = new EditText(this);
-		username.setHint(R.string.steam_username_hint);
+
+		TextInputLayout usernameLayout = new TextInputLayout(this);
+		usernameLayout.setHint(getString(R.string.steam_username_hint));
+		usernameLayout.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
+		TextInputEditText username = new TextInputEditText(usernameLayout.getContext());
 		username.setSingleLine(true);
-		EditText password = new EditText(this);
-		password.setHint(R.string.steam_password_hint);
+		username.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+		usernameLayout.addView(username);
+		content.addView(usernameLayout);
+
+		TextInputLayout passwordLayout = new TextInputLayout(this);
+		passwordLayout.setHint(getString(R.string.steam_password_hint));
+		passwordLayout.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
+		TextInputEditText password = new TextInputEditText(passwordLayout.getContext());
 		password.setSingleLine(true);
 		password.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-		content.addView(username);
-		content.addView(password);
+		password.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+		passwordLayout.addView(password);
+		LinearLayout.LayoutParams passwordParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		passwordParams.topMargin = ExtraSettingsUi.dp(this, 10);
+		content.addView(passwordLayout, passwordParams);
+
 		SteamAuthStore.AuthSnapshot snapshot = SteamAuthStore.readSnapshot(this);
 		if (!TextUtils.isEmpty(snapshot.accountName)) {
 			username.setText(snapshot.accountName);
-			username.setSelection(username.getText().length());
+			username.setSelection(username.getText() == null ? 0 : username.getText().length());
 		}
 		new MaterialAlertDialogBuilder(this)
 			.setTitle(R.string.steam_login)
@@ -289,31 +972,114 @@ public class SteamAccountActivity extends AppCompatActivity {
 			.show();
 	}
 
-	private void showDownloadBranchDialog() {
-		EditText branch = new EditText(this);
-		branch.setSingleLine(true);
-		branch.setText(Sts2SteamPayloadDownloader.DEFAULT_BRANCH);
-		branch.setSelection(branch.getText().length());
-		new MaterialAlertDialogBuilder(this)
-			.setTitle(R.string.steam_payload_download_button)
-			.setMessage(R.string.steam_payload_branch_message)
-			.setView(branch)
-			.setNegativeButton(android.R.string.cancel, null)
-			.setPositiveButton(R.string.steam_payload_download_button, (dialog, which) -> {
-				String selectedBranch = branch.getText() == null ? "" : branch.getText().toString();
-				runOperation(getString(R.string.steam_status_downloading_payload), () -> {
-					PayloadManager.ImportControl control = new PayloadManager.ImportControl();
-					PayloadManager.Status status = new Sts2SteamPayloadDownloader(this).downloadAndInstall(selectedBranch, progress -> {
-						runOnUiThread(() -> setProgress(progress.getPercent(), progress.getMessage()));
-						return kotlin.Unit.INSTANCE;
-					}, control);
-					return getString(R.string.status_import_game_payload_done, status.shortVersionLabel());
+	private void startPayloadDownload() {
+		SteamAuthStore.AuthSnapshot snapshot = SteamAuthStore.readSnapshot(this);
+		if (!snapshot.refreshTokenConfigured) {
+			showMessage(getString(R.string.steam_download_login_required));
+			showLoginDialog();
+			return;
+		}
+		String branch = resolveSelectedBranch();
+		if (TextUtils.isEmpty(branch)) {
+			showMessage(getString(R.string.steam_branch_custom_required));
+			return;
+		}
+		if (busy) {
+			return;
+		}
+		busy = true;
+		downloadingPayload = true;
+		activeDownloadControl = new PayloadManager.ImportControl();
+		if (downloadProgressPanel != null) {
+			downloadProgressPanel.reset(branch);
+			downloadProgressPanel.setCancelEnabled(true);
+		}
+		updateDownloadUiVisibility();
+		setProgress(0, getString(R.string.steam_status_downloading_payload));
+		final PayloadManager.ImportControl control = activeDownloadControl;
+		new Thread(() -> {
+			try {
+				PayloadManager.Status status = new Sts2SteamPayloadDownloader(this).downloadAndInstall(branch, progress -> {
+					runOnUiThread(() -> {
+						if (downloadProgressPanel != null) {
+							downloadProgressPanel.update(
+								progress.getPhase(),
+								progress.getPercent(),
+								progress.getMessage(),
+								progress.getDownloadedBytes(),
+								progress.getTotalBytes()
+							);
+						}
+						setProgress(progress.getPercent(), progress.getMessage());
+					});
+					return kotlin.Unit.INSTANCE;
+				}, control);
+				String result = getString(R.string.status_import_game_payload_done, status.shortVersionLabel());
+				runOnUiThread(() -> {
+					busy = false;
+					downloadingPayload = false;
+					activeDownloadControl = null;
+					if (downloadProgressPanel != null) {
+						downloadProgressPanel.stopAnimations();
+					}
+					updateDownloadUiVisibility();
+					setProgress(100, result);
+					refreshStatus();
+					showMessage(result);
 				});
-			})
-			.show();
+			} catch (Exception exception) {
+				runOnUiThread(() -> {
+					busy = false;
+					downloadingPayload = false;
+					activeDownloadControl = null;
+					if (downloadProgressPanel != null) {
+						downloadProgressPanel.stopAnimations();
+					}
+					updateDownloadUiVisibility();
+					String message;
+					if (control != null && control.isCancelled()) {
+						message = getString(R.string.steam_download_cancelled);
+					} else {
+						message = formatOperationError(exception);
+					}
+					refreshStatusOnly();
+					showMessage(control != null && control.isCancelled()
+						? message
+						: getString(R.string.error_operation_failed) + ": " + message);
+				});
+			}
+		}, "sts2-steam-payload-download").start();
 	}
 
-	private void confirmCloudOverwrite(boolean unused) {
+	private String resolveSelectedBranch() {
+		if (selectedBranch == BRANCH_BETA) {
+			return "public-beta";
+		}
+		if (selectedBranch == BRANCH_CUSTOM) {
+			CharSequence value = customBranchInput == null ? null : customBranchInput.getText();
+			return value == null ? "" : value.toString().trim();
+		}
+		return Sts2SteamPayloadDownloader.DEFAULT_BRANCH;
+	}
+
+	private void updateDownloadUiVisibility() {
+		if (downloadSetupBlock != null) {
+			downloadSetupBlock.setVisibility(downloadingPayload ? View.GONE : View.VISIBLE);
+		}
+		if (downloadProgressPanel != null) {
+			downloadProgressPanel.getView().setVisibility(downloadingPayload ? View.VISIBLE : View.GONE);
+		}
+		if (downloadButton != null) {
+			downloadButton.setEnabled(!busy);
+		}
+		if (branchPublicCard != null) {
+			branchPublicCard.setEnabled(!busy);
+			branchBetaCard.setEnabled(!busy);
+			branchCustomCard.setEnabled(!busy);
+		}
+	}
+
+	private void confirmCloudOverwrite() {
 		new MaterialAlertDialogBuilder(this)
 			.setTitle(R.string.steam_cloud_pull_confirm_title)
 			.setMessage(R.string.steam_cloud_pull_confirm_message)
@@ -358,13 +1124,11 @@ public class SteamAccountActivity extends AppCompatActivity {
 				runOnUiThread(() -> {
 					busy = false;
 					dismissOperationDialog();
-					progressBar.setVisibility(View.GONE);
 					refreshStatusOnly();
 					if (conflict != null) {
 						showCloudConflictDialog(conflict);
 					} else {
 						String message = formatOperationError(exception);
-						progressText.setText(message);
 						showMessage(getString(R.string.error_operation_failed) + ": " + message);
 					}
 				});
@@ -423,9 +1187,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 				runOnUiThread(() -> {
 					busy = false;
 					dismissOperationDialog();
-					progressBar.setVisibility(View.GONE);
 					String message = formatOperationError(exception);
-					progressText.setText(message);
 					refreshStatusOnly();
 					showMessage(getString(R.string.error_operation_failed) + ": " + message);
 				});
@@ -587,6 +1349,9 @@ public class SteamAccountActivity extends AppCompatActivity {
 	}
 
 	private void showOperationDialog(String message) {
+		if (downloadingPayload) {
+			return;
+		}
 		dismissOperationDialog();
 		operationDialog = new SteamOperationProgressDialog(this, getString(R.string.steam_operation_progress_title), message);
 		operationDialog.show();
@@ -601,12 +1366,6 @@ public class SteamAccountActivity extends AppCompatActivity {
 
 	private void setProgress(int percent, String message) {
 		runOnUiThread(() -> {
-			progressBar.setVisibility(View.VISIBLE);
-			progressBar.setIndeterminate(percent < 0);
-			if (percent >= 0) {
-				progressBar.setProgress(Math.max(0, Math.min(100, percent)));
-			}
-			progressText.setText(message == null ? "" : message);
 			if (operationDialog != null) {
 				operationDialog.setProgress(percent, message);
 			}
@@ -618,18 +1377,113 @@ public class SteamAccountActivity extends AppCompatActivity {
 	}
 
 	private void refreshStatusOnly() {
-		if (statusText == null) {
-			return;
-		}
 		SteamAuthStore.AuthSnapshot snapshot = SteamAuthStore.readSnapshot(this);
-		String account = snapshot.refreshTokenConfigured ? snapshot.accountName : getString(R.string.steam_not_logged_in);
+		boolean loggedIn = snapshot.refreshTokenConfigured;
+		String account = loggedIn
+			? (TextUtils.isEmpty(snapshot.accountName) ? getString(R.string.steam_account_title) : snapshot.accountName)
+			: getString(R.string.steam_not_logged_in);
 		String steamId = TextUtils.isEmpty(snapshot.steamId64) ? getString(R.string.unknown) : snapshot.steamId64;
-		String mode = SteamSettings.getCloudMode(this);
-		statusText.setText(getString(R.string.steam_account_status_format, account, steamId, mode, formatStoredError(snapshot.lastError)));
+		if (profileNameView != null) {
+			profileNameView.setText(account);
+		}
+		if (profileIdView != null) {
+			profileIdView.setText(getString(R.string.steam_center_steamid_format, steamId));
+		}
+		if (profileBadgeView != null) {
+			profileBadgeView.setText(loggedIn ? R.string.steam_center_online_badge : R.string.steam_center_offline_badge);
+			styleBadge(profileBadgeView, loggedIn);
+		}
+		if (accountProfileNameView != null) {
+			accountProfileNameView.setText(account);
+		}
+		if (accountProfileIdView != null) {
+			accountProfileIdView.setText(getString(R.string.steam_center_steamid_format, steamId));
+		}
+		if (accountProfileBadgeView != null) {
+			accountProfileBadgeView.setText(loggedIn ? R.string.steam_center_online_badge : R.string.steam_center_offline_badge);
+			styleBadge(accountProfileBadgeView, loggedIn);
+		}
+		if (accountUsernameValueView != null) {
+			accountUsernameValueView.setText(account);
+		}
+		if (accountSteamIdValueView != null) {
+			accountSteamIdValueView.setText(steamId);
+		}
+		if (tokenStatusView != null) {
+			tokenStatusView.setText(loggedIn ? R.string.steam_account_token_status_ready : R.string.steam_account_token_status_empty);
+		}
+		if (accountLastErrorView != null && accountLastErrorRow != null) {
+			String error = formatStoredError(snapshot.lastError);
+			if (TextUtils.isEmpty(error)) {
+				accountLastErrorRow.setVisibility(View.GONE);
+				accountLastErrorView.setText("");
+			} else {
+				accountLastErrorRow.setVisibility(View.VISIBLE);
+				accountLastErrorView.setText(error);
+			}
+		}
+		if (cloudStatusBodyView != null || cloudPathView != null || cloudModeValueView != null) {
+			Sts2SteamCloudSyncManager.Status status = new Sts2SteamCloudSyncManager(this).getStatus();
+			if (cloudStatusBodyView != null) {
+				cloudStatusBodyView.setText(getString(
+					R.string.steam_cloud_profile_status,
+					status.profileId,
+					status.remoteFileCount,
+					status.hasBaseline ? getString(R.string.yes) : getString(R.string.no)
+				));
+			}
+			if (cloudPathView != null) {
+				cloudPathView.setText(status.accountRoot.getAbsolutePath());
+			}
+			if (cloudModeValueView != null) {
+				cloudModeValueView.setText(cloudModeLabel(SteamSettings.getCloudMode(this)));
+			}
+			if (settingsSaveSwitch != null && settingsSaveSwitch.isChecked() != SteamSettings.shouldSyncSettingsSave(this)) {
+				settingsSaveSwitch.setChecked(SteamSettings.shouldSyncSettingsSave(this));
+			}
+		}
+	}
+
+	private String cloudModeLabel(String mode) {
+		if (SteamSettings.CLOUD_MODE_MANUAL.equals(mode)) {
+			return getString(R.string.steam_cloud_mode_manual);
+		}
+		if (SteamSettings.CLOUD_MODE_PULL_ON_LAUNCH.equals(mode)) {
+			return getString(R.string.steam_cloud_mode_pull_on_launch);
+		}
+		if (SteamSettings.CLOUD_MODE_FULL_AUTO.equals(mode)) {
+			return getString(R.string.steam_cloud_mode_full_auto);
+		}
+		return getString(R.string.steam_cloud_mode_off);
+	}
+
+	private TextView createBadge(String text, boolean success) {
+		TextView view = ExtraSettingsUi.caption(this, text);
+		view.setTypeface(Typeface.DEFAULT_BOLD);
+		view.setPadding(ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 3), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 3));
+		styleBadge(view, success);
+		return view;
+	}
+
+	private void styleBadge(TextView view, boolean success) {
+		view.setTextColor(success ? ExtraSettingsUi.COLOR_ON_PRIMARY_CONTAINER : ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT);
+		GradientDrawable bg = new GradientDrawable();
+		bg.setCornerRadius(ExtraSettingsUi.dp(this, 8));
+		if (success) {
+			bg.setColor(Color.argb(180, 31, 79, 49));
+			bg.setStroke(ExtraSettingsUi.dp(this, 1), Color.argb(120, 166, 211, 183));
+		} else {
+			bg.setColor(ExtraSettingsUi.COLOR_SECONDARY_CONTAINER);
+			bg.setStroke(ExtraSettingsUi.dp(this, 1), ExtraSettingsUi.COLOR_OUTLINE);
+		}
+		view.setBackground(bg);
 	}
 
 	private void showMessage(String message) {
-		Snackbar.make(findViewById(android.R.id.content), message, Snackbar.LENGTH_LONG).show();
+		View content = findViewById(android.R.id.content);
+		if (content != null) {
+			Snackbar.make(content, message, Snackbar.LENGTH_LONG).show();
+		}
 	}
 
 	private LinearLayout.LayoutParams weighted(int marginStartDp) {

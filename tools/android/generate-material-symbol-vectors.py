@@ -34,6 +34,7 @@ DEFAULT_FONT_UNITS = 960
 STATIC_GLYPHS = [
     "block",
     "cloud_done",
+    "content_copy",
     "gamepad",
     "login",
     "play_arrow",

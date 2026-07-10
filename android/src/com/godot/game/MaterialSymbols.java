@@ -108,6 +108,7 @@ public final class MaterialSymbols {
 		if (iconRes == R.drawable.ic_cloud_sync_24) return "cloud_sync";
 		if (iconRes == R.drawable.ic_code_24) return "code";
 		if (iconRes == R.drawable.ic_compare_arrows_24) return "compare_arrows";
+		if (iconRes == R.drawable.ic_content_copy_24) return "content_copy";
 		if (iconRes == R.drawable.ic_controller_24) return "stadia_controller";
 		if (iconRes == R.drawable.ic_dashboard_24) return "dashboard";
 		if (iconRes == R.drawable.ic_delete_24) return "delete";
@@ -166,6 +167,7 @@ public final class MaterialSymbols {
 		if ("check_circle".equals(glyph)) return R.drawable.ic_ms_check_circle_24;
 		if ("chevron_right".equals(glyph)) return R.drawable.ic_ms_chevron_right_24;
 		if ("close".equals(glyph)) return R.drawable.ic_ms_close_24;
+		if ("content_copy".equals(glyph)) return R.drawable.ic_ms_content_copy_24;
 		if ("cloud_done".equals(glyph)) return R.drawable.ic_ms_cloud_done_24;
 		if ("cloud_sync".equals(glyph)) return R.drawable.ic_ms_cloud_sync_24;
 		if ("code".equals(glyph)) return R.drawable.ic_ms_code_24;
