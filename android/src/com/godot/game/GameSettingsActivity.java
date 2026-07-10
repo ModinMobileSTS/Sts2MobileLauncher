@@ -335,6 +335,10 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				showCompatMismatchDialog(payloadStatus, selectedCompatPack);
 				return;
 			}
+			if (compatPackManager.requiresOfflineBootstrapApproval(selectedCompatPack, payloadStatus.manifest)) {
+				showOfflineBootstrapLaunchWarning(payloadStatus, selectedCompatPack);
+				return;
+			}
 			prepareAndStartGameAfterOptionalSteamCloudPull();
 		} catch (Exception exception) {
 			showError(exception);
@@ -718,7 +722,11 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				picks.add(new CompatPick(pack.packId, pack.targetId));
 				String label = getString(R.string.version_manager_selected_compat_format, pack.displayName, pack.targetLabel());
 				if (selectedPayload != null && compatPackManager.isPackCompatibleWithPayload(pack, selectedPayload.manifest)) {
-					label = label + " ✓";
+					if (compatPackManager.isOfflineBootstrapPack(pack)) {
+						label = label + " " + getString(R.string.launch_profile_compat_offline_fallback_badge);
+					} else {
+						label = label + " ✓";
+					}
 				}
 				labels.add(label);
 				if (pack.packId.equals(currentCompatPackId) && stringsEqual(pack.targetId, currentCompatTargetId)) {
@@ -1208,6 +1216,34 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				openVersionsTab();
 			})
 			.setPositiveButton(R.string.launch_anyway, (dialog, which) -> prepareAndStartGame())
+			.show();
+	}
+
+	private void showOfflineBootstrapLaunchWarning(PayloadManager.Status payloadStatus, CompatPackManager.CompatPack selectedCompatPack) {
+		String payloadVersion = compatPackManager.getPayloadVersion(payloadStatus.manifest);
+		if (TextUtils.isEmpty(payloadVersion)) {
+			payloadVersion = payloadStatus.shortVersionLabel();
+		}
+		String dllSha = compatPackManager.getPayloadSts2DllSha256(payloadStatus.manifest);
+		if (!TextUtils.isEmpty(dllSha) && dllSha.length() > 12) {
+			dllSha = dllSha.substring(0, 12);
+		}
+		if (TextUtils.isEmpty(dllSha)) {
+			dllSha = getString(R.string.unknown);
+		}
+		String message = getString(R.string.launch_offline_bootstrap_dialog_message, selectedCompatPack.displayName, selectedCompatPack.targetLabel(), payloadVersion, dllSha);
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.launch_offline_bootstrap_dialog_title)
+			.setMessage(message)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setNeutralButton(R.string.version_manager_tab_profiles, (dialog, which) -> {
+				GameVersionManagerPage.selectProfilesTab();
+				openVersionsTab();
+			})
+			.setPositiveButton(R.string.launch_offline_bootstrap_confirm, (dialog, which) -> {
+				compatPackManager.approveOfflineBootstrap(selectedCompatPack, payloadStatus.manifest);
+				prepareAndStartGameAfterOptionalSteamCloudPull();
+			})
 			.show();
 	}
 

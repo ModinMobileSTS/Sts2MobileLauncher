@@ -969,6 +969,9 @@ final class DebugAutomationRunner {
 		json.put("pack_id", pack.packId);
 		json.put("target_id", pack.targetId);
 		json.put("display_name", pack.displayName);
+		json.put("pack_kind", pack.packKind);
+		json.put("match_mode", pack.matchMode);
+		json.put("selection_priority", pack.selectionPriority);
 		json.put("compat_version", pack.compatVersion);
 		json.put("channel", pack.channel);
 		json.put("target_version", pack.targetVersion);

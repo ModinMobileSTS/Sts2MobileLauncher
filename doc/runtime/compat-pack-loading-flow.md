@@ -8,6 +8,7 @@
 - **compat pack**：Android 移动端兼容包，安装到 `<files>/compat-packs/<pack_id>/`。当前兼容两种 manifest：
   - schema 1 legacy 单目标包：根目录包含 `compat_manifest.json`、`STS2Mobile.dll`、`port_compat.pck`、`SHA256SUMS`。
   - schema 2 family 包，根目录包含 `compat_manifest.json`、`SHA256SUMS`，并在 `variants/<target_id>/` 下为每个目标版本放置 `STS2Mobile.dll` 与 `port_compat.pck`。
+- **offline bootstrap**：`offline-bootstrap/` 构建的通用离线启动层，pack id 为 `sts2-android-offline-bootstrap`。它也是 schema 2 包，但 manifest 必须声明 `pack_kind=offline-bootstrap`、target `match_mode=offline-wildcard`、`versions=["*"]`；启动器只在没有 full compat 包按 SHA/version 命中当前 payload 时自动推荐它。它不静态引用 `sts2.dll`，只做 GodotSharp bootstrap、Android temp、反射式平台/存档保底补丁、原版 `ModelDb` two-phase 初始化保护和 runtime probe。
 - **compat fallback**：APK assets 中的 `android/assets/dotnet_bcl/STS2Mobile.dll` 与 `android/assets/port_compat.pck`，主要用于兼容旧启动路径或无已选包的兜底；正常 launcher 启动会先检查当前启动配置的 compat pack，缺包时不静默 fallback。
 - **launch profile / 启动配置**：安装在 `<files>/instances/<profile_id>/instance.json`，绑定一个 payload、一个可选 compat pack，并决定存档/设置与 MOD 使用全局目录还是 profile 独立目录。schema 2 family 包会同时记录 `compat_pack_id` 与 `compat_target_id`；兼容包选择属于启动配置，不再有运行时全局选中包 fallback。
 - **普通用户 MOD**：默认放在全局 `<files>/mods/`；当当前 launch profile 的 `mods_mode=isolated` 时放在 `<files>/instances/<profile_id>/mods/`。由游戏原版 `ModManager` 在被兼容层 patch 后扫描加载。
@@ -33,6 +34,14 @@ flat matrix mode:
     -> variants/<target_id>/port_compat.pck
     -> schema 2 compat_manifest.json targets[]
     -> zip: sts2-android-compat.zip
+
+offline bootstrap:
+  offline-bootstrap/src/STS2OfflineBootstrap
+    -> dotnet build without sts2.dll reference
+    -> variants/offline-any/STS2Mobile.dll
+    -> minimal variants/offline-any/port_compat.pck
+    -> schema 2 compat_manifest.json pack_kind=offline-bootstrap
+    -> zip: sts2-android-offline-bootstrap.zip
 ```
 
 相关脚本：
@@ -47,6 +56,11 @@ flat matrix mode:
   - 默认 matrix mode：调用 `port-mod/tools/build-compat-matrix.sh`，从同一 checkout 的 `targets/active/*/target.json` 生成 schema 2 family zip。
   - `COMPAT_PACK_BUILD_MODE=legacy`：按 `tools/android/bundled-compat-packs.json` 构建多个 schema 1 分支包，非当前分支使用临时 git worktree；仅用于回退诊断。
   - 输出到 gitignored 的 `android/assets/compat_packs/*.zip`，随本地 APK 打包但不由 git 跟踪。
+- `offline-bootstrap/tools/build-offline-pack.sh`
+  - 构建通用离线启动层，不读取 `port-mod/targets`，不接受 `ReferenceFlavor`，不引用 `sts2.dll`。
+  - 输出 `sts2-android-offline-bootstrap.zip`。
+- `tools/android/stage-bundled-compat-artifacts.sh`
+  - APK 打包使用的统一 staging 入口：一次清理 assets 后依次 stage full compat family 包和 offline bootstrap 包。
 
 ## 3. 安装 / 首次进入设置页
 
@@ -56,6 +70,7 @@ flat matrix mode:
    - 复制到私有临时目录。
    - 安全解压、寻找 `compat_manifest.json`。
    - schema 1 校验根目录 `STS2Mobile.dll` 与 `port_compat.pck` 存在；schema 2 校验 `targets[]` 中每个 artifact 指向的 variant dll/pck 存在。
+   - 普通 full compat 包不允许在版本或 `sts2_dll_sha256` 中使用 `*`。只有 schema 2 且 `pack_kind=offline-bootstrap`、`match_mode=offline-wildcard` 的 target 可以声明完整版本字符串 `*`；`target_id` 和 `sts2_dll_sha256` 仍不允许通配符。
    - 安装到 `<files>/compat-packs/<pack_id>/`。
    - 不会自动把新安装的包设为全局选中包；用户需要在创建或编辑启动配置时选择。
    - 从旧 schema 1 bundled 包升级到 flat matrix 包时，会把启动配置中旧 `sts2-android-compat-v0.*` bundled pack id 自动迁移到 `sts2-android-compat` family 包和对应 `compat_target_id`。例如 `sts2-android-compat-v0.107.0-beta` 会迁移为 `compat_pack_id=sts2-android-compat`、`compat_target_id=v0.107.0-beta`；用户手动导入/选择的非 bundled 包不会被覆盖。
@@ -74,7 +89,7 @@ flat matrix mode:
 4. `PckPatcher` 只修改私有 PCK copy，禁用 Sentry autoload/gdextension 元数据，避免 Android 缺少桌面 Sentry 扩展导致启动前解析错误。
 5. 写入 staging 中的 `.payload_manifest.json`，包含 `release_info`、`version`、`commit`、`sts2_dll_sha256`、PCK patch 结果等。
 6. 按 manifest 身份生成 `payload_id`，原子安装到 `<files>/payloads/<payload_id>/game/`；同一 payload 已存在时只替换 payload store 中的该目录，不再复制到 `<files>/game/`。
-7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload；新建 profile 时会按 payload manifest 中的 `sts2_dll_sha256` 与 `version` 填入推荐 compat pack，同等命中时优先推荐 schema 2 family 包。schema 2 family 包会写入 `compat_pack_id` 和 `compat_target_id`；已有 profile 不会在每次导入/启动时被覆盖，只有旧 bundled schema 1 pack id 到 flat family pack 的升级迁移会自动改写。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot` 与 `source.steam.depots[]` 中记录。
+7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload；新建 profile 时会按 payload manifest 中的 `sts2_dll_sha256` 与 `version` 填入推荐 compat pack。匹配评分顺序为：精确 `sts2.dll` SHA、target 主版本、manifest 显式支持版本、offline bootstrap wildcard。schema 2 family 包在同等精确命中时优先；offline bootstrap 只有在没有任何 full compat 包命中当前 payload 时才会自动填入。schema 2 family 包会写入 `compat_pack_id` 和 `compat_target_id`；已有 profile 不会在每次导入/启动时被覆盖，只有旧 bundled schema 1 pack id 到 flat family pack 的升级迁移会自动改写。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot` 与 `source.steam.depots[]` 中记录。
 8. 旧安装中的 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制。
 
 ## 5. 启动前检查
@@ -86,6 +101,7 @@ flat matrix mode:
    - 只读取当前 launch profile 的 `compat_pack_id` / `compat_target_id` 并解析已安装包。
    - 若配置未选择兼容包或引用的包已删除，阻止启动并提示编辑启动配置。
    - 若选中包 manifest 支持版本列表与 payload version 不一致，弹出风险对话框，用户可取消、去启动配置页或强制启动。
+   - 若选中包是 offline bootstrap wildcard，首次启动当前 `pack_id + target_id + compat_version + payload version + sts2.dll SHA` 组合时弹出风险确认；确认后只记住该组合。offline bootstrap 运行时会写 `<files>/launcher/offline-bootstrap-probe.json` 记录反射 probe 结果。
 3. 启动前 launcher 会为当前 launch profile account root 创建一份本地 `before-launch` 存档快照（默认只保留最近 5 个）。若 Steam Cloud 模式配置为“启动前拉取”或“完整自动”，且已保存 Steam refresh token，则随后拉取当前 account root 的 Steam Cloud 文件；若 WebDAV 模式配置为“启动前拉取”或“完整自动”，且已配置 WebDAV URL，则继续拉取同一 account root 的 WebDAV 文件。任一同步失败时会弹窗允许取消、打开对应云存档中心或跳过同步继续启动。
 4. 启动后台线程执行 `GameLaunchPreparationManager.prepareForLaunch()`。
 5. 准备完成后启动 `GodotApp` 并附加 `launch_prepared=true`。
@@ -103,12 +119,12 @@ flat matrix mode:
 7. Stage overlay：
    - 兼容包开关关闭：删除 `<files>/port_compat.pck`；启动前会先弹风险确认，用户选择继续才进入无兼容层准备流程。
    - 有 selected pack：schema 1 复制 `<files>/compat-packs/<pack_id>/port_compat.pck`；schema 2 复制 `<files>/compat-packs/<pack_id>/variants/<target_id>/port_compat.pck` 到 `<files>/port_compat.pck`。
-   - 无 selected pack：仅在兼容包开关开启但绕过 launcher 检查的 fallback 准备路径中使用 APK assets `port_compat.pck` fallback。
+   - 无 selected pack：仅在兼容包开关开启但没有 profile 级兼容包选择的 fallback 准备路径中使用 APK assets `port_compat.pck` fallback；如果 profile 明确选择的 pack/target 缺失，会删除 staged overlay 并拒绝 asset fallback。
 8. 准备 Mono publish 目录 `<files>/.godot/mono/publish/arm64/`：
    - 复制 APK assets `dotnet_bcl/*`，但 `STS2Mobile.dll` 由 selected pack 决定。
    - 兼容包开关关闭：删除 publish 目录中的 `STS2Mobile.dll`；`GodotApp` 的直接启动 fallback 也不会再从 selected pack 或 APK asset 强制补回。
    - 有 selected pack：复制 selected `STS2Mobile.dll`；schema 2 的来源是当前 target variant。
-   - 无 selected pack：仅在兼容包开关开启但绕过 launcher 检查的 fallback 准备路径中尝试复制 fallback `dotnet_bcl/STS2Mobile.dll`。
+   - 无 selected pack：仅在兼容包开关开启但没有 profile 级兼容包选择的 fallback 准备路径中尝试复制 fallback `dotnet_bcl/STS2Mobile.dll`；如果 profile 明确选择的 pack/target 缺失，会删除 staged DLL 并拒绝 asset fallback。
    - 复制当前 profile payload 目录中 `data_*/*` 的游戏 assemblies，跳过 `.so`，并保护 BCL/System/GodotSharp 等 runtime DLL。
    - 使用 SharedPreferences stamp 避免不必要的大文件重复复制；payload/profile 变化时强制刷新游戏 assemblies，并清理 publish 目录里旧 payload 遗留的游戏 DLL/JSON。
 

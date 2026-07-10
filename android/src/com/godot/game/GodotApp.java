@@ -262,6 +262,8 @@ public class GodotApp extends GodotActivity {
 		}
 		return "id=" + safe(pack.packId)
 			+ ",targetId=" + safe(pack.targetId)
+			+ ",kind=" + safe(pack.packKind)
+			+ ",matchMode=" + safe(pack.matchMode)
 			+ ",version=" + safe(pack.compatVersion)
 			+ ",target=" + safe(pack.targetLabel())
 			+ ",ready=" + pack.ready
@@ -581,6 +583,12 @@ public class GodotApp extends GodotActivity {
 			if (selected != null && selected.isFile()) {
 				copyFile(selected, entryDll);
 				Log.e(TAG, "DIAG_FORCE forceStageCompatEntryDll selected_pack source=" + describeFile(selected) + " dest=" + describeFile(entryDll));
+				return;
+			}
+			String requestedPackId = compatPackManager.getSelectedPackIdIgnoringEnabled();
+			if (requestedPackId != null && !requestedPackId.trim().isEmpty()) {
+				deleteFileQuietly(entryDll);
+				Log.e(TAG, "DIAG_FORCE forceStageCompatEntryDll refused_asset_fallback requested_pack=" + requestedPackId + " dest=" + describeFile(entryDll));
 				return;
 			}
 			try (InputStream inputStream = getAssets().open("dotnet_bcl/STS2Mobile.dll")) {

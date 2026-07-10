@@ -32,7 +32,9 @@ sts2_require_executable "$DOTNET_BIN" "dotnet"
 
 if [[ "$COMPAT_PACK_BUILD_MODE" == "matrix" ]]; then
   mkdir -p "$ASSET_DIR"
-  rm -f "$ASSET_DIR"/*.zip
+  if [[ "${COMPAT_PACK_SKIP_ASSET_CLEAN:-0}" != "1" ]]; then
+    rm -f "$ASSET_DIR"/*.zip
+  fi
   if [[ ! -x "$COMPAT_ROOT/tools/build-compat-matrix.sh" ]]; then
     echo "Missing compat matrix build script: $COMPAT_ROOT/tools/build-compat-matrix.sh" >&2
     exit 1

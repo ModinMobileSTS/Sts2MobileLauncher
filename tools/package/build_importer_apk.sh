@@ -15,7 +15,7 @@ RELEASE_KEYSTORE_ALIAS_VALUE="$(sts2_config_value RELEASE_KEYSTORE_ALIAS android
 
 "$ROOT/tools/android/sync-runtime-from-references.sh"
 "$ROOT/tools/android/build-port-mod.sh"
-"$ROOT/tools/android/stage-bundled-compat-packs.sh"
+"$ROOT/tools/android/stage-bundled-compat-artifacts.sh"
 
 GRADLE_ARGS=("$GRADLE_TASK")
 if [[ -n "$RELEASE_KEYSTORE_FILE_VALUE" ]]; then

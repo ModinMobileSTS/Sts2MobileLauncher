@@ -120,11 +120,17 @@ tools/android/sync-runtime-from-references.sh
 ```
 
 ### 5. Compile Compatibility Packs (Compat Packs)
-Compile the mobile compatibility layer C# code into DLLs and package them as a ZIP into the Assets:
+Compile and stage all bundled compatibility artifacts into APK assets:
+```bash
+tools/android/stage-bundled-compat-artifacts.sh
+```
+This stages the flattened schema-2 full compatibility family pack from `port-mod/` and the generic `offline-bootstrap/` fallback pack. The offline bootstrap is only auto-matched when an imported game payload has no installed exact SHA/version compatibility pack.
+
+If you only need to rebuild the full `port-mod` family pack, use:
 ```bash
 tools/android/stage-bundled-compat-packs.sh
 ```
-This now builds the flattened schema-2 family pack from one checkout by default. Legacy per-version branch packs remain available for diagnostics:
+Legacy per-version branch packs remain available for diagnostics:
 ```bash
 COMPAT_PACK_BUILD_MODE=legacy tools/android/stage-bundled-compat-packs.sh
 ```

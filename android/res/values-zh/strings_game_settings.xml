@@ -912,6 +912,10 @@
     <string name="launch_requires_compat_pack">请先编辑当前启动配置，并为它选择对应的移动端兼容包再启动</string>
     <string name="launch_incompatible_compat_pack_dialog_title">兼容包版本不匹配</string>
     <string name="launch_incompatible_compat_pack_dialog_message">当前兼容包：%1$s\n兼容包支持：%2$s\n当前游戏：%3$s\n\n此检查只比较游戏版本号/支持版本列表。你可以编辑当前启动配置来切换兼容包，也可以选择继续启动。</string>
+    <string name="launch_offline_bootstrap_dialog_title">使用通用离线启动层？</string>
+    <string name="launch_offline_bootstrap_dialog_message">当前兼容包：%1$s\n兼容包支持：%2$s\n当前游戏：%3$s\nsts2.dll：%4$s\n\n没有找到精确匹配此游戏版本的移动端兼容包，因此启动器选择了通用离线启动层。它只提供启动/bootstrap 和少量反射式保底补丁；完整移动端 UI、MOD 与版本专用修复可能不可用。此确认只会记住当前兼容包、游戏版本和 sts2.dll hash 的组合。</string>
+    <string name="launch_offline_bootstrap_confirm">使用离线启动层</string>
+    <string name="launch_profile_compat_offline_fallback_badge">[离线保底]</string>
     <string name="launch_compat_disabled_dialog_title">Android 兼容包已关闭</string>
     <string name="launch_compat_disabled_dialog_message">关闭兼容包启动时，本次会移除 STS2Mobile.dll 和移动端 overlay。跳过 Steam、存档路径重定向、MOD 加载、移动端输入/UI 修正和 Harmony 补丁都可能不可用，游戏可能无法启动，MOD 也可能无法加载。\n\n建议开启兼容包后按推荐 Android 路径启动；只有排查问题时才建议继续。</string>
     <string name="enable_compat_pack">开启兼容包</string>

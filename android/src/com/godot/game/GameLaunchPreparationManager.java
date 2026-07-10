@@ -259,6 +259,8 @@ public final class GameLaunchPreparationManager {
 		}
 		return "id=" + safe(pack.packId)
 			+ ",target_id=" + safe(pack.targetId)
+			+ ",kind=" + safe(pack.packKind)
+			+ ",match_mode=" + safe(pack.matchMode)
 			+ ",version=" + safe(pack.compatVersion)
 			+ ",channel=" + safe(pack.channel)
 			+ ",target=" + safe(pack.targetLabel())
@@ -344,6 +346,8 @@ public final class GameLaunchPreparationManager {
 					+ " id=" + safe(pack.packId)
 					+ "; target_id=" + safe(pack.targetId)
 					+ "; display=" + safe(pack.displayName)
+					+ "; kind=" + safe(pack.packKind)
+					+ "; match_mode=" + safe(pack.matchMode)
 					+ "; compat_version=" + safe(pack.compatVersion)
 					+ "; channel=" + safe(pack.channel)
 					+ "; target=" + safe(pack.targetLabel())
@@ -531,6 +535,12 @@ public final class GameLaunchPreparationManager {
 			logPreparedFile("compat overlay", "selected_pack", overlay, dest);
 			return;
 		}
+		String requestedPackId = manager.getSelectedPackIdIgnoringEnabled();
+		if (requestedPackId != null && !requestedPackId.trim().isEmpty()) {
+			deleteFileIfExists(dest);
+			Log.w(TAG, "Selected compatibility overlay is missing; refusing asset fallback for requested pack=" + requestedPackId);
+			return;
+		}
 		extractAssetIfChanged("port_compat.pck", dest);
 		logPreparedFile("compat overlay", "asset_fallback", null, dest);
 	}
@@ -588,6 +598,12 @@ public final class GameLaunchPreparationManager {
 		if (selectedCompatDll != null && selectedCompatDll.isFile()) {
 			copyFileIfDifferent(selectedCompatDll, dest);
 			logPreparedFile("compat entry dll", "selected_pack", selectedCompatDll, dest);
+			return;
+		}
+		String requestedPackId = new CompatPackManager(context).getSelectedPackIdIgnoringEnabled();
+		if (requestedPackId != null && !requestedPackId.trim().isEmpty()) {
+			deleteFileIfExists(dest);
+			Log.w(TAG, "Selected compatibility DLL is missing; refusing asset fallback for requested pack=" + requestedPackId);
 			return;
 		}
 		try (InputStream inputStream = assets.open("dotnet_bcl/STS2Mobile.dll")) {

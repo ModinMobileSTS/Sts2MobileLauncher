@@ -39,9 +39,12 @@ public final class CompatPackManager {
 	public static final String ENTRY_DLL = "STS2Mobile.dll";
 	public static final String ENTRY_OVERLAY_PCK = "port_compat.pck";
 	public static final String ARTIFACTS_DIR_NAME = "variants";
+	public static final String PACK_KIND_OFFLINE_BOOTSTRAP = "offline-bootstrap";
+	public static final String MATCH_MODE_OFFLINE_WILDCARD = "offline-wildcard";
 
 	private static final String PREFS_NAME = "sts2_version_manager";
 	private static final String KEY_SELECTED_COMPAT_PACK_ID = "selected_compat_pack_id";
+	private static final String KEY_OFFLINE_BOOTSTRAP_APPROVED_PREFIX = "offline_bootstrap_approved_";
 	private static final int BUFFER_SIZE = 1024 * 1024;
 
 	private final Context context;
@@ -189,43 +192,57 @@ public final class CompatPackManager {
 		if (TextUtils.isEmpty(identity.version)) {
 			return null;
 		}
-		List<CompatPack> candidates = preferSchema2Packs(installedPacks);
-
-		for (CompatPack pack : candidates) {
-			if (pack.ready && !TextUtils.isEmpty(identity.sts2DllSha256) && identity.sts2DllSha256.equalsIgnoreCase(pack.targetSts2DllSha256)) {
-				return pack;
+		CompatPack bestPack = null;
+		int bestScore = 0;
+		for (CompatPack pack : installedPacks) {
+			int score = matchScore(pack, identity);
+			if (score <= 0) {
+				continue;
+			}
+			if (bestPack == null || isBetterMatch(pack, score, bestPack, bestScore)) {
+				bestPack = pack;
+				bestScore = score;
 			}
 		}
-		// Prefer packs whose primary target version is an exact match, then fall
-		// back to packs that explicitly list the payload version in their manifest.
-		// This allows a single stable compat pack to cover adjacent patch releases
-		// such as v0.103.2 and v0.103.3 while preserving exact-version priority.
-		for (CompatPack pack : candidates) {
-			if (pack.ready && identity.version.equalsIgnoreCase(pack.targetVersion)) {
-				return pack;
-			}
-		}
-		for (CompatPack pack : candidates) {
-			if (pack.ready && packSupportsVersion(pack, identity.version)) {
-				return pack;
-			}
-		}
-		return null;
+		return bestPack;
 	}
 
-	private List<CompatPack> preferSchema2Packs(List<CompatPack> packs) {
-		List<CompatPack> ordered = new ArrayList<>();
-		for (CompatPack pack : packs) {
-			if (pack != null && pack.manifest.optInt("schema", 1) >= 2) {
-				ordered.add(pack);
-			}
+	private int matchScore(CompatPack pack, PayloadIdentity identity) {
+		if (pack == null || !pack.ready || identity == null || TextUtils.isEmpty(identity.version)) {
+			return 0;
 		}
-		for (CompatPack pack : packs) {
-			if (pack != null && pack.manifest.optInt("schema", 1) < 2) {
-				ordered.add(pack);
-			}
+		if (!TextUtils.isEmpty(identity.sts2DllSha256) && identity.sts2DllSha256.equalsIgnoreCase(pack.targetSts2DllSha256)) {
+			return 400;
 		}
-		return ordered;
+		if (!pack.isOfflineWildcard() && identity.version.equalsIgnoreCase(pack.targetVersion)) {
+			return 300;
+		}
+		if (packSupportsExplicitVersion(pack, identity.version)) {
+			return 200;
+		}
+		if (pack.isOfflineWildcard()) {
+			return 10;
+		}
+		return 0;
+	}
+
+	private boolean isBetterMatch(CompatPack candidate, int candidateScore, CompatPack current, int currentScore) {
+		if (candidateScore != currentScore) {
+			return candidateScore > currentScore;
+		}
+		if (candidate.selectionPriority != current.selectionPriority) {
+			return candidate.selectionPriority > current.selectionPriority;
+		}
+		int candidateSchema = candidate.manifest.optInt("schema", 1);
+		int currentSchema = current.manifest.optInt("schema", 1);
+		if (candidateSchema != currentSchema) {
+			return candidateSchema > currentSchema;
+		}
+		int packCompare = candidate.packId.compareToIgnoreCase(current.packId);
+		if (packCompare != 0) {
+			return packCompare < 0;
+		}
+		return candidate.targetId.compareToIgnoreCase(current.targetId) < 0;
 	}
 
 	public boolean isPackCompatibleWithPayload(CompatPack pack, JSONObject payloadManifest) {
@@ -233,11 +250,47 @@ public final class CompatPackManager {
 			return false;
 		}
 		PayloadIdentity identity = readPayloadIdentity(payloadManifest);
-		return !TextUtils.isEmpty(identity.version) && packSupportsVersion(pack, identity.version);
+		return matchScore(pack, identity) > 0;
+	}
+
+	public boolean isOfflineBootstrapPack(CompatPack pack) {
+		return pack != null && PACK_KIND_OFFLINE_BOOTSTRAP.equals(pack.packKind);
+	}
+
+	public boolean requiresOfflineBootstrapApproval(CompatPack pack, JSONObject payloadManifest) {
+		return pack != null && pack.isOfflineWildcard() && !hasApprovedOfflineBootstrap(pack, payloadManifest);
+	}
+
+	public boolean hasApprovedOfflineBootstrap(CompatPack pack, JSONObject payloadManifest) {
+		String key = offlineBootstrapApprovalKey(pack, payloadManifest);
+		return !TextUtils.isEmpty(key) && prefs().getBoolean(key, false);
+	}
+
+	public void approveOfflineBootstrap(CompatPack pack, JSONObject payloadManifest) {
+		String key = offlineBootstrapApprovalKey(pack, payloadManifest);
+		if (!TextUtils.isEmpty(key)) {
+			prefs().edit().putBoolean(key, true).apply();
+		}
+	}
+
+	private String offlineBootstrapApprovalKey(CompatPack pack, JSONObject payloadManifest) {
+		if (pack == null || payloadManifest == null) {
+			return "";
+		}
+		PayloadIdentity identity = readPayloadIdentity(payloadManifest);
+		if (TextUtils.isEmpty(identity.version)) {
+			return "";
+		}
+		String tuple = pack.packId + "|" + pack.targetId + "|" + pack.compatVersion + "|" + identity.version + "|" + identity.sts2DllSha256;
+		return KEY_OFFLINE_BOOTSTRAP_APPROVED_PREFIX + sha256Text(tuple);
 	}
 
 	public String getPayloadVersion(JSONObject payloadManifest) {
 		return readPayloadIdentity(payloadManifest).version;
+	}
+
+	public String getPayloadSts2DllSha256(JSONObject payloadManifest) {
+		return readPayloadIdentity(payloadManifest).sts2DllSha256;
 	}
 
 	public int installBundledCompatPacks() throws Exception {
@@ -317,7 +370,17 @@ public final class CompatPackManager {
 		if (pack == null || TextUtils.isEmpty(version)) {
 			return false;
 		}
+		return pack.isOfflineWildcard() || packSupportsExplicitVersion(pack, version);
+	}
+
+	private boolean packSupportsExplicitVersion(CompatPack pack, String version) {
+		if (pack == null || TextUtils.isEmpty(version)) {
+			return false;
+		}
 		for (String supportedVersion : pack.targetVersions) {
+			if ("*".equals(supportedVersion)) {
+				continue;
+			}
 			if (version.equalsIgnoreCase(supportedVersion)) {
 				return true;
 			}
@@ -434,6 +497,7 @@ public final class CompatPackManager {
 		}
 		JSONObject manifest = new JSONObject(readTextFile(manifestFile));
 		String packId = sanitizeId(manifest.optString("pack_id", dir.getName()));
+		String packKind = manifest.optString("pack_kind", "");
 		if (manifest.optInt("schema", 1) >= 2 && manifest.optJSONArray("targets") != null) {
 			JSONArray targets = manifest.optJSONArray("targets");
 			for (int i = 0; i < targets.length(); i++) {
@@ -455,6 +519,9 @@ public final class CompatPackManager {
 				packs.add(new CompatPack(
 					packId,
 					targetId,
+					packKind,
+					target.optString("match_mode", manifest.optString("match_mode", "")),
+					target.optInt("selection_priority", manifest.optInt("selection_priority", 0)),
 					manifest.optString("display_name", packId),
 					manifest.optString("compat_version", ""),
 					manifest.optString("channel", target.optString("channel", "")),
@@ -483,6 +550,9 @@ public final class CompatPackManager {
 		packs.add(new CompatPack(
 			packId,
 			"",
+			packKind,
+			manifest.optString("match_mode", ""),
+			manifest.optInt("selection_priority", 0),
 			manifest.optString("display_name", packId),
 			manifest.optString("compat_version", ""),
 			manifest.optString("channel", ""),
@@ -543,6 +613,7 @@ public final class CompatPackManager {
 	}
 
 	private void validatePackArtifacts(File packRoot, JSONObject manifest) throws IOException {
+		validatePackManifestMatchRules(manifest);
 		if (manifest.optInt("schema", 1) >= 2 && manifest.optJSONArray("targets") != null) {
 			JSONArray targets = manifest.optJSONArray("targets");
 			if (targets.length() <= 0) {
@@ -571,6 +642,69 @@ public final class CompatPackManager {
 		}
 		requireFile(new File(packRoot, ENTRY_DLL), "Missing " + ENTRY_DLL);
 		requireFile(new File(packRoot, ENTRY_OVERLAY_PCK), "Missing " + ENTRY_OVERLAY_PCK);
+	}
+
+	private void validatePackManifestMatchRules(JSONObject manifest) throws IOException {
+		int schema = manifest.optInt("schema", 1);
+		if (schema >= 2 && manifest.optJSONArray("targets") != null) {
+			JSONArray targets = manifest.optJSONArray("targets");
+			for (int i = 0; i < targets.length(); i++) {
+				JSONObject target = targets.optJSONObject(i);
+				if (target == null) {
+					continue;
+				}
+				String rawTargetId = target.optString("target_id", target.optString("id", ""));
+				if (rawTargetId.trim().contains("*")) {
+					throw new IOException("Compatibility pack target_id cannot contain wildcard '*'.");
+				}
+				boolean allowWildcard = isOfflineWildcardManifestTarget(manifest, target);
+				validateTargetVersionsForWildcard(readTargetVersions(target), allowWildcard);
+				validateTargetShaForWildcard(target);
+			}
+			return;
+		}
+		JSONObject target = manifest.optJSONObject("target_game");
+		validateTargetVersionsForWildcard(readTargetVersions(target), false);
+		validateTargetShaForWildcard(target);
+	}
+
+	private boolean isOfflineWildcardManifestTarget(JSONObject manifest, JSONObject target) {
+		String packKind = manifest.optString("pack_kind", "");
+		String matchMode = target == null ? "" : target.optString("match_mode", manifest.optString("match_mode", ""));
+		return PACK_KIND_OFFLINE_BOOTSTRAP.equals(packKind) && MATCH_MODE_OFFLINE_WILDCARD.equals(matchMode);
+	}
+
+	private void validateTargetVersionsForWildcard(List<String> versions, boolean allowWildcard) throws IOException {
+		if (versions == null) {
+			return;
+		}
+		for (String version : versions) {
+			String value = version == null ? "" : version.trim();
+			if (!value.contains("*")) {
+				continue;
+			}
+			if (allowWildcard && "*".equals(value)) {
+				continue;
+			}
+			throw new IOException("Wildcard target versions are only allowed for offline-bootstrap targets using match_mode=offline-wildcard.");
+		}
+	}
+
+	private void validateTargetShaForWildcard(JSONObject target) throws IOException {
+		if (target == null) {
+			return;
+		}
+		JSONArray hashes = target.optJSONArray("sts2_dll_sha256");
+		if (hashes != null) {
+			for (int i = 0; i < hashes.length(); i++) {
+				if (hashes.optString(i, "").contains("*")) {
+					throw new IOException("sts2_dll_sha256 cannot contain wildcard '*'.");
+				}
+			}
+		}
+		if (target.optString("sts2_dll_sha256", "").contains("*")) {
+			throw new IOException("sts2_dll_sha256 cannot contain wildcard '*'.");
+		}
 	}
 
 	private void addTargetVersion(List<String> versions, String version) {
@@ -706,8 +840,22 @@ public final class CompatPackManager {
 				digest.update(buffer, 0, read);
 			}
 		}
+		return hexDigest(digest.digest());
+	}
+
+	private String sha256Text(String value) {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			digest.update((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
+			return hexDigest(digest.digest());
+		} catch (Exception exception) {
+			return sanitizeId(value);
+		}
+	}
+
+	private String hexDigest(byte[] digest) {
 		StringBuilder builder = new StringBuilder();
-		for (byte value : digest.digest()) {
+		for (byte value : digest) {
 			builder.append(String.format(Locale.US, "%02x", value & 0xff));
 		}
 		return builder.toString();
@@ -779,6 +927,12 @@ public final class CompatPackManager {
 			if (!TextUtils.isEmpty(pack.targetId)) {
 				root.put("selected_compat_target_id", pack.targetId);
 			}
+			if (!TextUtils.isEmpty(pack.packKind)) {
+				root.put("selected_compat_pack_kind", pack.packKind);
+			}
+			if (!TextUtils.isEmpty(pack.matchMode)) {
+				root.put("selected_compat_match_mode", pack.matchMode);
+			}
 			root.put("selected_compat_pack_dir", pack.dir.getAbsolutePath());
 			root.put("selected_compat_dll", pack.dllFile.getAbsolutePath());
 			root.put("selected_compat_overlay_pck", pack.overlayPckFile.getAbsolutePath());
@@ -811,6 +965,9 @@ public final class CompatPackManager {
 	public static final class CompatPack {
 		public final String packId;
 		public final String targetId;
+		public final String packKind;
+		public final String matchMode;
+		public final int selectionPriority;
 		public final String displayName;
 		public final String compatVersion;
 		public final String channel;
@@ -825,9 +982,12 @@ public final class CompatPackManager {
 		public final JSONObject manifest;
 		public final boolean ready;
 
-		CompatPack(String packId, String targetId, String displayName, String compatVersion, String channel, String targetVersion, List<String> targetVersions, String targetCommit, String targetSts2DllSha256, long installedAtUnix, File dir, File dllFile, File overlayPckFile, JSONObject manifest, boolean ready) {
+		CompatPack(String packId, String targetId, String packKind, String matchMode, int selectionPriority, String displayName, String compatVersion, String channel, String targetVersion, List<String> targetVersions, String targetCommit, String targetSts2DllSha256, long installedAtUnix, File dir, File dllFile, File overlayPckFile, JSONObject manifest, boolean ready) {
 			this.packId = packId == null ? "" : packId;
 			this.targetId = targetId == null ? "" : targetId;
+			this.packKind = packKind == null ? "" : packKind;
+			this.matchMode = matchMode == null ? "" : matchMode;
+			this.selectionPriority = selectionPriority;
 			this.displayName = TextUtils.isEmpty(displayName) ? this.packId : displayName;
 			this.compatVersion = compatVersion == null ? "" : compatVersion;
 			this.channel = channel == null ? "" : channel;
@@ -846,7 +1006,14 @@ public final class CompatPackManager {
 			this.ready = ready;
 		}
 
+		public boolean isOfflineWildcard() {
+			return PACK_KIND_OFFLINE_BOOTSTRAP.equals(packKind) && MATCH_MODE_OFFLINE_WILDCARD.equals(matchMode) && targetVersions.contains("*");
+		}
+
 		public String targetLabel() {
+			if (isOfflineWildcard()) {
+				return "any imported version (offline fallback)";
+			}
 			if (!targetVersions.isEmpty()) {
 				String label = TextUtils.join(" / ", targetVersions);
 				if (targetVersions.size() == 1 && !TextUtils.isEmpty(targetCommit)) {

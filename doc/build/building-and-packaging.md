@@ -126,11 +126,20 @@ REFERENCE_FLAVOR=original tools/android/build-port-mod.sh
 
 ## 6. 构建内置兼容包
 
+完整 APK 打包使用统一 staging 入口：
+
 ```bash
-tools/android/stage-bundled-compat-packs.sh
+tools/android/stage-bundled-compat-artifacts.sh
 ```
 
-默认使用 flat matrix 模式：脚本读取 `port-mod/targets/active/*/target.json`，从当前 checkout 依次用各目标的 `ReferenceFlavor` 编译，输出一个 schema 2 family 兼容包：
+该脚本会先清理 `android/assets/compat_packs/*.zip`，再依次 stage：
+
+```text
+android/assets/compat_packs/sts2-android-compat.zip
+android/assets/compat_packs/sts2-android-offline-bootstrap.zip
+```
+
+`sts2-android-compat.zip` 是 full compatibility family 包。它默认使用 flat matrix 模式：脚本读取 `port-mod/targets/active/*/target.json`，从当前 checkout 依次用各目标的 `ReferenceFlavor` 编译，输出一个 schema 2 family 兼容包：
 
 ```text
 android/assets/compat_packs/sts2-android-compat.zip
@@ -138,6 +147,14 @@ android/assets/compat_packs/sts2-android-compat.zip
   variants/<target_id>/STS2Mobile.dll
   variants/<target_id>/port_compat.pck
   SHA256SUMS
+```
+
+`sts2-android-offline-bootstrap.zip` 由 `offline-bootstrap/tools/build-offline-pack.sh` 构建。它不引用 `sts2.dll`，manifest 使用 `pack_kind=offline-bootstrap`、`match_mode=offline-wildcard` 与 `versions=["*"]`，启动器只会在没有任何已安装 full compat 包按 SHA/version 匹配当前 payload 时自动推荐它。首次用它启动某个 payload SHA/version 组合时会弹出风险确认。
+
+如果只需要构建 full compatibility family 包，可直接运行：
+
+```bash
+tools/android/stage-bundled-compat-packs.sh
 ```
 
 当前 active targets：
