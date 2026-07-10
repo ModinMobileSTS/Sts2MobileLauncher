@@ -54,13 +54,25 @@ if ! git -C "$ROOT/port-mod" diff --quiet --ignore-submodules -- 2>/dev/null || 
   GIT_DIRTY="true"
 fi
 BUILD_TIMESTAMP_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+msbuild_escape_property() {
+  local value="$1"
+  value="${value//'%'/'%25'}"
+  value="${value//';'/'%3B'}"
+  value="${value//','/'%2C'}"
+  printf '%s' "$value"
+}
+
+GIT_BRANCH_MSBUILD="$(msbuild_escape_property "$GIT_BRANCH")"
+GIT_SUBJECT_MSBUILD="$(msbuild_escape_property "$GIT_SUBJECT")"
+
 MSBUILD_ARGS=(
   "$PROJECT"
   "-p:ReferenceFlavor=$REFERENCE_FLAVOR"
   "-p:CompatReferenceDir=$COMPAT_REFERENCE_DIR"
-  "-p:_CompatGitBranch=$GIT_BRANCH"
+  "-p:_CompatGitBranch=$GIT_BRANCH_MSBUILD"
   "-p:_CompatGitCommit=$GIT_COMMIT"
-  "-p:_CompatGitCommitSubject=$GIT_SUBJECT"
+  "-p:_CompatGitCommitSubject=$GIT_SUBJECT_MSBUILD"
   "-p:_CompatGitDirty=$GIT_DIRTY"
   "-p:_CompatBuildTimestampUtc=$BUILD_TIMESTAMP_UTC"
   "-v:q"

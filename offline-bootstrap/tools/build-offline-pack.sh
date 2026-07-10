@@ -49,6 +49,14 @@ if [[ ! -f "$REFERENCE_DIR/GodotSharp.dll" || ! -f "$REFERENCE_DIR/0Harmony.dll"
   exit 1
 fi
 
+msbuild_escape_property() {
+  local value="$1"
+  value="${value//'%'/'%25'}"
+  value="${value//';'/'%3B'}"
+  value="${value//','/'%2C'}"
+  printf '%s' "$value"
+}
+
 GIT_BRANCH="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
 if [[ -z "$GIT_BRANCH" ]]; then
   GIT_BRANCH="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
@@ -60,11 +68,13 @@ if ! git -C "$ROOT" diff --quiet --ignore-submodules -- 2>/dev/null || ! git -C 
   GIT_DIRTY="true"
 fi
 BUILD_TIMESTAMP_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+GIT_BRANCH_MSBUILD="$(msbuild_escape_property "$GIT_BRANCH")"
+GIT_SUBJECT_MSBUILD="$(msbuild_escape_property "$GIT_SUBJECT")"
 
 rm -rf "$OUT_ROOT"
 mkdir -p "$OUT_ROOT/$PACK_ID/variants/$TARGET_ID"
 
-"$DOTNET_BIN" build "$PROJECT" -p:RuntimeReferenceDir="$REFERENCE_DIR" -p:_CompatGitBranch="$GIT_BRANCH" -p:_CompatGitCommit="$GIT_COMMIT" -p:_CompatGitCommitSubject="$GIT_SUBJECT" -p:_CompatGitDirty="$GIT_DIRTY" -p:_CompatBuildTimestampUtc="$BUILD_TIMESTAMP_UTC" -v:q
+"$DOTNET_BIN" build "$PROJECT" -p:RuntimeReferenceDir="$REFERENCE_DIR" -p:_CompatGitBranch="$GIT_BRANCH_MSBUILD" -p:_CompatGitCommit="$GIT_COMMIT" -p:_CompatGitCommitSubject="$GIT_SUBJECT_MSBUILD" -p:_CompatGitDirty="$GIT_DIRTY" -p:_CompatBuildTimestampUtc="$BUILD_TIMESTAMP_UTC" -v:q
 
 DLL_OUT="$ROOT/src/STS2OfflineBootstrap/bin/Debug/net9.0/STS2Mobile.dll"
 if [[ ! -f "$DLL_OUT" ]]; then

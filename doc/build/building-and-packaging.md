@@ -151,6 +151,8 @@ android/assets/compat_packs/sts2-android-compat.zip
 
 `sts2-android-offline-bootstrap.zip` 由 `offline-bootstrap/tools/build-offline-pack.sh` 构建。它不引用 `sts2.dll`，manifest 使用 `pack_kind=offline-bootstrap`、`match_mode=offline-wildcard` 与 `versions=["*"]`，启动器只会在没有任何已安装 full compat 包按 SHA/version 匹配当前 payload 时自动推荐它。首次用它启动某个 payload SHA/version 组合时会弹出风险确认。
 
+compat 与 offline bootstrap 构建脚本会把 Git branch / commit / commit subject 写入构建元数据和 manifest；传给 MSBuild 的 branch/subject 会先转义逗号、分号和百分号，避免提交标题中的标点被 MSBuild 当成多个 `-p:` 属性解析。
+
 如果只需要构建 full compatibility family 包，可直接运行：
 
 ```bash
