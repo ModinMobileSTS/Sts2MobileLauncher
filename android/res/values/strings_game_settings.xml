@@ -38,9 +38,12 @@
     <string name="workshop_steam_logged_in">Steam: %1$s · SteamID64: %2$s</string>
     <string name="workshop_steam_status_refreshed">Steam login status refreshed.</string>
     <string name="workshop_search_title">Slay the Spire 2 Workshop</string>
-    <string name="workshop_search_subtitle">Search public Workshop MODs by name. Downloads are imported into the current launch profile MOD root.</string>
+    <string name="workshop_search_subtitle">Search public Workshop MODs by name, or open a known item by Workshop ID/URL. Downloads are imported into the current launch profile MOD root.</string>
     <string name="workshop_search_hint">Search Workshop MODs</string>
     <string name="workshop_search">Search</string>
+    <string name="workshop_open_by_id_url">Open by ID/URL</string>
+    <string name="workshop_open_by_id_url_hint">Workshop ID or URL</string>
+    <string name="workshop_open_by_id_url_invalid">Enter a valid Workshop ID or URL.</string>
     <string name="workshop_library">Downloaded</string>
     <string name="workshop_check_updates">Check updates</string>
     <string name="workshop_open_web">Open Workshop</string>

@@ -61,6 +61,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import okhttp3.ConnectionPool;
 import okhttp3.OkHttpClient;
@@ -79,6 +81,8 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private static final long DOWNLOAD_PROGRESS_DRAIN_INTERVAL_MS = 100L;
 	private static final long DOWNLOAD_UI_REFRESH_INTERVAL_MS = 300L;
 	private static final int MAX_CONCURRENT_DOWNLOADS = 5;
+	private static final Pattern WORKSHOP_ID_QUERY_PATTERN = Pattern.compile("(?i)(?:id|publishedfileid)(?:=|%3d)(\\d{1,20})");
+	private static final Pattern WORKSHOP_URL_NUMBER_PATTERN = Pattern.compile("\\b(\\d{5,20})\\b");
 
 	private ExtraSettingsRepository repository;
 	private SteamWorkshopCatalog catalog;
@@ -459,6 +463,10 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			toggleDrawer(false);
 			openUrl(WORKSHOP_WEB_URL);
 		}));
+		drawerContent.addView(drawerItem(R.drawable.ic_lock_open_24, R.string.workshop_open_by_id_url, false, () -> {
+			toggleDrawer(false);
+			showOpenByIdDialog();
+		}));
 	}
 
 	private void showSearchDialog() {
@@ -479,11 +487,11 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			.setView(searchLayout)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setNeutralButton(R.string.workshop_clear_search, (dialog, which) -> searchWorkshop("", 1))
-			.setPositiveButton(R.string.workshop_search, (dialog, which) -> searchWorkshop(readSearchQuery(), 1));
+			.setPositiveButton(R.string.workshop_search, (dialog, which) -> submitSearchDialog());
 		final androidx.appcompat.app.AlertDialog dialog = builder.create();
 		searchInput.setOnEditorActionListener((v, actionId, event) -> {
 			if (actionId == EditorInfo.IME_ACTION_SEARCH) {
-				searchWorkshop(readSearchQuery(), 1);
+				submitSearchDialog();
 				dialog.dismiss();
 				return true;
 			}
@@ -494,6 +502,131 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 
 	private String readSearchQuery() {
 		return searchInput == null || searchInput.getText() == null ? "" : searchInput.getText().toString().trim();
+	}
+
+	private void submitSearchDialog() {
+		String query = readSearchQuery();
+		String directId = parseWorkshopPublishedFileId(query);
+		if (!TextUtils.isEmpty(directId)) {
+			openWorkshopItemById(directId);
+			return;
+		}
+		searchWorkshop(query, 1);
+	}
+
+	private void showOpenByIdDialog() {
+		TextInputLayout inputLayout = new TextInputLayout(this);
+		inputLayout.setHint(getString(R.string.workshop_open_by_id_url_hint));
+		inputLayout.setStartIconDrawable(MaterialSymbols.drawable(this, R.drawable.ic_lock_open_24, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, 24));
+		inputLayout.setBoxBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
+		TextInputEditText input = new TextInputEditText(inputLayout.getContext());
+		input.setSingleLine(true);
+		input.setImeOptions(EditorInfo.IME_ACTION_GO);
+		input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+		input.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+		input.setHintTextColor(ExtraSettingsUi.COLOR_MUTED);
+		inputLayout.addView(input);
+		MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.workshop_open_by_id_url)
+			.setView(inputLayout)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.workshop_open_item, null);
+		final androidx.appcompat.app.AlertDialog dialog = builder.create();
+		input.setOnEditorActionListener((v, actionId, event) -> {
+			if (actionId == EditorInfo.IME_ACTION_GO) {
+				return submitOpenByIdDialog(inputLayout, input, dialog);
+			}
+			return false;
+		});
+		dialog.setOnShowListener(shown -> dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> submitOpenByIdDialog(inputLayout, input, dialog)));
+		dialog.show();
+	}
+
+	private boolean submitOpenByIdDialog(TextInputLayout inputLayout, TextInputEditText input, androidx.appcompat.app.AlertDialog dialog) {
+		String value = input == null || input.getText() == null ? "" : input.getText().toString();
+		String publishedFileId = parseWorkshopPublishedFileId(value);
+		if (TextUtils.isEmpty(publishedFileId)) {
+			inputLayout.setError(getString(R.string.workshop_open_by_id_url_invalid));
+			return true;
+		}
+		inputLayout.setError(null);
+		dialog.dismiss();
+		openWorkshopItemById(publishedFileId);
+		return true;
+	}
+
+	private void openWorkshopItemById(String publishedFileId) {
+		if (TextUtils.isEmpty(publishedFileId)) {
+			return;
+		}
+		showItemDetails(workshopItemShell(publishedFileId));
+	}
+
+	private SteamWorkshopCatalog.Item workshopItemShell(String publishedFileId) {
+		return new SteamWorkshopCatalog.Item(
+			SteamWorkshopPreferences.DEFAULT_APP_ID,
+			publishedFileId,
+			"Workshop #" + publishedFileId,
+			"",
+			"",
+			"",
+			0L,
+			0L,
+			0,
+			0,
+			0L
+		);
+	}
+
+	private String parseWorkshopPublishedFileId(String value) {
+		String trimmed = value == null ? "" : value.trim();
+		if (TextUtils.isEmpty(trimmed)) {
+			return "";
+		}
+		if (isValidWorkshopPublishedFileId(trimmed)) {
+			return trimmed;
+		}
+		try {
+			Uri uri = Uri.parse(trimmed);
+			String id = uri.getQueryParameter("id");
+			if (isValidWorkshopPublishedFileId(id)) {
+				return id;
+			}
+			id = uri.getQueryParameter("publishedfileid");
+			if (isValidWorkshopPublishedFileId(id)) {
+				return id;
+			}
+		} catch (Exception ignored) {
+		}
+		Matcher queryMatcher = WORKSHOP_ID_QUERY_PATTERN.matcher(trimmed);
+		if (queryMatcher.find() && isValidWorkshopPublishedFileId(queryMatcher.group(1))) {
+			return queryMatcher.group(1);
+		}
+		String lower = trimmed.toLowerCase(Locale.ROOT);
+		if (lower.contains("steamcommunity.com") || lower.startsWith("steam://")) {
+			Matcher numberMatcher = WORKSHOP_URL_NUMBER_PATTERN.matcher(trimmed);
+			if (numberMatcher.find() && isValidWorkshopPublishedFileId(numberMatcher.group(1))) {
+				return numberMatcher.group(1);
+			}
+		}
+		return "";
+	}
+
+	private boolean isValidWorkshopPublishedFileId(String value) {
+		if (TextUtils.isEmpty(value) || value.length() > 20) {
+			return false;
+		}
+		boolean hasNonZero = false;
+		for (int i = 0; i < value.length(); i++) {
+			char ch = value.charAt(i);
+			if (ch < '0' || ch > '9') {
+				return false;
+			}
+			if (ch != '0') {
+				hasNonZero = true;
+			}
+		}
+		return hasNonZero;
 	}
 
 	private void searchWorkshop(String query, int page) {
@@ -1254,7 +1387,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 				showInstalledWorkshopModDetails(item, entry);
 			}
 		});
-		web.setOnClickListener(v -> openUrl(itemUrl(entry.publishedFileId)));
+		web.setOnClickListener(v -> showItemDetails(item));
 		delete.setOnClickListener(v -> showDeleteWorkshopRecordDialog(entry, item, installedMods));
 		content.addView(top);
 		String importedIds = entry.importedModIds.isEmpty() ? "-" : TextUtils.join(", ", entry.importedModIds);
@@ -1269,13 +1402,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		actions.addView(web, compactIconButtonParams());
 		actions.addView(delete, compactIconButtonParams());
 		content.addView(actions, fullWidthTopMargin(8));
-		card.setOnClickListener(v -> {
-			if (localInstalled) {
-				showInstalledWorkshopModDetails(item, entry);
-			} else {
-				showMessage(getString(R.string.workshop_local_files_missing));
-			}
-		});
+		card.setOnClickListener(v -> showItemDetails(item));
 		return card;
 	}
 

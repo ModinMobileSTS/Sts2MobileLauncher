@@ -38,9 +38,12 @@
     <string name="workshop_steam_logged_in">Steam：%1$s · SteamID64：%2$s</string>
     <string name="workshop_steam_status_refreshed">已刷新 Steam 登录状态。</string>
     <string name="workshop_search_title">塔2创意工坊</string>
-    <string name="workshop_search_subtitle">按 MOD 名称搜索公开创意工坊。下载结果会导入当前启动配置的 MOD 根目录。</string>
+    <string name="workshop_search_subtitle">按 MOD 名称搜索公开创意工坊，也可通过已知 Workshop ID/URL 打开条目。下载结果会导入当前启动配置的 MOD 根目录。</string>
     <string name="workshop_search_hint">搜索创意工坊 MOD</string>
     <string name="workshop_search">搜索</string>
+    <string name="workshop_open_by_id_url">通过 ID/URL 打开</string>
+    <string name="workshop_open_by_id_url_hint">Workshop ID 或 URL</string>
+    <string name="workshop_open_by_id_url_invalid">请输入有效的 Workshop ID 或 URL。</string>
     <string name="workshop_library">已下载</string>
     <string name="workshop_check_updates">检查更新</string>
     <string name="workshop_open_web">打开创意工坊</string>
