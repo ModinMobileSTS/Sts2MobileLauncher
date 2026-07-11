@@ -120,7 +120,7 @@ public final class InGameOverlayController {
 	private ImageView logFiltersButton;
 	private TextView inspectorStatusView;
 	private TextView inspectorResultView;
-	private HorizontalScrollView inspectorHorizontalScroll;
+	private InspectorHorizontalScrollView inspectorHorizontalScroll;
 	private RecyclerView inspectorRecyclerView;
 	private LinearLayoutManager inspectorLayoutManager;
 	private InspectorItemAdapter inspectorAdapter;
@@ -1168,10 +1168,10 @@ public final class InGameOverlayController {
 		inspectorRecyclerView.setLayoutManager(inspectorLayoutManager);
 		inspectorAdapter = new InspectorItemAdapter();
 		inspectorRecyclerView.setAdapter(inspectorAdapter);
-		inspectorHorizontalScroll = new HorizontalScrollView(activity);
+		inspectorHorizontalScroll = new InspectorHorizontalScrollView(activity);
 		inspectorHorizontalScroll.setFillViewport(true);
-		inspectorHorizontalScroll.setHorizontalScrollBarEnabled(true);
 		inspectorHorizontalScroll.setScrollbarFadingEnabled(true);
+		inspectorHorizontalScroll.setInspectorHorizontalScrollingEnabled(false);
 		inspectorHorizontalScroll.addView(inspectorRecyclerView, new HorizontalScrollView.LayoutParams(
 			ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 		body.addView(inspectorHorizontalScroll, new LinearLayout.LayoutParams(
@@ -1608,6 +1608,8 @@ public final class InGameOverlayController {
 			return;
 		}
 		inspectorHorizontalScroll.post(() -> {
+			boolean isTree = "godot_tree".equals(inspectorKind);
+			inspectorHorizontalScroll.setInspectorHorizontalScrollingEnabled(isTree);
 			int viewport = inspectorHorizontalScroll.getWidth()
 				- inspectorHorizontalScroll.getPaddingLeft()
 				- inspectorHorizontalScroll.getPaddingRight();
@@ -1615,7 +1617,7 @@ public final class InGameOverlayController {
 				return;
 			}
 			int width = viewport;
-			if ("godot_tree".equals(inspectorKind)) {
+			if (isTree) {
 				Paint namePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 				namePaint.setTextSize(TypedValue.applyDimension(
 					TypedValue.COMPLEX_UNIT_SP, 14, activity.getResources().getDisplayMetrics()));
@@ -1633,7 +1635,7 @@ public final class InGameOverlayController {
 			HorizontalScrollView.LayoutParams params = new HorizontalScrollView.LayoutParams(
 				width, ViewGroup.LayoutParams.MATCH_PARENT);
 			inspectorRecyclerView.setLayoutParams(params);
-			if (!"godot_tree".equals(inspectorKind)) {
+			if (!isTree) {
 				inspectorHorizontalScroll.scrollTo(0, 0);
 			}
 		});
@@ -2418,6 +2420,38 @@ public final class InGameOverlayController {
 			this.profile = profile;
 			this.payload = payload;
 			this.compat = compat;
+		}
+	}
+
+	private final class InspectorHorizontalScrollView extends HorizontalScrollView {
+		private boolean horizontalScrollingEnabled;
+
+		InspectorHorizontalScrollView(Context context) {
+			super(context);
+		}
+
+		void setInspectorHorizontalScrollingEnabled(boolean enabled) {
+			horizontalScrollingEnabled = enabled;
+			setHorizontalScrollBarEnabled(enabled);
+			setOverScrollMode(enabled ? View.OVER_SCROLL_IF_CONTENT_SCROLLS : View.OVER_SCROLL_NEVER);
+			if (!enabled) {
+				scrollTo(0, 0);
+			}
+		}
+
+		@Override
+		public boolean onInterceptTouchEvent(MotionEvent ev) {
+			return horizontalScrollingEnabled && super.onInterceptTouchEvent(ev);
+		}
+
+		@Override
+		public boolean onTouchEvent(MotionEvent ev) {
+			return horizontalScrollingEnabled && super.onTouchEvent(ev);
+		}
+
+		@Override
+		public boolean canScrollHorizontally(int direction) {
+			return horizontalScrollingEnabled && super.canScrollHorizontally(direction);
 		}
 	}
 
