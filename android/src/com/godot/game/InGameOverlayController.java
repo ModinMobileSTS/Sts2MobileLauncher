@@ -1633,10 +1633,12 @@ public final class InGameOverlayController {
 				}
 			}
 			HorizontalScrollView.LayoutParams params = new HorizontalScrollView.LayoutParams(
-				width, ViewGroup.LayoutParams.MATCH_PARENT);
+				isTree ? width : ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.MATCH_PARENT);
 			inspectorRecyclerView.setLayoutParams(params);
 			if (!isTree) {
 				inspectorHorizontalScroll.scrollTo(0, 0);
+				inspectorRecyclerView.requestLayout();
 			}
 		});
 	}
@@ -2437,6 +2439,24 @@ public final class InGameOverlayController {
 			if (!enabled) {
 				scrollTo(0, 0);
 			}
+			requestLayout();
+		}
+
+		@Override
+		protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+			super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+			if (horizontalScrollingEnabled || getChildCount() == 0) {
+				return;
+			}
+			View child = getChildAt(0);
+			int childWidth = Math.max(0, getMeasuredWidth() - getPaddingLeft() - getPaddingRight());
+			int childHeightSpec = getChildMeasureSpec(
+				heightMeasureSpec,
+				getPaddingTop() + getPaddingBottom(),
+				child.getLayoutParams().height);
+			child.measure(
+				MeasureSpec.makeMeasureSpec(childWidth, MeasureSpec.EXACTLY),
+				childHeightSpec);
 		}
 
 		@Override
