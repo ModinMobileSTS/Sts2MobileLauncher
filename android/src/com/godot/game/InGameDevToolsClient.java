@@ -140,7 +140,10 @@ public final class InGameDevToolsClient {
 		return "ping".equals(op)
 			|| "apply_settings".equals(op)
 			|| "inspector.roots".equals(op)
-			|| "inspector.members".equals(op);
+			|| "inspector.members".equals(op)
+			|| "godot.tree".equals(op)
+			|| "godot.node".equals(op)
+			|| "godot.object".equals(op);
 	}
 
 	private static JSONObject readMatchingResponse(File responseFile, String id) {
