@@ -1,10 +1,14 @@
 package com.godot.game;
 
 import android.animation.ObjectAnimator;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
@@ -36,6 +40,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.core.graphics.Insets;
+import androidx.core.graphics.ColorUtils;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -83,6 +88,8 @@ public final class InGameOverlayController {
 	private static final int DRAWER_MIN_WIDTH_DP = 300;
 	private static final int DRAWER_MAX_WIDTH_DP = 640;
 	private static final int TAB_RAIL_WIDTH_DP = 64;
+	private static final int INSPECTOR_TREE_INDENT_DP = 16;
+	private static final int INSPECTOR_TREE_GUIDE_BASE_DP = 28;
 
 	private final GodotApp activity;
 	private final ExtraSettingsRepository repository;
@@ -99,7 +106,10 @@ public final class InGameOverlayController {
 	private FrameLayout panelContainer;
 	private View panelView;
 	private LinearLayout panelBody;
-	private TextView contextText;
+	private TextView contextStatusView;
+	private TextView contextProfileValue;
+	private TextView contextPayloadValue;
+	private TextView contextCompatValue;
 	private RecyclerView logRecyclerView;
 	private LinearLayoutManager logLayoutManager;
 	private LogLineAdapter logAdapter;
@@ -110,6 +120,7 @@ public final class InGameOverlayController {
 	private ImageView logFiltersButton;
 	private TextView inspectorStatusView;
 	private TextView inspectorResultView;
+	private HorizontalScrollView inspectorHorizontalScroll;
 	private RecyclerView inspectorRecyclerView;
 	private LinearLayoutManager inspectorLayoutManager;
 	private InspectorItemAdapter inspectorAdapter;
@@ -131,6 +142,7 @@ public final class InGameOverlayController {
 	private final List<String> inspectorStack = new ArrayList<>();
 	private final List<JSONObject> inspectorItems = new ArrayList<>();
 	private final Set<String> inspectorExpandedNodes = new HashSet<>();
+	private final Map<String, JSONObject> inspectorTreeByPath = new HashMap<>();
 	private final List<View> tabButtons = new ArrayList<>();
 	private final List<Button> logLevelButtons = new ArrayList<>();
 	private final EnumSet<InGameLogTailer.Level> logEnabledLevels = EnumSet.allOf(InGameLogTailer.Level.class);
@@ -663,10 +675,7 @@ public final class InGameOverlayController {
 
 	private void buildQuickTab(LinearLayout body) {
 		if (repository.isDevToolsEnabled()) {
-			contextText = text("", 13, false);
-			contextText.setTextColor(COLOR_MUTED);
-			contextText.setPadding(dp(4), dp(2), dp(4), dp(8));
-			body.addView(contextText);
+			body.addView(buildContextInfoCard());
 			refreshContextSummary();
 		}
 
@@ -689,6 +698,79 @@ public final class InGameOverlayController {
 			}
 			toast(R.string.in_game_overlay_hidden_toast);
 		}));
+	}
+
+	private View buildContextInfoCard() {
+		LinearLayout card = new LinearLayout(activity);
+		card.setOrientation(LinearLayout.VERTICAL);
+		card.setPadding(dp(14), dp(12), dp(14), dp(10));
+		card.setBackground(outlinedRoundedBackground(
+			Color.parseColor("#CC18212B"), Color.parseColor("#553B4A5C"), dp(16), dp(1)));
+		card.setElevation(dp(2));
+
+		LinearLayout header = new LinearLayout(activity);
+		header.setOrientation(LinearLayout.HORIZONTAL);
+		header.setGravity(Gravity.CENTER_VERTICAL);
+		ImageView icon = new ImageView(activity);
+		icon.setImageDrawable(MaterialSymbols.drawable(activity, "gamepad", COLOR_ACCENT, 22));
+		icon.setPadding(dp(9), dp(9), dp(9), dp(9));
+		icon.setBackground(roundedBackground(Color.parseColor("#263E89C9"), dp(12)));
+		header.addView(icon, new LinearLayout.LayoutParams(dp(40), dp(40)));
+
+		LinearLayout titleBox = new LinearLayout(activity);
+		titleBox.setOrientation(LinearLayout.VERTICAL);
+		titleBox.setPadding(dp(10), 0, 0, 0);
+		TextView title = text(activity.getString(R.string.in_game_overlay_game_info_title), 15, true);
+		contextStatusView = text(activity.getString(R.string.in_game_overlay_game_info_subtitle), 11, false);
+		contextStatusView.setTextColor(COLOR_MUTED);
+		titleBox.addView(title);
+		titleBox.addView(contextStatusView);
+		header.addView(titleBox, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+		card.addView(header);
+
+		View divider = new View(activity);
+		divider.setBackgroundColor(Color.parseColor("#334B596B"));
+		LinearLayout.LayoutParams dividerLp = new LinearLayout.LayoutParams(
+			ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
+		dividerLp.topMargin = dp(10);
+		dividerLp.bottomMargin = dp(4);
+		card.addView(divider, dividerLp);
+
+		contextProfileValue = addContextInfoRow(card, "person", R.string.in_game_overlay_game_info_profile);
+		contextPayloadValue = addContextInfoRow(card, "stadia_controller", R.string.in_game_overlay_game_info_payload);
+		contextCompatValue = addContextInfoRow(card, "extension", R.string.in_game_overlay_game_info_compat);
+
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+			ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		lp.bottomMargin = dp(8);
+		card.setLayoutParams(lp);
+		return card;
+	}
+
+	private TextView addContextInfoRow(LinearLayout parent, String iconName, int labelRes) {
+		LinearLayout row = new LinearLayout(activity);
+		row.setOrientation(LinearLayout.HORIZONTAL);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		row.setMinimumHeight(dp(46));
+
+		ImageView icon = new ImageView(activity);
+		icon.setImageDrawable(MaterialSymbols.drawable(activity, iconName, COLOR_MUTED, 19));
+		icon.setPadding(dp(7), dp(7), dp(7), dp(7));
+		row.addView(icon, new LinearLayout.LayoutParams(dp(34), dp(34)));
+
+		LinearLayout textBox = new LinearLayout(activity);
+		textBox.setOrientation(LinearLayout.VERTICAL);
+		textBox.setPadding(dp(8), dp(3), 0, dp(3));
+		TextView label = text(activity.getString(labelRes), 10, true);
+		label.setTextColor(COLOR_MUTED);
+		TextView value = text("—", 13, false);
+		value.setSingleLine(false);
+		value.setTextIsSelectable(true);
+		textBox.addView(label);
+		textBox.addView(value);
+		row.addView(textBox, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+		parent.addView(row);
+		return value;
 	}
 
 	private void buildSettingsTab(LinearLayout body) {
@@ -1072,6 +1154,7 @@ public final class InGameOverlayController {
 		inspectorResultView = text("", 11, false);
 		inspectorResultView.setTextColor(COLOR_ACCENT);
 		inspectorResultView.setTypeface(Typeface.MONOSPACE);
+		inspectorResultView.setTextIsSelectable(true);
 		inspectorResultView.setVisibility(View.GONE);
 		inspectorResultView.setPadding(dp(8), dp(6), dp(8), dp(6));
 		inspectorResultView.setBackground(roundedBackground(Color.parseColor("#99101820"), dp(10)));
@@ -1085,7 +1168,13 @@ public final class InGameOverlayController {
 		inspectorRecyclerView.setLayoutManager(inspectorLayoutManager);
 		inspectorAdapter = new InspectorItemAdapter();
 		inspectorRecyclerView.setAdapter(inspectorAdapter);
-		body.addView(inspectorRecyclerView, new LinearLayout.LayoutParams(
+		inspectorHorizontalScroll = new HorizontalScrollView(activity);
+		inspectorHorizontalScroll.setFillViewport(true);
+		inspectorHorizontalScroll.setHorizontalScrollBarEnabled(true);
+		inspectorHorizontalScroll.setScrollbarFadingEnabled(true);
+		inspectorHorizontalScroll.addView(inspectorRecyclerView, new HorizontalScrollView.LayoutParams(
+			ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+		body.addView(inspectorHorizontalScroll, new LinearLayout.LayoutParams(
 			ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
 		if (inspectorKind.startsWith("godot")) {
@@ -1176,6 +1265,9 @@ public final class InGameOverlayController {
 		if (clearStack) {
 			inspectorStack.clear();
 			inspectorExpandedNodes.clear();
+			if (inspectorHorizontalScroll != null) {
+				inspectorHorizontalScroll.scrollTo(0, 0);
+			}
 		}
 		inspectorKind = "godot_tree";
 		inspectorPath = "";
@@ -1199,7 +1291,7 @@ public final class InGameOverlayController {
 		}
 		inspectorKind = "godot_node";
 		inspectorPath = path;
-		setInspectorLoading(path);
+		setInspectorLoading(activity.getString(R.string.in_game_overlay_inspector_node));
 		try {
 			JSONObject extra = new JSONObject().put("node_path", path);
 			devToolsClient.request("godot.node", extra, new InGameDevToolsClient.Callback() {
@@ -1304,11 +1396,15 @@ public final class InGameOverlayController {
 		}
 		JSONArray items = payload.optJSONArray("items");
 		inspectorItems.clear();
+		inspectorTreeByPath.clear();
 		if (items != null) {
 			for (int i = 0; i < items.length(); i++) {
 				JSONObject item = items.optJSONObject(i);
 				if (item != null) {
 					inspectorItems.add(item);
+					if ("godot_tree".equals(kind)) {
+						inspectorTreeByPath.put(item.optString("path", ""), item);
+					}
 				}
 			}
 		}
@@ -1363,7 +1459,11 @@ public final class InGameOverlayController {
 		}
 		if ("godot_node".equals(kind)) {
 			String type = payload == null ? "" : payload.optString("type", "");
-			return path + (TextUtils.isEmpty(type) ? "" : " · " + simpleTypeName(type));
+			String name = payload == null ? "" : payload.optString("name", "");
+			if (TextUtils.isEmpty(name)) {
+				name = activity.getString(R.string.in_game_overlay_inspector_node);
+			}
+			return name + (TextUtils.isEmpty(type) ? "" : " · " + displayInspectorNodeType(type));
 		}
 		if ("godot_object".equals(kind)) {
 			String type = payload == null ? "" : payload.optString("type", "");
@@ -1408,10 +1508,6 @@ public final class InGameOverlayController {
 		String filter = inspectorSearch == null ? "" : inspectorSearch.getText().toString().trim().toLowerCase(Locale.ROOT);
 		List<JSONObject> filtered = new ArrayList<>();
 		if ("godot_tree".equals(inspectorKind)) {
-			Map<String, JSONObject> byPath = new HashMap<>();
-			for (JSONObject item : inspectorItems) {
-				byPath.put(item.optString("path", ""), item);
-			}
 			Set<String> searchVisible = new HashSet<>();
 			if (!filter.isEmpty()) {
 				for (JSONObject item : inspectorItems) {
@@ -1420,7 +1516,7 @@ public final class InGameOverlayController {
 					}
 					String path = item.optString("path", "");
 					while (!TextUtils.isEmpty(path) && searchVisible.add(path)) {
-						JSONObject current = byPath.get(path);
+						JSONObject current = inspectorTreeByPath.get(path);
 						path = current == null ? "" : current.optString("parentPath", "");
 					}
 				}
@@ -1431,11 +1527,12 @@ public final class InGameOverlayController {
 					if (searchVisible.contains(path)) {
 						filtered.add(item);
 					}
-				} else if (isInspectorTreeItemVisible(item, byPath)) {
+				} else if (isInspectorTreeItemVisible(item, inspectorTreeByPath)) {
 					filtered.add(item);
 				}
 			}
 			inspectorAdapter.submit(filtered);
+			updateInspectorListWidth(filtered);
 			return;
 		}
 		for (JSONObject item : inspectorItems) {
@@ -1444,6 +1541,7 @@ public final class InGameOverlayController {
 			}
 		}
 		inspectorAdapter.submit(filtered);
+		updateInspectorListWidth(filtered);
 	}
 
 	private boolean inspectorItemMatches(JSONObject item, String filter) {
@@ -1477,6 +1575,110 @@ public final class InGameOverlayController {
 		applyInspectorFilter();
 	}
 
+	private String displayInspectorNodeType(String type) {
+		if (TextUtils.isEmpty(type)) {
+			return activity.getString(R.string.in_game_overlay_inspector_node);
+		}
+		String display = type.trim();
+		int slash = display.indexOf(" / ");
+		if (slash > 0) {
+			display = display.substring(0, slash).trim();
+		}
+		return simpleTypeName(display);
+	}
+
+	private int inspectorNodeTypeColor(String type, int background) {
+		String key = TextUtils.isEmpty(type) ? "Node" : type;
+		int hash = key.hashCode() & 0x7fffffff;
+		float hue = hash % 360;
+		int color = Color.HSVToColor(new float[] {hue, 0.42f, 0.94f});
+		int opaqueBackground = Color.rgb(Color.red(background), Color.green(background), Color.blue(background));
+		for (int i = 0; i < 4 && ColorUtils.calculateContrast(color, opaqueBackground) < 3.2; i++) {
+			color = ColorUtils.blendARGB(color, Color.WHITE, 0.14f);
+		}
+		return color;
+	}
+
+	private int inspectorTreeGuideWidth(int depth) {
+		return dp(INSPECTOR_TREE_GUIDE_BASE_DP + Math.max(0, depth) * INSPECTOR_TREE_INDENT_DP);
+	}
+
+	private void updateInspectorListWidth(List<JSONObject> visibleItems) {
+		if (inspectorHorizontalScroll == null || inspectorRecyclerView == null) {
+			return;
+		}
+		inspectorHorizontalScroll.post(() -> {
+			int viewport = inspectorHorizontalScroll.getWidth()
+				- inspectorHorizontalScroll.getPaddingLeft()
+				- inspectorHorizontalScroll.getPaddingRight();
+			if (viewport <= 0) {
+				return;
+			}
+			int width = viewport;
+			if ("godot_tree".equals(inspectorKind)) {
+				Paint namePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+				namePaint.setTextSize(TypedValue.applyDimension(
+					TypedValue.COMPLEX_UNIT_SP, 14, activity.getResources().getDisplayMetrics()));
+				Paint typePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+				typePaint.setTextSize(TypedValue.applyDimension(
+					TypedValue.COMPLEX_UNIT_SP, 11, activity.getResources().getDisplayMetrics()));
+				for (JSONObject item : visibleItems) {
+					int guide = inspectorTreeGuideWidth(item.optInt("depth", 0));
+					String name = item.optString("name", "");
+					String type = displayInspectorNodeType(item.optString("type", ""));
+					float textWidth = Math.max(namePaint.measureText(name), typePaint.measureText(type));
+					width = Math.max(width, guide + dp(20) + Math.round(textWidth));
+				}
+			}
+			HorizontalScrollView.LayoutParams params = new HorizontalScrollView.LayoutParams(
+				width, ViewGroup.LayoutParams.MATCH_PARENT);
+			inspectorRecyclerView.setLayoutParams(params);
+			if (!"godot_tree".equals(inspectorKind)) {
+				inspectorHorizontalScroll.scrollTo(0, 0);
+			}
+		});
+	}
+
+	private void copyInspectorItem(JSONObject item) {
+		String value = item.optString("preview", "");
+		String label = item.optString("name", item.optString("id", "Inspector value"));
+		copyInspectorText(label, value);
+	}
+
+	private void copyInspectorText(String label, String value) {
+		String copiedValue = value == null ? "" : value;
+		ClipboardManager clipboard = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+		if (clipboard != null) {
+			clipboard.setPrimaryClip(ClipData.newPlainText(label, copiedValue));
+		}
+		String toastValue = copiedValue.replace('\n', ' ').replace('\r', ' ');
+		if (toastValue.length() > 72) {
+			toastValue = toastValue.substring(0, 72) + "…";
+		}
+		if (toastValue.isEmpty()) {
+			toastValue = activity.getString(R.string.in_game_overlay_inspector_empty_value);
+		}
+		toast(activity.getString(R.string.in_game_overlay_inspector_copied, toastValue));
+	}
+
+	private boolean[] inspectorTreeAncestorContinuations(JSONObject item) {
+		int depth = Math.max(0, item.optInt("depth", 0));
+		boolean[] continuation = new boolean[depth];
+		String parentPath = item.optString("parentPath", "");
+		while (!TextUtils.isEmpty(parentPath)) {
+			JSONObject parent = inspectorTreeByPath.get(parentPath);
+			if (parent == null) {
+				break;
+			}
+			int parentDepth = parent.optInt("depth", -1);
+			if (parentDepth >= 0 && parentDepth < continuation.length) {
+				continuation[parentDepth] = !parent.optBoolean("lastSibling", true);
+			}
+			parentPath = parent.optString("parentPath", "");
+		}
+		return continuation;
+	}
+
 	private void onInspectorItemClicked(JSONObject item) {
 		String domain = item.optString("domain", "runtime");
 		String preview = item.optString("preview", "");
@@ -1498,17 +1700,17 @@ public final class InGameOverlayController {
 					preview);
 				return;
 			}
-			toast(preview);
+			copyInspectorItem(item);
 			return;
 		}
 
 		String path = item.optString("path", "");
 		if (item.optBoolean("canEdit", false) && repository.isDevInspectorWritable()) {
 			promptEdit(path, item.optString("editKind", ""), preview);
-		} else if (item.optBoolean("canNavigate", false) || item.has("id")) {
+		} else if (item.optBoolean("canNavigate", false)) {
 			loadInspectorMembers(path, true);
 		} else {
-			toast(preview);
+			copyInspectorItem(item);
 		}
 	}
 
@@ -1724,7 +1926,49 @@ public final class InGameOverlayController {
 			return;
 		}
 		String preview = payload.optString("preview", payload.optString("result", payload.toString()));
-		setInspectorResult(preview, false);
+		if (payload.optBoolean("hasResult", false)) {
+			String result = payload.optString("result", preview);
+			showInspectorScriptResultDialog(result, payload.optString("type", ""));
+			return;
+		}
+		if (inspectorResultView != null) {
+			inspectorResultView.setVisibility(View.GONE);
+		}
+		toast(R.string.in_game_overlay_inspector_script_completed);
+	}
+
+	private void showInspectorScriptResultDialog(String result, String type) {
+		Context dialogContext = materialDialogContext();
+		TextView content = new TextView(dialogContext);
+		content.setText(result == null ? "" : result);
+		content.setTextColor(COLOR_TEXT);
+		content.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+		content.setTypeface(Typeface.MONOSPACE);
+		content.setTextIsSelectable(true);
+		content.setPadding(dp(14), dp(12), dp(14), dp(12));
+		content.setBackground(roundedBackground(Color.parseColor("#CC111820"), dp(12)));
+
+		ScrollView scroll = new ScrollView(dialogContext);
+		scroll.setFillViewport(true);
+		scroll.addView(content, new ScrollView.LayoutParams(
+			ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		int maxHeight = Math.max(dp(120), Math.min(dp(320), Math.round(
+			activity.getResources().getDisplayMetrics().heightPixels * 0.48f)));
+		scroll.setLayoutParams(new ViewGroup.LayoutParams(
+			ViewGroup.LayoutParams.MATCH_PARENT, maxHeight));
+
+		String title = activity.getString(R.string.in_game_overlay_inspector_script_result);
+		if (!TextUtils.isEmpty(type)) {
+			title += " · " + simpleTypeName(type);
+		}
+		String copyValue = result == null ? "" : result;
+		new com.google.android.material.dialog.MaterialAlertDialogBuilder(dialogContext)
+			.setTitle(title)
+			.setView(scroll)
+			.setNegativeButton(R.string.in_game_overlay_inspector_close, null)
+			.setPositiveButton(R.string.in_game_overlay_inspector_copy, (dialog, which) ->
+				copyInspectorText(activity.getString(R.string.in_game_overlay_inspector_script_result), copyValue))
+			.show();
 	}
 
 	private void setInspectorResult(String message, boolean error) {
@@ -1786,28 +2030,41 @@ public final class InGameOverlayController {
 	private void refreshContextSummary() {
 		ioExecutor.execute(() -> {
 			String json = GodotApp.getSelectedLaunchContextJson();
-			String summary;
+			ContextSummary summary;
 			try {
 				if (json == null || json.trim().isEmpty()) {
-					summary = activity.getString(R.string.in_game_overlay_context_missing);
+					summary = new ContextSummary(
+						activity.getString(R.string.in_game_overlay_context_missing), "?", "?", "?");
 				} else {
 					JSONObject obj = new JSONObject(json);
 					String profileId = firstNonEmpty(obj, "profile_id", "selected_profile_id", "instance_id", "selected_instance_id");
 					String profileLabel = firstNonEmpty(obj, "display_name", "profile_label");
 					String payload = firstNonEmpty(obj, "payload_version", "payload_label", "payload_id", "game_version", "selected_game_version_id");
 					String compatTarget = firstNonEmpty(obj, "compat_target_id", "selected_compat_target_id");
-					summary = "profile=" + displayIdWithLabel(profileId, profileLabel)
-						+ "\npayload=" + emptyToQuestion(payload)
-						+ "\ncompat=" + obj.optString("compat_pack_id", "?")
-						+ " / " + (TextUtils.isEmpty(compatTarget) ? "-" : compatTarget);
+					String compatPack = obj.optString("compat_pack_id", "?");
+					summary = new ContextSummary(
+						activity.getString(R.string.in_game_overlay_game_info_subtitle),
+						displayIdWithLabel(profileId, profileLabel),
+						emptyToQuestion(payload),
+						emptyToQuestion(compatPack) + "  ·  " + (TextUtils.isEmpty(compatTarget) ? "—" : compatTarget));
 				}
 			} catch (Exception exception) {
-				summary = json;
+				summary = new ContextSummary(
+					activity.getString(R.string.in_game_overlay_context_invalid), "?", "?", "?");
 			}
-			String finalSummary = summary;
+			ContextSummary finalSummary = summary;
 			mainHandler.post(() -> {
-				if (contextText != null) {
-					contextText.setText(finalSummary);
+				if (contextStatusView != null) {
+					contextStatusView.setText(finalSummary.status);
+				}
+				if (contextProfileValue != null) {
+					contextProfileValue.setText(finalSummary.profile);
+				}
+				if (contextPayloadValue != null) {
+					contextPayloadValue.setText(finalSummary.payload);
+				}
+				if (contextCompatValue != null) {
+					contextCompatValue.setText(finalSummary.compat);
 				}
 			});
 		});
@@ -1990,6 +2247,12 @@ public final class InGameOverlayController {
 		return background;
 	}
 
+	private GradientDrawable outlinedRoundedBackground(int color, int strokeColor, int radiusPx, int strokeWidthPx) {
+		GradientDrawable background = roundedBackground(color, radiusPx);
+		background.setStroke(strokeWidthPx, strokeColor);
+		return background;
+	}
+
 	private GradientDrawable drawerBackground() {
 		GradientDrawable background = new GradientDrawable();
 		background.setColor(COLOR_PANEL);
@@ -2144,6 +2407,102 @@ public final class InGameOverlayController {
 		void accept(String value);
 	}
 
+	private static final class ContextSummary {
+		final String status;
+		final String profile;
+		final String payload;
+		final String compat;
+
+		ContextSummary(String status, String profile, String payload, String compat) {
+			this.status = status;
+			this.profile = profile;
+			this.payload = payload;
+			this.compat = compat;
+		}
+	}
+
+	private final class InspectorTreeGuideView extends View {
+		private final Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		private final Paint buttonFillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		private final Paint buttonStrokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		private int depth;
+		private boolean lastSibling;
+		private boolean hasChildren;
+		private boolean expanded;
+		private boolean[] ancestorContinuations = new boolean[0];
+
+		InspectorTreeGuideView(Context context) {
+			super(context);
+			setWillNotDraw(false);
+			setClickable(true);
+			setFocusable(true);
+			linePaint.setStyle(Paint.Style.STROKE);
+			linePaint.setStrokeWidth(Math.max(1f, dp(1)));
+			linePaint.setColor(Color.parseColor("#788A9AAA"));
+			buttonFillPaint.setStyle(Paint.Style.FILL);
+			buttonFillPaint.setColor(Color.parseColor("#553D4E60"));
+			buttonStrokePaint.setStyle(Paint.Style.STROKE);
+			buttonStrokePaint.setStrokeWidth(Math.max(1f, dp(1)));
+			buttonStrokePaint.setColor(Color.parseColor("#B18FA4B8"));
+		}
+
+		void bind(int depth, boolean lastSibling, boolean hasChildren, boolean expanded, boolean[] ancestorContinuations) {
+			this.depth = Math.max(0, depth);
+			this.lastSibling = lastSibling;
+			this.hasChildren = hasChildren;
+			this.expanded = expanded;
+			this.ancestorContinuations = ancestorContinuations == null
+				? new boolean[0]
+				: ancestorContinuations.clone();
+			invalidate();
+		}
+
+		@Override
+		protected void onDraw(Canvas canvas) {
+			super.onDraw(canvas);
+			float step = dp(INSPECTOR_TREE_INDENT_DP);
+			float currentX = dp(8) + depth * step;
+			float centerY = getHeight() / 2f;
+			float halfButton = dp(6);
+
+			for (int level = 0; level < depth; level++) {
+				if (level < ancestorContinuations.length && ancestorContinuations[level]) {
+					float x = dp(8) + level * step;
+					canvas.drawLine(x, 0, x, getHeight(), linePaint);
+				}
+			}
+
+			if (depth > 0) {
+				canvas.drawLine(currentX, 0, currentX, centerY - halfButton, linePaint);
+				if (!lastSibling) {
+					canvas.drawLine(currentX, centerY + halfButton, currentX, getHeight(), linePaint);
+				}
+			}
+
+			if (hasChildren) {
+				canvas.drawRoundRect(
+					currentX - halfButton, centerY - halfButton,
+					currentX + halfButton, centerY + halfButton,
+					dp(2), dp(2), buttonFillPaint);
+				canvas.drawRoundRect(
+					currentX - halfButton, centerY - halfButton,
+					currentX + halfButton, centerY + halfButton,
+					dp(2), dp(2), buttonStrokePaint);
+				canvas.drawLine(currentX - dp(3), centerY, currentX + dp(3), centerY, linePaint);
+				if (!expanded) {
+					canvas.drawLine(currentX, centerY - dp(3), currentX, centerY + dp(3), linePaint);
+				}
+			}
+			canvas.drawLine(
+				currentX + (hasChildren ? halfButton : 0), centerY,
+				getWidth(), centerY, linePaint);
+			if (hasChildren && expanded) {
+				float childX = currentX + step;
+				canvas.drawLine(childX, centerY, childX, getHeight(), linePaint);
+			}
+		}
+	}
+
 	private final class InspectorItemAdapter extends RecyclerView.Adapter<InspectorItemViewHolder> {
 		private final List<JSONObject> items = new ArrayList<>();
 
@@ -2175,9 +2534,9 @@ public final class InGameOverlayController {
 			LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(dp(44), ViewGroup.LayoutParams.WRAP_CONTENT);
 			row.addView(badge, badgeLp);
 
-			ImageView expandIcon = new ImageView(activity);
-			expandIcon.setPadding(dp(3), dp(3), dp(3), dp(3));
-			row.addView(expandIcon, new LinearLayout.LayoutParams(dp(24), dp(24)));
+			InspectorTreeGuideView treeGuide = new InspectorTreeGuideView(activity);
+			row.addView(treeGuide, new LinearLayout.LayoutParams(
+				dp(INSPECTOR_TREE_GUIDE_BASE_DP), dp(50)));
 
 			LinearLayout content = new LinearLayout(activity);
 			content.setOrientation(LinearLayout.VERTICAL);
@@ -2211,7 +2570,7 @@ public final class InGameOverlayController {
 			icon.setClickable(true);
 			icon.setFocusable(true);
 			row.addView(icon, new LinearLayout.LayoutParams(dp(MIN_TOUCH_TARGET_DP), dp(MIN_TOUCH_TARGET_DP)));
-			return new InspectorItemViewHolder(row, badge, expandIcon, content, name, type, preview, icon);
+			return new InspectorItemViewHolder(row, badge, treeGuide, content, name, type, preview, icon);
 		}
 
 		@Override
@@ -2223,62 +2582,84 @@ public final class InGameOverlayController {
 			String preview = item.optString("preview", "");
 			boolean canEdit = item.optBoolean("canEdit", false) && repository.isDevInspectorWritable();
 			boolean isTreeNode = "godot_tree".equals(inspectorKind) && "node".equals(kind);
-			boolean canNavigate = item.optBoolean("canNavigate", false) || item.has("id");
 			boolean hasChildren = isTreeNode && item.optBoolean("hasChildren", false);
 			boolean expanded = hasChildren && inspectorExpandedNodes.contains(item.optString("path", ""));
 			int kindColor = inspectorKindColor(kind);
-			holder.badge.setVisibility(isTreeNode ? View.GONE : View.VISIBLE);
+			if (isTreeNode) {
+				int depth = item.optInt("depth", 0);
+				int background = inspectorTreeDepthColor(depth, expanded);
+				RecyclerView.LayoutParams rowParams = (RecyclerView.LayoutParams) holder.itemView.getLayoutParams();
+				rowParams.bottomMargin = 0;
+				holder.itemView.setLayoutParams(rowParams);
+				holder.badge.setVisibility(View.GONE);
+				holder.treeGuide.setVisibility(View.VISIBLE);
+				ViewGroup.LayoutParams guideParams = holder.treeGuide.getLayoutParams();
+				guideParams.width = inspectorTreeGuideWidth(depth);
+				guideParams.height = dp(50);
+				holder.treeGuide.setLayoutParams(guideParams);
+				holder.treeGuide.bind(
+					depth,
+					item.optBoolean("lastSibling", true),
+					hasChildren,
+					expanded,
+					inspectorTreeAncestorContinuations(item));
+				holder.treeGuide.setContentDescription(activity.getString(
+					expanded ? R.string.in_game_overlay_inspector_collapse_node : R.string.in_game_overlay_inspector_expand_node));
+				holder.treeGuide.setOnClickListener(v -> toggleInspectorTreeNode(item));
+				holder.itemView.setBackground(pressableBackground(background, dp(10)));
+				holder.content.setPadding(dp(8), 0, dp(8), 0);
+				holder.name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+				holder.name.setText(name);
+				holder.name.setTextColor(COLOR_TEXT);
+				holder.name.setEllipsize(null);
+				holder.type.setVisibility(View.GONE);
+				holder.preview.setText(displayInspectorNodeType(type));
+				holder.preview.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+				holder.preview.setTypeface(Typeface.DEFAULT);
+				holder.preview.setEllipsize(null);
+				holder.preview.setTextColor(inspectorNodeTypeColor(type, background));
+				holder.icon.setVisibility(View.GONE);
+				holder.icon.setOnClickListener(null);
+				holder.itemView.setContentDescription(name + " · " + displayInspectorNodeType(type));
+				holder.itemView.setOnClickListener(v -> navigateInspectorItem(item));
+				return;
+			}
+
+			holder.badge.setVisibility(View.VISIBLE);
+			RecyclerView.LayoutParams rowParams = (RecyclerView.LayoutParams) holder.itemView.getLayoutParams();
+			rowParams.bottomMargin = dp(4);
+			holder.itemView.setLayoutParams(rowParams);
+			holder.treeGuide.setVisibility(View.GONE);
+			holder.treeGuide.setOnClickListener(null);
+			holder.itemView.setBackground(pressableBackground(Color.parseColor("#B31A222C"), dp(10)));
+			holder.content.setPadding(dp(6), 0, dp(4), 0);
 			holder.badge.setText(inspectorKindLabel(kind));
 			holder.badge.setTextColor(kindColor);
 			holder.badge.setBackground(roundedBackground(Color.argb(42, Color.red(kindColor), Color.green(kindColor), Color.blue(kindColor)), dp(6)));
-			holder.itemView.setBackground(pressableBackground(
-				isTreeNode ? inspectorTreeDepthColor(item.optInt("depth", 0), expanded) : Color.parseColor("#B31A222C"),
-				dp(10)));
-			holder.content.setPadding(dp(6), 0, dp(4), 0);
+			holder.name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
 			holder.name.setText(name);
 			holder.name.setTextColor(COLOR_TEXT);
+			holder.name.setEllipsize(TextUtils.TruncateAt.END);
+			holder.type.setVisibility(View.VISIBLE);
 			holder.type.setText(simpleTypeName(type));
 			holder.type.setTextColor(kindColor);
 			holder.preview.setText(preview);
+			holder.preview.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+			holder.preview.setTypeface(Typeface.MONOSPACE);
+			holder.preview.setEllipsize(TextUtils.TruncateAt.END);
 			holder.preview.setTextColor(inspectorValueColor(preview, type));
-			if (hasChildren) {
-				holder.expandIcon.setVisibility(View.VISIBLE);
-				holder.expandIcon.setImageDrawable(MaterialSymbols.drawable(activity, "expand_more", COLOR_MUTED, 18));
-				holder.expandIcon.setRotation(expanded ? 0f : -90f);
-			} else if (isTreeNode) {
-				holder.expandIcon.setVisibility(View.INVISIBLE);
-				holder.expandIcon.setRotation(0f);
-			} else {
-				holder.expandIcon.setVisibility(View.GONE);
-				holder.expandIcon.setRotation(0f);
-			}
-			if (isTreeNode) {
-				holder.icon.setVisibility(View.VISIBLE);
-				holder.icon.setContentDescription(activity.getString(R.string.in_game_overlay_inspector_open_node));
-				holder.icon.setImageDrawable(MaterialSymbols.drawable(activity, "chevron_right", COLOR_ACCENT, 20));
-				holder.icon.setBackground(pressableBackground(Color.parseColor("#223E89C9"), dp(14)));
-				holder.icon.setOnClickListener(v -> navigateInspectorItem(item));
-			} else if (canEdit) {
+			if (canEdit) {
 				holder.icon.setVisibility(View.VISIBLE);
 				holder.icon.setContentDescription(activity.getString(R.string.in_game_overlay_inspector_edit_title));
 				holder.icon.setImageDrawable(MaterialSymbols.drawable(activity, "edit", COLOR_ACCENT, 20));
 				holder.icon.setBackground(pressableBackground(Color.TRANSPARENT, dp(14)));
 				holder.icon.setOnClickListener(v -> onInspectorItemClicked(item));
-			} else if (canNavigate) {
-				holder.icon.setVisibility(View.VISIBLE);
-				holder.icon.setContentDescription(activity.getString(R.string.in_game_overlay_inspector_open_object));
-				holder.icon.setImageDrawable(MaterialSymbols.drawable(activity, "chevron_right", COLOR_MUTED, 20));
-				holder.icon.setBackground(pressableBackground(Color.TRANSPARENT, dp(14)));
-				holder.icon.setOnClickListener(v -> {
-					if ("godot".equals(item.optString("domain", "runtime"))) {
-						navigateInspectorItem(item);
-					} else {
-						onInspectorItemClicked(item);
-					}
-				});
 			} else {
-				holder.icon.setVisibility(View.INVISIBLE);
-				holder.icon.setOnClickListener(null);
+				holder.icon.setVisibility(View.VISIBLE);
+				holder.icon.setContentDescription(activity.getString(R.string.in_game_overlay_inspector_copy));
+				holder.icon.setImageDrawable(MaterialSymbols.drawable(activity, "content_copy", COLOR_MUTED, 20));
+				holder.icon.setBackground(pressableBackground(Color.TRANSPARENT, dp(14)));
+				holder.icon.setOnClickListener(v -> copyInspectorItem(item));
 			}
 			holder.itemView.setOnClickListener(v -> onInspectorItemClicked(item));
 		}
@@ -2291,17 +2672,17 @@ public final class InGameOverlayController {
 
 	private static final class InspectorItemViewHolder extends RecyclerView.ViewHolder {
 		final TextView badge;
-		final ImageView expandIcon;
+		final InspectorTreeGuideView treeGuide;
 		final LinearLayout content;
 		final TextView name;
 		final TextView type;
 		final TextView preview;
 		final ImageView icon;
 
-		InspectorItemViewHolder(View itemView, TextView badge, ImageView expandIcon, LinearLayout content, TextView name, TextView type, TextView preview, ImageView icon) {
+		InspectorItemViewHolder(View itemView, TextView badge, InspectorTreeGuideView treeGuide, LinearLayout content, TextView name, TextView type, TextView preview, ImageView icon) {
 			super(itemView);
 			this.badge = badge;
-			this.expandIcon = expandIcon;
+			this.treeGuide = treeGuide;
 			this.content = content;
 			this.name = name;
 			this.type = type;
