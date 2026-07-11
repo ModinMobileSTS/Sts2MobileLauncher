@@ -141,6 +141,7 @@ offline bootstrap:
 - 固定追加 STS2 原生命令行 `--force-steam off`，让原版 `NGame.InitializePlatform()` 即使在 Harmony/MonoMod detour 失效的 ROM 上也走内置 Steam 跳过分支，避免继续尝试加载桌面 `steam_api64`。
 - 根据附加设置中的 `log_level`（默认 `info`，可选 `off` / `debug` / `very_debug`）追加 STS2 原生命令行 `-log <LogType> <LogLevel>`，覆盖 `Generic`、`Network`、`Actions`、`GameSync`、`VisualSync` 的运行日志等级；`off` 时不追加 STS2 `-log` 参数，Debug/Very Debug 会增加日志量并在下次启动生效。
 - 根据附加设置中的 `android_performance_overlay_enabled` 写入或清理 `<files>/launcher/enable_debug_menu.flag`；开启后 compat overlay 加载 `godot-debug-menu` 详细性能面板，默认关闭。
+- 可选应用内快捷面板（`android_in_game_overlay_enabled`，默认关）：`GodotApp` 用 `addContentView` 叠可拖动、自动贴边并避开系统手势/刘海安全区的“快捷”入口，点击打开从左侧滑入的无标题快捷抽屉，宽度约占可用屏幕 40%，左侧使用竖向图标页签区分功能页，**不**申请系统悬浮窗权限。抽屉右侧暗色空白区和系统 Back 优先关闭抽屉，所有主操作目标至少 48dp；从附加设置返回游戏时会按当前开关拆除或重建入口。开发者工具（`android_dev_tools_enabled`）启用检查器；写入需 `android_dev_inspector_writable`。只有当前的 **full compat** 包包含 C# `DevToolsHost`；offline bootstrap 或旧完整包会明确提示检查器不可用。Host 独立于其余可选补丁启动，轮询 `<files>/launcher/devtools/request.json`，用 `host.json` ready marker 公布就绪状态，并为 protocol 2 请求原子写入各自的 `response-<uuid>.json`（客户端仍兼容旧 `response.json`）；只读检查器请求在 host 已就绪但未响应时有限重试一次。它支持重启游戏进程、companion 设置 runtime apply、反射浏览/改值；审计写入 `<files>/logs/dev-tools.log`。实时日志默认 tail 当前 profile 的 `godot.log`，可切换全局 `sts2.log`，日志正文用 `RecyclerView` 按行复用并按等级着色，右侧提供顶部、底部、自动贴底和筛选齿轮按钮；日志源、等级筛选与搜索框默认隐藏，点齿轮后显示。由于 `GodotApp` 仍使用 Godot DeviceDefault theme，抽屉中的 Material confirmation/edit dialog 必须用 `Theme.Sts2ExtraSettings` wrapper 创建。
 - 如果当前 profile payload 的 `SlayTheSpire2.pck` 存在，添加：
 
 ```text

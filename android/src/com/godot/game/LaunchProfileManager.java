@@ -658,8 +658,15 @@ public final class LaunchProfileManager {
 		File selectedGameDir = profile.payload == null ? getPayloadGameDir(profile.payloadId) : profile.payload.gameDir;
 		root.put("selected_instance_id", profile.id);
 		root.put("selected_profile_id", profile.id);
+		root.put("instance_id", profile.id);
+		root.put("profile_id", profile.id);
 		root.put("display_name", profile.displayName);
 		root.put("payload_id", profile.payloadId);
+		if (profile.payload != null) {
+			root.put("payload_label", profile.payload.label);
+			root.put("payload_version", profile.payload.version);
+			root.put("payload_commit", profile.payload.commit);
+		}
 		root.put("selected_game_dir", selectedGameDir.getAbsolutePath());
 		root.put("selected_release_info", new File(selectedGameDir, PayloadManager.RELEASE_INFO_FILE_NAME).getAbsolutePath());
 		root.put("save_mode", profile.saveMode);

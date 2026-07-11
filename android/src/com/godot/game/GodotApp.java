@@ -85,6 +85,7 @@ public class GodotApp extends GodotActivity {
 	private static volatile boolean currentResumed;
 	private File gameDir;
 	private android.view.OrientationEventListener orientationEventListener;
+	private InGameOverlayController inGameOverlayController;
 
 	static {
 		Log.i(TAG, "DIAG GodotApp static init begin versionCode=" + BuildConfig.VERSION_CODE + " versionName=" + BuildConfig.VERSION_NAME + " flavor=" + BuildConfig.FLAVOR);
@@ -179,7 +180,26 @@ public class GodotApp extends GodotActivity {
 		currentWindowFocused = hasWindowFocus();
 		logGodotAppLaunchSnapshot("onCreate_after_super");
 		requestHighRefreshRate("onCreate_after_super");
+		scheduleInGameOverlayAttach("onCreate_after_super");
 		Log.i(TAG, "DIAG GodotApp.onCreate end windowFocused=" + currentWindowFocused);
+	}
+
+	private void scheduleInGameOverlayAttach(String reason) {
+		View decor = getWindow() == null ? null : getWindow().getDecorView();
+		if (decor == null) {
+			return;
+		}
+		decor.post(() -> {
+			try {
+				if (inGameOverlayController == null) {
+					inGameOverlayController = new InGameOverlayController(this);
+				}
+				inGameOverlayController.attach();
+				Log.i(TAG, "In-game overlay attach requested (" + reason + ")");
+			} catch (Exception exception) {
+				Log.w(TAG, "Unable to attach in-game overlay (" + reason + ")", exception);
+			}
+		});
 	}
 
 	private String describeIntent(Intent intent) {
@@ -706,6 +726,11 @@ public class GodotApp extends GodotActivity {
 		applyConfiguredScreenOrientation();
 		updateWindowAppearance.run();
 		requestHighRefreshRate("onResume");
+		if (inGameOverlayController != null) {
+			inGameOverlayController.onResume();
+		} else {
+			scheduleInGameOverlayAttach("onResume");
+		}
 	}
 
 	@Override
@@ -714,6 +739,16 @@ public class GodotApp extends GodotActivity {
 		currentResumed = false;
 		currentWindowFocused = false;
 		super.onPause();
+	}
+
+	@Override
+	public void onBackPressed() {
+		// The in-game drawer is transient UI. Match Android's expected Back behavior
+		// without swallowing Back once the drawer itself is already closed.
+		if (inGameOverlayController != null && inGameOverlayController.handleBackPressed()) {
+			return;
+		}
+		super.onBackPressed();
 	}
 
 	@Override
@@ -830,6 +865,19 @@ public class GodotApp extends GodotActivity {
 		}
 	}
 
+	/**
+	 * Shared soft-keyboard entry for volume-up shortcut and in-game overlay.
+	 */
+	public static boolean showSoftKeyboardFromOverlay() {
+		GodotApp activity = currentInstance;
+		if (activity == null) {
+			Log.e("GODOT", "Unable to show soft keyboard because current GodotApp instance is null.");
+			return false;
+		}
+		activity.showSoftKeyboardForGame();
+		return true;
+	}
+
 	private void showSoftKeyboardForGame() {
 		runOnUiThread(() -> {
 			try {
@@ -904,6 +952,14 @@ public class GodotApp extends GodotActivity {
 
 	@Override
 	public void onDestroy() {
+		if (inGameOverlayController != null) {
+			try {
+				inGameOverlayController.detach();
+			} catch (Exception exception) {
+				Log.w(TAG, "Unable to detach in-game overlay", exception);
+			}
+			inGameOverlayController = null;
+		}
 		try {
 			FMOD.close();
 		} catch (Throwable ignored) {
@@ -923,6 +979,7 @@ public class GodotApp extends GodotActivity {
 		StartupHealthTracker.markGameLaunchFinished(this);
 		applyConfiguredScreenOrientation();
 		runOnUiThread(updateWindowAppearance);
+		scheduleInGameOverlayAttach("onGodotMainLoopStarted");
 		requestHighRefreshRate("onGodotMainLoopStarted");
 	}
 
@@ -1028,6 +1085,17 @@ public class GodotApp extends GodotActivity {
 		return true;
 	}
 
+	public static boolean restartGameFromGame() {
+		GodotApp activity = currentInstance;
+		if (activity == null) {
+			Log.e("GODOT", "Unable to hard-restart GodotApp because current GodotApp instance is null.");
+			return false;
+		}
+		markExpectedCleanGameExit("restart_game");
+		activity.runOnUiThread(activity::restartGameAndExitProcess);
+		return true;
+	}
+
 	public static boolean markExpectedCleanGameExit(String source) {
 		GodotApp activity = currentInstance;
 		if (activity == null) {
@@ -1046,6 +1114,19 @@ public class GodotApp extends GodotActivity {
 			Runtime.getRuntime().exit(0);
 		} catch (Exception exception) {
 			Log.e("GODOT", "[AndroidRestart] Failed to restart to GameSettingsActivity.", exception);
+		}
+	}
+
+	private void restartGameAndExitProcess() {
+		try {
+			Log.i("GODOT", "[AndroidRestart] Restarting GodotApp and exiting process to clear Godot/Mono/NativeDetour state.");
+			Intent intent = new Intent(this, GodotApp.class);
+			intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+			intent.putExtra("launch_prepared", false);
+			startActivity(intent);
+			Runtime.getRuntime().exit(0);
+		} catch (Exception exception) {
+			Log.e("GODOT", "[AndroidRestart] Failed to restart GodotApp.", exception);
 		}
 	}
 }

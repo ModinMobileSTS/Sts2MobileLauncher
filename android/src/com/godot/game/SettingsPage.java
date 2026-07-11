@@ -648,6 +648,24 @@ public final class SettingsPage {
 		addSpinnerRow(content, R.drawable.ic_rocket_launch_24, R.string.launcher_startup_behavior_title, buildLauncherStartupBehaviorLabels(), findStringIndex(LAUNCHER_STARTUP_VALUES, ExtraSettingsPreferences.getLauncherStartupBehavior(context)), position -> ExtraSettingsPreferences.setLauncherStartupBehavior(context, LAUNCHER_STARTUP_VALUES[position]));
 		addSwitchRow(content, R.drawable.ic_speed_24, R.string.performance_overlay_switch, R.string.performance_overlay_hint, repository.isPerformanceOverlayEnabled(settings), checked -> repository.savePerformanceOverlayEnabled(checked));
 		addSwitchDetailsRow(content, R.drawable.ic_bolt_24, R.string.preload_switch, R.string.preload_hint, settings.optBoolean("preload_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_enabled", checked)), this::showPreloadAdvancedBottomSheet);
+		addSwitchRow(content, R.drawable.ic_ms_tune_24, R.string.in_game_overlay_switch, R.string.in_game_overlay_hint, settings.optBoolean(ExtraSettingsRepository.KEY_IN_GAME_OVERLAY_ENABLED, false), checked -> repository.saveSetting(root -> root.put(ExtraSettingsRepository.KEY_IN_GAME_OVERLAY_ENABLED, checked)));
+		addSwitchRow(content, R.drawable.ic_ms_build_24, R.string.dev_tools_switch, R.string.dev_tools_hint, settings.optBoolean(ExtraSettingsRepository.KEY_DEV_TOOLS_ENABLED, false), checked -> {
+			if (checked) {
+				// Risk confirmation is informational; user already toggled on. Persist and show notice.
+				repository.saveSetting(root -> root.put(ExtraSettingsRepository.KEY_DEV_TOOLS_ENABLED, true));
+				new MaterialAlertDialogBuilder(context)
+					.setTitle(R.string.dev_tools_risk_title)
+					.setMessage(R.string.dev_tools_risk_message)
+					.setPositiveButton(android.R.string.ok, null)
+					.show();
+			} else {
+				repository.saveSetting(root -> {
+					root.put(ExtraSettingsRepository.KEY_DEV_TOOLS_ENABLED, false);
+					root.put(ExtraSettingsRepository.KEY_DEV_INSPECTOR_WRITABLE, false);
+				});
+			}
+		});
+		addSwitchRow(content, R.drawable.ic_ms_edit_24, R.string.dev_inspector_writable_switch, R.string.dev_inspector_writable_hint, settings.optBoolean(ExtraSettingsRepository.KEY_DEV_INSPECTOR_WRITABLE, false), checked -> repository.saveSetting(root -> root.put(ExtraSettingsRepository.KEY_DEV_INSPECTOR_WRITABLE, checked)));
 		addSwitchRow(content, R.drawable.ic_high_quality_24, R.string.high_refresh_rate_switch, R.string.high_refresh_rate_hint, repository.isHighRefreshRateEnabled(settings), checked -> repository.saveHighRefreshRateEnabled(checked));
 		addSwitchRow(content, R.drawable.ic_extension_24, R.string.android_compat_pack_enabled_switch, R.string.android_compat_pack_enabled_hint, settings.optBoolean(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, true), checked -> repository.saveSetting(root -> root.put(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, checked)));
 		addSwitchRow(content, R.drawable.ic_groups_24, R.string.lan_multiplayer_enabled_switch, R.string.lan_multiplayer_enabled_help, settings.optBoolean("lan_multiplayer_enabled", true), checked -> repository.saveSetting(root -> root.put("lan_multiplayer_enabled", checked)));
