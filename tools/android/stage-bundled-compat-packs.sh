@@ -75,6 +75,7 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/SavePathPatches.cs" \
     "STS2AndroidPortCompat/Patches/RenderDiagnosticPatches.cs" \
     "STS2AndroidPortCompat/Patches/DebugMenuPatches.cs" \
+    "STS2AndroidPortCompat/Patches/AndroidAssetCacheLifecyclePatches.cs" \
     "STS2AndroidPortCompat/Patches/LifecycleAndPerformancePatches.cs" \
     "STS2AndroidPortCompat/Patches/ShaderCompatibilityPatches.cs" \
     "STS2AndroidPortCompat/Patches/AndroidStartupLoadingScreen.cs" \

@@ -183,7 +183,7 @@ legacy 分支构建模式仍可显式启用，用于回退诊断或对照旧发�
 COMPAT_PACK_BUILD_MODE=legacy tools/android/stage-bundled-compat-packs.sh
 ```
 
-legacy 模式读取 `tools/android/bundled-compat-packs.json`（或 `local.properties` 的 `compat.bundled_packs_config`），非当前分支使用 `compat.worktree_root`（默认 `.agent/worktrees/compat-packs/`）临时 worktree 构建；当前分支可直接使用 dirty worktree 方便测试。
+legacy 模式读取 `tools/android/bundled-compat-packs.json`（或 `local.properties` 的 `compat.bundled_packs_config`），非当前分支使用 `compat.worktree_root`（默认 `.agent/worktrees/compat-packs/`）临时 worktree 构建；当前分支可直接使用 dirty worktree 方便测试。stage 脚本还会把共享热修源码注入 legacy worktree；该列表必须包含 `ModEntry.cs` 新增的直接依赖，例如资源释放保护所需的 `AndroidAssetCacheLifecyclePatches.cs`。
 
 也可以直接在 submodule 中局部构建 matrix 包：
 
