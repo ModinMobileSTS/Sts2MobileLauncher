@@ -321,6 +321,9 @@ tools/package/build_android_body_zip.sh \
 ## 12. 局部检查
 
 ```bash
+# Steam 可恢复认证协议单元测试
+tools/android/gradle-with-s2-env.sh :steam-protocol:test
+
 # Java/Kotlin/Steam 子模块编译检查
 tools/android/gradle-with-s2-env.sh :compileMonoDebugJavaWithJavac
 
@@ -384,4 +387,18 @@ Steam 相关验证可额外检查：
 adb shell run-as com.megacrit.sts2re ls files/steam
 adb shell run-as com.megacrit.sts2re ls files/steam/cloud
 adb shell run-as com.megacrit.sts2re find files/payloads -maxdepth 3 -name .payload_manifest.json
+adb shell dumpsys activity services com.megacrit.sts2re
 ```
+
+Steam credential auth 必须用装有 Steam App 的实机做以下场景，不能只用“页面没崩”或小窗模式代替：
+
+1. 输入账号密码并进入手机确认后，确认认证前台通知已出现、服务已经开始轮询；直接按 Home 或打开 Steam App 批准，再从最近任务返回启动器，应自动完成登录，不应要求先点“已批准”，也不应要求小窗/分屏。
+2. 等待确认时反复前后台切换、旋转或让系统重建 `SteamAccountActivity`；`onStop()` 只应解绑 UI，通知和认证事务继续，返回后 UI 重新附着到当前状态。
+3. BeginAuth 已创建 transaction handle 后切换 Wi-Fi/移动网络，或短暂断网再恢复；CM WebSocket 断开后应建立新连接并复用既有 client/request id 继续轮询，而不是要求重新输入密码。
+4. 事务等待期间把应用放到后台后执行 `adb shell am kill com.megacrit.sts2re`，等待系统恢复服务或手动重新打开 Steam 中心；未过期 handle 应恢复轮询。`am force-stop` 是用户显式强停，Android 不保证立即重启服务，但重新打开应用后仍应恢复尚未过期的 handle。
+5. 分别验证手机令牌动态码和邮箱验证码。Guard code 只用于当次进程内提交；若进程在提交前死亡，允许要求重新输入 code，但磁盘、Intent 和 logcat 中不得出现明文。提交成功进入轮询后，后续恢复不应再次需要密码。
+6. 在等待确认/验证码时点取消，确认前台通知消失且 pending transaction 被清理，既有已登录账号不受影响；让事务超过默认 4 分钟 deadline，确认同样清理且不会继续后台轮询。
+7. 取消旧登录后立刻开始新登录，并制造旧请求迟到成功；只有当前 transaction generation 可以原子提交 refresh token，旧结果不得覆盖新账号或新事务。
+8. Android 13+ 拒绝通知权限后重复登录；系统可能不在通知栏展示普通通知，但认证状态和可恢复事务不应因此损坏，返回 Steam 中心仍可继续观察或取消。
+
+验证期间同时检查 `adb logcat` 和 app 私有偏好中不存在账号密码、加密密码或本次 Guard code 明文。允许加密保存的内容只有既有登录材料与短期 transaction handle；认证成功必须在同一次 generation-matched commit 中写入 refresh token 并删除 handle，取消、过期或 handle 损坏只删除 pending 状态。

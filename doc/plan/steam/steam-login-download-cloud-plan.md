@@ -1,16 +1,16 @@
 # Steam 登录、游戏下载与云存档接入计划
 
 > 目标读者：后续实现该功能的编码代理 / 维护者。  
-> 当前状态：已按当前多版本 payload / launch profile 模型落地首版实现；本文保留为设计说明与后续维护 checklist。
-> 适用仓库：`/mnt/datas/agent_workspace/s2_re`。  
+> 当前状态：已按当前多版本 payload / launch profile 模型落地首版实现，并将 credential auth 改为前台服务持有的可恢复事务；本文保留为设计说明与后续维护 checklist。
+> 适用仓库：本仓库根目录。
 > 参考工程：`../ref/SlayTheAmethystModded/`。  
-> 最后同步：2026-05-31。
+> 最后同步：2026-07-13。
 
 ## 0. 结论摘要
 
 本启动器可以实现类似 `../ref/SlayTheAmethystModded/` 的三项 Steam 能力：
 
-1. **Steam 登录**：Android launcher 侧完成账号密码登录、Steam Guard、refresh token 持久化。
+1. **Steam 登录**：Android launcher 侧完成账号密码登录、Steam Guard、refresh token 持久化；未完成的认证由 `dataSync` 前台服务作为可恢复事务持有，切到 Steam App 批准时不依赖 Activity 存活、小窗或分屏。
 2. **从 Steam 下载 STS2 游戏本体**：用用户自己的 Steam 账号通过 SteamPipe 下载 AppID `2868840` 对应 depot，并安装到当前 payload store：`<files>/payloads/<payload_id>/game/`，随后创建/选择 launch profile。
 3. **Steam 云存档**：由 launcher 侧同步 Steam Cloud 文件到当前 launch profile 解析出的 account root（全局 `<files>/default/<account>/` 或隔离 `<files>/instances/<profile_id>/default/<account>/`），不要在 Android 游戏进程里恢复桌面 Steamworks。
 
@@ -20,7 +20,9 @@
 
 ```text
 Steam center Activity
-  -> 登录 / refresh token 验证 / 注销
+  -> 通过 bound service 提交仅驻留内存的账号密码 / Guard code
+  -> SteamAuthForegroundService 持有短期 transaction handle、手机确认轮询与 CM 重连
+  -> 登录完成后原子提交 refresh token / 验证 / 注销
   -> SteamPipe 下载 STS2 payload 到 staging
   -> PayloadManager.importPayloadDirectory(...) 安装到 payload store
   -> LaunchProfileManager 创建/选择 profile 并匹配 compat pack
@@ -283,10 +285,10 @@ Existing project integration layer
 ```text
 android/src/com/godot/game/steam/
   auth/
-    SteamAuthStore.java|kt
-    SteamLoginCoordinator.java|kt
-    SteamAccountSnapshot.java|kt
-    SteamGuardChallenge.java|kt
+    SteamAuthStore.java
+    SteamAuthTransactionManager.kt
+    SteamAuthForegroundService.kt
+    SteamLoginCoordinator.java
   core/
     SteamClientIdentity.java|kt
     SteamNetworkClientFactory.java|kt
@@ -432,10 +434,10 @@ remote_path<TAB>size<TAB>timestamp<TAB>sha1<TAB>machine
 
 - `../ref/SlayTheAmethystModded/app/src/main/java/io/stamethyst/backend/steamcloud/SteamCloudAuthStore.kt`
 
-本项目建议新增：
+当前实现：
 
 ```text
-android/src/com/godot/game/steam/auth/SteamAuthStore.kt
+android/src/com/godot/game/steam/auth/SteamAuthStore.java
 ```
 
 存储字段：
@@ -448,14 +450,19 @@ guard_data
 last_auth_at_ms
 last_successful_connect_at_ms
 last_error
+pending_auth_transaction
 ```
 
 实现要求：
 
 - 使用 `EncryptedSharedPreferences`。
+- `pending_auth_transaction` 是默认 4 分钟有效的短期 handle，保存 transaction generation、账号名、Steam `client_id` / `request_id` / SteamID、poll interval、challenge 列表、已选择 challenge、phase、`new_client_id`、创建/截止时间，以及 Steam 已返回的 reusable `guard_data`。它不得包含账号密码、加密密码、用户本次输入的 Guard code、refresh token 或 access token。
+- 这里的 `guard_data` 是 Steam 返回、可随下一次 BeginAuth 复用的设备数据，不是用户看到或输入的一次性 Guard 动态码；动态码始终只驻留内存。
 - 读写失败时清理损坏的 encrypted prefs 并提示重新登录。
 - 任何日志不得输出 token 明文。
 - 提供 `clear()` 清除账号。
+- 成功时只有当前 pending transaction id 仍匹配，才能在一次同步 commit 中写入 refresh token 并删除 handle；旧 generation 的迟到轮询不得覆盖新登录。
+- 取消、过期或 handle 解析失败只清理 pending transaction；不要连带删除已经保存的 refresh token。用户明确“退出登录”才清除完整账号材料。
 - 可选：实现 `revokeRefreshToken()`，退出登录时调用 Steam Authentication revoke。
 
 ### 8.2 登录状态机
@@ -467,26 +474,47 @@ last_error
 - `SteamCredentialAuthSession.pollStatus()`
 - `SteamCloudClient.AuthPrompt`
 
-本项目 UI 建议：
+当前职责划分：
 
 ```text
 SteamAccountActivity
   - 显示已登录账号 / SteamID64 / 最近同步时间
-  - 登录 / 注销 / Steam 诊断
+  - 收集账号密码或 Guard code，并仅通过进程内 LocalBinder 交给 service
+  - 绑定观察事务快照；onStop 只注销 observer / unbind
+  - 提供打开 Steam App、继续等待和显式取消
 
-SteamLoginActivity
-  - 输入账号密码
-  - 开始登录
+SteamAuthForegroundService (foregroundServiceType=dataSync)
+  - transaction 的唯一网络 owner
+  - 前台通知、轮询、CM reconnect、deadline、terminal cleanup
+  - Activity/配置重建/可恢复进程重启后从 encrypted handle 恢复
 
-SteamGuardActivity
-  - 根据 challenge 类型显示：
-    - 手机 App 确认
-    - 手机令牌动态码
-    - 邮箱验证码
-  - 提交后轮询直到拿到 refresh token
+SteamAuthTransactionManager
+  - begin / resume / selectChallenge / submitGuardCode / pollOnce
+  - 每次 phase 或 new_client_id 变化后 generation-safe 持久化
+  - 成功 compare-and-commit，取消/过期只清 pending
 ```
 
-如果不想新增多个 Activity，也可以先在 `GameSettingsActivity` 中使用 Dialog，但多 Activity 更利于处理旋转、后台、输入法和长轮询。
+状态机与不变量：
+
+```text
+IDLE
+  -> PREPARING_FOREGROUND
+  -> BEGIN_AUTH (password only in binder/service memory)
+  -> PERSIST_HANDLE
+  -> WAITING_GUARD_CODE --submit in memory--> POLLING
+  -> WAITING_REMOTE_CONFIRMATION ---------> POLLING immediately
+  -> RECONNECTING ------------------------> POLLING with persisted ids
+  -> SUCCESS / CANCELLED / EXPIRED / FAILED
+```
+
+1. Activity 先启动不含敏感 extra 的前台 service，再绑定并调用 `begin(account, password)`；密码不得放入 Intent/Bundle、saved instance state、通知或磁盘。若进程在 BeginAuth 返回 handle 前死亡，密码无法恢复，用户重新输入是预期行为。
+2. BeginAuth 成功后先同步加密保存 handle，才允许进入等待 UI。此后 Activity `onStop()` 只解绑：按 Home、打开 Steam App、旋转或 Activity 重建都不得调用 cancel。
+3. `DeviceConfirmation` / `EmailConfirmation` 被选中后先保存 phase，再立即调用 PollAuthSessionStatus；“打开 Steam”只是便利入口，不是开始轮询的开关，也不再提供必须先点的“已批准”按钮。用户可正常全屏切换应用，不需要小窗、分屏或 WakeLock。
+4. `DeviceCode` / `EmailCode` 等输入 challenge 等待 UI 通过 binder 提交；code 只用于当次调用且不落盘。提交后保存 `POLLING` phase，进程随后被回收仍可从 handle 恢复。
+5. 服务使用 Steam 返回的 poll interval，并在每次 poll 返回 `new_client_id` 后先更新 handle。CM WebSocket/transport 断开时，建立新的未认证 CM 连接，复用 handle 中原 `client_id` / `request_id`（以及最新 `new_client_id`）继续旧事务，不能重新提交密码创建平行 generation。
+6. 普通后台期间由 `dataSync` 前台服务及低重要度 ongoing 通知承载事务。服务被系统按可恢复路径重建或 Activity 再次进入时，以 encrypted handle 为状态事实来源；Android 的用户显式 force-stop 不保证即时自动重启，但重新打开应用后仍可恢复未过期 handle。
+7. 成功返回 token 时以 transaction id compare-and-commit：同一次持久化提交写入账号/SteamID/refresh token/新 guard data 并删除 pending handle。若用户已取消或开始了新 generation，旧轮询结果必须作为 superseded 丢弃。
+8. 用户取消、默认 4 分钟 deadline 到期、handle 损坏或明确 fatal failure 会停止通知/网络并清理对应 pending handle；transport 短暂失败应优先进入 reconnect/backoff，不立刻清事务。取消 pending 登录不等于退出已登录账号。
 
 ### 8.3 设备身份
 
@@ -1106,16 +1134,20 @@ v1 默认：关闭或手动。
 
 ### 14.1 凭据
 
-- 密码只在登录请求期间驻留内存，不持久化。
+- 密码与用户本次输入的 Guard 动态码只在 Activity 到 bound service 的进程内调用和对应 Steam 请求期间驻留内存，不持久化，也不进入 Intent、Bundle、saved instance state 或通知。
+- 未完成登录只在 `EncryptedSharedPreferences` 中短期保存 transaction handle；handle 默认 4 分钟过期，包含续接 PollAuthSessionStatus 所需的路由/phase/deadline，不包含密码、Guard code、refresh token 或 access token。
 - refresh token 使用 `EncryptedSharedPreferences`。
 - 日志中只记录 token 是否存在和长度，不记录内容。
-- 诊断文件默认不包含账号密码/token。
+- 诊断文件默认不包含账号密码、Guard code 或 token；账号名与协议路由标识如需记录，应尽量 mask，并确保它们不能用于还原凭据。
+- Activity 离开前台不代表用户取消；只有明确取消、过期或 fatal failure 才清理 pending transaction。成功提交必须校验 transaction generation，避免迟到结果覆盖新登录。
 - 导出日志时需 redact：
 
 ```text
 refresh_token=***
 access_token=***
 guard_data=***
+guard_code=***
+password=***
 ```
 
 ### 14.2 文件安全
@@ -1144,6 +1176,8 @@ guard_data=***
 - `LocalSnapshotCollector`
 - `Depot path sanitizer`
 - `Payload source manifest writer`
+- `SteamAuthTransactionHandle` JSON round-trip、deadline 与 unknown challenge
+- credential auth fake CM：poll 返回 `new_client_id` 后持久化、transport 重连复用 client/request id、旧 generation 禁止 commit
 
 测试样例：
 
@@ -1166,7 +1200,29 @@ adb shell run-as com.megacrit.sts2re cat files/steam/diagnostics/depot-candidate
 adb shell run-as com.megacrit.sts2re cat files/steam/diagnostics/cloud-list.tsv
 ```
 
-### 15.3 Steam 下载验证
+### 15.3 可恢复 Steam 认证实机验证
+
+必须用装有 Steam App 的 Android 实机覆盖：
+
+1. **正常手机确认**：进入“在 Steam App 批准”状态时前台通知已经出现且轮询已经开始；不点任何“已批准”按钮，直接切到 Steam App 批准再返回，应自动完成并保存 refresh token。
+2. **普通切后台**：按 Home、打开其他 App、在最近任务间切换数次；`SteamAccountActivity.onStop()` 只解绑，前台服务、deadline 与轮询继续。整个流程不得依赖小窗或分屏。
+3. **Activity 重建**：等待确认/轮询时旋转、切换语言/显示尺寸或让系统重建 Activity；返回后 UI 重新绑定现有事务，不创建第二次 BeginAuth。
+4. **CM 断线恢复**：handle 已保存后切换 Wi-Fi/移动网络，短暂飞行模式后恢复；服务应显示 reconnecting，并用持久化的 client/request id 建立新 CM 连接继续 poll。
+5. **进程恢复**：事务在后台时执行 `adb shell am kill com.megacrit.sts2re`；系统重建服务或用户重新进入 Steam 中心后，未过期 handle 继续。若杀进程发生在 BeginAuth 返回 handle 之前，应安全要求重新输入密码。`force-stop` 不作为“自动重启”保证，但重新打开后可恢复未过期 handle。
+6. **Guard code**：分别验证 DeviceCode / EmailCode。输入 code 前杀进程允许要求重新输入；提交后进入 polling 则可恢复。用 logcat、私有偏好字符串扫描和代码审查确认密码/Guard code 没有明文落盘或进入 Intent/日志。
+7. **取消/过期**：等待确认和等待 code 两种阶段分别取消；确认通知停止、socket 关闭、对应 pending handle 删除，而既有已登录 refresh token 不被误删。等待超过默认 4 分钟也应自动清理。
+8. **generation 竞争**：取消事务 A 后立刻开始事务 B，让 A 的 poll 尽量迟到；A 不得提交 token 或清掉 B。成功事务 B 应在一次原子 commit 中保存 token 并删除自身 handle。
+9. **通知权限**：Android 13+ 允许和拒绝 `POST_NOTIFICATIONS` 各测一次；拒绝权限不得破坏 service/handle 状态，返回 Activity 后仍可观察和取消。
+10. **失败分类**：错误 Guard code 保留当前事务并允许重输；短暂网络错误进入 reconnect/backoff；fatal auth error 清 pending 并给出可理解提示。
+
+辅助检查：
+
+```bash
+adb shell dumpsys activity services com.megacrit.sts2re
+adb logcat | rg 'Sts2SteamAuth|SteamAuthForegroundService'
+```
+
+### 15.4 Steam 下载验证
 
 场景：
 
@@ -1188,7 +1244,7 @@ adb shell run-as com.megacrit.sts2re ls files/instances
 adb shell run-as com.megacrit.sts2re cat files/launcher/selected_compat_pack.json
 ```
 
-### 15.4 云存档验证
+### 15.5 云存档验证
 
 场景：
 
@@ -1210,7 +1266,7 @@ adb shell run-as com.megacrit.sts2re cat files/steam/cloud/baseline.json
 adb shell run-as com.megacrit.sts2re ls files/steam/cloud/backups
 ```
 
-### 15.5 回归测试
+### 15.6 回归测试
 
 - 不登录 Steam 时，本地 zip 导入流程不变。
 - NexusMods 商店不受影响。
@@ -1230,13 +1286,15 @@ adb shell run-as com.megacrit.sts2re ls files/steam/cloud/backups
 
 ### 16.2 登录
 
-- [ ] 新增 `SteamAuthStore`。
-- [ ] 新增 `SteamClientIdentity`。
-- [ ] 新增登录 Activity / Guard Activity。
-- [ ] 保存 refresh token。
-- [ ] 二次连接验证。
-- [ ] 清除账号。
-- [ ] 日志 redaction。
+- [x] 新增 `SteamAuthStore` 与 generation-safe pending transaction 存储。
+- [x] 新增 `SteamClientIdentity`。
+- [x] 在 `SteamAccountActivity` 中实现登录/Guard UI，并通过 bound service 观察状态。
+- [x] 新增 `SteamAuthForegroundService` / `SteamAuthTransactionManager`，以 `dataSync` 前台任务持有可恢复事务。
+- [x] 密码与 Guard code 只走进程内调用；短期 handle 加密落盘并带 deadline。
+- [x] 手机确认立即轮询；CM 断线复用 client/request id 重连。
+- [x] refresh token generation-matched 原子提交，取消/过期清理 pending。
+- [x] 二次连接验证、清除账号与日志 redaction。
+- [ ] 完成 15.3 的多设备/OEM/Android 版本实机矩阵并记录结果。
 
 ### 16.3 下载
 
@@ -1286,6 +1344,8 @@ adb shell run-as com.megacrit.sts2re ls files/steam/cloud/backups
 | 风险 | 影响 | 缓解 |
 | --- | --- | --- |
 | Steam 协议在 Android 上不稳定 | 登录/下载失败 | Phase 0 单独验证；保留本地 zip 导入作为主路径 |
+| 切到 Steam App 时 Activity/CM 被挂起 | 手机确认无法完成 | Activity 只解绑；`dataSync` 前台服务立即轮询；短期 handle 恢复；CM 用持久化 routing id 重连，不依赖小窗 |
+| 旧认证轮询迟到 | 覆盖新账号/token | transaction generation compare-and-commit；取消/替换后旧结果视为 superseded |
 | AppID/depot/branch 解析错误 | 下载错误版本或缺文件 | 以 manifest 必需文件校验为准；下载后仍走 `PayloadManager` 校验 |
 | Steam 默认分支更新到未支持版本 | 下载后无法安全启动 | 启动前 compat mismatch 提示；下载页显示支持版本 |
 | 下载体积大导致后台被杀 | 用户体验差、staging 残留 | foreground service、任务状态、清理/恢复 |
@@ -1296,6 +1356,6 @@ adb shell run-as com.megacrit.sts2re ls files/steam/cloud/backups
 
 ## 18. 最终建议
 
-首版已按用户要求一次性接入登录、SteamPipe 下载、手动云同步与自动挂点。后续测试重点应放在真实 Steam 账号的 appinfo/depot 分支枚举、不同游戏版本 payload 的 compat pack 匹配、以及当前 launch profile（全局/隔离存档）与 Steam Cloud 路径映射是否完全符合 PC 端。
+首版已按用户要求一次性接入登录、SteamPipe 下载、手动云同步与自动挂点。credential auth 已按可恢复事务维护：密码/Guard code 不落盘、手机确认立即轮询、前台服务持有、CM 可续接、成功原子提交、取消/过期清理。后续测试重点应包括真实设备切屏/进程恢复/OEM 后台策略，以及真实 Steam 账号的 appinfo/depot 分支枚举、不同游戏版本 payload 的 compat pack 匹配、当前 launch profile（全局/隔离存档）与 Steam Cloud 路径映射是否完全符合 PC 端。
 
 Steam 下载必须继续复用 payload store + launch profile 模型；Steam Cloud 必须继续复用当前 launch profile 的 account root；二者都不应改变 `port-mod` 当前“禁用桌面 Steamworks”的基本不变式。

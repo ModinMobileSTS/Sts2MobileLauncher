@@ -61,7 +61,7 @@
 - **[Google Material Symbols](https://fonts.google.com/icons)**
   提供启动器 UI 使用的官方 Rounded 图标轮廓，并由 bundled 字体离线生成 Android vector drawable。
 
-*(详细的第三方开源协议见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
+*(详细的第三方开源协议，包括不会打入 APK 的 Kotlin Test/JUnit 测试依赖，见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
 
 ---
 
@@ -72,8 +72,10 @@
 1. **ADB 与 Debuggable 风险：**
    当前默认的 release 构建选项中**保留了 `debuggable=true`**（为了便于发生崩溃时抓取日志排查）。这意味着任何连接到您的手机并获得 `ADB` 权限的电脑或恶意软件，都能提取此应用的数据（包含加密保存的 Steam 凭据）。**请绝对不要将手机的 ADB 调试权限授予不可信的电脑或第三方应用市场。**
 2. **Steam 账号安全：**
-   - 本应用**绝不会**将您的 Steam 账号密码上传至任何第三方服务器。密码仅用于单次向 Steam 服务器请求并换取 `Refresh Token`。
+   - 本应用**绝不会**将您的 Steam 账号密码上传至任何第三方服务器。密码和本次登录输入的 Steam Guard 动态码只在内存中使用，不写入磁盘、Android service Intent 或日志。
+   - Steam 接受初始凭据请求后，启动器只会临时加密保存一个短期认证 transaction handle，用于中断后恢复；handle 会自动过期，只包含 Steam 路由与状态信息，不包含密码或本次动态码。
    - `Refresh Token` 通过 Android 的 `EncryptedSharedPreferences` 加密保存在本地。
+   - 手机 App 确认出现后会立即开始轮询。您可以正常切到 Steam App 批准后再返回，不需要把启动器挂小窗或分屏；认证前台服务会尽量保持事务并在 Steam CM 断线后恢复，取消或过期则清理待处理事务。
    - **强烈建议：** 只使用从可信源码自行编译或可信渠道获取的 APK 登录 Steam。
 3. **恶意 MOD 风险：**
    《杀戮尖塔2》的 MOD 本质上是任意执行的 C# 代码。**恶意 MOD 可以绕过沙盒直接读取您手机上的本地文件（包括存有 Steam Token 的配置）**。在尝试安装来源不明的未知 MOD 之前，**请务必在设置中退出 Steam 登录**，以防账号被盗。

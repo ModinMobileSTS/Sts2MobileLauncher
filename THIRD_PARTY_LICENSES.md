@@ -42,6 +42,7 @@
 | OkHttp / Okio | Steam CM WebSocket、HTTP/CDN 请求、NexusMods 请求。 | Apache-2.0 |
 | Protocol Buffers / protobuf Gradle plugin | Steam protobuf 消息编解码与生成。 | BSD-3-Clause |
 | Kotlin stdlib / coroutines / serialization | Steam 协议与下载子模块。 | Apache-2.0 |
+| Kotlin Test / JUnit 4 | `steam-protocol` 的纯 JVM 单元测试；不打入发布 APK。 | Apache-2.0 / Eclipse Public License 1.0 |
 | JavaSteam (`in.dragonbra:javasteam`) | Steam 账号、CM、RemoteStorage 等协议支持。 | MIT |
 | Bouncy Castle (`bcprov-jdk18on`) | JavaSteam 加密支持。 | Bouncy Castle License / MIT-style |
 | SLF4J NOP | 日志 facade no-op backend。 | MIT |

@@ -1,5 +1,6 @@
 package com.godot.game.steam.auth;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Log;
@@ -7,6 +8,9 @@ import android.util.Log;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKey;
 
+import top.apricityx.workshop.steam.protocol.SteamAuthTransactionHandle;
+
+@SuppressLint("ApplySharedPref") // Auth transaction generation changes require synchronous commits.
 public final class SteamAuthStore {
 	private static final String TAG = "Sts2SteamAuth";
 	private static final String PREFS_NAME = "sts2_steam_auth";
@@ -20,6 +24,8 @@ public final class SteamAuthStore {
 	private static final String KEY_LAST_PULL_AT_MS = "last_pull_at_ms";
 	private static final String KEY_LAST_PUSH_AT_MS = "last_push_at_ms";
 	private static final String KEY_LAST_ERROR = "last_error";
+	private static final String KEY_PENDING_AUTH_TRANSACTION = "pending_auth_transaction";
+	private static final Object PENDING_AUTH_LOCK = new Object();
 
 	private SteamAuthStore() {
 	}
@@ -51,16 +57,92 @@ public final class SteamAuthStore {
 		return snapshot == null ? AuthSnapshot.empty() : snapshot;
 	}
 
-	public static void recordAuthSuccess(Context context, String accountName, String refreshToken, String guardData, String steamId64) {
-		writeSafely(context, prefs -> prefs.edit()
-			.putString(KEY_ACCOUNT_NAME, trim(accountName))
-			.putString(KEY_REFRESH_TOKEN, trim(refreshToken))
-			.putString(KEY_GUARD_DATA, trim(guardData))
-			.putString(KEY_STEAM_ID_64, trim(steamId64))
-			.putLong(KEY_LAST_AUTH_AT_MS, System.currentTimeMillis())
-			.putLong(KEY_LAST_SUCCESS_AT_MS, System.currentTimeMillis())
-			.remove(KEY_LAST_ERROR)
-			.apply());
+	/**
+	 * Atomically commits tokens only if the pending generation still matches. A late poll from a
+	 * cancelled/replaced login therefore cannot overwrite the active account.
+	 */
+	public static boolean recordAuthSuccessIfPendingMatches(Context context, String transactionId, String accountName, String refreshToken, String guardData, String steamId64) {
+		synchronized (PENDING_AUTH_LOCK) {
+			Boolean committed = readSafely(context, prefs -> {
+				SteamAuthTransactionHandle current = parsePendingTransaction(prefs, true, false);
+				if (current == null || !current.getTransactionId().equals(trim(transactionId))) {
+					return false;
+				}
+				return putAuthSuccess(
+					prefs.edit(),
+					accountName,
+					refreshToken,
+					guardData,
+					steamId64
+				).remove(KEY_PENDING_AUTH_TRANSACTION).commit();
+			});
+			return Boolean.TRUE.equals(committed);
+		}
+	}
+
+	/**
+	 * Reads the encrypted pending handle. An expired handle is removed atomically but returned once
+	 * so callers can render an explicit EXPIRED state instead of treating it as missing credentials.
+	 */
+	public static SteamAuthTransactionHandle readPendingAuthTransaction(Context context) {
+		synchronized (PENDING_AUTH_LOCK) {
+			return readSafely(context, prefs -> parsePendingTransaction(prefs, true, true));
+		}
+	}
+
+	/** Replaces any previous pending generation. Used only after BeginAuth returns a new handle. */
+	public static void savePendingAuthTransaction(Context context, SteamAuthTransactionHandle handle) {
+		if (handle == null) {
+			throw new IllegalArgumentException("Steam auth transaction handle is required.");
+		}
+		if (handle.isExpired()) {
+			throw new IllegalArgumentException("Cannot persist an expired Steam auth transaction.");
+		}
+		synchronized (PENDING_AUTH_LOCK) {
+			writeSafely(context, prefs -> prefs.edit()
+				.putString(KEY_PENDING_AUTH_TRANSACTION, handle.toJson())
+				.commit());
+		}
+	}
+
+	/** Updates phase/client routing only when the stored generation still matches. */
+	public static boolean updatePendingAuthTransaction(Context context, SteamAuthTransactionHandle handle) {
+		if (handle == null || handle.isExpired()) {
+			return false;
+		}
+		synchronized (PENDING_AUTH_LOCK) {
+			Boolean updated = readSafely(context, prefs -> {
+				SteamAuthTransactionHandle current = parsePendingTransaction(prefs, true, false);
+				if (current == null || !current.getTransactionId().equals(handle.getTransactionId())) {
+					return false;
+				}
+				return prefs.edit()
+					.putString(KEY_PENDING_AUTH_TRANSACTION, handle.toJson())
+					.commit();
+			});
+			return Boolean.TRUE.equals(updated);
+		}
+	}
+
+	/** Clears whichever pending transaction is current without touching saved refresh-token data. */
+	public static void clearPendingAuthTransaction(Context context) {
+		synchronized (PENDING_AUTH_LOCK) {
+			writeSafely(context, prefs -> prefs.edit().remove(KEY_PENDING_AUTH_TRANSACTION).commit());
+		}
+	}
+
+	/** Clears only the specified generation, leaving a newer login transaction intact. */
+	public static boolean clearPendingAuthTransaction(Context context, String transactionId) {
+		synchronized (PENDING_AUTH_LOCK) {
+			Boolean cleared = readSafely(context, prefs -> {
+				SteamAuthTransactionHandle current = parsePendingTransaction(prefs, true, false);
+				if (current == null || !current.getTransactionId().equals(trim(transactionId))) {
+					return false;
+				}
+				return prefs.edit().remove(KEY_PENDING_AUTH_TRANSACTION).commit();
+			});
+			return Boolean.TRUE.equals(cleared);
+		}
 	}
 
 	public static void recordSuccessfulConnect(Context context, String steamId64) {
@@ -89,12 +171,49 @@ public final class SteamAuthStore {
 
 	public static void clear(Context context) {
 		Context app = context.getApplicationContext();
-		try {
-			prefs(app).edit().clear().commit();
-		} catch (Exception exception) {
-			Log.w(TAG, "Unable to clear encrypted Steam auth prefs.", exception);
+		synchronized (PENDING_AUTH_LOCK) {
+			try {
+				prefs(app).edit().clear().commit();
+			} catch (Exception exception) {
+				Log.w(TAG, "Unable to clear encrypted Steam auth prefs.", exception);
+			}
+			app.deleteSharedPreferences(PREFS_NAME);
 		}
-		app.deleteSharedPreferences(PREFS_NAME);
+	}
+
+	private static SharedPreferences.Editor putAuthSuccess(SharedPreferences.Editor editor, String accountName, String refreshToken, String guardData, String steamId64) {
+		long now = System.currentTimeMillis();
+		return editor
+			.putString(KEY_ACCOUNT_NAME, trim(accountName))
+			.putString(KEY_REFRESH_TOKEN, trim(refreshToken))
+			.putString(KEY_GUARD_DATA, trim(guardData))
+			.putString(KEY_STEAM_ID_64, trim(steamId64))
+			.putLong(KEY_LAST_AUTH_AT_MS, now)
+			.putLong(KEY_LAST_SUCCESS_AT_MS, now)
+			.remove(KEY_LAST_ERROR);
+	}
+
+	private static SteamAuthTransactionHandle parsePendingTransaction(SharedPreferences prefs, boolean clearInvalidOrExpired, boolean returnExpiredOnce) {
+		String encoded = trim(prefs.getString(KEY_PENDING_AUTH_TRANSACTION, ""));
+		if (encoded.isEmpty()) {
+			return null;
+		}
+		try {
+			SteamAuthTransactionHandle handle = SteamAuthTransactionHandle.fromJson(encoded);
+			if (handle.isExpired()) {
+				if (clearInvalidOrExpired) {
+					prefs.edit().remove(KEY_PENDING_AUTH_TRANSACTION).commit();
+				}
+				return returnExpiredOnce ? handle : null;
+			}
+			return handle;
+		} catch (Exception exception) {
+			Log.w(TAG, "Discarding invalid pending Steam auth transaction.", exception);
+			if (clearInvalidOrExpired) {
+				prefs.edit().remove(KEY_PENDING_AUTH_TRANSACTION).commit();
+			}
+			return null;
+		}
 	}
 
 	private static SharedPreferences prefs(Context context) throws Exception {

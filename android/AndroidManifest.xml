@@ -20,6 +20,13 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <queries>
+        <package android:name="com.valvesoftware.android.steam.community" />
+    </queries>
 
     <application
         android:name=".Sts2Application"
@@ -167,6 +174,12 @@
             android:exported="true"
             android:noHistory="true"
             android:excludeFromRecents="true" />
+
+        <service
+            android:name=".steam.auth.SteamAuthForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false" />
 
         <receiver
             android:name=".DebugAutomationReceiver"

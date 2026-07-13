@@ -67,7 +67,7 @@ The creation of this project relies heavily on the explorations of the open-sour
 - **[Google Material Symbols](https://fonts.google.com/icons)**
   Provides the official rounded icon outlines used by the launcher UI, generated into Android vector drawables from the bundled font.
 
-*(For detailed third-party open-source licenses, please see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
+*(For detailed third-party open-source licenses, including test-only Kotlin Test/JUnit dependencies that are not packaged into the APK, please see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
 
 ---
 
@@ -78,8 +78,10 @@ For the safety of your device and accounts, please pay strict attention to the f
 1. **ADB & `Debuggable` Risks:**
    The current default release build configuration **keeps `debuggable=true`** (to facilitate log capture in case of crashes). This means any computer or malicious software connected to your phone with `ADB` permissions can extract data from this app (including encrypted Steam credentials). **NEVER grant ADB debugging permissions to untrusted computers or third-party app stores.**
 2. **Steam Account Security:**
-   - This app will **NEVER** upload your Steam account password to any third-party server. The password is only used for a one-time request to Steam servers to exchange for a `Refresh Token`.
+   - This app will **NEVER** upload your Steam account password to any third-party server. The password and the Steam Guard code entered for the current login remain in memory only; they are not written to disk, an Android service intent, or logs.
+   - After Steam accepts the initial credential request, the launcher temporarily stores only an encrypted, short-lived authentication transaction handle so an interrupted login can resume. The handle expires automatically and contains Steam routing/status data, not the password or one-time Guard code.
    - The `Refresh Token` is encrypted and stored locally via Android's `EncryptedSharedPreferences`.
+   - For Steam mobile confirmation, polling starts immediately. You can switch to the Steam app, approve the request, and return normally; keeping this launcher in a floating window or split screen is not required. A foreground authentication service keeps the transaction alive and reconnects to Steam CM when possible, while cancel or expiry removes the pending transaction.
    - **Strongly Recommended:** Only log into Steam using an APK compiled by yourself from trusted source code or obtained from a highly trusted channel.
 3. **Malicious MOD Risks:**
    Mods for *Slay the Spire 2* are essentially arbitrarily executed C# code. **Malicious Mods can bypass the sandbox to directly read local files on your phone (including configurations containing your Steam Token).** Before attempting to install unknown Mods from untrusted sources, **make sure to log out of Steam in the app settings** to prevent account theft.

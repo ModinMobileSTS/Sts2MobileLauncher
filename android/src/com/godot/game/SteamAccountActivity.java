@@ -1,15 +1,22 @@
 package com.godot.game;
 
+import android.Manifest;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.Looper;
 import android.text.Html;
 import android.text.InputType;
@@ -26,10 +33,12 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
+import com.godot.game.steam.auth.SteamAuthForegroundService;
 import com.godot.game.steam.auth.SteamAuthStore;
 import com.godot.game.steam.auth.SteamLoginCoordinator;
-import com.godot.game.steam.cloud.Sts2SteamCloudClient;
 import com.godot.game.steam.cloud.Sts2SteamCloudSyncManager;
 import com.godot.game.steam.core.SteamSettings;
 import com.godot.game.steam.download.Sts2SteamPayloadDownloader;
@@ -48,11 +57,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 
 import in.dragonbra.javasteam.enums.EResult;
 import in.dragonbra.javasteam.steam.authentication.AuthenticationException;
+import top.apricityx.workshop.steam.protocol.SteamAuthTransactionHandle;
+import top.apricityx.workshop.steam.protocol.SteamGuardChallengeType;
 
 public class SteamAccountActivity extends AppCompatActivity {
 	private static final int SAFETY_NOTICE_COUNTDOWN_SECONDS = 5;
@@ -63,6 +73,8 @@ public class SteamAccountActivity extends AppCompatActivity {
 	private static final int BRANCH_PUBLIC = 0;
 	private static final int BRANCH_BETA = 1;
 	private static final int BRANCH_CUSTOM = 2;
+	private static final int REQUEST_POST_NOTIFICATIONS = 4301;
+	private static final String STEAM_ANDROID_PACKAGE = "com.valvesoftware.android.steam.community";
 
 	private LinearLayout tabContent;
 	private LinearLayout downloadPage;
@@ -91,6 +103,9 @@ public class SteamAccountActivity extends AppCompatActivity {
 	private LinearLayout branchCustomDetails;
 	private TextInputEditText customBranchInput;
 	private MaterialButton downloadButton;
+	private MaterialButton loginButton;
+	private MaterialButton verifyLoginButton;
+	private MaterialButton logoutButton;
 	private View radioPublic;
 	private View radioBeta;
 	private View radioCustom;
@@ -100,6 +115,44 @@ public class SteamAccountActivity extends AppCompatActivity {
 	private int selectedBranch = BRANCH_PUBLIC;
 	private PayloadManager.ImportControl activeDownloadControl;
 	private SteamOperationProgressDialog operationDialog;
+	private SteamAuthForegroundService.LocalBinder steamAuthBinder;
+	private boolean steamAuthServiceBound;
+	private boolean steamAuthActive;
+	private String pendingAuthUsername;
+	private String pendingAuthPassword;
+	private AlertDialog steamAuthDialog;
+	private String steamAuthDialogKey = "";
+	private String suppressedConfirmationTransactionId = "";
+	private long lastHandledAuthTerminalRevision = -1L;
+
+	private final SteamAuthForegroundService.Listener steamAuthListener = snapshot ->
+		runOnUiThread(() -> renderSteamAuthSnapshot(snapshot));
+
+	private final ServiceConnection steamAuthConnection = new ServiceConnection() {
+		@Override
+		public void onServiceConnected(ComponentName name, IBinder service) {
+			if (!(service instanceof SteamAuthForegroundService.LocalBinder)) {
+				return;
+			}
+			steamAuthBinder = (SteamAuthForegroundService.LocalBinder) service;
+			steamAuthBinder.registerListener(steamAuthListener);
+			consumePendingAuthCredentials();
+		}
+
+		@Override
+		public void onServiceDisconnected(ComponentName name) {
+			steamAuthBinder = null;
+		}
+
+		@Override
+		public void onBindingDied(ComponentName name) {
+			steamAuthBinder = null;
+			steamAuthServiceBound = false;
+			if (!isFinishing() && !isDestroyed()) {
+				bindSteamAuthService();
+			}
+		}
+	};
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -112,7 +165,46 @@ public class SteamAccountActivity extends AppCompatActivity {
 	}
 
 	@Override
+	protected void onStart() {
+		super.onStart();
+		// The foreground service may have completed while this Activity was stopped and unbound.
+		// Refresh persisted account/error state before attaching to any still-active transaction.
+		refreshStatusOnly();
+		SteamAuthTransactionHandle pending = SteamAuthStore.readPendingAuthTransaction(this);
+		if (pending != null) {
+			if (pending.isExpired()) {
+				SteamAuthStore.clearPendingAuthTransaction(this, pending.getTransactionId());
+				showMessage(getString(R.string.steam_error_session_expired));
+			} else {
+				SteamAuthForegroundService.resumePending(this);
+			}
+		}
+		bindSteamAuthService();
+	}
+
+	@Override
+	protected void onStop() {
+		// Credentials are intentionally not recoverable before BeginAuth has produced a persisted
+		// handle. If they have not reached the binder yet, leaving the Activity drops them.
+		pendingAuthUsername = null;
+		pendingAuthPassword = null;
+		dismissSteamAuthDialog();
+		if (steamAuthBinder != null) {
+			steamAuthBinder.unregisterListener(steamAuthListener);
+			steamAuthBinder = null;
+		}
+		if (steamAuthServiceBound) {
+			unbindService(steamAuthConnection);
+			steamAuthServiceBound = false;
+		}
+		super.onStop();
+	}
+
+	@Override
 	protected void onDestroy() {
+		pendingAuthUsername = null;
+		pendingAuthPassword = null;
+		dismissSteamAuthDialog();
 		if (downloadProgressPanel != null) {
 			downloadProgressPanel.stopAnimations();
 		}
@@ -731,24 +823,24 @@ public class SteamAccountActivity extends AppCompatActivity {
 		body.addView(fieldsCard, fieldsParams);
 
 		LinearLayout actions = ExtraSettingsUi.horizontal(this);
-		MaterialButton login = ExtraSettingsUi.tonalButton(this, R.string.steam_login, R.drawable.ic_badge_24);
-		MaterialButton verify = ExtraSettingsUi.outlineButton(this, R.string.steam_verify_login, R.drawable.ic_check_circle_24);
-		login.setOnClickListener(v -> showLoginDialog());
-		verify.setOnClickListener(v -> runOperation(getString(R.string.steam_status_verifying), () -> {
+		loginButton = ExtraSettingsUi.tonalButton(this, R.string.steam_login, R.drawable.ic_badge_24);
+		verifyLoginButton = ExtraSettingsUi.outlineButton(this, R.string.steam_verify_login, R.drawable.ic_check_circle_24);
+		loginButton.setOnClickListener(v -> showLoginDialog());
+		verifyLoginButton.setOnClickListener(v -> runOperation(getString(R.string.steam_status_verifying), () -> {
 			String steamId = SteamLoginCoordinator.verifyRefreshToken(this);
 			return getString(R.string.steam_status_verified, steamId);
 		}));
-		actions.addView(login, weighted(0));
-		actions.addView(verify, weighted(10));
+		actions.addView(loginButton, weighted(0));
+		actions.addView(verifyLoginButton, weighted(10));
 		LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
 		actionsParams.topMargin = ExtraSettingsUi.dp(this, 14);
 		body.addView(actions, actionsParams);
 
-		MaterialButton logout = ExtraSettingsUi.outlineButton(this, R.string.steam_logout, R.drawable.ic_delete_24);
-		logout.setOnClickListener(v -> confirmLogout());
+		logoutButton = ExtraSettingsUi.outlineButton(this, R.string.steam_logout, R.drawable.ic_delete_24);
+		logoutButton.setOnClickListener(v -> confirmLogout());
 		LinearLayout.LayoutParams logoutParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
 		logoutParams.topMargin = ExtraSettingsUi.dp(this, 8);
-		body.addView(logout, logoutParams);
+		body.addView(logoutButton, logoutParams);
 
 		ExtraSettingsUi.addCardSpacing(root, profileCard);
 
@@ -787,7 +879,14 @@ public class SteamAccountActivity extends AppCompatActivity {
 			.setMessage(R.string.steam_logout_confirm_message)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (dialog, which) -> {
+				if (steamAuthBinder != null) {
+					steamAuthBinder.cancel();
+				} else if (steamAuthActive || SteamAuthStore.readPendingAuthTransaction(this) != null) {
+					SteamAuthForegroundService.cancelPending(this);
+				}
 				SteamAuthStore.clear(this);
+				steamAuthActive = false;
+				updateAuthActionButtons();
 				refreshStatus();
 				showMessage(getString(R.string.steam_logged_out));
 			})
@@ -926,6 +1025,22 @@ public class SteamAccountActivity extends AppCompatActivity {
 	}
 
 	private void showLoginDialog() {
+		if (busy) {
+			return;
+		}
+		SteamAuthTransactionHandle pending = SteamAuthStore.readPendingAuthTransaction(this);
+		if (pending != null && !pending.isExpired()) {
+			SteamAuthForegroundService.resumePending(this);
+			bindSteamAuthService();
+			showMessage(getString(R.string.steam_status_auth_resuming));
+			return;
+		}
+		if (steamAuthActive) {
+			if (steamAuthBinder != null) {
+				renderSteamAuthSnapshot(steamAuthBinder.getSnapshot());
+			}
+			return;
+		}
 		LinearLayout content = ExtraSettingsUi.vertical(this);
 		int padding = ExtraSettingsUi.dp(this, 8);
 		content.setPadding(padding, padding, padding, 0);
@@ -956,20 +1071,280 @@ public class SteamAccountActivity extends AppCompatActivity {
 			username.setText(snapshot.accountName);
 			username.setSelection(username.getText() == null ? 0 : username.getText().length());
 		}
-		new MaterialAlertDialogBuilder(this)
+		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
 			.setTitle(R.string.steam_login)
 			.setMessage(R.string.steam_login_message)
 			.setView(content)
 			.setNegativeButton(android.R.string.cancel, null)
-			.setPositiveButton(R.string.steam_login, (dialog, which) -> {
-				String user = username.getText() == null ? "" : username.getText().toString();
-				String pass = password.getText() == null ? "" : password.getText().toString();
-				runOperation(getString(R.string.steam_status_logging_in), () -> {
-					SteamLoginCoordinator.AuthResult result = SteamLoginCoordinator.authenticateWithCredentials(this, user, pass, new DialogAuthPrompt());
-					return getString(R.string.steam_login_done, result.accountName, result.steamId64);
-				});
+			.setPositiveButton(R.string.steam_login, null)
+			.create();
+		dialog.setOnShowListener(shown -> dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> {
+			String user = username.getText() == null ? "" : username.getText().toString().trim();
+			String pass = password.getText() == null ? "" : password.getText().toString();
+			if (TextUtils.isEmpty(user) || TextUtils.isEmpty(pass)) {
+				showMessage(getString(R.string.steam_auth_error_missing_credentials));
+				return;
+			}
+			password.setText("");
+			dialog.dismiss();
+			startSteamAuthentication(user, pass);
+		}));
+		dialog.show();
+	}
+
+	private void startSteamAuthentication(String username, String password) {
+		pendingAuthUsername = username;
+		pendingAuthPassword = password;
+		steamAuthActive = true;
+		updateAuthActionButtons();
+		try {
+			// Start the foreground owner before handing credentials to its local binder. Neither the
+			// password nor the Guard code is ever placed in this Intent.
+			SteamAuthForegroundService.prepare(this);
+			bindSteamAuthService();
+			consumePendingAuthCredentials();
+			requestSteamAuthNotificationPermissionIfNeeded();
+		} catch (RuntimeException error) {
+			pendingAuthUsername = null;
+			pendingAuthPassword = null;
+			steamAuthActive = false;
+			updateAuthActionButtons();
+			showMessage(getString(R.string.error_operation_failed) + ": " + rawErrorMessage(error));
+		}
+	}
+
+	private void bindSteamAuthService() {
+		if (steamAuthServiceBound) {
+			return;
+		}
+		Intent intent = new Intent(this, SteamAuthForegroundService.class);
+		steamAuthServiceBound = bindService(intent, steamAuthConnection, Context.BIND_AUTO_CREATE);
+		if (!steamAuthServiceBound && pendingAuthPassword != null) {
+			pendingAuthUsername = null;
+			pendingAuthPassword = null;
+			steamAuthActive = false;
+			updateAuthActionButtons();
+			showMessage(getString(R.string.steam_auth_error_missing_credentials));
+		}
+	}
+
+	private void consumePendingAuthCredentials() {
+		if (steamAuthBinder == null || pendingAuthUsername == null || pendingAuthPassword == null) {
+			return;
+		}
+		String username = pendingAuthUsername;
+		String password = pendingAuthPassword;
+		pendingAuthUsername = null;
+		pendingAuthPassword = null;
+		steamAuthBinder.begin(username, password);
+	}
+
+	private void requestSteamAuthNotificationPermissionIfNeeded() {
+		if (
+			Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+			ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+		) {
+			ActivityCompat.requestPermissions(
+				this,
+				new String[] {Manifest.permission.POST_NOTIFICATIONS},
+				REQUEST_POST_NOTIFICATIONS
+			);
+		}
+	}
+
+	private void renderSteamAuthSnapshot(SteamAuthForegroundService.Snapshot snapshot) {
+		if (!steamAuthServiceBound || isFinishing() || isDestroyed()) {
+			return;
+		}
+		steamAuthActive = snapshot.isActive();
+		updateAuthActionButtons();
+		switch (snapshot.getStage()) {
+			case IDLE:
+				return;
+			case PREPARING:
+			case STARTING:
+			case RESUMING:
+			case POLLING:
+			case RECONNECTING:
+			case SUBMITTING_CODE:
+				showSteamAuthStatusDialog(snapshot);
+				return;
+			case WAITING_CONFIRMATION:
+				showSteamConfirmationDialog(snapshot);
+				return;
+			case WAITING_CODE:
+				showSteamGuardCodeDialog(snapshot);
+				return;
+			case SUCCESS:
+			case FAILED:
+			case CANCELLED:
+			case EXPIRED:
+			case NEEDS_CREDENTIALS:
+				handleSteamAuthTerminalSnapshot(snapshot);
+				return;
+		}
+	}
+
+	private void showSteamAuthStatusDialog(SteamAuthForegroundService.Snapshot snapshot) {
+		String key = "status:" + snapshot.getStage().name();
+		if (steamAuthDialog != null && key.equals(steamAuthDialogKey)) {
+			steamAuthDialog.setMessage(snapshot.getMessage());
+			return;
+		}
+		dismissSteamAuthDialog();
+		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.steam_login)
+			.setMessage(snapshot.getMessage())
+			.setCancelable(false)
+			.setNegativeButton(R.string.steam_guard_cancel_login_button, (ignored, which) -> cancelSteamAuthentication())
+			.create();
+		showSteamAuthDialog(dialog, key);
+	}
+
+	private void showSteamConfirmationDialog(SteamAuthForegroundService.Snapshot snapshot) {
+		String transactionId = snapshot.getTransactionId() == null ? "" : snapshot.getTransactionId();
+		if (transactionId.equals(suppressedConfirmationTransactionId)) {
+			dismissSteamAuthDialog();
+			return;
+		}
+		String key = "confirmation:" + transactionId;
+		if (steamAuthDialog != null && key.equals(steamAuthDialogKey)) {
+			steamAuthDialog.setMessage(snapshot.getMessage());
+			return;
+		}
+		dismissSteamAuthDialog();
+		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.steam_guard_confirmation_title)
+			.setMessage(snapshot.getMessage())
+			.setCancelable(false)
+			.setNegativeButton(R.string.steam_guard_cancel_login_button, (ignored, which) -> cancelSteamAuthentication())
+			.setNeutralButton(R.string.steam_guard_confirmation_wait_button, (ignored, which) -> {
+				suppressedConfirmationTransactionId = transactionId;
 			})
-			.show();
+			.setPositiveButton(R.string.steam_guard_confirmation_open_button, (ignored, which) -> {
+				suppressedConfirmationTransactionId = transactionId;
+				openSteamMobileApp();
+			})
+			.create();
+		showSteamAuthDialog(dialog, key);
+	}
+
+	private void showSteamGuardCodeDialog(SteamAuthForegroundService.Snapshot snapshot) {
+		SteamGuardChallengeType type = snapshot.getChallengeType();
+		if (type == null) {
+			showMessage(getString(R.string.steam_auth_error_unsupported_challenge));
+			return;
+		}
+		String transactionId = snapshot.getTransactionId() == null ? "" : snapshot.getTransactionId();
+		String key = "code:" + transactionId + ":" + type.name() + ":" + snapshot.getPreviousCodeRejected();
+		if (steamAuthDialog != null && key.equals(steamAuthDialogKey)) {
+			steamAuthDialog.setMessage(snapshot.getMessage());
+			return;
+		}
+		dismissSteamAuthDialog();
+		EditText input = new EditText(this);
+		input.setSingleLine(true);
+		input.setHint(R.string.steam_guard_code_hint);
+		input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.steam_guard_title)
+			.setMessage(snapshot.getMessage())
+			.setView(input)
+			.setCancelable(false)
+			.setNegativeButton(R.string.steam_guard_cancel_login_button, (ignored, which) -> cancelSteamAuthentication())
+			.setPositiveButton(android.R.string.ok, null)
+			.create();
+		dialog.setOnShowListener(shown -> dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> {
+			String code = input.getText() == null ? "" : input.getText().toString().trim();
+			if (TextUtils.isEmpty(code)) {
+				input.setError(getString(R.string.steam_guard_code_hint));
+				return;
+			}
+			input.setText("");
+			dialog.dismiss();
+			if (steamAuthBinder != null) {
+				steamAuthBinder.submitGuardCode(transactionId, type, code);
+			} else {
+				SteamAuthForegroundService.resumePending(this);
+				bindSteamAuthService();
+				showMessage(getString(R.string.steam_status_auth_resuming));
+			}
+		}));
+		showSteamAuthDialog(dialog, key);
+	}
+
+	private void showSteamAuthDialog(AlertDialog dialog, String key) {
+		steamAuthDialog = dialog;
+		steamAuthDialogKey = key;
+		dialog.setCanceledOnTouchOutside(false);
+		dialog.setOnDismissListener(ignored -> {
+			if (steamAuthDialog == dialog) {
+				steamAuthDialog = null;
+				steamAuthDialogKey = "";
+			}
+		});
+		dialog.show();
+	}
+
+	private void dismissSteamAuthDialog() {
+		AlertDialog dialog = steamAuthDialog;
+		steamAuthDialog = null;
+		steamAuthDialogKey = "";
+		if (dialog != null && dialog.isShowing()) {
+			dialog.dismiss();
+		}
+	}
+
+	private void handleSteamAuthTerminalSnapshot(SteamAuthForegroundService.Snapshot snapshot) {
+		dismissSteamAuthDialog();
+		steamAuthActive = false;
+		pendingAuthUsername = null;
+		pendingAuthPassword = null;
+		updateAuthActionButtons();
+		if (lastHandledAuthTerminalRevision == snapshot.getRevision()) {
+			return;
+		}
+		lastHandledAuthTerminalRevision = snapshot.getRevision();
+		if (
+			snapshot.getStage() == SteamAuthForegroundService.Stage.SUCCESS ||
+			snapshot.getStage() == SteamAuthForegroundService.Stage.FAILED
+		) {
+			suppressedConfirmationTransactionId = "";
+			refreshStatus();
+		}
+		showMessage(snapshot.getMessage());
+	}
+
+	private void cancelSteamAuthentication() {
+		suppressedConfirmationTransactionId = "";
+		if (steamAuthBinder != null) {
+			steamAuthBinder.cancel();
+		} else {
+			SteamAuthForegroundService.cancelPending(this);
+		}
+	}
+
+	private void openSteamMobileApp() {
+		Intent launch = getPackageManager().getLaunchIntentForPackage(STEAM_ANDROID_PACKAGE);
+		if (launch == null) {
+			showMessage(getString(R.string.steam_auth_open_steam_unavailable));
+			return;
+		}
+		launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+		startActivity(launch);
+	}
+
+	private void updateAuthActionButtons() {
+		boolean enabled = !steamAuthActive && !busy;
+		if (loginButton != null) {
+			loginButton.setEnabled(enabled);
+		}
+		if (verifyLoginButton != null) {
+			verifyLoginButton.setEnabled(enabled);
+		}
+		if (logoutButton != null) {
+			logoutButton.setEnabled(enabled);
+		}
 	}
 
 	private void startPayloadDownload() {
@@ -984,7 +1359,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 			showMessage(getString(R.string.steam_branch_custom_required));
 			return;
 		}
-		if (busy) {
+		if (busy || steamAuthActive) {
 			return;
 		}
 		busy = true;
@@ -1070,7 +1445,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 			downloadProgressPanel.getView().setVisibility(downloadingPayload ? View.VISIBLE : View.GONE);
 		}
 		if (downloadButton != null) {
-			downloadButton.setEnabled(!busy);
+			downloadButton.setEnabled(!busy && !steamAuthActive);
 		}
 		if (branchPublicCard != null) {
 			branchPublicCard.setEnabled(!busy);
@@ -1102,7 +1477,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 	}
 
 	private void runCloudOperationWithConflictPrompt(CloudOperation operation) {
-		if (busy) {
+		if (busy || steamAuthActive) {
 			return;
 		}
 		String busyMessage = getString(R.string.steam_status_cloud_busy);
@@ -1167,7 +1542,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 	}
 
 	private void runOperation(String busyMessage, ThrowingSupplier operation) {
-		if (busy) {
+		if (busy || steamAuthActive) {
 			return;
 		}
 		busy = true;
@@ -1422,6 +1797,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 				accountLastErrorView.setText(error);
 			}
 		}
+		updateAuthActionButtons();
 		if (cloudStatusBodyView != null || cloudPathView != null || cloudModeValueView != null) {
 			Sts2SteamCloudSyncManager.Status status = new Sts2SteamCloudSyncManager(this).getStatus();
 			if (cloudStatusBodyView != null) {
@@ -1490,49 +1866,6 @@ public class SteamAccountActivity extends AppCompatActivity {
 		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
 		params.setMarginStart(ExtraSettingsUi.dp(this, marginStartDp));
 		return params;
-	}
-
-	private final class DialogAuthPrompt implements Sts2SteamCloudClient.AuthPrompt {
-		@Override
-		public CompletableFuture<String> getDeviceCode(boolean previousCodeWasIncorrect) {
-			return requestTextCode(getString(previousCodeWasIncorrect ? R.string.steam_guard_device_code_retry : R.string.steam_guard_device_code), R.string.steam_guard_code_hint);
-		}
-
-		@Override
-		public CompletableFuture<String> getEmailCode(String email, boolean previousCodeWasIncorrect) {
-			String message = getString(previousCodeWasIncorrect ? R.string.steam_guard_email_code_retry : R.string.steam_guard_email_code, email == null ? "" : email);
-			return requestTextCode(message, R.string.steam_guard_code_hint);
-		}
-
-		@Override
-		public CompletableFuture<Boolean> acceptDeviceConfirmation() {
-			CompletableFuture<Boolean> future = new CompletableFuture<>();
-			runOnUiThread(() -> new MaterialAlertDialogBuilder(SteamAccountActivity.this)
-				.setTitle(R.string.steam_guard_confirmation_title)
-				.setMessage(R.string.steam_guard_confirmation_message)
-				.setNegativeButton(android.R.string.cancel, (dialog, which) -> future.complete(false))
-				.setPositiveButton(R.string.steam_guard_confirmation_ready_button, (dialog, which) -> future.complete(true))
-				.show());
-			return future;
-		}
-
-		private CompletableFuture<String> requestTextCode(String message, int hintRes) {
-			CompletableFuture<String> future = new CompletableFuture<>();
-			runOnUiThread(() -> {
-				EditText input = new EditText(SteamAccountActivity.this);
-				input.setSingleLine(true);
-				input.setHint(hintRes);
-				input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
-				new MaterialAlertDialogBuilder(SteamAccountActivity.this)
-					.setTitle(R.string.steam_guard_title)
-					.setMessage(message)
-					.setView(input)
-					.setNegativeButton(android.R.string.cancel, (dialog, which) -> future.completeExceptionally(new InterruptedException("Steam Guard cancelled.")))
-					.setPositiveButton(android.R.string.ok, (dialog, which) -> future.complete(input.getText() == null ? "" : input.getText().toString().trim()))
-					.show();
-			});
-			return future;
-		}
 	}
 
 	private interface ThrowingSupplier { String run() throws Exception; }
