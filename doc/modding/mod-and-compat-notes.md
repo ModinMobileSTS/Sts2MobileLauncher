@@ -154,6 +154,7 @@ tools/package/build_importer_apk.sh
 - Android temp 目录必须尽早配置，否则 Harmony/MonoMod 可能尝试使用不可写 `/tmp`。
 - Shader/resource overlay 资源应放入 `port-mod/overlay/`，重新打包 `port_compat.pck` 后才能生效。
 - 普通 MOD loader 的目标是尽量复用游戏原本的 scanner、dependency sort 和 TryLoadMod，减少与 PC 行为分叉。
+- LAN 兼容层只适配 Android transport/UI/settings/player/save；`MessageTypes` 消息发现与排序、`NetMessageBus` 序列化/反序列化必须继续由匹配版本的原版程序集负责。不要维护 Android 固定消息表，也不要仅按内置类型重建排序，否则会同时破坏未修改 PC 联机和普通 MOD 自定义 `INetMessage`。
 - `v0.103.x`、`v0.107.1` / `v0.108.0` stable target、`v0.106.1` beta 与 `v0.107.0` beta target 应保持同一套 Android/Mono MOD 初始化不变式：加载任何 MOD 前只允许预注册原版模型占位；每个 MOD initializer 期间只允许短暂隐藏“非原版类型命中早期原版占位”的 `ModelDb.Contains(Type)` 结果，避免与原版同名的 MOD 模型因 Android 提前占位误报重复；若 MOD 因早期占位误判 ModelDb 已初始化并调用 `AbstractModel.InitId()`，兼容层只在 `ModelIdSerializationCache.Init()` 完成前跳过该次早调用，后续正常 `ModelDb.InitIds()` 会统一设置排序 ID，不得提前动态分配 net ID；MOD 自定义模型占位必须等到所有 MOD Harmony patch 应用后、`ModelDb.Init()` 前再按最终 ID 注册。用户 MOD 在 initializer / `PatchAll` 中 patch STS2 Godot/UI 类型时，`DeferredModPatchQueue` 可将带静态初始化器的 UI patch 延后到 `ExecuteEssential` 完成后重放；不要把普通模型类 patch 一并延后，否则会破坏 MOD 依赖的 `ModelDb.Init` 前置 hook 时序。
 
 ## 10. MOD 兼容性排查规范
@@ -176,7 +177,7 @@ schema 1 legacy 单目标 manifest：
   "schema": 1,
   "pack_id": "sts2-android-compat-v0.107.0-beta",
   "display_name": "STS2 Android Compatibility beta for v0.107.0",
-  "compat_version": "0.3.1-beta.1070",
+  "compat_version": "0.3.2-beta.1070",
   "channel": "beta",
   "target_game": {
     "version": "v0.107.0",
@@ -204,7 +205,7 @@ schema 2 family manifest：
   "schema": 2,
   "pack_id": "sts2-android-compat",
   "display_name": "STS2 Android Compatibility",
-  "compat_version": "0.4.0",
+  "compat_version": "0.4.1",
   "channel": "mixed",
   "targets": [
     {

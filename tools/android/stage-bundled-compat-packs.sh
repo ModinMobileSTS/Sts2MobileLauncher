@@ -65,6 +65,10 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/ModEntry.cs" \
     "STS2AndroidPortCompat/HarmonyAndroidCompat.cs" \
     "STS2AndroidPortCompat/HarmonyMethodReferenceImporterShim.cs" \
+    "STS2AndroidPortCompat/DevTools/CompanionSettingsRuntime.cs" \
+    "STS2AndroidPortCompat/DevTools/DevToolsHost.cs" \
+    "STS2AndroidPortCompat/DevTools/GodotInspector.cs" \
+    "STS2AndroidPortCompat/DevTools/ReflectionInspector.cs" \
     "STS2AndroidPortCompat/Patches/CompatBuildInfo.cs" \
     "STS2AndroidPortCompat/Directory.Build.targets" \
     "STS2AndroidPortCompat/Android/AppPaths.cs" \
@@ -76,6 +80,7 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/RenderDiagnosticPatches.cs" \
     "STS2AndroidPortCompat/Patches/DebugMenuPatches.cs" \
     "STS2AndroidPortCompat/Patches/AndroidAssetCacheLifecyclePatches.cs" \
+    "STS2AndroidPortCompat/Patches/CombatAnimationWarmupPatches.cs" \
     "STS2AndroidPortCompat/Patches/LifecycleAndPerformancePatches.cs" \
     "STS2AndroidPortCompat/Patches/ShaderCompatibilityPatches.cs" \
     "STS2AndroidPortCompat/Patches/AndroidStartupLoadingScreen.cs" \
