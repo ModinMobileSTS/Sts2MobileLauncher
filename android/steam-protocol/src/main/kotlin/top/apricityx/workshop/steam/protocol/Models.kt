@@ -24,6 +24,7 @@ data class CdnServer(
     val httpsSupport: String,
     val allowedAppIds: List<UInt>,
     val priorityClass: UInt,
+    val bypassProxiesOfType: List<String> = emptyList(),
 ) {
     private val normalizedHttpsSupport = httpsSupport.trim().lowercase()
 

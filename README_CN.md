@@ -60,6 +60,8 @@
   作为 Android 端 MOD 兼容性排查的重要测试基准参考库。
 - **[Google Material Symbols](https://fonts.google.com/icons)**
   提供启动器 UI 使用的官方 Rounded 图标轮廓，并由 bundled 字体离线生成 Android vector drawable。
+- **[Android desugar_jdk_libs](https://github.com/google/desugar_jdk_libs)**
+  为 Android 7.x 设备提供包括 `java.time` 在内的 Java 8+ library API 兼容实现。
 
 *(详细的第三方开源协议，包括不会打入 APK 的 Kotlin Test/JUnit 测试依赖，见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
 

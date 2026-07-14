@@ -1222,6 +1222,12 @@ Last error: %4$s</string>
     <string name="steam_branch_custom_desc">Enter an exact Steam branch name when you know it</string>
     <string name="steam_branch_custom_hint">Branch name (e.g. public-beta)</string>
     <string name="steam_branch_custom_required">Enter a custom branch name first.</string>
+    <string name="steam_payload_concurrent_chunks_title">Game chunk concurrency</string>
+    <string name="steam_payload_concurrent_chunks_value">%1$d chunks at a time</string>
+    <string name="steam_payload_concurrent_chunks_option_1">1 — Most compatible</string>
+    <string name="steam_payload_concurrent_chunks_option_2">2 — Recommended</string>
+    <string name="steam_payload_concurrent_chunks_option_4">4 — Faster networks</string>
+    <string name="steam_payload_concurrent_chunks_busy">Wait for the current Steam operation or game download to finish before changing the chunk concurrency.</string>
     <string name="steam_download_branch_format">Branch: %1$s</string>
     <string name="steam_download_speed_label">Transfer rate</string>
     <string name="steam_download_speed_value">%1$s</string>

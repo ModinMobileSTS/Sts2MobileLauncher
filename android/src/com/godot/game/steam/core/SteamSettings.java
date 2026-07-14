@@ -13,6 +13,7 @@ public final class SteamSettings {
 	private static final String KEY_CLOUD_MODE = "cloud_mode";
 	private static final String KEY_SYNC_SETTINGS_SAVE = "sync_settings_save";
 	private static final String KEY_ACCOUNT_SAFETY_NOTICE_SEEN = "account_safety_notice_seen";
+	private static final String KEY_PAYLOAD_CONCURRENT_CHUNKS = "payload_concurrent_chunks";
 
 	private SteamSettings() {
 	}
@@ -46,6 +47,18 @@ public final class SteamSettings {
 
 	public static void markAccountSafetyNoticeSeen(Context context) {
 		prefs(context).edit().putBoolean(KEY_ACCOUNT_SAFETY_NOTICE_SEEN, true).apply();
+	}
+
+	public static int getPayloadConcurrentChunks(Context context) {
+		return normalizePayloadConcurrentChunks(prefs(context).getInt(KEY_PAYLOAD_CONCURRENT_CHUNKS, 2));
+	}
+
+	public static void setPayloadConcurrentChunks(Context context, int value) {
+		prefs(context).edit().putInt(KEY_PAYLOAD_CONCURRENT_CHUNKS, normalizePayloadConcurrentChunks(value)).apply();
+	}
+
+	private static int normalizePayloadConcurrentChunks(int value) {
+		return value == 1 || value == 4 ? value : 2;
 	}
 
 	public static boolean shouldPullBeforeLaunch(Context context) {

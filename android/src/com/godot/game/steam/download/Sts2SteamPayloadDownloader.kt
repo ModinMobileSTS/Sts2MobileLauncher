@@ -5,11 +5,19 @@ import com.godot.game.PayloadManager
 import com.godot.game.steam.auth.SteamAuthStore
 import com.godot.game.steam.core.SteamClientIdentity
 import com.godot.game.steam.core.SteamNetworkClientFactory
+import com.godot.game.steam.core.SteamSettings
 import `in`.dragonbra.javasteam.types.KeyValue
 import `in`.dragonbra.javasteam.util.stream.MemoryStream
+import java.io.Closeable
 import java.io.File
 import java.io.IOException
-import java.util.UUID
+import java.io.RandomAccessFile
+import java.nio.charset.StandardCharsets
+import java.nio.channels.FileLock
+import java.nio.channels.OverlappingFileLockException
+import java.security.MessageDigest
+import java.util.Locale
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
@@ -39,6 +47,7 @@ class Sts2SteamPayloadDownloader(private val context: Context) {
     ): PayloadManager.Status = runBlocking {
         val appContext = context.applicationContext
         val normalizedBranch = branch.trim().ifBlank { DEFAULT_BRANCH }
+        val concurrentChunks = SteamSettings.getPayloadConcurrentChunks(appContext)
         val auth = SteamAuthStore.readAuthMaterial(appContext)
             ?: throw IOException("Steam account is not logged in.")
         val steamId = authSteamId(appContext)
@@ -84,18 +93,23 @@ class Sts2SteamPayloadDownloader(private val context: Context) {
                 control?.throwIfCancelled()
                 try {
                     val depotKey = session.requestDepotDecryptionKey(candidate.appId, candidate.depotId)
-                    val manifest = downloader.loadManifest(SteamDepotManifestRequest(
-                        appId = candidate.appId,
-                        depotId = candidate.depotId,
-                        manifestId = candidate.manifestId,
-                        branch = normalizedBranch,
-                        depotKey = depotKey,
-                    ))
+                    val manifest = downloader.loadManifest(
+                        request = SteamDepotManifestRequest(
+                            appId = candidate.appId,
+                            depotId = candidate.depotId,
+                            manifestId = candidate.manifestId,
+                            branch = normalizedBranch,
+                            depotKey = depotKey,
+                        ),
+                        waitIfPaused = { control?.throwIfCancelled() },
+                    )
+                    control?.throwIfCancelled()
                     manifests += PreparedCandidate(candidate, depotKey, manifest)
                     val percent = 8 + ((index + 1) * 12 / candidates.size.coerceAtLeast(1))
                     emit(listener, Progress("resolve", percent, "Manifest ${candidate.depotId}: ${manifest.files.size} file(s)"))
                 } catch (error: Throwable) {
                     // Some shared depots may be unavailable or unrelated. Keep probing candidates.
+                    rethrowIfCancelled(control, error)
                 }
             }
         }
@@ -107,62 +121,89 @@ class Sts2SteamPayloadDownloader(private val context: Context) {
         if (!covered.containsAll(REQUIRED_PAYLOAD_PATHS)) {
             throw IOException("Steam depot manifests did not contain all required STS2 payload files. Missing: ${(REQUIRED_PAYLOAD_PATHS - covered).joinToString()}")
         }
-        val staging = prepareStagingDir(appContext)
-        val totalBytes = selected.sumOf { it.manifest.totalRegularBytes { file -> includePayloadFile(file) } }
-        val depotsJson = JSONArray()
-        var basePercent = 20
-        selected.forEachIndexed { index, prepared ->
-            control?.throwIfCancelled()
-            val depotStart = basePercent
-            val depotEnd = if (index == selected.lastIndex) 82 else 20 + ((index + 1) * 62 / selected.size.coerceAtLeast(1))
-            emit(listener, Progress("download", depotStart, "Downloading depot ${prepared.candidate.depotId}…", 0L, totalBytes))
-            downloader.download(
-                request = SteamDepotDirectoryDownloadRequest(
-                    appId = prepared.candidate.appId,
-                    depotId = prepared.candidate.depotId,
-                    manifestId = prepared.candidate.manifestId,
-                    branch = normalizedBranch,
-                    outputRoot = staging,
-                    depotKey = prepared.depotKey,
-                    includePredicate = { file -> includePayloadFile(file) },
-                ),
-                emitProgress = { progress ->
-                    val percent = depotStart + ((progress.progressPercent.coerceIn(0, 100) * (depotEnd - depotStart)) / 100)
-                    emit(listener, progress.toPayloadProgress(percent))
-                },
-                waitIfPaused = { control?.throwIfCancelled() },
+        val stagingTask = prepareStagingTask(appContext, buildDownloadFingerprint(normalizedBranch, selected))
+        stagingTask.use { lockedTask ->
+            val staging = lockedTask.directory
+            val totalBytes = selected.sumOf { it.manifest.totalRegularBytes { file -> includePayloadFile(file) } }
+            val depotsJson = JSONArray()
+            var completedDepotBytes = 0L
+            selected.forEach { prepared ->
+                control?.throwIfCancelled()
+                val depotBytes = prepared.manifest.totalRegularBytes { file -> includePayloadFile(file) }
+                val startPercent = downloadPercent(completedDepotBytes, totalBytes)
+                emit(
+                    listener,
+                    Progress(
+                        "download",
+                        startPercent,
+                        "Downloading depot ${prepared.candidate.depotId} with $concurrentChunks chunk worker(s)…",
+                        completedDepotBytes,
+                        totalBytes,
+                    ),
+                )
+                downloader.download(
+                    request = SteamDepotDirectoryDownloadRequest(
+                        appId = prepared.candidate.appId,
+                        depotId = prepared.candidate.depotId,
+                        manifestId = prepared.candidate.manifestId,
+                        branch = normalizedBranch,
+                        outputRoot = staging,
+                        depotKey = prepared.depotKey,
+                        includePredicate = { file -> includePayloadFile(file) },
+                        preparedManifest = prepared.manifest,
+                        maxConcurrentChunks = concurrentChunks,
+                    ),
+                    emitProgress = { progress ->
+                        val globalWritten = (completedDepotBytes + progress.writtenBytes)
+                            .coerceIn(0L, totalBytes.coerceAtLeast(0L))
+                        emit(
+                            listener,
+                            progress.toPayloadProgress(
+                                percent = downloadPercent(globalWritten, totalBytes),
+                                downloadedBytes = globalWritten,
+                                totalDownloadBytes = totalBytes,
+                            ),
+                        )
+                    },
+                    waitIfPaused = { control?.throwIfCancelled() },
+                )
+                completedDepotBytes = (completedDepotBytes + depotBytes).coerceAtMost(totalBytes)
+                depotsJson.put(JSONObject()
+                    .put("app_id", prepared.candidate.appId.toLong())
+                    .put("depot_id", prepared.candidate.depotId.toLong())
+                    .put("manifest_id", prepared.candidate.manifestId.toString())
+                    .put("branch", normalizedBranch)
+                    .put("file_count", prepared.manifest.regularFiles().count { includePayloadFile(it) })
+                    .put("total_bytes", depotBytes))
+            }
+            emit(listener, Progress("install", 86, "Installing downloaded payload…"))
+            val extras = JSONObject()
+                .put("steam", JSONObject()
+                    .put("app_id", STS2_APP_ID.toLong())
+                    .put("branch", normalizedBranch)
+                    .put("concurrent_chunks", concurrentChunks)
+                    .put("depots", depotsJson)
+                    .put("downloaded_at_unix", System.currentTimeMillis() / 1000L)
+                    .put("file_count", countFiles(staging))
+                    .put("total_bytes", directorySize(staging)))
+            val source = PayloadManager.SourceInfo(
+                "steam_depot",
+                "Steam App $STS2_APP_ID / $normalizedBranch",
+                directorySize(staging),
+                "",
+                extras,
             )
-            basePercent = depotEnd
-            depotsJson.put(JSONObject()
-                .put("app_id", prepared.candidate.appId.toLong())
-                .put("depot_id", prepared.candidate.depotId.toLong())
-                .put("manifest_id", prepared.candidate.manifestId.toString())
-                .put("branch", normalizedBranch)
-                .put("file_count", prepared.manifest.regularFiles().size)
-                .put("total_bytes", prepared.manifest.totalRegularBytes()))
+            PayloadManager(appContext).importPayloadDirectory(staging, source, { percent, stage ->
+                emit(listener, Progress("install", 86 + ((percent.coerceIn(0, 100) * 14) / 100), "Installing: $stage"))
+            }, control)
         }
-        emit(listener, Progress("install", 86, "Installing downloaded payload…"))
-        val extras = JSONObject()
-            .put("steam", JSONObject()
-                .put("app_id", STS2_APP_ID.toLong())
-                .put("branch", normalizedBranch)
-                .put("depots", depotsJson)
-                .put("downloaded_at_unix", System.currentTimeMillis() / 1000L)
-                .put("file_count", countFiles(staging))
-                .put("total_bytes", directorySize(staging)))
-        val source = PayloadManager.SourceInfo(
-            "steam_depot",
-            "Steam App $STS2_APP_ID / $normalizedBranch",
-            directorySize(staging),
-            "",
-            extras,
-        )
-        PayloadManager(appContext).importPayloadDirectory(staging, source, { percent, stage ->
-            emit(listener, Progress("install", 86 + ((percent.coerceIn(0, 100) * 14) / 100), "Installing: $stage"))
-        }, control)
     }
 
-    private fun SteamDepotDirectoryDownloadProgress.toPayloadProgress(percent: Int): Progress = Progress(
+    private fun SteamDepotDirectoryDownloadProgress.toPayloadProgress(
+        percent: Int,
+        downloadedBytes: Long = writtenBytes,
+        totalDownloadBytes: Long = totalBytes,
+    ): Progress = Progress(
         phase = "download",
         percent = percent.coerceIn(0, 100),
         message = buildString {
@@ -183,8 +224,8 @@ class Sts2SteamPayloadDownloader(private val context: Context) {
                 append(totalChunks)
             }
         },
-        downloadedBytes = writtenBytes,
-        totalBytes = totalBytes,
+        downloadedBytes = downloadedBytes,
+        totalBytes = totalDownloadBytes,
     )
 
     private fun authSteamId(context: Context): Long {
@@ -264,20 +305,112 @@ class Sts2SteamPayloadDownloader(private val context: Context) {
             path.startsWith("data_sts2_windows_x86_64/")
     }
 
-    private fun prepareStagingDir(context: Context): File {
+    private fun buildDownloadFingerprint(
+        branch: String,
+        selected: List<PreparedCandidate>,
+    ): String {
+        val identity = buildString {
+            append(DOWNLOAD_LAYOUT_VERSION)
+            append('|')
+            append(branch.trim().lowercase(Locale.ROOT))
+            selected.sortedWith(compareBy<PreparedCandidate> { it.candidate.appId }.thenBy { it.candidate.depotId })
+                .forEach { prepared ->
+                    append('|')
+                    append(prepared.candidate.appId)
+                    append(':')
+                    append(prepared.candidate.depotId)
+                    append(':')
+                    append(prepared.candidate.manifestId)
+                }
+        }
+        return MessageDigest.getInstance("SHA-256")
+            .digest(identity.toByteArray(StandardCharsets.UTF_8))
+            .joinToString(separator = "") { byte -> "%02x".format(byte) }
+    }
+
+    private fun prepareStagingTask(context: Context, fingerprint: String): LockedStagingTask {
         val root = File(File(context.filesDir, "steam"), "downloads")
         if (!root.isDirectory && !root.mkdirs()) {
             throw IOException("Unable to create Steam downloads directory: ${root.absolutePath}")
         }
-        root.listFiles()?.forEach { child ->
-            if (child.name.startsWith("staging-") || child.name.startsWith("failed-")) {
-                child.deleteRecursively()
-            }
+        val taskName = "payload-${fingerprint.take(DOWNLOAD_FINGERPRINT_LENGTH)}"
+        val lockRoot = File(root, "locks")
+        if (!lockRoot.isDirectory && !lockRoot.mkdirs()) {
+            throw IOException("Unable to create Steam download lock directory: ${lockRoot.absolutePath}")
         }
-        return File(root, "staging-${UUID.randomUUID()}").also { dir ->
-            if (!dir.mkdirs()) {
+        val lockHandle = RandomAccessFile(File(lockRoot, PAYLOAD_DOWNLOAD_LOCK_FILE_NAME), "rw")
+        val taskLock = try {
+            try {
+                lockHandle.channel.tryLock()
+            } catch (_: OverlappingFileLockException) {
+                null
+            }
+        } catch (error: Throwable) {
+            runCatching { lockHandle.close() }
+            throw error
+        }
+        if (taskLock == null) {
+            lockHandle.close()
+            throw IOException("Another Steam payload download or install is already running.")
+        }
+
+        val now = System.currentTimeMillis()
+        try {
+            root.listFiles()?.forEach { child ->
+                if (child.name.startsWith("staging-") || child.name.startsWith("failed-")) {
+                    child.deleteRecursively()
+                } else if (child.name.startsWith("payload-") &&
+                    child.name != taskName &&
+                    now - child.lastModified() >= STALE_DOWNLOAD_RETENTION_MILLIS
+                ) {
+                    child.deleteRecursively()
+                }
+            }
+            val dir = File(root, taskName)
+            if (dir.exists() && !dir.isDirectory) {
+                throw IOException("Steam payload task path is not a directory: ${dir.absolutePath}")
+            }
+            if (!dir.isDirectory && !dir.mkdirs()) {
                 throw IOException("Unable to create Steam payload staging directory: ${dir.absolutePath}")
             }
+            dir.setLastModified(now)
+            return LockedStagingTask(dir, taskLock, lockHandle)
+        } catch (error: Throwable) {
+            runCatching { taskLock.release() }
+            runCatching { lockHandle.close() }
+            throw error
+        }
+    }
+
+    private class LockedStagingTask(
+        val directory: File,
+        private val taskLock: FileLock,
+        private val lockHandle: RandomAccessFile,
+    ) : Closeable {
+        override fun close() {
+            try {
+                taskLock.release()
+            } finally {
+                lockHandle.close()
+            }
+        }
+    }
+
+    private fun downloadPercent(downloadedBytes: Long, totalBytes: Long): Int {
+        if (totalBytes <= 0L) return DOWNLOAD_PERCENT_START
+        val normalized = downloadedBytes.coerceIn(0L, totalBytes)
+        return DOWNLOAD_PERCENT_START + ((normalized * DOWNLOAD_PERCENT_SPAN) / totalBytes).toInt()
+    }
+
+    private fun rethrowIfCancelled(control: PayloadManager.ImportControl?, error: Throwable) {
+        if (error is Error) throw error
+        if (error is CancellationException) throw error
+        if (error is InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw error
+        }
+        if (control?.isCancelled == true || Thread.currentThread().isInterrupted) {
+            throw IOException("Import cancelled.", error)
         }
     }
 
@@ -332,6 +465,12 @@ class Sts2SteamPayloadDownloader(private val context: Context) {
     companion object {
         const val DEFAULT_BRANCH = "public"
         val STS2_APP_ID: UInt = 2868840u
+        private const val DOWNLOAD_LAYOUT_VERSION = "steam-payload-v2"
+        private const val DOWNLOAD_FINGERPRINT_LENGTH = 24
+        private const val DOWNLOAD_PERCENT_START = 20
+        private const val DOWNLOAD_PERCENT_SPAN = 62
+        private const val PAYLOAD_DOWNLOAD_LOCK_FILE_NAME = "payload-download.lock"
+        private const val STALE_DOWNLOAD_RETENTION_MILLIS = 7L * 24L * 60L * 60L * 1000L
         private val REQUIRED_PAYLOAD_PATHS = setOf(
             "SlayTheSpire2.pck",
             "release_info.json",

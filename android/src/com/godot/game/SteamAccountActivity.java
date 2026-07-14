@@ -100,8 +100,10 @@ public class SteamAccountActivity extends AppCompatActivity {
 	private MaterialCardView branchPublicCard;
 	private MaterialCardView branchBetaCard;
 	private MaterialCardView branchCustomCard;
+	private MaterialCardView payloadConcurrentChunksCard;
 	private LinearLayout branchCustomDetails;
 	private TextInputEditText customBranchInput;
+	private TextView payloadConcurrentChunksValueView;
 	private MaterialButton downloadButton;
 	private MaterialButton loginButton;
 	private MaterialButton verifyLoginButton;
@@ -415,6 +417,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 
 	private void populateDownloadTab(LinearLayout root) {
 		ExtraSettingsUi.addCardSpacing(root, buildBranchSection());
+		ExtraSettingsUi.addCardSpacing(root, buildPayloadConcurrentChunksCard());
 
 		downloadSetupBlock = ExtraSettingsUi.vertical(this);
 		MaterialCardView setupCard = ExtraSettingsUi.card(this);
@@ -434,6 +437,79 @@ public class SteamAccountActivity extends AppCompatActivity {
 		});
 		downloadProgressPanel.getView().setVisibility(View.GONE);
 		ExtraSettingsUi.addCardSpacing(root, downloadProgressPanel.getView());
+	}
+
+	private MaterialCardView buildPayloadConcurrentChunksCard() {
+		payloadConcurrentChunksCard = ExtraSettingsUi.clickableCard(this);
+		LinearLayout content = ExtraSettingsUi.cardContent(this, payloadConcurrentChunksCard);
+		LinearLayout row = ExtraSettingsUi.horizontal(this);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		row.addView(ExtraSettingsUi.iconCircle(
+			this,
+			R.drawable.ic_speed_24,
+			ExtraSettingsUi.COLOR_PRIMARY_CONTAINER,
+			ExtraSettingsUi.COLOR_ON_PRIMARY_CONTAINER
+		));
+
+		LinearLayout texts = ExtraSettingsUi.vertical(this);
+		LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		textParams.setMarginStart(ExtraSettingsUi.dp(this, 14));
+		row.addView(texts, textParams);
+		texts.addView(ExtraSettingsUi.label(this, R.string.steam_payload_concurrent_chunks_title));
+		payloadConcurrentChunksValueView = ExtraSettingsUi.caption(this, "");
+		payloadConcurrentChunksValueView.setTextColor(ExtraSettingsUi.COLOR_PRIMARY);
+		LinearLayout.LayoutParams valueParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		valueParams.topMargin = ExtraSettingsUi.dp(this, 3);
+		texts.addView(payloadConcurrentChunksValueView, valueParams);
+		row.addView(ExtraSettingsUi.icon(this, R.drawable.ic_chevron_right_24, ExtraSettingsUi.COLOR_MUTED, 20));
+		content.addView(row);
+		updatePayloadConcurrentChunksValue();
+
+		View.OnClickListener openSelector = v -> {
+			if (busy || downloadingPayload) {
+				showMessage(getString(R.string.steam_payload_concurrent_chunks_busy));
+				return;
+			}
+			showPayloadConcurrentChunksSelector();
+		};
+		payloadConcurrentChunksCard.setOnClickListener(openSelector);
+		content.setOnClickListener(openSelector);
+		row.setOnClickListener(openSelector);
+		return payloadConcurrentChunksCard;
+	}
+
+	private void showPayloadConcurrentChunksSelector() {
+		int[] values = { 1, 2, 4 };
+		String[] labels = {
+			getString(R.string.steam_payload_concurrent_chunks_option_1),
+			getString(R.string.steam_payload_concurrent_chunks_option_2),
+			getString(R.string.steam_payload_concurrent_chunks_option_4)
+		};
+		int current = SteamSettings.getPayloadConcurrentChunks(this);
+		int selected = current == 1 ? 0 : (current == 4 ? 2 : 1);
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.steam_payload_concurrent_chunks_title)
+			.setSingleChoiceItems(labels, selected, (dialog, which) -> {
+				if (busy || downloadingPayload) {
+					dialog.dismiss();
+					showMessage(getString(R.string.steam_payload_concurrent_chunks_busy));
+					return;
+				}
+				SteamSettings.setPayloadConcurrentChunks(this, values[which]);
+				updatePayloadConcurrentChunksValue();
+				dialog.dismiss();
+			})
+			.setNegativeButton(android.R.string.cancel, null)
+			.show();
+	}
+
+	private void updatePayloadConcurrentChunksValue() {
+		if (payloadConcurrentChunksValueView != null) {
+			payloadConcurrentChunksValueView.setText(getString(
+				R.string.steam_payload_concurrent_chunks_value,
+				SteamSettings.getPayloadConcurrentChunks(this)
+			));
+		}
 	}
 
 	private View buildBranchSection() {
@@ -1452,6 +1528,10 @@ public class SteamAccountActivity extends AppCompatActivity {
 			branchBetaCard.setEnabled(!busy);
 			branchCustomCard.setEnabled(!busy);
 		}
+		if (payloadConcurrentChunksCard != null) {
+			// Keep the card clickable while busy so the user receives an explanation.
+			payloadConcurrentChunksCard.setAlpha(busy || downloadingPayload ? 0.72f : 1f);
+		}
 	}
 
 	private void confirmCloudOverwrite() {
@@ -1787,6 +1867,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 		if (tokenStatusView != null) {
 			tokenStatusView.setText(loggedIn ? R.string.steam_account_token_status_ready : R.string.steam_account_token_status_empty);
 		}
+		updatePayloadConcurrentChunksValue();
 		if (accountLastErrorView != null && accountLastErrorRow != null) {
 			String error = formatStoredError(snapshot.lastError);
 			if (TextUtils.isEmpty(error)) {

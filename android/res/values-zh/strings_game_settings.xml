@@ -1220,6 +1220,12 @@ SteamID64：%2$s
     <string name="steam_branch_custom_desc">仅在已知准确分支名时手动输入</string>
     <string name="steam_branch_custom_hint">分支名称（例如 public-beta）</string>
     <string name="steam_branch_custom_required">请先输入自定义分支名称。</string>
+    <string name="steam_payload_concurrent_chunks_title">本体分块并发数</string>
+    <string name="steam_payload_concurrent_chunks_value">同时下载 %1$d 个分块</string>
+    <string name="steam_payload_concurrent_chunks_option_1">1 — 兼容优先</string>
+    <string name="steam_payload_concurrent_chunks_option_2">2 — 推荐</string>
+    <string name="steam_payload_concurrent_chunks_option_4">4 — 高速网络</string>
+    <string name="steam_payload_concurrent_chunks_busy">请等待当前 Steam 操作或游戏下载完成后再修改分块并发数。</string>
     <string name="steam_download_branch_format">分支：%1$s</string>
     <string name="steam_download_speed_label">传输速率</string>
     <string name="steam_download_speed_value">%1$s</string>

@@ -5,12 +5,15 @@ import top.apricityx.workshop.steam.protocol.OkHttpSteamCmSession
 import top.apricityx.workshop.steam.protocol.SteamCmSession
 import top.apricityx.workshop.steam.protocol.SteamContentClient
 import top.apricityx.workshop.steam.protocol.SteamDirectoryClient
-import java.util.concurrent.ConcurrentHashMap
+import java.util.Locale
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.yield
@@ -47,6 +50,7 @@ class UgcWorkshopDownloader(
         sessionFactory().use { session ->
             val contentClient = SteamContentClient(session, directoryClient)
             val connectResult = runCatching { sessionConnector(session, cmServers) }
+            connectResult.exceptionOrNull()?.throwIfCancellation()
             connectResult
                 .onSuccess { log("Connected to Steam CM cell=${it.cellId} steamId=${it.steamId}") }
                 .onFailure {
@@ -65,6 +69,7 @@ class UgcWorkshopDownloader(
                     branch = request.branch,
                 )
             }.getOrElse {
+                it.throwIfCancellation()
                 log("Manifest request code unavailable for branch=${request.branch}, retrying without request code: ${it.message}")
                 0uL
             }
@@ -72,6 +77,7 @@ class UgcWorkshopDownloader(
             val contentServers = runCatching {
                 contentClient.getServersForSteamPipe()
             }.getOrElse {
+                it.throwIfCancellation()
                 log("Falling back to public content server directory API")
                 directoryClient.loadContentServers()
             }
@@ -80,14 +86,15 @@ class UgcWorkshopDownloader(
             log("Loaded ${contentServers.size} SteamPipe content servers")
             val serverPool = cdnTransport.buildServerPool(request.appId, contentServers)
             require(serverPool.downloadServers.isNotEmpty()) { "No CDN download servers available for app=${request.appId}" }
+            val downloadServers = serverPool.downloadServers.distinctBy(::physicalServerKey)
             log(
                 "Selected ${serverPool.downloadServers.size} weighted CDN entries " +
-                    "from ${serverPool.downloadServers.distinctBy(CdnServer::host).size} servers",
+                    "from ${downloadServers.size} physical servers",
             )
             serverPool.proxyServer?.let { proxy ->
                 log("Detected CDN proxy host=${proxy.host} template=${proxy.proxyRequestPathTemplate ?: "(none)"}")
             }
-            val cdnAuthTokenCache = ConcurrentHashMap<String, String>()
+            val cdnAuthTokenCache = SteamCdnAuthTokenCache()
 
             val depotKey = runCatching {
                 session.requestDepotDecryptionKey(
@@ -97,13 +104,14 @@ class UgcWorkshopDownloader(
             }.onSuccess {
                 log("Loaded depot key for depot=${item.depotId}")
             }.onFailure {
+                it.throwIfCancellation()
                 log("Depot key request failed for depot=${item.depotId}: ${it.message}")
             }.getOrNull()
 
             val manifest = downloadManifest(
                 appId = request.appId,
                 item = item,
-                contentServers = serverPool.downloadServers,
+                contentServers = downloadServers,
                 proxyServer = serverPool.proxyServer,
                 manifestRequestCode = manifestRequestCode,
                 contentClient = contentClient,
@@ -116,6 +124,7 @@ class UgcWorkshopDownloader(
                     log("Decrypting encrypted manifest filenames with depot key")
                     runCatching { manifest.decryptFilenames(depotKey) }
                         .getOrElse {
+                            it.throwIfCancellation()
                             log("Manifest filename decryption failed; continuing with encoded names: ${it.message}")
                             manifest
                         }
@@ -151,7 +160,7 @@ class UgcWorkshopDownloader(
             cacheChunks(
                 appId = request.appId,
                 depotId = item.depotId,
-                contentServers = serverPool.downloadServers,
+                contentServers = downloadServers,
                 proxyServer = serverPool.proxyServer,
                 contentClient = contentClient,
                 cdnTransport = cdnTransport,
@@ -185,7 +194,7 @@ class UgcWorkshopDownloader(
         manifestRequestCode: ULong,
         contentClient: SteamContentClient,
         cdnTransport: SteamCdnTransport,
-        cdnAuthTokenCache: ConcurrentHashMap<String, String>,
+        cdnAuthTokenCache: SteamCdnAuthTokenCache,
         log: suspend (String) -> Unit,
     ): DepotManifest {
         var lastError: Throwable? = null
@@ -202,7 +211,6 @@ class UgcWorkshopDownloader(
                     server = server,
                     proxyServer = proxyServer,
                     path = path,
-                    query = cdnAuthTokenCache[server.host],
                     appId = appId,
                     depotId = item.depotId,
                     contentClient = contentClient,
@@ -211,6 +219,7 @@ class UgcWorkshopDownloader(
                 )
                 return DepotManifestParser.parse(unzipSingleEntry(bytes))
             } catch (error: Throwable) {
+                error.throwIfCancellation()
                 lastError = error
                 log("Manifest download failed from ${server.host}: ${error.message}")
             }
@@ -225,7 +234,7 @@ class UgcWorkshopDownloader(
         proxyServer: CdnServer?,
         contentClient: SteamContentClient,
         cdnTransport: SteamCdnTransport,
-        cdnAuthTokenCache: ConcurrentHashMap<String, String>,
+        cdnAuthTokenCache: SteamCdnAuthTokenCache,
         chunks: List<ManifestChunk>,
         stageDir: File,
         depotKey: ByteArray?,
@@ -252,6 +261,7 @@ class UgcWorkshopDownloader(
         List(workerCount) {
             async(Dispatchers.IO) {
                 while (true) {
+                    currentCoroutineContext().ensureActive()
                     val index = nextChunkIndex.getAndIncrement()
                     if (index >= chunks.size) {
                         break
@@ -322,7 +332,7 @@ class UgcWorkshopDownloader(
         proxyServer: CdnServer?,
         contentClient: SteamContentClient,
         cdnTransport: SteamCdnTransport,
-        cdnAuthTokenCache: ConcurrentHashMap<String, String>,
+        cdnAuthTokenCache: SteamCdnAuthTokenCache,
         chunk: ManifestChunk,
         depotKey: ByteArray?,
         log: suspend (String) -> Unit,
@@ -337,15 +347,16 @@ class UgcWorkshopDownloader(
                         server = server,
                         proxyServer = proxyServer,
                         path = path,
-                        query = cdnAuthTokenCache[server.host],
                         appId = appId,
                         depotId = depotId,
                         contentClient = contentClient,
                         cdnTransport = cdnTransport,
                         cdnAuthTokenCache = cdnAuthTokenCache,
+                        expectedLength = chunk.compressedLength.toLong().takeIf { it > 0L },
                     )
                     return ChunkProcessor.process(raw, chunk, depotKey)
                 } catch (error: Throwable) {
+                    error.throwIfCancellation()
                     lastError = error
                     log("Chunk ${chunk.idHex} failed from ${server.host}: ${error.message}")
                 }
@@ -464,21 +475,27 @@ class UgcWorkshopDownloader(
         server: CdnServer,
         proxyServer: CdnServer?,
         path: String,
-        query: String?,
         appId: UInt,
         depotId: UInt,
         contentClient: SteamContentClient,
         cdnTransport: SteamCdnTransport,
-        cdnAuthTokenCache: ConcurrentHashMap<String, String>,
+        cdnAuthTokenCache: SteamCdnAuthTokenCache,
+        expectedLength: Long? = null,
     ): ByteArray {
         return cdnTransport.requestBytes(
             server = server,
             path = path,
-            query = query,
+            query = cdnAuthTokenCache.cached(server.host),
             proxyServer = proxyServer,
+            expectedLength = expectedLength,
             resolveAuthToken = { host ->
-                cdnAuthTokenCache[host] ?: contentClient.getCdnAuthToken(appId, depotId, host).token.also {
-                    cdnAuthTokenCache[host] = it
+                cdnAuthTokenCache.resolve(host) { tokenHost ->
+                    contentClient.getCdnAuthToken(appId, depotId, tokenHost)
+                }
+            },
+            resolveRejectedAuthToken = { host, rejectedToken ->
+                cdnAuthTokenCache.resolve(host, rejectedToken) { tokenHost ->
+                    contentClient.getCdnAuthToken(appId, depotId, tokenHost)
                 }
             },
         )
@@ -535,6 +552,20 @@ class UgcWorkshopDownloader(
         }
         return List(servers.size) { index ->
             servers[(index + offset) % servers.size]
+        }
+    }
+
+    private fun physicalServerKey(server: CdnServer): String =
+        server.host.trim().lowercase(Locale.ROOT)
+
+    private fun Throwable.throwIfCancellation() {
+        when (this) {
+            is Error -> throw this
+            is CancellationException -> throw this
+            is InterruptedException -> {
+                Thread.currentThread().interrupt()
+                throw this
+            }
         }
     }
 

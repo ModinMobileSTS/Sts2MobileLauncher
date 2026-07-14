@@ -1,10 +1,10 @@
 # Steam 登录、游戏下载与云存档接入计划
 
 > 目标读者：后续实现该功能的编码代理 / 维护者。  
-> 当前状态：已按当前多版本 payload / launch profile 模型落地首版实现，并将 credential auth 改为前台服务持有的可恢复事务；本文保留为设计说明与后续维护 checklist。
+> 当前状态：已按当前多版本 payload / launch profile 模型落地首版实现，并将 credential auth 改为前台服务持有的可恢复事务；SteamPipe 本体下载已具备 Steam CDN proxy/origin 路由、有界 chunk 并发与校验续传。本文保留为设计说明与后续维护 checklist。
 > 适用仓库：本仓库根目录。
 > 参考工程：`../ref/SlayTheAmethystModded/`。  
-> 最后同步：2026-07-13。
+> 最后同步：2026-07-14。
 
 ## 0. 结论摘要
 
@@ -23,7 +23,7 @@ Steam center Activity
   -> 通过 bound service 提交仅驻留内存的账号密码 / Guard code
   -> SteamAuthForegroundService 持有短期 transaction handle、手机确认轮询与 CM 重连
   -> 登录完成后原子提交 refresh token / 验证 / 注销
-  -> SteamPipe 下载 STS2 payload 到 staging
+  -> SteamPipe 下载 STS2 payload 到稳定 fingerprint 任务目录并校验续传
   -> PayloadManager.importPayloadDirectory(...) 安装到 payload store
   -> LaunchProfileManager 创建/选择 profile 并匹配 compat pack
   -> Steam Cloud 手动清单/拉取/上传/强制上传
@@ -538,30 +538,23 @@ android/src/com/godot/game/steam/core/SteamClientIdentity.kt
 
 ### 8.4 网络层
 
-建议新增：
+当前网络层由 `SteamNetworkClientFactory` 提供共享 OkHttp 配置，SteamPipe manifest/chunk 进一步统一经过 `android/steam-content/.../SteamCdnTransport.kt`：
 
-```text
-android/src/com/godot/game/steam/core/SteamNetworkClientFactory.kt
-```
+- Steam directory/content server 响应中的 `use_as_proxy`、`proxy_request_path_template` 与 `bypass_proxies_of_type` 会保留到 `CdnServer` 模型。请求按协议显式生成 proxy route 与 origin route；可用时先尝试 Steam 返回的 proxy endpoint，再回落同一源 CDN 的 origin endpoint，不再用 endpoint 数据类相等误判“已经是代理”。
+- 该 proxy 能力只接受 Steam directory/content API 返回的服务器，不复用 Steam Community/API/图片的 `steamcommunity.rmbgame.net` / `steamstore.rmbgame.net` 兼容访问，因此 depot auth token 不会发送给这些第三方兼容域名。
+- CDN token 保存 Steam 返回的 expiration，并在过期前刷新；同一 host 的并发 chunk 在 403/过期刷新时通过 singleflight 合并，避免重复 CM token 请求，也不会把已被拒绝的旧 token 再从 cache 返回。
+- manifest/chunk 响应可校验预期长度；chunk 会以 manifest 的 compressed length 为准，长度不匹配视为当前路由失败并进入后续回退/重试。
+- OkHttp Call 通过 cancellable coroutine 异步等待；用户取消或父协程失败会立即 `Call.cancel()`，不会被同步 `execute()` 的长 read/call timeout 卡住。
 
-v1 先只做直连 OkHttp：
-
-- connect timeout：15s~40s。
-- read timeout：60s。
-- call timeout：120s。
-- retryOnConnectionFailure：true。
-
-参考项目的 Watt/加速链路：
+参考项目的 Watt/兼容访问实现仍可用于理解网络受限环境，但不得绕过以上 depot token 边界：
 
 - `../ref/SlayTheAmethystModded/app/src/main/java/io/stamethyst/backend/steamcloud/SteamCloudAcceleratedHttp.kt`
-
-本项目不建议一开始引入复杂加速链路。可在 Phase 4+ 增加“高级网络设置”。
 
 ## 9. Phase 2：Steam 下载 STS2 payload
 
 ### 9.1 下载流程总览
 
-目标流程：
+当前流程：
 
 ```text
 用户点击“从 Steam 下载游戏本体”
@@ -571,9 +564,11 @@ v1 先只做直连 OkHttp：
   -> 下载 manifest
   -> 确认 manifest 含 payload 必需文件
   -> 估算大小与磁盘空间
-  -> 前台服务下载所有文件到 staging
+  -> 将 prepared manifest 交给目录下载器，避免重复拉取
+  -> 以 1 / 2 / 4 个 chunk worker 下载到 payload-<fingerprint> 任务目录
+  -> 单 writer 落盘；校验并复用完整文件 / *.steam.part 已有 chunk
   -> 校验文件完整性
-  -> 调 PayloadManager.installFromDirectory(...)
+  -> 调 PayloadManager.importPayloadDirectory(...)
   -> 写 .payload_manifest.json，source.kind=steam_depot
   -> 安装到 payload store 并创建/选择 launch profile
   -> 新建 launch profile 时按版本填入推荐 compat pack
@@ -581,22 +576,12 @@ v1 先只做直连 OkHttp：
 
 ### 9.2 UI 入口
 
-建议在 `GamePage.buildPayloadCard()` 当前按钮组下新增：
+当前入口位于 `SteamAccountActivity` 的游戏下载页：
 
-- `Steam 登录 / 账号` 按钮。
-- `从 Steam 下载游戏本体` 按钮。
-- 如果未登录，点击下载先跳转 Steam 登录。
-- 如果已登录，进入 `SteamPayloadDownloadActivity`。
-
-需要扩展：
-
-- `ExtraSettingsActions`
-  - `openSteamAccount()`
-  - `requestDownloadGamePayloadFromSteam()`
-- `GameSettingsActivity`
-  - 实现上述方法。
-- `strings_game_settings.xml` / `values-zh/strings_game_settings.xml`
-  - 增加按钮、状态、错误、确认文案。
+- 未登录时点击下载会先要求登录 Steam；已登录后可选择 `public`、`public-beta` 或自定义 branch。
+- “并发下载分块”提供 1 / 2 / 4 三档，默认 2。1 适合内存/网络较弱设备，2 是吞吐与资源占用的默认平衡，4 适合连接与设备资源较好的环境。
+- 下载进行中会锁定并发设置，显示文件/chunk/字节进度和停止按钮；停止通过 `PayloadManager.ImportControl` 传播到 coroutine，并取消正在执行的 OkHttp Call。
+- 当前 payload worker 由 Steam 中心 Activity 启动的后台线程持有；它不阻塞 UI 主线程，但还不是跨 Activity/进程恢复的独立 foreground download service。
 
 ### 9.3 Depot 解析
 
@@ -607,31 +592,27 @@ v1 先只做直连 OkHttp：
 - `SteamContentClient.getManifestRequestCode()`
 - `SteamCmSession.requestDepotDecryptionKey()`
 
-本项目建议新增：
+当前 appinfo/depot 解析集中在：
 
 ```text
-android/src/com/godot/game/steam/download/Sts2SteamAppInfoResolver.kt
-android/src/com/godot/game/steam/download/Sts2SteamDepotResolver.kt
+android/src/com/godot/game/steam/download/Sts2SteamPayloadDownloader.kt
 ```
 
-输出模型：
+内部候选模型：
 
 ```kotlin
-data class Sts2DepotManifestCandidate(
+data class DepotManifestCandidate(
     val appId: UInt,
     val depotId: UInt,
     val branch: String,
     val manifestId: ULong,
-    val osList: List<String>,
-    val language: String?,
-    val isSharedDepot: Boolean,
 )
 ```
 
 解析规则：
 
 - 默认 branch：`public`。
-- beta branch 需要 Phase 0 实测 branch 名称；不要硬编码 `beta` 后直接上线。
+- UI 的 beta 预设映射为已支持矩阵使用的 `public-beta`，同时保留自定义 branch。
 - depots 可能有 `depotfromapp`，参考项目已有递归处理。
 - 优先选择 manifest 中包含 `SlayTheSpire2.pck` 和 `data_sts2_windows_x86_64/sts2.dll` 的 depot 集合。
 - 如果多个 depot 分散包含不同文件，需要组合下载多个 depot。
@@ -642,7 +623,7 @@ data class Sts2DepotManifestCandidate(
 
 - `../ref/SlayTheAmethystModded/workshop-core/src/main/kotlin/top/apricityx/workshop/workshop/SteamDepotSingleFileDownloader.kt`
 
-需扩展为多文件：
+当前多文件实现：
 
 ```text
 android/steam-content/src/main/kotlin/.../SteamDepotDirectoryDownloader.kt
@@ -659,66 +640,46 @@ data class SteamDepotDirectoryDownloadRequest(
     val outputRoot: File,
     val depotKey: ByteArray,
     val includePredicate: (ManifestFile) -> Boolean,
+    val preparedManifest: PreparedDepotManifest? = null,
+    val maxConcurrentChunks: Int = 1,
 )
 ```
 
 下载行为：
 
-- 下载 depot manifest。
+- 优先复用 appinfo/depot 筛选阶段传入的 `preparedManifest`；只有独立调用且未传入时才下载 depot manifest，并校验 prepared manifest 的 app/depot/manifest 身份。
 - 若 `filenamesEncrypted`，调用 `manifest.decryptFilenames(depotKey)`。
 - 跳过 directory / symlink / link target。
 - 对每个文件创建安全相对路径，禁止 `..`、绝对路径、空 segment。
-- 每个文件按 chunk 下载：
+- 先按 chunk id 规划唯一下载项和一个或多个文件 offset destination；相同 chunk 只下载/处理一次：
   - CDN path：`depot/<depotId>/chunk/<chunkId>`。
   - `ChunkProcessor.process(raw, chunk, depotKey)` 解压/解密。
-  - 写入 `RandomAccessFile` 对应 offset。
-- 文件完成后用 `WorkshopFileIntegrityVerifier` 校验。
-- 支持进度：文件数、当前文件、字节、百分比。
-- 支持取消：下载循环中检查 cancellation flag。
+  - worker 数按请求限制；游戏本体 UI 只暴露 1 / 2 / 4，默认 2。worker 输出进入容量 0/1 的有界结果通道，单 writer 按 offset 写入 `RandomAccessFile`，避免多个 worker 同时修改文件。
+  - 在途 reservation 包含压缩和解压后大小；总预算取 JVM 最大堆约 `1/12`，最少 16 MiB、最多 64 MiB。超过预算的单个 chunk 允许独占执行，不会死锁。
+- 文件先写入同目录 `*.steam.part`。重试同一任务时，已有完整正式文件通过长度/manifest 完整性校验后复用；part 文件逐 chunk 读取并校验 Steam Adler checksum，已验证区间计入进度，只下载缺失/损坏 chunk。
+- writer `fsync` 并关闭后，使用 `WorkshopFileIntegrityVerifier` 做最终文件校验；通过后才用 rename 把 part 原子改为正式文件名。校验失败保留 part 供诊断/后续按 chunk 修复，不把不完整文件交给 `PayloadManager`。
+- 进度包括文件数、chunk 数、当前文件、字节和百分比；高频 worker 完成事件会合并，避免压垮 UI。
+- 取消由轮询 `ImportControl` 的 coroutine 子任务传播；`CancellationException` / `InterruptedException` 不进入普通 CDN 重试，活动 OkHttp Call 会被取消。
 
-v1 可不做断点续传，但建议保存 task manifest，避免失败后难排查：
-
-```text
-<files>/steam/downloads/current-task.json
-<files>/steam/downloads/staging-<id>/
-<files>/steam/downloads/logs/<id>.txt
-```
-
-v2 再做断点续传：记录每个文件已验证 chunks。
-
-### 9.5 Foreground service
-
-下载完整 STS2 体积较大，不建议只靠 Activity 线程。建议新增：
+任务目录与续传已落地，不再使用随机 `staging-*` 的 v1/v2 占位方案：
 
 ```text
-android/src/com/godot/game/steam/download/Sts2SteamPayloadDownloadService.java|kt
+<files>/steam/downloads/payload-<fingerprint>/
+  <payload files>
+  <unfinished file>.steam.part
 ```
 
-Manifest 需要：
+fingerprint 包含下载布局版本、规范化 branch 和已选 app/depot/manifest 组合。同一组合再次下载会复用该目录；下载与最终 `PayloadManager` 安装全程持有 `<files>/steam/downloads/locks/payload-download.lock` 全局文件锁，Activity 重建或不同 branch 任务不能并行修改 staging/payload store。旧 `staging-*` / `failed-*` 会直接清理，其他 `payload-*` fingerprint 任务只在超过 7 天后清理。
 
-```xml
-<uses-permission android:name="android.permission.POST_NOTIFICATIONS" tools:targetApi="33" />
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" tools:targetApi="34" />
+### 9.5 下载任务生命周期
 
-<service
-    android:name=".steam.download.Sts2SteamPayloadDownloadService"
-    android:exported="false"
-    android:foregroundServiceType="dataSync" />
-```
+当前本体下载由 `SteamAccountActivity` 创建命名后台线程，UI 主线程只接收合并后的进度；停止按钮通过 `PayloadManager.ImportControl` 取消下载。网络层的 cancellable coroutine 会继续取消活动 OkHttp Call，稳定 fingerprint 目录和 `*.steam.part` 则保留已校验数据，重新进入 Steam 中心后可重新发起同一 branch/manifest 组合完成续传。
 
-注意：本项目 minSdk 24 / targetSdk 35，Android 13+ 通知权限、Android 14 foreground service type 都要处理。
+当前实现不是跨 Activity/进程长期持有的 payload foreground service；离开/销毁 Steam 中心期间不承诺下载继续。若后续把本体任务迁移为独立服务，仍应复用现有 fingerprint、prepared manifest、有界 pipeline 与取消协议，并处理本项目 targetSdk 对通知权限和 `foregroundServiceType=dataSync` 的要求，不能另建一套随机 staging 下载器。
 
-如果 v1 为降低复杂度先不用 foreground service，至少要求：
+### 9.6 PayloadManager 目录导入
 
-- 下载 Activity 常驻；
-- 明确提示后台可能中断；
-- 支持失败后清理 staging；
-- 不在 `GameSettingsActivity` 主线程下载。
-
-### 9.6 PayloadManager 改造
-
-当前 `PayloadManager.installFromZip(...)` 是私有 zip 流程。Steam 下载应避免“目录 -> zip -> 再解压”的浪费。建议抽出公共安装入口：
+Steam 下载避免“目录 -> zip -> 再解压”，直接使用已经落地的公共目录安装入口：
 
 ```java
 public Status importPayloadDirectory(
@@ -737,22 +698,27 @@ public Status importPayloadDirectory(
 - 原子安装到 `<files>/payloads/<payload_id>/game/`，不覆盖其它 payload 或 profile
 - rollback / cleanup
 
-`SourceInfo` 建议扩展或新增 JSON extras：
+`SourceInfo` 当前通过 JSON extras 写入 Steam 来源信息；`.payload_manifest.json` 的关键结构包括：
 
 ```json
 {
-  "kind": "steam_depot",
-  "display_name": "Steam App 2868840 public",
-  "app_id": 2868840,
-  "branch": "public",
-  "depots": [
-    {
-      "depot_id": 0,
-      "manifest_id": "0"
+  "source": {
+    "kind": "steam_depot",
+    "display_name": "Steam App 2868840 / public",
+    "size": 0,
+    "sha256": "",
+    "steam": {
+      "app_id": 2868840,
+      "branch": "public",
+      "concurrent_chunks": 2,
+      "depots": [
+        {
+          "depot_id": 0,
+          "manifest_id": "0"
+        }
+      ]
     }
-  ],
-  "size": 0,
-  "sha256": ""
+  }
 }
 ```
 
@@ -761,6 +727,7 @@ Steam 多文件下载没有单个 source zip sha256，可在 manifest 中记录�
 - `source.kind=steam_depot`
 - `source.steam.app_id`
 - `source.steam.branch`
+- `source.steam.concurrent_chunks`
 - `source.steam.depots[]`
 - `source.steam.downloaded_at_unix`
 - `source.steam.file_count`
@@ -1230,9 +1197,13 @@ adb logcat | rg 'Sts2SteamAuth|SteamAuthForegroundService'
 2. 登录账号未拥有 STS2 -> 清晰错误。
 3. public branch 下载 -> payload ready。
 4. beta branch 下载 -> payload version 正确。
-5. 下载中断 -> staging 清理或可恢复。
+5. 下载中断 -> 当前 OkHttp Call 被取消；`payload-<fingerprint>` 中已验证的完整文件 / `*.steam.part` chunk 保留，重新下载同一组合时只补缺失内容。
 6. 空间不足 -> 下载前阻止。
 7. 下载版本未匹配 compat pack -> 启动前风险提示。
+8. 并发分别选择 1 / 2 / 4 -> 三档都能完成并得到相同 payload，默认新安装为 2；运行期间不能修改设置。
+9. Steam directory 返回 `use_as_proxy` -> 先命中 proxy route；代理故障时能回落 origin；`bypass_proxies_of_type` 命中时直接 origin。
+10. 403/过期 CDN token -> 同 host 并发只触发一次刷新；日志与异常不得包含 token，rmbgame 兼容域名不得收到 depot token。
+11. CDN 返回长度不匹配或 chunk 校验失败 -> 不 finalize 文件，重试/下次续传会修复对应 chunk。
 
 完成后检查：
 
@@ -1240,6 +1211,7 @@ adb logcat | rg 'Sts2SteamAuth|SteamAuthForegroundService'
 adb shell run-as com.megacrit.sts2re ls files/payloads
 adb shell run-as com.megacrit.sts2re find files/payloads -maxdepth 3 -name release_info.json
 adb shell run-as com.megacrit.sts2re find files/payloads -maxdepth 3 -name .payload_manifest.json
+adb shell run-as com.megacrit.sts2re find files/steam/downloads -maxdepth 3 -name '*.steam.part'
 adb shell run-as com.megacrit.sts2re ls files/instances
 adb shell run-as com.megacrit.sts2re cat files/launcher/selected_compat_pack.json
 ```
@@ -1298,14 +1270,17 @@ adb shell run-as com.megacrit.sts2re ls files/steam/cloud/backups
 
 ### 16.3 下载
 
-- [ ] AppID `2868840` appinfo 解析。
-- [ ] branch 选择。
-- [ ] depot/manifest candidates 解析。
-- [ ] 多文件 depot downloader。
-- [ ] foreground service / 进度 UI。
-- [ ] `PayloadManager.importPayloadDirectory()`。
-- [ ] payload manifest 记录 Steam source。
-- [ ] 下载后归档版本并匹配 compat pack。
+- [x] AppID `2868840` appinfo 解析。
+- [x] `public` / `public-beta` / 自定义 branch 选择。
+- [x] depot/manifest candidates 解析，并把 prepared manifest 复用到正式下载。
+- [x] 多文件 depot downloader：有界 chunk worker、单 writer、16–64 MiB 自适应预算。
+- [x] Steam `use_as_proxy` proxy→origin fallback、bypass 规则、token expiration/singleflight 与 cancellable OkHttp Call。
+- [x] 稳定 `payload-<fingerprint>` 任务目录、完整文件复用、`*.steam.part` chunk 校验续传、全局 payload 下载/安装文件锁与 7 天旧任务清理。
+- [x] 进度/取消 UI 和 1 / 2 / 4（默认 2）并发设置。
+- [ ] 将 payload 下载从 Activity worker 迁移为可跨 Activity/进程持有的 foreground service（当前不阻塞主线程，取消与续传已实现）。
+- [x] `PayloadManager.importPayloadDirectory()`。
+- [x] payload manifest 记录 Steam source、depots 与 `concurrent_chunks`。
+- [x] 下载后归档版本并匹配 compat pack。
 
 ### 16.4 云存档
 
@@ -1348,7 +1323,9 @@ adb shell run-as com.megacrit.sts2re ls files/steam/cloud/backups
 | 旧认证轮询迟到 | 覆盖新账号/token | transaction generation compare-and-commit；取消/替换后旧结果视为 superseded |
 | AppID/depot/branch 解析错误 | 下载错误版本或缺文件 | 以 manifest 必需文件校验为准；下载后仍走 `PayloadManager` 校验 |
 | Steam 默认分支更新到未支持版本 | 下载后无法安全启动 | 启动前 compat mismatch 提示；下载页显示支持版本 |
-| 下载体积大导致后台被杀 | 用户体验差、staging 残留 | foreground service、任务状态、清理/恢复 |
+| 下载体积大导致 Activity/进程中断 | 用户体验差、重复下载 | 稳定 fingerprint 任务目录、完整文件/part chunk 校验续传、其他任务 7 天清理；后续可迁移 foreground service |
+| chunk 并发导致内存或文件竞争 | OOM、payload 损坏 | UI 限制 1/2/4 默认 2；有界结果通道；16–64 MiB 自适应预算；单 writer；finalize 前完整性校验 |
+| CDN 代理或 token 路由错误 | 下载失败或凭据泄漏 | 只接受 Steam 返回的 `use_as_proxy`，显式 proxy→origin fallback；depot token 不进入 rmbgame 兼容访问；token 按 host/expiration 缓存并合并刷新 |
 | 云路径映射错误 | 存档覆盖错误 | Phase 0 真实枚举；v1 只支持白名单路径；覆盖前备份 |
 | `settings.save` 污染 PC 设置 | PC 设置异常 | 默认排除；实现 merge/strip 后再允许 |
 | 异常退出后自动上传坏档 | 云端存档损坏 | 只有干净退出 marker 后自动上传；冲突不自动覆盖 |
@@ -1356,6 +1333,6 @@ adb shell run-as com.megacrit.sts2re ls files/steam/cloud/backups
 
 ## 18. 最终建议
 
-首版已按用户要求一次性接入登录、SteamPipe 下载、手动云同步与自动挂点。credential auth 已按可恢复事务维护：密码/Guard code 不落盘、手机确认立即轮询、前台服务持有、CM 可续接、成功原子提交、取消/过期清理。后续测试重点应包括真实设备切屏/进程恢复/OEM 后台策略，以及真实 Steam 账号的 appinfo/depot 分支枚举、不同游戏版本 payload 的 compat pack 匹配、当前 launch profile（全局/隔离存档）与 Steam Cloud 路径映射是否完全符合 PC 端。
+首版已按用户要求一次性接入登录、SteamPipe 下载、手动云同步与自动挂点。credential auth 已按可恢复事务维护：密码/Guard code 不落盘、手机确认立即轮询、前台服务持有、CM 可续接、成功原子提交、取消/过期清理。本体下载已复用 prepared manifest，并实现 Steam 返回代理到 origin 的显式回退、有界 1/2/4 chunk worker、单 writer、自适应内存预算、可取消 OkHttp Call，以及基于稳定 fingerprint 目录和 `*.steam.part` 校验的续传。后续测试重点应包括真实设备切屏/进程恢复/OEM 后台策略、不同网络下 proxy/origin 与 token 刷新行为，以及真实 Steam 账号的 appinfo/depot 分支枚举、不同游戏版本 payload 的 compat pack 匹配、当前 launch profile（全局/隔离存档）与 Steam Cloud 路径映射是否完全符合 PC 端。
 
 Steam 下载必须继续复用 payload store + launch profile 模型；Steam Cloud 必须继续复用当前 launch profile 的 account root；二者都不应改变 `port-mod` 当前“禁用桌面 Steamworks”的基本不变式。

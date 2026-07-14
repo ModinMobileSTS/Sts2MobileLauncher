@@ -66,6 +66,8 @@ The creation of this project relies heavily on the explorations of the open-sour
   Served as vital test baseline reference libraries for troubleshooting Android MOD compatibility.
 - **[Google Material Symbols](https://fonts.google.com/icons)**
   Provides the official rounded icon outlines used by the launcher UI, generated into Android vector drawables from the bundled font.
+- **[Android desugar_jdk_libs](https://github.com/google/desugar_jdk_libs)**
+  Provides Java 8+ library API compatibility (including `java.time`) for Android 7.x devices.
 
 *(For detailed third-party open-source licenses, including test-only Kotlin Test/JUnit dependencies that are not packaged into the APK, please see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
 

@@ -63,7 +63,7 @@ STS2_ORIGINAL_V1080_REFERENCE_DIR=/path/to/v0.108.0/bin/Debug
 - Gradle wrapper：`8.13`
 - Kotlin：`2.1.20`
 - Steam 子模块：`android/steam-protocol`、`android/steam-content`（Kotlin JVM + protobuf，用于 Steam 登录/SteamPipe 下载）
-- 主要依赖：JavaSteam `1.6.0`、OkHttp `5.3.2`、protobuf `4.31.1`、AndroidX Security Crypto、Android Prefab zstd、XZ；许可证速览、直接参考仓库与发布前合规检查见 `THIRD_PARTY_LICENSES.md`
+- 主要依赖：JavaSteam `1.6.0`、OkHttp `5.3.2`、protobuf `4.31.1`、AndroidX Security Crypto、Android Prefab zstd、XZ；app module 启用 `desugar_jdk_libs 2.0.3` core-library desugaring，使 Steam 下载/云同步使用的 `java.time` 在 minSdk 24/25 可用。许可证速览、直接参考仓库与发布前合规检查见 `THIRD_PARTY_LICENSES.md`
 - compileSdk/targetSdk：`35`
 - minSdk：`24`
 - buildTools：`35.0.0`

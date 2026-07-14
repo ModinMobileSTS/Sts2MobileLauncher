@@ -7,6 +7,7 @@ import top.apricityx.workshop.steam.proto.CContentServerDirectory_GetManifestReq
 import top.apricityx.workshop.steam.proto.CContentServerDirectory_GetServersForSteamPipe_Request
 import top.apricityx.workshop.steam.proto.CContentServerDirectory_GetServersForSteamPipe_Response
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
 
 class SteamContentClient(
     private val session: SteamCmSession,
@@ -41,9 +42,16 @@ class SteamContentClient(
                     httpsSupport = it.httpsSupport,
                     allowedAppIds = it.allowedAppIdsList.map(Int::toUInt),
                     priorityClass = it.priorityClass.toUInt(),
+                    bypassProxiesOfType = it.bypassProxiesOfTypeList,
                 )
             }
-        }.getOrElse {
+        }.getOrElse { error ->
+            if (error is Error) throw error
+            if (error is CancellationException) throw error
+            if (error is InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw error
+            }
             directoryClient.loadContentServers(cellId, maxServers)
         }
     }

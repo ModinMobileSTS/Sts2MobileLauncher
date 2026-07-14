@@ -73,6 +73,7 @@ class SteamDirectoryClient(
                     httpsSupport = it.httpsSupport,
                     allowedAppIds = it.allowedAppIds.map(Int::toUInt),
                     priorityClass = it.priorityClass.toUInt(),
+                    bypassProxiesOfType = it.bypassProxiesOfType,
                 )
             }
         }
@@ -132,6 +133,8 @@ private data class CdnServerDto(
     val allowedAppIds: List<Int> = emptyList(),
     @SerialName("priority_class")
     val priorityClass: Int = 0,
+    @SerialName("bypass_proxies_of_type")
+    val bypassProxiesOfType: List<String> = emptyList(),
 ) {
     val vHost: String get() = vhost
 }

@@ -79,7 +79,10 @@ offline bootstrap:
 ## 4. Payload 导入与版本匹配
 
 1. 用户在设置页选择 `SlayTheSpire2.zip`，直装版从 APK assets `payload/SlayTheSpire2.zip` 解压，或在 Steam 中心使用自己拥有 STS2 的 Steam 账号通过 SteamPipe 下载。
-2. zip 路径由 `PayloadManager` 复制 zip 到私有临时文件并计算 sha256；Steam 路径由 `Sts2SteamPayloadDownloader` 下载 depot 文件到 `<files>/steam/downloads/staging-*` 后调用 `PayloadManager.importPayloadDirectory(...)`。
+2. zip 路径由 `PayloadManager` 复制 zip 到私有临时文件并计算 sha256；Steam 路径先解析并筛选 depot manifest，再把 prepared manifest 直接交给 `SteamDepotDirectoryDownloader`，避免正式下载阶段重复拉取 manifest。下载目录是按 branch、已选 app/depot/manifest 与下载布局版本生成的稳定 `<files>/steam/downloads/payload-<fingerprint>/`，随后调用 `PayloadManager.importPayloadDirectory(...)`。
+   - chunk worker 可在 Steam 中心选择 1 / 2 / 4，默认 2。worker 只负责并发请求与解密/解压，结果通过有界通道交给单 writer 按 offset 落盘；在途内存预算按 JVM 最大堆自适应，并限制在 16–64 MiB。
+   - 未完成文件写为 `*.steam.part`。同一 fingerprint 重试时，目录下载器会按 manifest chunk checksum 校验已有区间并只补缺失 chunk；完整正式文件也会经过长度和 manifest SHA-1 严格检查后复用。全部文件校验通过后才把 part 原子改为正式文件名并进入 payload 导入。下载至安装完成全程持有 `<files>/steam/downloads/locks/payload-download.lock` 全局文件锁，防止 Activity 重建或不同 branch 并行任务同时修改 staging/payload store。旧 `staging-*` / `failed-*` 会清理，其他 fingerprint 任务保留 7 天后清理。
+   - Steam 目录若返回 `use_as_proxy`，CDN 传输按 proxy route → origin route 回退并遵守 bypass 类型；depot auth token 仅用于 Steam 返回的 CDN origin/proxy，不会转发到 Steam Community/API/图片的 rmbgame 兼容访问。取消任务会取消 coroutine，并继续向下取消当前 OkHttp Call。
 3. staging 目录统一校验；若用户 zip 顶层只有一个目录且必需文件都在该目录内，导入器会先把该顶层目录展平：
    - `SlayTheSpire2.pck`
    - `release_info.json`
@@ -89,7 +92,7 @@ offline bootstrap:
 4. `PckPatcher` 只修改私有 PCK copy，禁用 Sentry autoload/gdextension 元数据，避免 Android 缺少桌面 Sentry 扩展导致启动前解析错误。
 5. 写入 staging 中的 `.payload_manifest.json`，包含 `release_info`、`version`、`commit`、`sts2_dll_sha256`、PCK patch 结果等。
 6. 按 manifest 身份生成 `payload_id`，原子安装到 `<files>/payloads/<payload_id>/game/`；同一 payload 已存在时只替换 payload store 中的该目录，不再复制到 `<files>/game/`。
-7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload；新建 profile 时会按 payload manifest 中的 `sts2_dll_sha256` 与 `version` 填入推荐 compat pack。匹配评分顺序为：精确 `sts2.dll` SHA、target 主版本、manifest 显式支持版本、offline bootstrap wildcard。schema 2 family 包在同等精确命中时优先；offline bootstrap 只有在没有任何 full compat 包命中当前 payload 时才会自动填入。schema 2 family 包会写入 `compat_pack_id` 和 `compat_target_id`；已有 profile 不会在每次导入/启动时被覆盖，只有旧 bundled schema 1 pack id 到 flat family pack 的升级迁移会自动改写。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot` 与 `source.steam.depots[]` 中记录。
+7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload；新建 profile 时会按 payload manifest 中的 `sts2_dll_sha256` 与 `version` 填入推荐 compat pack。匹配评分顺序为：精确 `sts2.dll` SHA、target 主版本、manifest 显式支持版本、offline bootstrap wildcard。schema 2 family 包在同等精确命中时优先；offline bootstrap 只有在没有任何 full compat 包命中当前 payload 时才会自动填入。schema 2 family 包会写入 `compat_pack_id` 和 `compat_target_id`；已有 profile 不会在每次导入/启动时被覆盖，只有旧 bundled schema 1 pack id 到 flat family pack 的升级迁移会自动改写。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot`、`source.steam.depots[]` 与 `source.steam.concurrent_chunks` 中记录。
 8. 旧安装中的 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制。
 
 ## 5. 启动前检查
