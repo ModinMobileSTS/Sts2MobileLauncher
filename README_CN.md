@@ -134,6 +134,24 @@ tools/package/build_importer_apk.sh
 ```
 构建成功后，APK 将输出至 `dist/sts2-re-importer.apk`。
 
+正常 APK 内置 Android 高刷新兼容路径：应用会声明游戏分类以便 OEM 游戏/GPU
+调度识别 `GodotApp`，但只在游戏处于前台、获得焦点且渲染 `Surface`
+有效时请求当前屏幕的最高兼容刷新率。请求按 Activity 生命周期合并，
+游戏暂停或 `Surface` 销毁后会取消未完成工作；Android 12+ 对每个有效
+Surface epoch 只发出一次 `Surface.setFrameRate(..., CHANGE_FRAME_RATE_ALWAYS)`，
+若 Android 提供对应高刷 mode 则设置精确 `Window` display mode；若只提供
+alternative refresh rate，则清空精确 mode ID 并只请求目标刷新率。随后做有界延迟验证；不使用
+`SurfaceControl`。
+可在“附加设置 → 系统”的预加载下方关闭高刷新请求；同一分区也提供
+默认关闭的性能面板。
+
+全屏渲染分辨率会由 full compat 在游戏启动时应用，也可以在游戏内 Android
+设置页即时切换。根 Window 始终保留 Godot `CanvasItems` 逻辑缩放，只改变
+renderer 侧渲染目标，因此卡牌、控件、触控坐标和其他内容的相对布局保持不变。
+实际目标会跟随当前 CanvasItems 画面比例，例如 `2400×1080` attachment 选择
+`1280×720` 时实际使用 `1600×720`。该路径不改变 Android Surface 尺寸，也不
+重新触发高刷请求；画面比例、UI 缩放、全局缩放和字体缩放继续各自独立生效。
+
 ---
 
 ## 更多文档

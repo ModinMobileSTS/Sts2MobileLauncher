@@ -269,7 +269,7 @@
     <string name="nexus_mod_store_updated_label">Updated</string>
     <string name="mod_hint">Supports .zip / .json / .pck / .dll. MOD switches are matched by manifest JSON ID and imported files are stored in the app internal mods directory.</string>
     <string name="section_resolution">Resolution</string>
-    <string name="resolution_hint">Controls the fullscreen render resolution used by the game on next launch.</string>
+    <string name="resolution_hint">Sets the game render-resolution preset. In-game changes apply immediately; the effective target follows the current CanvasItems aspect without changing UI size or touch mapping.</string>
     <string name="screen_rotation_mode">Rotation mode</string>
     <string name="screen_rotation_auto">Auto</string>
     <string name="screen_rotation_user_landscape">Follow system</string>
@@ -890,7 +890,7 @@
     <string name="in_game_overlay_devtools_host_unavailable">Inspector is unavailable in this game session. Start the game with a current full compatibility pack, then try again.</string>
     <string name="in_game_overlay_devtools_request_timeout">The game bridge is busy and did not answer. Wait a moment and try again.</string>
     <string name="high_refresh_rate_switch">Request high refresh rate</string>
-    <string name="high_refresh_rate_hint">Enabled by default. On game launch, Android requests the highest refresh mode available for the current display and render surface. Disable if it causes heat, battery drain or device instability.</string>
+    <string name="high_refresh_rate_hint">Enabled by default. On game launch, Android requests the highest refresh mode available for the current display and render surface. Actual FPS still follows the in-game FPS cap. Disable if it causes heat, battery drain or device instability.</string>
     <string name="preload_hint">Master switch only. Tap the arrow for detailed preload management.</string>
     <string name="preload_advanced_title">Preload details</string>
     <string name="preload_advanced_subtitle">Choose which startup and runtime caches are warmed up.</string>

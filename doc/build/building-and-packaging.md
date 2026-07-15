@@ -254,7 +254,9 @@ tools/package/build_importer_apk.sh
 4. 执行 `local.properties` 中的 `android.gradle.task`（默认 `assembleMonoRelease`）。
 5. 复制 APK 到 `android.importer.dist`（默认 `dist/sts2-re-importer.apk`）。
 
-正式 APK 默认声明 `android:appCategory="game"` / `android:isGame="true"`，让 OEM 游戏/GPU 调度识别 `GodotApp`；同时采用高刷新兼容模式，`GodotApp` 会在启动、恢复前台、获得焦点和 Godot 主循环开始后向 `WindowManager.LayoutParams.preferredDisplayModeId`、`preferredRefreshRate`、`Surface.setFrameRate()` 与 `SurfaceControl.Transaction.setFrameRate()` 请求当前显示尺寸下最高刷新率。设置页“系统”分区提供默认关闭的“Show performance overlay”开关；开启后下次启动会加载 `godot-debug-menu`，显示 FPS、帧时间、CPU/GPU frame graph 和渲染器/硬件信息。
+正式 APK 默认声明 `android:appCategory="game"` / `android:isGame="true"`，让 OEM 游戏/GPU 调度识别 `GodotApp`；同时采用高刷新兼容模式。`GodotApp` 在启动、恢复前台、获得焦点和 Godot 主循环开始后只向 Activity 级 `HighRefreshRateController` 发起 generation 请求；控制器仅在 Activity resumed + focused 且 Godot `SurfaceView`/`Surface` 有效时实际应用，并在失去焦点、pause、destroy 或 Surface 销毁后取消延迟工作。控制器同时跟踪 surface epoch，以 100/500/1500ms 有限重试等待有效 Surface；Android 12+ 对每个 epoch 只调用一次 `Surface.setFrameRate(..., CHANGE_FRAME_RATE_ALWAYS)`。显式高刷 mode 使用对应 `preferredDisplayModeId`，仅有 alternative refresh rate 时清空 mode ID 并使用 `preferredRefreshRate`；随后延迟验证实际 mode/Hz，不使用 `SurfaceControl`。设置页“系统”分区提供默认关闭的“Show performance overlay”开关；开启后下次启动会加载 `godot-debug-menu`，显示 FPS、帧时间、CPU/GPU frame graph 和渲染器/硬件信息。
+
+Java 不再把 `fullscreen_render_size` 转换为 Godot `--resolution`。根窗口始终使用 `CanvasItems`：Auto 比例取 UI scale target，固定比例取对应 fixed target，`global_scale` 独立作为 `ContentScaleFactor`。游戏内切换 `fullscreen_render_size` 后，compat 会先完成高层 `ContentScale*` setter，再只用 `RenderingServer.ViewportSetRenderDirectToScreen(false)`、`ViewportSetSize()` 与 `ViewportSetGlobalCanvasTransform()` 即时调整根 renderer RT；scene Window、输入变换与 Android Surface 均不改变，也不使用 `SurfaceHolder.setFixedSize()` 或 `ViewportAttachToScreen()`。`0x0` 恢复 native attachment 尺寸与原始 canvas transform；非零预设按当前 native attachment 比例以 Expand 语义覆盖请求矩形，例如 `2400x1080` 设备选择 `1280x720` 时实际 target 为 `1600x720`。自定义目标长边上限为 `max(4096, native 长边)`。根 Window `SizeChanged`、resume 与 ContentScale repair 后会重投 renderer 状态，因此动态切换前后内容相对大小与触控坐标保持不变，高刷 Surface 生命周期也不受分辨率切换影响。
 
 ## 10. 构建直装版 APK
 
@@ -326,6 +328,32 @@ tools/android/gradle-with-s2-env.sh :steam-protocol:test
 
 # Java/Kotlin/Steam 子模块编译检查
 tools/android/gradle-with-s2-env.sh :compileMonoDebugJavaWithJavac
+
+# 窗口生命周期 / ContentScale 静态回归约束
+! rg 'GodotLib|dispatchImmediateGodotFocusChange' \
+  android/src/com/godot/game/GodotApp.java
+! rg 'NotificationWMWindowFocusIn|NotificationApplicationFocusIn' \
+  port-mod/STS2AndroidPortCompat/Patches/DisplaySettingsPatches.cs
+! rg 'window\.ContentScale(Mode|Aspect|Size|Factor)\s*=' \
+  port-mod/STS2AndroidPortCompat/Patches/UiScalePatches.cs
+! rg 'CustomRender|ContentScaleModeEnum\.Viewport' \
+  port-mod/STS2AndroidPortCompat/Patches/DisplaySettingsPatches.cs
+rg 'ContentScaleModeEnum\.CanvasItems' \
+  port-mod/STS2AndroidPortCompat/Patches/DisplaySettingsPatches.cs
+rg 'ViewportSetRenderDirectToScreen|ViewportSetSize|ViewportSetGlobalCanvasTransform' \
+  port-mod/STS2AndroidPortCompat/Patches/DisplaySettingsPatches.cs
+! rg -- '--resolution' \
+  android/src/com/godot/game/GodotApp.java
+rg 'CHANGE_FRAME_RATE_ALWAYS' \
+  android/src/com/godot/game/HighRefreshRateController.java
+rg 'preferredDisplayModeId' \
+  android/src/com/godot/game/HighRefreshRateController.java
+rg 'preferredRefreshRate' \
+  android/src/com/godot/game/HighRefreshRateController.java
+! rg 'SurfaceControl|setFixedSize|ViewportAttachToScreen' \
+  android/src/com/godot/game/HighRefreshRateController.java \
+  android/src/com/godot/game/GodotApp.java \
+  port-mod/STS2AndroidPortCompat/Patches/DisplaySettingsPatches.cs
 
 # payload zip 校验
 tools/package/validate_payload_zip.py "/path/to/SlayTheSpire2.zip"

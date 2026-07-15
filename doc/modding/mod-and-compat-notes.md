@@ -88,6 +88,8 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 
 同一个 settings JSON 也承载兼容层显示/输入协议。`android_screen_rotation_mode` 是当前旋转模式字段，取值为 `user_landscape`（默认，跟随系统，只在横屏间旋转，受系统自动旋转开关约束）、`auto`（强制双向横屏旋转，通过重力监听器绕过系统旋转锁定限制）、`landscape`（不旋转）或 `reverse_landscape`（固定 180°）；旧 `android_flip_screen_180` 仍会同步，供旧兼容包 fallback。
 
+根窗口的 `ContentScaleMode` / `ContentScaleAspect` / `ContentScaleSize` 只能由 `DisplaySettingsPatches` 协调，逻辑 owner 优先级是 `FixedAspect > UiScaleAuto`，Mode 始终为 `CanvasItems`。Auto 比例使用 `UiScalePatches` 提供的 UI scale target，固定比例使用对应 fixed target；owner 必须在任何 Window setter 前发布，setter 必须 compare-before-set。`UiScalePatches` 中的窗口变化补丁只能请求 single-flight deferred 重算，不得直接写 `ContentScale*`。`fullscreen_render_size` 不得接管逻辑 ContentScale，也不再由 Java 转换成 `--resolution`；游戏内写入后由 compat 立即应用到根 renderer RT。实现顺序必须是先完成高层 `ContentScale*` setter，再只调用 `RenderingServer.ViewportSetRenderDirectToScreen(false)`、`ViewportSetSize()` 与 `ViewportSetGlobalCanvasTransform()`。不得修改 scene Window/输入变换/Android Surface，也不得调用 `SurfaceHolder.setFixedSize()` 或 `ViewportAttachToScreen()`。`0x0` 恢复 native RT 尺寸与高层 ContentScale 生成的原始 canvas transform；非零预设按当前 native attachment 宽高比以 Expand 语义覆盖请求矩形，例如 `2400x1080` + `1280x720` 得到 `1600x720`。自定义目标长边上限为 `max(4096, native 长边)`。根 Window `SizeChanged`、application resume 和一致性 repair 后必须重投 renderer override，防止高层 setter 复位动态目标。`global_scale` 始终独立作为 `ContentScaleFactor` 应用，`ui_font_scale_percent` 也独立；原版游戏内 UI scale 选择保存在 `user://ui_scale.cfg`，FixedAspect 期间不控制 Size，回到 Auto 后恢复。runtime 显示设置只在 `NotificationApplicationResumed` 时合并为一次 deferred apply，不得在 window/application focus 通知中同步重建 viewport。
+
 修改设置 key 时必须同步：
 
 - Java repository / UI；

@@ -32,8 +32,6 @@ package com.godot.game;
 
 import org.godotengine.godot.Godot;
 import org.godotengine.godot.GodotActivity;
-import org.godotengine.godot.GodotLib;
-import org.godotengine.godot.GodotRenderView;
 
 import org.fmod.FMOD;
 
@@ -86,6 +84,7 @@ public class GodotApp extends GodotActivity {
 	private File gameDir;
 	private android.view.OrientationEventListener orientationEventListener;
 	private InGameOverlayController inGameOverlayController;
+	private final HighRefreshRateController highRefreshRateController = new HighRefreshRateController();
 
 	static {
 		Log.i(TAG, "DIAG GodotApp static init begin versionCode=" + BuildConfig.VERSION_CODE + " versionName=" + BuildConfig.VERSION_NAME + " flavor=" + BuildConfig.FLAVOR);
@@ -120,22 +119,6 @@ public class GodotApp extends GodotActivity {
 			godot.setSystemBarsAppearance();
 		}
 	};
-
-	private void dispatchImmediateGodotFocusChange(boolean hasFocus) {
-		Godot godot = getGodot();
-		if (godot == null) {
-			Log.v("GODOT", "Skipping immediate focus dispatch because Godot instance is null.");
-			return;
-		}
-		GodotRenderView renderView = godot.getRenderView();
-		Log.v("GODOT", "Dispatching immediate Godot focus change: hasFocus=" + hasFocus + ", hasRenderView=" + (renderView != null));
-		Runnable runnable = hasFocus ? GodotLib::focusin : GodotLib::focusout;
-		if (renderView != null) {
-			renderView.queueOnRenderThread(runnable);
-		} else {
-			runnable.run();
-		}
-	}
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
@@ -382,7 +365,6 @@ public class GodotApp extends GodotActivity {
 		appendGodotLogFileCommandLineArgs(commandLine);
 		appendSts2PlatformCommandLineArgs(commandLine);
 		appendSts2LogLevelCommandLineArgs(commandLine);
-		appendAndroidDisplayCommandLineArgs(commandLine);
 		File pckFile = new File(getGameDir(), PCK_FILE_NAME);
 		if (pckFile.isFile()) {
 			commandLine.add("--main-pack");
@@ -529,29 +511,6 @@ public class GodotApp extends GodotActivity {
 				outputStream.write(line.getBytes(StandardCharsets.UTF_8));
 			}
 		} catch (Exception ignored) {
-		}
-	}
-
-	private void appendAndroidDisplayCommandLineArgs(List<String> commandLine) {
-		try {
-			File settingsFile = getSettingsFile();
-			if (!settingsFile.isFile()) {
-				return;
-			}
-			JSONObject settings = new JSONObject(readTextFile(settingsFile));
-			JSONObject size = settings.optJSONObject("fullscreen_render_size");
-			if (size == null) {
-				return;
-			}
-			int width = size.optInt("X", size.optInt("x", 0));
-			int height = size.optInt("Y", size.optInt("y", 0));
-			if (width > 0 && height > 0) {
-				commandLine.add("--resolution");
-				commandLine.add(width + "x" + height);
-				Log.i(TAG, "Applying Android render resolution command line: " + width + "x" + height);
-			}
-		} catch (Exception exception) {
-			Log.w(TAG, "Unable to append Android display command line args.", exception);
 		}
 	}
 
@@ -711,10 +670,10 @@ public class GodotApp extends GodotActivity {
 
 	private void requestHighRefreshRate(String reason) {
 		if (!new ExtraSettingsRepository(this).isHighRefreshRateEnabledForLaunch()) {
-			Log.i(TAG, "High refresh request disabled by setting; reason=" + reason);
+			highRefreshRateController.disable(this, reason);
 			return;
 		}
-		HighRefreshRateController.applyWithRetries(this, getGodot(), reason);
+		highRefreshRateController.request(this, getGodot(), reason);
 	}
 
 	@Override
@@ -723,6 +682,7 @@ public class GodotApp extends GodotActivity {
 		currentInstance = this;
 		currentResumed = true;
 		currentWindowFocused = hasWindowFocus();
+		highRefreshRateController.onResumed(this, getGodot(), currentWindowFocused);
 		applyConfiguredScreenOrientation();
 		updateWindowAppearance.run();
 		requestHighRefreshRate("onResume");
@@ -738,6 +698,7 @@ public class GodotApp extends GodotActivity {
 		disableOrientationEventListener();
 		currentResumed = false;
 		currentWindowFocused = false;
+		highRefreshRateController.onPaused(this);
 		super.onPause();
 	}
 
@@ -940,11 +901,8 @@ public class GodotApp extends GodotActivity {
 	@Override
 	public void onWindowFocusChanged(boolean hasFocus) {
 		super.onWindowFocusChanged(hasFocus);
-		boolean wasFocused = currentWindowFocused;
 		currentWindowFocused = hasFocus;
-		if (wasFocused != hasFocus) {
-			dispatchImmediateGodotFocusChange(hasFocus);
-		}
+		highRefreshRateController.onWindowFocusChanged(this, getGodot(), hasFocus);
 		if (hasFocus) {
 			requestHighRefreshRate("onWindowFocusChanged");
 		}
@@ -967,6 +925,7 @@ public class GodotApp extends GodotActivity {
 		disableOrientationEventListener();
 		currentResumed = false;
 		currentWindowFocused = false;
+		highRefreshRateController.onDestroyed(this);
 		if (currentInstance == this) {
 			currentInstance = null;
 		}

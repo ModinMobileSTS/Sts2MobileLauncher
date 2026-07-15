@@ -269,7 +269,7 @@
     <string name="nexus_mod_store_updated_label">更新时间</string>
     <string name="mod_hint">选择zip自动解压，或者逐个导入mod文件（请确保MOD完整） 注意：是否开启MOD将加载两套不同存档，可使用存档转移功能进行转移。</string>
     <string name="section_resolution">分辨率</string>
-    <string name="resolution_hint">用于控制下次启动游戏时的全屏渲染分辨率。</string>
+    <string name="resolution_hint">设置游戏渲染分辨率预设；游戏内可即时切换，实际目标跟随当前 CanvasItems 画面比例，不改变 UI 大小和触控映射。</string>
     <string name="screen_rotation_mode">旋转模式</string>
     <string name="screen_rotation_auto">自动</string>
     <string name="screen_rotation_user_landscape">跟随系统</string>
@@ -890,7 +890,7 @@
     <string name="in_game_overlay_devtools_host_unavailable">本局游戏没有可用的检查器。请使用当前完整兼容包启动游戏后重试。</string>
     <string name="in_game_overlay_devtools_request_timeout">游戏桥接正忙，暂未响应。请稍候再试。</string>
     <string name="high_refresh_rate_switch">请求高刷新率</string>
-    <string name="high_refresh_rate_hint">默认开启。进游戏时会向 Android 请求当前屏幕可用的最高刷新率，并同步到渲染 Surface；若发热、耗电或设备显示异常可关闭。</string>
+    <string name="high_refresh_rate_hint">默认开启。进游戏时会向 Android 请求当前屏幕可用的最高刷新率，并同步到渲染 Surface；实际 FPS 仍受游戏内帧率上限影响。若发热、耗电或设备显示异常可关闭。</string>
     <string name="preload_hint">这里只控制总开关。点击右侧箭头可详细管理预加载项目。</string>
     <string name="preload_advanced_title">预加载详细管理</string>
     <string name="preload_advanced_subtitle">选择启动和运行时分别预热哪些缓存。</string>

@@ -157,11 +157,28 @@ tools/package/build_importer_apk.sh
 Upon successful build, the APK will be output to `dist/sts2-re-importer.apk`.
 
 Android high-refresh support is part of the normal APK: the app declares the
-Android game category so OEM game/GPU scheduling can recognize `GodotApp`, and
-also requests the highest exposed display mode through Android `Window` /
-`Surface` frame-rate APIs by default.
-This request can be disabled from Extra Settings → System below Preload. A
-disabled-by-default performance overlay can also be enabled from Extra Settings → System.
+Android game category so OEM game/GPU scheduling can recognize `GodotApp`, then
+requests the highest compatible refresh rate only while the game is resumed,
+focused, and backed by a valid render `Surface`. Requests are coalesced per
+Activity lifecycle and cancelled when the game pauses or its `Surface` is
+destroyed. For each valid Surface epoch, Android 12+ issues one
+`Surface.setFrameRate(..., CHANGE_FRAME_RATE_ALWAYS)` vote together with the
+matching exact `Window` display mode when Android exposes one; devices that
+only expose an alternative refresh rate use a refresh-rate-only Window request
+with the exact mode ID cleared. A bounded delayed verification follows, and the
+path does not use `SurfaceControl`. This behavior can be
+disabled from Extra Settings → System below Preload. A disabled-by-default
+performance overlay can also be enabled from Extra Settings → System.
+
+The fullscreen render-resolution preset is applied by the full compatibility
+pack at game startup and can also be switched immediately from the in-game
+Android settings page. The root Window keeps Godot `CanvasItems` scaling while
+only its renderer-side target changes, so cards, controls, touch coordinates,
+and other content retain the same relative layout. The effective target follows
+the current CanvasItems aspect (for example, a 1280×720 preset becomes 1600×720
+on a 2400×1080 attachment). Android Surface size and the high-refresh request are
+left untouched; aspect-ratio, UI-scale, global-scale, and font-scale settings
+continue to apply independently.
 
 ### 7. ADB Automation Debugging
 For connected-device debugging, the repository includes an ADB harness that can install the APK, push a payload/compat pack/MOD into app-private storage, run launch preparation, start the game, and collect logs or Perfetto traces:
