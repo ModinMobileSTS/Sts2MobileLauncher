@@ -227,6 +227,9 @@ _sts2_pack_reference_flavor() {
     *v0.108.0*|*1080*)
       printf '%s\n' "original-v0.108.0"
       ;;
+    *v0.109.0*|*1090*)
+      printf '%s\n' "original-v0.109.0"
+      ;;
     *v0.107.1*|*1071*)
       printf '%s\n' "original-v0.107.1"
       ;;
@@ -240,7 +243,7 @@ _sts2_pack_reference_flavor() {
       printf '%s\n' "original"
       ;;
     *)
-      sts2_config_value '' compat.default_reference_flavor original-v0.108.0
+      sts2_config_value '' compat.default_reference_flavor original-v0.109.0
       ;;
   esac
 }

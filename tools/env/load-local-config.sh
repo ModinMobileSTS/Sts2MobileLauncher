@@ -97,6 +97,8 @@ sts2_load_dotenv() {
     STS2_ORIGINAL_V1071_REFERENCE_DIR \
     STS2_ORIGINAL_V1080_ROOT \
     STS2_ORIGINAL_V1080_REFERENCE_DIR \
+    STS2_ORIGINAL_V1090_ROOT \
+    STS2_ORIGINAL_V1090_REFERENCE_DIR \
     STS2_PAYLOAD_ZIP; do
     _sts2_resolve_env_path_var "$var"
   done
@@ -120,6 +122,10 @@ sts2_load_dotenv() {
   if [[ -n "${STS2_ORIGINAL_V1080_ROOT:-}" ]]; then
     export STS2_ORIGINAL_V1080_REFERENCE_DIR="${STS2_ORIGINAL_V1080_REFERENCE_DIR:-$STS2_ORIGINAL_V1080_ROOT/.godot/mono/temp/bin/Debug}"
     _sts2_resolve_env_path_var STS2_ORIGINAL_V1080_REFERENCE_DIR
+  fi
+  if [[ -n "${STS2_ORIGINAL_V1090_ROOT:-}" ]]; then
+    export STS2_ORIGINAL_V1090_REFERENCE_DIR="${STS2_ORIGINAL_V1090_REFERENCE_DIR:-$STS2_ORIGINAL_V1090_ROOT/.godot/mono/temp/bin/Debug}"
+    _sts2_resolve_env_path_var STS2_ORIGINAL_V1090_REFERENCE_DIR
   fi
 
   STS2_DOTENV_LOADED=1
@@ -263,6 +269,9 @@ sts2_compat_reference_dir_for_flavor() {
       ;;
     original-v0.108.0)
       printf '%s\n' "${STS2_ORIGINAL_V1080_REFERENCE_DIR:-}"
+      ;;
+    original-v0.109.0)
+      printf '%s\n' "${STS2_ORIGINAL_V1090_REFERENCE_DIR:-}"
       ;;
     runtime|*)
       printf '%s\n' "${STS2_RUNTIME_REFERENCE_DIR:-}"

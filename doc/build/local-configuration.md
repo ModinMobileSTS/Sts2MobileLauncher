@@ -30,6 +30,7 @@ cp local.properties.example local.properties
 | `STS2_ORIGINAL_V1070_ROOT` 或 `STS2_ORIGINAL_V1070_REFERENCE_DIR` | v0.107.0 beta（旧测试）original compile gate 引用。 |
 | `STS2_ORIGINAL_V1071_ROOT` 或 `STS2_ORIGINAL_V1071_REFERENCE_DIR` | v0.107.1 stable original compile gate 引用。 |
 | `STS2_ORIGINAL_V1080_ROOT` 或 `STS2_ORIGINAL_V1080_REFERENCE_DIR` | v0.108.0 stable original compile gate 引用。 |
+| `STS2_ORIGINAL_V1090_ROOT` 或 `STS2_ORIGINAL_V1090_REFERENCE_DIR` | v0.109.0 public-beta original compile gate 引用。 |
 | `RELEASE_KEYSTORE_FILE` / `RELEASE_KEYSTORE_PASSWORD` / `RELEASE_KEYSTORE_ALIAS` | 本地 APK 签名参数。默认可用 Android debug keystore，正式发布请改为私有 release keystore。 |
 
 可选快捷项：
@@ -50,7 +51,7 @@ cp local.properties.example local.properties
 | `android.importer.dist` | `dist/sts2-re-importer.apk` | 导入版稳定副本。 |
 | `android.direct.dist` | `dist/sts2-re-direct.apk` | 直装版稳定副本。 |
 | `android.release_keystore_*` | debug keystore 兼容默认值 | 本地签名 fallback；更建议把密码类值放到 `.env` 或 CI secrets。 |
-| `compat.default_reference_flavor` | `original-v0.108.0` | 当前分支 fallback 的默认 compile gate。 |
+| `compat.default_reference_flavor` | `original-v0.109.0` | 当前分支 fallback 的默认 compile gate。 |
 | `compat.pack_build_mode` | `matrix` | `matrix` 使用 `port-mod/targets/active/*/target.json` 从单 checkout 构建 schema 2 family 包；`legacy` 使用多分支/worktree 构建 schema 1 包，仅用于回退诊断。 |
 | `compat.bundled_packs_config` | `tools/android/bundled-compat-packs.json` | 内置兼容包列表。 |
 | `compat.asset_dir` | `android/assets/compat_packs` | 内置兼容包输出到 APK assets 的目录；生成 zip 已 gitignore，不提交。 |

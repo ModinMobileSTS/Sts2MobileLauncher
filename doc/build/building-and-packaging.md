@@ -49,6 +49,7 @@ STS2_ORIGINAL_V1061_REFERENCE_DIR=/path/to/v0.106.1/bin/Debug
 STS2_ORIGINAL_V1070_REFERENCE_DIR=/path/to/v0.107.0/bin/Debug
 STS2_ORIGINAL_V1071_REFERENCE_DIR=/path/to/v0.107.1/bin/Debug
 STS2_ORIGINAL_V1080_REFERENCE_DIR=/path/to/v0.108.0/bin/Debug
+STS2_ORIGINAL_V1090_REFERENCE_DIR=/path/to/v0.109.0/bin/Debug
 ```
 
 `STS2_ORIGINAL_*_REFERENCE_DIR` 目录需包含 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll`。这些是 compile gate 引用，不提交到仓库。
@@ -107,11 +108,14 @@ android/assets/dotnet_bcl/STS2Mobile.dll
 android/assets/port_compat.pck
 ```
 
-默认 `ReferenceFlavor` 来自 `local.properties` 的 `compat.default_reference_flavor`（示例为 `original-v0.108.0`）。可临时覆盖：
+默认 `ReferenceFlavor` 来自 `local.properties` 的 `compat.default_reference_flavor`（示例为 `original-v0.109.0`）。可临时覆盖：
 
 ```bash
 # 当前稳定版 v0.108.0
 REFERENCE_FLAVOR=original-v0.108.0 tools/android/build-port-mod.sh
+
+# 当前 public-beta v0.109.0
+REFERENCE_FLAVOR=original-v0.109.0 tools/android/build-port-mod.sh
 # stable v0.107.1
 REFERENCE_FLAVOR=original-v0.107.1 tools/android/build-port-mod.sh
 # 旧 beta v0.107.0
@@ -166,6 +170,7 @@ tools/android/stage-bundled-compat-packs.sh
 - `v0.107.0-beta`（旧 beta，`ReferenceFlavor=original-v0.107.0`）
 - `v0.107.1`（stable，`ReferenceFlavor=original-v0.107.1`）
 - `v0.108.0`（当前稳定版，`ReferenceFlavor=original-v0.108.0`）
+- `v0.109.0`（当前 public beta，`ReferenceFlavor=original-v0.109.0`）
 
 输出到：
 
@@ -189,7 +194,7 @@ legacy 模式读取 `tools/android/bundled-compat-packs.json`（或 `local.prope
 
 ```bash
 cd port-mod
-./tools/build-compat-matrix.sh --target v0.108.0
+./tools/build-compat-matrix.sh --target v0.109.0
 ./tools/build-compat-matrix.sh
 ```
 
@@ -316,6 +321,12 @@ tools/package/build_android_body_zip.sh \
   --pc-zip "/path/to/sts2-v0.108.0.zip" \
   --source-dir "/path/to/s201080" \
   --out "dist/payload/sts2-v0.108.0-android-body.zip"
+
+# v0.109.0 当前 public beta
+tools/package/build_android_body_zip.sh \
+  --pc-zip "/path/to/sts2-v0.109.0.zip" \
+  --source-dir "/path/to/s201090" \
+  --out "dist/payload/sts2-v0.109.0-android-body.zip"
 ```
 
 临时工程和 Godot 日志默认写入 `.agent/tmp/android-body-build/`，该目录不入库；生成的 zip 应留在 `dist/` 或其他本地输出目录，不要提交。
@@ -358,8 +369,8 @@ rg 'preferredRefreshRate' \
 # payload zip 校验
 tools/package/validate_payload_zip.py "/path/to/SlayTheSpire2.zip"
 
-# 当前 stable compile gate（通过脚本自动传 CompatReferenceDir）
-REFERENCE_FLAVOR=original-v0.108.0 tools/android/build-port-mod.sh
+# 当前 public-beta compile gate（通过脚本自动传 CompatReferenceDir）
+REFERENCE_FLAVOR=original-v0.109.0 tools/android/build-port-mod.sh
 
 # v0.107.1 / v0.103.x / 旧 beta compile gate
 REFERENCE_FLAVOR=original-v0.107.1 tools/android/build-port-mod.sh
@@ -376,8 +387,8 @@ tools/android/generate-material-symbol-vectors.py --check
 
 # standalone dotnet 编译也可显式传入 CompatReferenceDir
 "$DOTNET_BIN" build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj \
-  -p:ReferenceFlavor=original-v0.108.0 \
-  -p:CompatReferenceDir="$STS2_ORIGINAL_V1080_REFERENCE_DIR" -v:q
+  -p:ReferenceFlavor=original-v0.109.0 \
+  -p:CompatReferenceDir="$STS2_ORIGINAL_V1090_REFERENCE_DIR" -v:q
 ```
 
 ## 13. ADB 自动化调试
