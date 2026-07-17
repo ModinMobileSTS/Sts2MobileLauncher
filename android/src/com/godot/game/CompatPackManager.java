@@ -177,7 +177,9 @@ public final class CompatPackManager {
 		if (pack == null || !pack.ready) {
 			return "no-selected-compat";
 		}
-		return pack.packId + ":" + pack.targetId + ":" + pack.compatVersion + ":" + pack.dllFile.length() + ":" + pack.dllFile.lastModified() + ":" + pack.overlayPckFile.length() + ":" + pack.overlayPckFile.lastModified();
+		JSONObject installedSource = pack.manifest.optJSONObject("installed_source");
+		String sourceZipSha256 = installedSource == null ? "" : installedSource.optString("zip_sha256", "");
+		return pack.packId + ":" + pack.targetId + ":" + pack.compatVersion + ":" + sourceZipSha256 + ":" + pack.dllFile.length() + ":" + pack.dllFile.lastModified() + ":" + pack.overlayPckFile.length() + ":" + pack.overlayPckFile.lastModified();
 	}
 
 	public CompatPack findBestMatch(JSONObject payloadManifest) {

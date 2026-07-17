@@ -126,10 +126,10 @@ offline bootstrap:
 8. 准备 Mono publish 目录 `<files>/.godot/mono/publish/arm64/`：
    - 复制 APK assets `dotnet_bcl/*`，但 `STS2Mobile.dll` 由 selected pack 决定。
    - 兼容包开关关闭：删除 publish 目录中的 `STS2Mobile.dll`；`GodotApp` 的直接启动 fallback 也不会再从 selected pack 或 APK asset 强制补回。
-   - 有 selected pack：复制 selected `STS2Mobile.dll`；schema 2 的来源是当前 target variant。
+   - 有 selected pack：复制 selected `STS2Mobile.dll`；schema 2 的来源是当前 target variant。启动器会逐字节比较 selected DLL 与 publish 副本，只有内容完全一致才复用；文件长度相同或 publish mtime 更新都不能代替内容匹配，复制完成后还会再次校验，避免切换同尺寸 target variant 时继续加载旧版本 DLL。
    - 无 selected pack：仅在兼容包开关开启但没有 profile 级兼容包选择的 fallback 准备路径中尝试复制 fallback `dotnet_bcl/STS2Mobile.dll`；如果 profile 明确选择的 pack/target 缺失，会删除 staged DLL 并拒绝 asset fallback。
    - 复制当前 profile payload 目录中 `data_*/*` 的游戏 assemblies，跳过 `.so`，并保护 BCL/System/GodotSharp 等 runtime DLL。
-   - 使用 SharedPreferences stamp 避免不必要的大文件重复复制；payload/profile 变化时强制刷新游戏 assemblies，并清理 publish 目录里旧 payload 遗留的游戏 DLL/JSON。
+   - 使用 SharedPreferences stamp 避免不必要的大文件重复复制；compat stamp 包含已安装来源 zip SHA-256，用于识别 compat 包内容更新。payload/profile 变化时强制刷新游戏 assemblies，并清理 publish 目录里旧 payload 遗留的游戏 DLL/JSON。
 
 `GodotApp` 仍保留 fallback：如果不是从设置页 prepared 启动，会自己调用同一准备流程；该 fallback 同样尊重兼容包开关，关闭时不会补回 `STS2Mobile.dll`。游戏通过 Android 兼容层的退出回设置路径触发 `GodotApp.restartToSettingsFromGame()` 时，会写入 `<files>/launcher/expected_clean_game_exit.json`；下次设置页启动时会创建一份本地 `clean-exit` 存档快照，如 Steam Cloud 或 WebDAV 模式为完整自动，还会尝试上传当前 launch profile account root 的本地变化。
 

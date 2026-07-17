@@ -39,6 +39,7 @@ public final class GameLaunchPreparationManager {
 	private static final String TEXTURE_CACHE_PREFERENCES_NAME = "sts2_texture_cache";
 	private static final String KEY_TEXTURE_CACHE_PCK_STAMP = "pck_stamp";
 	private static final int BUFFER_SIZE = 1024 * 1024;
+	private static final int FILE_COMPARE_BUFFER_SIZE = 64 * 1024;
 
 	private final Context context;
 	private final AssetManager assets;
@@ -596,7 +597,8 @@ public final class GameLaunchPreparationManager {
 			return;
 		}
 		if (selectedCompatDll != null && selectedCompatDll.isFile()) {
-			copyFileIfDifferent(selectedCompatDll, dest);
+			boolean copied = copyFileIfContentDifferent(selectedCompatDll, dest);
+			Log.i(TAG, "DIAG syncCompatEntryDll content_action=" + (copied ? "copied" : "already_matching"));
 			logPreparedFile("compat entry dll", "selected_pack", selectedCompatDll, dest);
 			return;
 		}
@@ -790,6 +792,66 @@ public final class GameLaunchPreparationManager {
 			return;
 		}
 		copyFile(src, dest);
+	}
+
+	// Compat matrix variants can have identical lengths and older extraction mtimes,
+	// so target identity must be based on bytes rather than size/timestamp metadata.
+	private boolean copyFileIfContentDifferent(File src, File dest) throws IOException {
+		if (filesHaveSameContent(src, dest)) {
+			return false;
+		}
+		copyFile(src, dest);
+		if (!filesHaveSameContent(src, dest)) {
+			throw new IOException("Copied file content does not match source: " + dest.getAbsolutePath());
+		}
+		return true;
+	}
+
+	private boolean filesHaveSameContent(File first, File second) throws IOException {
+		if (first == null || second == null || !first.isFile() || !second.isFile()) {
+			return false;
+		}
+		if (first.getCanonicalFile().equals(second.getCanonicalFile())) {
+			return true;
+		}
+		if (first.length() != second.length()) {
+			return false;
+		}
+		byte[] firstBuffer = new byte[FILE_COMPARE_BUFFER_SIZE];
+		byte[] secondBuffer = new byte[FILE_COMPARE_BUFFER_SIZE];
+		try (InputStream firstStream = new BufferedInputStream(new FileInputStream(first));
+			 InputStream secondStream = new BufferedInputStream(new FileInputStream(second))) {
+			while (true) {
+				int firstRead = readComparisonChunk(firstStream, firstBuffer);
+				int secondRead = readComparisonChunk(secondStream, secondBuffer);
+				if (firstRead != secondRead) {
+					return false;
+				}
+				if (firstRead < 0) {
+					return true;
+				}
+				for (int index = 0; index < firstRead; index++) {
+					if (firstBuffer[index] != secondBuffer[index]) {
+						return false;
+					}
+				}
+			}
+		}
+	}
+
+	private int readComparisonChunk(InputStream inputStream, byte[] buffer) throws IOException {
+		int total = 0;
+		while (total < buffer.length) {
+			int read = inputStream.read(buffer, total, buffer.length - total);
+			if (read < 0) {
+				break;
+			}
+			if (read == 0) {
+				continue;
+			}
+			total += read;
+		}
+		return total == 0 ? -1 : total;
 	}
 
 	private void copyFile(File src, File dest) throws IOException {
