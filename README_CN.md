@@ -63,7 +63,7 @@
 - **[Android desugar_jdk_libs](https://github.com/google/desugar_jdk_libs)**
   为 Android 7.x 设备提供包括 `java.time` 在内的 Java 8+ library API 兼容实现。
 
-*(详细的第三方开源协议，包括不会打入 APK 的 Kotlin Test/JUnit 测试依赖，见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
+*(详细的第三方开源协议，包括不会打入 APK 的 Kotlin Test/JUnit 与 OkHttp MockWebServer 测试依赖，见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
 
 ---
 

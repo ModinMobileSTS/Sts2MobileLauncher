@@ -2,7 +2,6 @@ package top.apricityx.workshop.workshop
 
 import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
@@ -37,12 +36,13 @@ internal data class SteamCdnRequestRoute(
 internal class SteamCdnTransport(
     client: OkHttpClient,
 ) {
+    // SteamPipe can return HTTP-only regional endpoints which redirect to another
+    // content host. Keep the caller's timeout policy, but follow Steam CDN redirects
+    // just like the desktop Steam clients do. This client is used only for SteamPipe
+    // content URLs; Steam Community/API compatibility routing is not applied here.
     private val client = client.newBuilder()
-        .connectTimeout(CDN_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .readTimeout(CDN_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .callTimeout(CDN_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .followRedirects(false)
-        .followSslRedirects(false)
+        .followRedirects(true)
+        .followSslRedirects(true)
         .build()
 
     fun buildServerPool(
@@ -56,17 +56,24 @@ internal class SteamCdnTransport(
             .filter { !it.proxyRequestPathTemplate.isNullOrBlank() }
             .sortedBy(CdnServer::weightedLoad)
             .firstOrNull()
+        val eligibleDownloadServers = appServers
+            .asSequence()
+            .filter { it.type == "SteamCache" || it.type == "CDN" }
+            .sortedBy(CdnServer::weightedLoad)
+            .toList()
+        // Prefer real origin entries so a proxy is not asked to proxy to itself.
+        // Some Steam directory responses nevertheless expose only a proxy-flagged
+        // CDN/SteamCache entry; retain it as a last-resort candidate instead of
+        // producing an empty pool before route-level fallback can run.
+        val preferredDownloadServers = eligibleDownloadServers
+            .filterNot(CdnServer::useAsProxy)
+            .ifEmpty { eligibleDownloadServers }
         val downloadServers = buildList {
-            appServers
-                .asSequence()
-                .filterNot(CdnServer::useAsProxy)
-                .filter { it.type == "SteamCache" || it.type == "CDN" }
-                .sortedBy(CdnServer::weightedLoad)
-                .forEach { server ->
-                    repeat(server.numEntriesInClientList.coerceAtLeast(0)) {
-                        add(server)
-                    }
+            preferredDownloadServers.forEach { server ->
+                repeat(server.numEntriesInClientList.coerceAtLeast(0)) {
+                    add(server)
                 }
+            }
         }
         return SteamCdnServerPool(
             proxyServer = proxyServer,
@@ -131,14 +138,11 @@ internal class SteamCdnTransport(
         val originRoutes = server.requestEndpoints()
             .map { SteamCdnRequestRoute(SteamCdnRouteKind.ORIGIN, it) }
 
-        return buildList {
-            listOf("https", "http").forEach { scheme ->
-                addAll(proxyRoutes.filter { it.endpoint.scheme == scheme })
-                addAll(originRoutes.filter { it.endpoint.scheme == scheme })
-            }
-            addAll(proxyRoutes.filterNot { it.endpoint.scheme == "https" || it.endpoint.scheme == "http" })
-            addAll(originRoutes.filterNot { it.endpoint.scheme == "https" || it.endpoint.scheme == "http" })
-        }
+        // A proxy explicitly selected by Steam is the preferred route, even when
+        // it is HTTP-only and the origin advertises HTTPS. The previous scheme-first
+        // ordering could try a blocked origin before the regional proxy and turn a
+        // proxy-to-origin fallback into a long timeout.
+        return proxyRoutes + originRoutes
     }
 
     internal fun buildRequestUrl(
@@ -317,9 +321,6 @@ internal class SteamCdnTransport(
     )
 
     private companion object {
-        const val CDN_CONNECT_TIMEOUT_SECONDS = 15L
-        const val CDN_READ_TIMEOUT_SECONDS = 75L
-        const val CDN_CALL_TIMEOUT_SECONDS = 90L
         const val MAX_UNBOUNDED_RESPONSE_BYTES = 64L * 1024L * 1024L
         const val DEFAULT_RESPONSE_BUFFER_BYTES = 64 * 1024
     }

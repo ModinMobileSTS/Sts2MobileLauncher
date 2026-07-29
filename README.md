@@ -69,7 +69,7 @@ The creation of this project relies heavily on the explorations of the open-sour
 - **[Android desugar_jdk_libs](https://github.com/google/desugar_jdk_libs)**
   Provides Java 8+ library API compatibility (including `java.time`) for Android 7.x devices.
 
-*(For detailed third-party open-source licenses, including test-only Kotlin Test/JUnit dependencies that are not packaged into the APK, please see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
+*(For detailed third-party open-source licenses, including test-only Kotlin Test/JUnit and OkHttp MockWebServer dependencies that are not packaged into the APK, please see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
 
 ---
 

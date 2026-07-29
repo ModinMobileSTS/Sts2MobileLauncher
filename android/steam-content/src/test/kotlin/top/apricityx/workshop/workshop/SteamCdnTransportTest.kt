@@ -1,6 +1,8 @@
 package top.apricityx.workshop.workshop
 
 import java.io.IOException
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.cancelAndJoin
@@ -15,6 +17,8 @@ import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import okio.Buffer
 import okio.BufferedSource
 import okio.ForwardingSource
@@ -44,21 +48,141 @@ class SteamCdnTransportTest {
         assertEquals(
             listOf(
                 SteamCdnRouteKind.PROXY,
-                SteamCdnRouteKind.ORIGIN,
                 SteamCdnRouteKind.PROXY,
+                SteamCdnRouteKind.ORIGIN,
                 SteamCdnRouteKind.ORIGIN,
             ),
             routes.map(SteamCdnRequestRoute::kind),
         )
-        assertEquals(listOf("https", "https", "http", "http"), routes.map { it.endpoint.scheme })
+        assertEquals(listOf("https", "http", "https", "http"), routes.map { it.endpoint.scheme })
         assertEquals(
             "https://proxy.example/proxy/origin.example/depot/file?token=one",
             transport.buildRequestUrl(origin, routes[0], "depot/file", "?token=one").toString(),
         )
         assertEquals(
             "https://origin.example/depot/file?token=one",
-            transport.buildRequestUrl(origin, routes[1], "depot/file", "token=one").toString(),
+            transport.buildRequestUrl(origin, routes[2], "depot/file", "token=one").toString(),
         )
+    }
+
+    @Test
+    fun httpOnlyProxyIsTriedBeforeHttpsOrigin() {
+        val transport = SteamCdnTransport(OkHttpClient())
+        val origin = server(host = "origin.example", type = "CDN", httpsSupport = "mandatory")
+        val proxy = server(
+            host = "proxy.example",
+            type = "SteamCache",
+            httpsSupport = "unavailable",
+            useAsProxy = true,
+            proxyTemplate = "/proxy/%host%%path%",
+        )
+
+        val routes = transport.buildRequestRoutes(origin, proxy)
+
+        assertEquals(
+            listOf(SteamCdnRouteKind.PROXY, SteamCdnRouteKind.ORIGIN),
+            routes.map(SteamCdnRequestRoute::kind),
+        )
+        assertEquals(listOf("http", "https"), routes.map { it.endpoint.scheme })
+    }
+
+    @Test
+    fun proxyTypedAsCdnRemainsAnEligibleDownloadEntry() {
+        val transport = SteamCdnTransport(OkHttpClient())
+        val proxy = server(
+            host = "proxy.example",
+            type = "CDN",
+            useAsProxy = true,
+            proxyTemplate = "/proxy/%host%%path%",
+        )
+
+        val pool = transport.buildServerPool(1u, listOf(proxy))
+
+        assertEquals(listOf("proxy.example"), pool.downloadServers.map(CdnServer::host))
+    }
+
+    @Test
+    fun directCdnIsPreferredOverProxyTypedAsCdn() {
+        val transport = SteamCdnTransport(OkHttpClient())
+        val proxy = server(
+            host = "proxy.example",
+            type = "CDN",
+            useAsProxy = true,
+            proxyTemplate = "/proxy/%host%%path%",
+        )
+        val origin = server(host = "origin.example", type = "CDN")
+
+        val pool = transport.buildServerPool(1u, listOf(proxy, origin))
+
+        assertEquals(listOf("origin.example"), pool.downloadServers.map(CdnServer::host))
+    }
+
+    @Test
+    fun followsSteamCdnRedirectsBeforeReturningBytes() = runBlocking {
+        MockWebServer().use { proxyServer ->
+            proxyServer.enqueue(
+                MockResponse()
+                    .setResponseCode(302)
+                    .addHeader("Location", "http://origin.example/redirected"),
+            )
+            proxyServer.enqueue(MockResponse().setBody("data"))
+            proxyServer.start()
+            val client = OkHttpClient.Builder()
+                .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(proxyServer.hostName, proxyServer.port)))
+                .build()
+            val transport = SteamCdnTransport(client)
+
+            val bytes = transport.requestBytes(
+                server = server(host = "origin.example", type = "CDN", httpsSupport = "unavailable"),
+                path = "chunk",
+                query = null,
+                proxyServer = null,
+                expectedLength = 4L,
+            )
+
+            assertContentEquals("data".encodeToByteArray(), bytes)
+            assertEquals(2, proxyServer.requestCount)
+        }
+    }
+
+    @Test
+    fun refreshesAuthAfterRedirectTargetRejectsTheInitialRequest() = runBlocking {
+        MockWebServer().use { proxyServer ->
+            proxyServer.enqueue(
+                MockResponse()
+                    .setResponseCode(302)
+                    .addHeader("Location", "http://origin.example/redirected"),
+            )
+            proxyServer.enqueue(MockResponse().setResponseCode(403))
+            proxyServer.enqueue(
+                MockResponse()
+                    .setResponseCode(302)
+                    .addHeader("Location", "http://origin.example/redirected?new-token"),
+            )
+            proxyServer.enqueue(MockResponse().setBody("data"))
+            proxyServer.start()
+            val client = OkHttpClient.Builder()
+                .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(proxyServer.hostName, proxyServer.port)))
+                .build()
+            val transport = SteamCdnTransport(client)
+            var rejectedToken: String? = "not-called"
+
+            val bytes = transport.requestBytes(
+                server = server(host = "origin.example", type = "CDN", httpsSupport = "unavailable"),
+                path = "chunk",
+                query = null,
+                proxyServer = null,
+                expectedLength = 4L,
+                resolveRejectedAuthToken = { _, rejected ->
+                    rejectedToken = rejected
+                    "new-token"
+                },
+            )
+
+            assertContentEquals("data".encodeToByteArray(), bytes)
+            assertEquals(null, rejectedToken)
+            assertEquals(4, proxyServer.requestCount)
+        }
     }
 
     @Test

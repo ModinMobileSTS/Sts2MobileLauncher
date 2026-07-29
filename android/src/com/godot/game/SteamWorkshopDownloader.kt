@@ -491,10 +491,10 @@ class SteamWorkshopDownloader(private val context: Context) {
 
     private fun createWorkshopNetworkClient(context: Context) =
         SteamWorkshopDirectAccess.buildClient(context) {
-            connectTimeout(40, TimeUnit.SECONDS)
-            readTimeout(90, TimeUnit.SECONDS)
-            writeTimeout(90, TimeUnit.SECONDS)
-            callTimeout(180, TimeUnit.SECONDS)
+            connectTimeout(WORKSHOP_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            readTimeout(WORKSHOP_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            writeTimeout(WORKSHOP_WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            callTimeout(WORKSHOP_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             protocols(listOf(Protocol.HTTP_1_1))
             retryOnConnectionFailure(true)
         }
@@ -504,6 +504,13 @@ class SteamWorkshopDownloader(private val context: Context) {
     }
 
     companion object {
+        // Keep enough headroom for slow regional CDN redirects without leaving a dead route
+        // at the fixed 8% connecting state for the older 180-second call timeout.
+        private const val WORKSHOP_CONNECT_TIMEOUT_SECONDS = 25L
+        private const val WORKSHOP_READ_TIMEOUT_SECONDS = 75L
+        private const val WORKSHOP_WRITE_TIMEOUT_SECONDS = 75L
+        private const val WORKSHOP_CALL_TIMEOUT_SECONDS = 120L
+
         private const val SOURCE_AUTHOR_SNAPSHOT = "cm_get_item_info_author_snapshot"
         private const val SOURCE_CHANGE_HISTORY_SNAPSHOT = "cm_get_change_history_snapshot"
         private const val SOURCE_CM_MANIFEST_ID = "cm_get_item_info_manifest_id"

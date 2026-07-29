@@ -39,7 +39,7 @@
 | AndroidX Fragment / RecyclerView / DocumentFile / Core SplashScreen / Security Crypto | Android UI、文件访问、加密 SharedPreferences。 | Apache-2.0 |
 | Material Components for Android | Material 3 UI 组件。 | Apache-2.0 |
 | CustomActivityOnCrash (`cat.ereza:customactivityoncrash`) | 崩溃页入口。 | Apache-2.0 |
-| OkHttp / Okio | Steam CM WebSocket、HTTP/CDN 请求、NexusMods 请求。 | Apache-2.0 |
+| OkHttp / Okio / MockWebServer | Steam CM WebSocket、HTTP/CDN 请求、NexusMods 请求，以及不打入 APK 的 Steam CDN 重定向回归测试。 | Apache-2.0 |
 | Protocol Buffers / protobuf Gradle plugin | Steam protobuf 消息编解码与生成。 | BSD-3-Clause |
 | Kotlin stdlib / coroutines / serialization | Steam 协议与下载子模块。 | Apache-2.0 |
 | Kotlin Test / JUnit 4 | `steam-protocol` 与 `steam-content` 的纯 JVM 单元测试；不打入发布 APK。 | Apache-2.0 / Eclipse Public License 1.0 |
