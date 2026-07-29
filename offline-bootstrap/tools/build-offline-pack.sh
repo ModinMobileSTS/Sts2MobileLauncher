@@ -18,7 +18,7 @@ PROJECT="$ROOT/src/STS2OfflineBootstrap/STS2OfflineBootstrap.csproj"
 OUT_ROOT="${OFFLINE_BOOTSTRAP_OUT_ROOT:-$ROOT/dist/offline-bootstrap}"
 PACK_ID="${OFFLINE_BOOTSTRAP_PACK_ID:-sts2-android-offline-bootstrap}"
 DISPLAY_NAME="${OFFLINE_BOOTSTRAP_DISPLAY_NAME:-STS2 Offline Bootstrap}"
-COMPAT_VERSION="${OFFLINE_BOOTSTRAP_VERSION:-0.1.1-dev}"
+COMPAT_VERSION="${OFFLINE_BOOTSTRAP_VERSION:-0.2.0-dev}"
 CHANNEL="${OFFLINE_BOOTSTRAP_CHANNEL:-fallback}"
 TARGET_ID="${OFFLINE_BOOTSTRAP_TARGET_ID:-offline-any}"
 REFERENCE_DIR="${OFFLINE_BOOTSTRAP_REFERENCE_DIR:-}"
@@ -74,7 +74,8 @@ GIT_SUBJECT_MSBUILD="$(msbuild_escape_property "$GIT_SUBJECT")"
 rm -rf "$OUT_ROOT"
 mkdir -p "$OUT_ROOT/$PACK_ID/variants/$TARGET_ID"
 
-"$DOTNET_BIN" build "$PROJECT" -p:RuntimeReferenceDir="$REFERENCE_DIR" -p:_CompatGitBranch="$GIT_BRANCH_MSBUILD" -p:_CompatGitCommit="$GIT_COMMIT" -p:_CompatGitCommitSubject="$GIT_SUBJECT_MSBUILD" -p:_CompatGitDirty="$GIT_DIRTY" -p:_CompatBuildTimestampUtc="$BUILD_TIMESTAMP_UTC" -v:q
+"$ROOT/tools/test-offline-contract.sh"
+"$DOTNET_BIN" build "$PROJECT" -p:RuntimeReferenceDir="$REFERENCE_DIR" -p:OfflineBootstrapVersion="$COMPAT_VERSION" -p:_CompatGitBranch="$GIT_BRANCH_MSBUILD" -p:_CompatGitCommit="$GIT_COMMIT" -p:_CompatGitCommitSubject="$GIT_SUBJECT_MSBUILD" -p:_CompatGitDirty="$GIT_DIRTY" -p:_CompatBuildTimestampUtc="$BUILD_TIMESTAMP_UTC" -v:q
 
 DLL_OUT="$ROOT/src/STS2OfflineBootstrap/bin/Debug/net9.0/STS2Mobile.dll"
 if [[ ! -f "$DLL_OUT" ]]; then
@@ -97,7 +98,7 @@ data = {
     "runtime_contract": {
         "entry_abi": 1,
         "architectures": ["arm64-v8a"],
-        "probe_contract": "offline-bootstrap-v1",
+        "probe_contract": "offline-bootstrap-v2",
     },
     "targets": [
         {
@@ -112,7 +113,8 @@ data = {
             },
             "notes": [
                 "Fallback target selected only when no exact installed mobile compatibility pack matches the imported payload.",
-                "All game API access is reflection-based and verified at runtime by offline-bootstrap-probe.json.",
+                "Game API access is resolved by conservative reflection contracts and verified at runtime by offline-bootstrap-probe.json.",
+                "Known ModelDb.Init API shapes include parameterless Init() and Init(Type[]? injectedModelTypes = null); unknown semantics fail closed.",
             ],
         }
     ],
@@ -135,6 +137,7 @@ data = {
     "notes": [
         "Generic offline bootstrap pack. It is not a certified full mobile compatibility pack.",
         "Launcher matching gives this pack lower priority than all exact SHA/version compatibility packs.",
+        "Runtime probe v2 separates patch installation from completed ModelDb initialization and records terminal failures per payload DLL SHA.",
     ],
 }
 with open(manifest_path, "w", encoding="utf-8") as fh:

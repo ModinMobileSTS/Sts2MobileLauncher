@@ -723,7 +723,13 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				String label = getString(R.string.version_manager_selected_compat_format, pack.displayName, pack.targetLabel());
 				if (selectedPayload != null && compatPackManager.isPackCompatibleWithPayload(pack, selectedPayload.manifest)) {
 					if (compatPackManager.isOfflineBootstrapPack(pack)) {
-						label = label + " " + getString(R.string.launch_profile_compat_offline_fallback_badge);
+						if (compatPackManager.hasKnownFailedOfflineBootstrap(pack, selectedPayload.manifest)) {
+							label = label + " " + getString(R.string.launch_profile_compat_offline_failed_badge);
+						} else if (compatPackManager.hasVerifiedOfflineBootstrap(pack, selectedPayload.manifest)) {
+							label = label + " " + getString(R.string.launch_profile_compat_offline_verified_badge);
+						} else {
+							label = label + " " + getString(R.string.launch_profile_compat_offline_fallback_badge);
+						}
 					} else {
 						label = label + " ✓";
 					}
@@ -1231,16 +1237,35 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		if (TextUtils.isEmpty(dllSha)) {
 			dllSha = getString(R.string.unknown);
 		}
-		String message = getString(R.string.launch_offline_bootstrap_dialog_message, selectedCompatPack.displayName, selectedCompatPack.targetLabel(), payloadVersion, dllSha);
+
+		CompatPackManager.OfflineBootstrapProbe probe = compatPackManager.getOfflineBootstrapProbe(selectedCompatPack, payloadStatus.manifest);
+		boolean knownFailure = probe != null && probe.isTerminalFailure();
+		String title;
+		String message;
+		int positiveLabel;
+		if (knownFailure) {
+			String failure = TextUtils.isEmpty(probe.failureSummary) ? getString(R.string.unknown) : probe.failureSummary;
+			if (failure.length() > 1600) {
+				failure = failure.substring(0, 1600) + "…";
+			}
+			title = getString(R.string.launch_offline_bootstrap_failed_dialog_title);
+			message = getString(R.string.launch_offline_bootstrap_failed_dialog_message, selectedCompatPack.displayName, payloadVersion, dllSha, probe.status, failure);
+			positiveLabel = R.string.launch_offline_bootstrap_retry;
+		} else {
+			title = getString(R.string.launch_offline_bootstrap_dialog_title);
+			message = getString(R.string.launch_offline_bootstrap_dialog_message, selectedCompatPack.displayName, selectedCompatPack.targetLabel(), payloadVersion, dllSha);
+			positiveLabel = R.string.launch_offline_bootstrap_confirm;
+		}
+
 		new MaterialAlertDialogBuilder(this)
-			.setTitle(R.string.launch_offline_bootstrap_dialog_title)
+			.setTitle(title)
 			.setMessage(message)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setNeutralButton(R.string.version_manager_tab_profiles, (dialog, which) -> {
 				GameVersionManagerPage.selectProfilesTab();
 				openVersionsTab();
 			})
-			.setPositiveButton(R.string.launch_offline_bootstrap_confirm, (dialog, which) -> {
+			.setPositiveButton(positiveLabel, (dialog, which) -> {
 				compatPackManager.approveOfflineBootstrap(selectedCompatPack, payloadStatus.manifest);
 				prepareAndStartGameAfterOptionalSteamCloudPull();
 			})

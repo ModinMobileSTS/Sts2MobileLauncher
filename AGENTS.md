@@ -8,7 +8,7 @@
 - 本工程是 **Slay the Spire 2 Android 重构移植/启动器工程**，不是完整游戏源码仓库。
 - 仓库只维护 Android shell、导入/版本管理逻辑、兼容包构建脚本、Android 兼容补丁源码与通用离线启动层源码；**不提交用户游戏 zip、解压后的完整游戏 payload、大型 Godot/Mono runtime、keystore**。
 - `port-mod/` 是独立仓库 <https://github.com/ModinMobileSTS/sts2-android-compat> 的 **git submodule**。当前开发默认使用 flat matrix 模式：一个 checkout 读取 `port-mod/targets/active/*/target.json`，为多个目标版本构建 schema 2 family full compat 包；按游戏版本分支构建的 legacy 模式只作为显式回退/诊断路径保留。
-- `offline-bootstrap/` 是独立边界的通用离线启动层目录：不读取 `port-mod/targets`、不接受 `ReferenceFlavor`、不静态引用 `sts2.dll`、不含 `STS2_TARGET_*` 分支；它输出 schema 2 `sts2-android-offline-bootstrap.zip`，仅在没有已安装 full compat 包按 payload SHA/version 命中时自动作为最低优先级 fallback。
+- `offline-bootstrap/` 是独立边界的通用离线启动层目录：不读取 `port-mod/targets`、不接受 `ReferenceFlavor`、不静态引用 `sts2.dll`、不含 `STS2_TARGET_*` 分支；它输出 schema 2 `sts2-android-offline-bootstrap.zip`，仅在没有已安装 full compat 包按 payload SHA/version 命中时自动作为最低优先级 fallback。wildcard 不是未来版本兼容认证：运行时按 API 形状解析已知合约，未知语义 fail closed；probe v2 只有真实 ModelDb two-phase 完成后才标记 `ready`，已知终态失败的相同 pack id/target/compat version/source zip SHA/payload SHA tuple 不再自动匹配。
 - 新增或修改功能时必须同步文档：用户可见/长期维护说明优先更新 `README.md` / `doc/`；变更流水/changelog 只写入 `.agent/agent-docs/changelog/`（不提交），因为它主要服务 agent 接力，不作为公开仓库文档。历史 `docs/` 已移到 `.agent/historical-backup/docs/` 本地备份，不再作为公开文档入口。`AGENTS.md` 是 agent/维护者专用操作约定；本地 agent 草稿、报告、worktree、参考 clone、历史备份与 agent 文档放入 `.agent/`，该目录不追踪。
 - 完成用户要求的修改后，请用脚本构建一个 importer 版本 APK 便于测试：
 
@@ -37,10 +37,10 @@ Android 侧拆成三层维护：
    - flat schema 2 family 包 zip 形态为：`compat_manifest.json` + `variants/<target_id>/STS2Mobile.dll` + `variants/<target_id>/port_compat.pck` + `SHA256SUMS`；启动配置用 `compat_pack_id` + `compat_target_id` 指向具体 variant。
    - 兼容包不是普通用户 MOD；它由 launcher/Godot runtime 在游戏早期加载，用来 patch 原版 PC 程序集并让普通 MOD 系统在 Android 上工作。
 4. **通用离线启动层 / offline bootstrap**
-   - `offline-bootstrap/src/STS2OfflineBootstrap` 编译输出同名 `STS2Mobile.dll`，只为复用 patched runtime 入口 ABI。
+   - `offline-bootstrap/src/STS2OfflineBootstrap` 编译输出同名 `STS2Mobile.dll`，只为复用 patched runtime 入口 ABI；`ModelDbRuntimeContract` 按 API 形状解析无参 `ModelDb.Init()` 与默认 null `Init(Type[]?)`，显式注入集合保留原版路径，未知参数/返回语义拒绝接管。
    - `offline-bootstrap/overlay` 打包输出最小有效 `port_compat.pck`，默认不替换游戏资源。
-   - schema 2 zip 形态为：`compat_manifest.json` + `variants/offline-any/STS2Mobile.dll` + `variants/offline-any/port_compat.pck` + `SHA256SUMS`，manifest 必须声明 `pack_kind=offline-bootstrap`、`match_mode=offline-wildcard`、`versions=["*"]`。
-   - Java 安装校验只允许这种受限 offline 包使用 `*`；普通 schema 1/full compat 包出现版本或 SHA 通配符应拒绝安装。
+   - schema 2 zip 形态为：`compat_manifest.json` + `variants/offline-any/STS2Mobile.dll` + `variants/offline-any/port_compat.pck` + `SHA256SUMS`，manifest 必须声明 `pack_kind=offline-bootstrap`、`match_mode=offline-wildcard`、`versions=["*"]`；当前 `compat_version=0.2.0-dev`、`probe_contract=offline-bootstrap-v2`。
+   - Java 安装校验只允许这种受限 offline 包使用 `*`；普通 schema 1/full compat 包出现版本或 SHA 通配符应拒绝安装。probe v2 的终态失败会阻止同一 tuple 再次自动推荐，但用户手工绑定的 profile 仍可在失败详情对话框中显式重试。
 
 ## 2. 当前支持版本矩阵
 
@@ -61,7 +61,8 @@ Android 侧拆成三层维护：
 - `tools/android/bundled-compat-packs.json`：legacy 内置兼容包列表，当前包含 `compat/v0.103.2`、`compat/v0.106.1-beta` 与 `compat/v0.107.0-beta`。
 - `port-mod/targets/active/*/target.json`：flat matrix target 描述，记录 target id、支持版本、Steam 分支 `steam_branch`、`ReferenceFlavor`、compile constants、原版引用来源与一个或多个 dll sha；`v0.109.0` target id 为兼容既有 profile 保持不变，但同一 variant 支持 v0.109.0/v0.109.1 并显示为 v0.109.x。
 - `port-mod/tools/build-compat-matrix.sh`：从当前 checkout 构建 schema 2 family full compat 包；`tools/android/stage-bundled-compat-packs.sh` 默认会调用它。
-- `offline-bootstrap/tools/build-offline-pack.sh`：构建 schema 2 通用离线启动层包 `sts2-android-offline-bootstrap.zip`。
+- `offline-bootstrap/tools/test-offline-contract.sh`：运行合成 API 形状测试，并对本机已配置的所有已配置 original `sts2.dll` 做只读反射契约检查；不静态引用游戏程序集。
+- `offline-bootstrap/tools/build-offline-pack.sh`：先运行上述契约检查，再构建 schema 2 通用离线启动层包 `sts2-android-offline-bootstrap.zip`。
 - `tools/android/stage-bundled-compat-artifacts.sh`：APK 打包默认入口，一次清理 `android/assets/compat_packs/*.zip` 后 stage full compat family 包和 offline bootstrap 包。
 - `.env.example`：工具链、runtime 参考、original compile gate 引用、签名环境变量示例；复制为 `.env` 后编辑，本文件不入 git。
 - `local.properties.example`：非环境变量的本地构建选项示例；复制为 `local.properties` 后编辑，本文件不入 git。
@@ -69,7 +70,7 @@ Android 侧拆成三层维护：
 - `port-mod/refs/original*/`：仅保留 README 占位；构建脚本不再依赖提交到仓库的个人 symlink。
 - `port-mod/compat_manifest.*.json`：legacy schema 1 兼容包 manifest，主要供旧发布包或诊断包使用；默认 matrix 包以 `targets/active/*/target.json` 生成 schema 2 manifest。
 
-注意：启动器按 payload manifest 的 `sts2_dll_sha256` 与 `release_info.version` 为新建启动配置自动推荐/填写兼容包；schema 1 优先匹配 `target_game.version`，也支持 manifest 中的 `target_game.supported_versions` / `compatible_versions` / `versions` 列表；schema 2 会展开 `targets[]`。`sts2_dll_sha256` 可为兼容旧包的单字符串，也可为同一 API-compatible variant 的 SHA 数组，精确匹配会检查数组全部元素；版本页与 ADB 状态同时保留 legacy 主 SHA 和完整 SHA 列表。当前匹配评分顺序是：任一精确 dll sha、target 主版本、manifest 显式支持版本、offline bootstrap wildcard；同等精确命中时优先推荐 schema 2 family 包，offline bootstrap 只在没有任何 full compat 包命中当前 payload 时自动推荐。兼容包选择以 `<files>/instances/<profile_id>/instance.json` 中的 `compat_pack_id` 为准，schema 2 还会记录 `compat_target_id`，不再使用全局选中包作为运行时 fallback；从 legacy 内置包升级到 flat family 包时，启动器安装 bundled compat pack 后会把旧 `sts2-android-compat-v0.*` 启动配置自动迁移到 `sts2-android-compat` + 对应 `compat_target_id`，但不会覆盖用户手动选择的非 bundled 包。若当前启动配置绑定的兼容包/target 缺失或与 payload 版本不一致，会在启动前提示用户编辑启动配置或承担风险继续；offline bootstrap 首次启动某个 pack/version/SHA 组合时会额外提示风险，并在运行时写 `<files>/launcher/offline-bootstrap-probe.json`。当前不会仅因 `sts2.dll` SHA-256 不一致硬阻止启动，但 manifest 中仍记录 SHA 供诊断和精确匹配升级使用。
+注意：启动器按 payload manifest 的 `sts2_dll_sha256` 与 `release_info.version` 为新建启动配置自动推荐/填写兼容包；schema 1 优先匹配 `target_game.version`，也支持 manifest 中的 `target_game.supported_versions` / `compatible_versions` / `versions` 列表；schema 2 会展开 `targets[]`。`sts2_dll_sha256` 可为兼容旧包的单字符串，也可为同一 API-compatible variant 的 SHA 数组，精确匹配会检查数组全部元素；版本页与 ADB 状态同时保留 legacy 主 SHA 和完整 SHA 列表。当前匹配评分顺序是：任一精确 dll sha、target 主版本、manifest 显式支持版本、offline bootstrap wildcard；同等精确命中时优先推荐 schema 2 family 包，offline bootstrap 只在没有任何 full compat 包命中当前 payload 时自动推荐，且 probe v2 已记录相同 `pack_id + target_id + compat_version + source zip SHA + payload version + sts2.dll SHA` 终态失败时不再自动推荐。兼容包选择以 `<files>/instances/<profile_id>/instance.json` 中的 `compat_pack_id` 为准，schema 2 还会记录 `compat_target_id`，不再使用全局选中包作为运行时 fallback；从 legacy 内置包升级到 flat family 包时，启动器安装 bundled compat pack 后会把旧 `sts2-android-compat-v0.*` 启动配置自动迁移到 `sts2-android-compat` + 对应 `compat_target_id`，但不会覆盖用户手动选择的非 bundled 包。若当前启动配置绑定的兼容包/target 缺失或与 payload 版本不一致，会在启动前提示用户编辑启动配置或承担风险继续；offline bootstrap 首次启动某个 pack/version/SHA 组合时会额外提示风险，并在运行时原子写 `<files>/launcher/offline-bootstrap-probe.json`，状态依次为 `starting / patches_installed / modeldb_initializing / ready` 或终态 `unsupported_api / apply_failed / runtime_failed`；手动选择已失败组合时显示详情并允许诊断重试，ADB 自动化 `status` 同时输出原始 `offline_bootstrap_probe`。当前不会仅因 `sts2.dll` SHA-256 不一致硬阻止 full compat 启动，但 manifest 中仍记录 SHA 供诊断和精确匹配升级使用。
 
 ## 3. 本地配置 / 参考输入
 
@@ -132,9 +133,11 @@ s2_re/
     tools/build-compat-pack.sh     # 导出独立可安装 compat pack zip
     tools/build-compat-matrix.sh   # 单 checkout 构建 schema 2 family compat pack
   offline-bootstrap/               # 通用离线启动层，独立于 port-mod；不静态引用 sts2.dll
-    src/STS2OfflineBootstrap/      # 输出程序集名仍为 STS2Mobile.dll
+    src/STS2OfflineBootstrap/      # 输出程序集名仍为 STS2Mobile.dll；含保守的 ModelDb 反射合约解析器
+    tests/STS2OfflineBootstrap.ContractTests/ # 合成 API 形状与本地 original 引用契约测试
     overlay/                       # 最小有效 overlay，不替换游戏资源
-    tools/build-offline-pack.sh    # 构建 sts2-android-offline-bootstrap.zip
+    tools/test-offline-contract.sh # 运行 synthetic + 已配置 original reflection contract gate
+    tools/build-offline-pack.sh    # 先跑 contract gate，再构建 sts2-android-offline-bootstrap.zip
   tools/
     port_mod_ast_audit.py          # 游戏版本更新后对比两版 C# 语法结构，并把变化映射到 port-mod Harmony/反射触达点
     android/
@@ -331,7 +334,7 @@ APK 默认使用统一 staging 入口，输出 gitignored 的 `android/assets/co
 tools/android/stage-bundled-compat-packs.sh
 ```
 
-`stage-bundled-compat-packs.sh` 默认 flat matrix 模式读取 `port-mod/targets/active/*/target.json`，调用 `port-mod/tools/build-compat-matrix.sh`，从当前 checkout 依次用对应 `ReferenceFlavor` 编译，并输出一个 schema 2 `sts2-android-compat.zip` family 包。`offline-bootstrap/tools/build-offline-pack.sh` 构建 schema 2 `sts2-android-offline-bootstrap.zip`。APK 启动时 `CompatPackManager.installBundledCompatPacks()` 会把打入 assets 的这些 zip 安装到 `<files>/compat-packs/`。
+`stage-bundled-compat-packs.sh` 默认 flat matrix 模式读取 `port-mod/targets/active/*/target.json`，调用 `port-mod/tools/build-compat-matrix.sh`，从当前 checkout 依次用对应 `ReferenceFlavor` 编译，并输出一个 schema 2 `sts2-android-compat.zip` family 包。`offline-bootstrap/tools/build-offline-pack.sh` 会先调用 `offline-bootstrap/tools/test-offline-contract.sh`，用 synthetic API 形状与本机已配置的 original references 验证反射合约，然后构建 schema 2 `sts2-android-offline-bootstrap.zip`。该测试只动态读取 `sts2.dll`，不改变 offline bootstrap 的静态引用边界。APK 启动时 `CompatPackManager.installBundledCompatPacks()` 会把打入 assets 的这些 zip 安装到 `<files>/compat-packs/`。
 
 legacy 分支模式只在需要对照旧发布包或回退诊断时使用：
 
@@ -529,6 +532,9 @@ tools/android/build-port-mod.sh
 
 # 构建全部 APK 内置兼容 artifacts（full family 包 + offline bootstrap 包）
 tools/android/stage-bundled-compat-artifacts.sh
+
+# 单独验证 offline bootstrap synthetic/已配置 original 反射合约
+offline-bootstrap/tools/test-offline-contract.sh
 
 # 只构建 full family 包（默认 flat schema 2 family 包）
 tools/android/stage-bundled-compat-packs.sh

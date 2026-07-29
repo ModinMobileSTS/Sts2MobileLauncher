@@ -45,6 +45,7 @@ public final class CompatPackManager {
 	private static final String PREFS_NAME = "sts2_version_manager";
 	private static final String KEY_SELECTED_COMPAT_PACK_ID = "selected_compat_pack_id";
 	private static final String KEY_OFFLINE_BOOTSTRAP_APPROVED_PREFIX = "offline_bootstrap_approved_";
+	private static final String OFFLINE_BOOTSTRAP_PROBE_FILE_NAME = "offline-bootstrap-probe.json";
 	private static final int BUFFER_SIZE = 1024 * 1024;
 
 	private final Context context;
@@ -201,6 +202,10 @@ public final class CompatPackManager {
 			if (score <= 0) {
 				continue;
 			}
+			if (pack.isOfflineWildcard() && hasKnownFailedOfflineBootstrap(pack, payloadManifest)) {
+				Log.w(TAG, "Skipping known-failed offline bootstrap auto-match for " + pack.selectionLabel() + " and payload " + identity.version + "/" + identity.sts2DllSha256);
+				continue;
+			}
 			if (bestPack == null || isBetterMatch(pack, score, bestPack, bestScore)) {
 				bestPack = pack;
 				bestScore = score;
@@ -260,7 +265,23 @@ public final class CompatPackManager {
 	}
 
 	public boolean requiresOfflineBootstrapApproval(CompatPack pack, JSONObject payloadManifest) {
-		return pack != null && pack.isOfflineWildcard() && !hasApprovedOfflineBootstrap(pack, payloadManifest);
+		return pack != null
+			&& pack.isOfflineWildcard()
+			&& (hasKnownFailedOfflineBootstrap(pack, payloadManifest) || !hasApprovedOfflineBootstrap(pack, payloadManifest));
+	}
+
+	public boolean hasKnownFailedOfflineBootstrap(CompatPack pack, JSONObject payloadManifest) {
+		OfflineBootstrapProbe probe = readOfflineBootstrapProbe(pack, payloadManifest);
+		return probe != null && probe.isTerminalFailure();
+	}
+
+	public boolean hasVerifiedOfflineBootstrap(CompatPack pack, JSONObject payloadManifest) {
+		OfflineBootstrapProbe probe = readOfflineBootstrapProbe(pack, payloadManifest);
+		return probe != null && probe.isReady();
+	}
+
+	public OfflineBootstrapProbe getOfflineBootstrapProbe(CompatPack pack, JSONObject payloadManifest) {
+		return readOfflineBootstrapProbe(pack, payloadManifest);
 	}
 
 	public boolean hasApprovedOfflineBootstrap(CompatPack pack, JSONObject payloadManifest) {
@@ -283,8 +304,94 @@ public final class CompatPackManager {
 		if (TextUtils.isEmpty(identity.version)) {
 			return "";
 		}
-		String tuple = pack.packId + "|" + pack.targetId + "|" + pack.compatVersion + "|" + identity.version + "|" + identity.sts2DllSha256;
+		String tuple = pack.packId + "|" + pack.targetId + "|" + pack.compatVersion + "|" + installedSourceZipSha256(pack) + "|" + identity.version + "|" + identity.sts2DllSha256;
 		return KEY_OFFLINE_BOOTSTRAP_APPROVED_PREFIX + sha256Text(tuple);
+	}
+
+	private OfflineBootstrapProbe readOfflineBootstrapProbe(CompatPack pack, JSONObject payloadManifest) {
+		if (pack == null || !pack.isOfflineWildcard() || payloadManifest == null) {
+			return null;
+		}
+		File probeFile = new File(new File(context.getFilesDir(), "launcher"), OFFLINE_BOOTSTRAP_PROBE_FILE_NAME);
+		if (!probeFile.isFile()) {
+			return null;
+		}
+		try {
+			JSONObject json = new JSONObject(readTextFile(probeFile));
+			String probeContract = optStringAny(json, "ProbeContract", "probe_contract");
+			if (!"offline-bootstrap-v2".equals(probeContract)) {
+				return null;
+			}
+			PayloadIdentity identity = readPayloadIdentity(payloadManifest);
+			OfflineBootstrapProbe probe = new OfflineBootstrapProbe(
+				optStringAny(json, "Status", "status"),
+				optBooleanAny(json, false, "Success", "success"),
+				optStringAny(json, "PackId", "pack_id"),
+				optStringAny(json, "TargetId", "target_id"),
+				optStringAny(json, "CompatVersion", "compat_version"),
+				optStringAny(json, "PackZipSha256", "pack_zip_sha256"),
+				optStringAny(json, "PayloadVersion", "payload_version"),
+				optStringAny(json, "Sts2DllSha256", "sts2_dll_sha256"),
+				optStringAny(json, "FailureSummary", "failure_summary"),
+				optStringAny(json, "WrittenUtc", "written_utc")
+			);
+			if (!probe.matches(pack, identity)) {
+				return null;
+			}
+			if (TextUtils.isEmpty(probe.failureSummary)) {
+				JSONArray checks = json.optJSONArray("Checks");
+				if (checks == null) {
+					checks = json.optJSONArray("checks");
+				}
+				if (checks != null) {
+					for (int i = 0; i < checks.length(); i++) {
+						JSONObject check = checks.optJSONObject(i);
+						if (check == null || optBooleanAny(check, true, "Success", "success")) {
+							continue;
+						}
+						String message = optStringAny(check, "Message", "message");
+						if (!TextUtils.isEmpty(message)) {
+							probe.failureSummary = message;
+							break;
+						}
+					}
+				}
+			}
+			return probe;
+		} catch (Exception exception) {
+			Log.w(TAG, "Unable to read offline bootstrap probe.", exception);
+			return null;
+		}
+	}
+
+	private String installedSourceZipSha256(CompatPack pack) {
+		JSONObject installedSource = pack == null ? null : pack.manifest.optJSONObject("installed_source");
+		return installedSource == null ? "" : installedSource.optString("zip_sha256", "");
+	}
+
+	private String optStringAny(JSONObject json, String... keys) {
+		if (json == null || keys == null) {
+			return "";
+		}
+		for (String key : keys) {
+			String value = json.optString(key, "");
+			if (!TextUtils.isEmpty(value)) {
+				return value;
+			}
+		}
+		return "";
+	}
+
+	private boolean optBooleanAny(JSONObject json, boolean fallback, String... keys) {
+		if (json == null || keys == null) {
+			return fallback;
+		}
+		for (String key : keys) {
+			if (json.has(key)) {
+				return json.optBoolean(key, fallback);
+			}
+		}
+		return fallback;
 	}
 
 	public String getPayloadVersion(JSONObject payloadManifest) {
@@ -979,6 +1086,58 @@ public final class CompatPackManager {
 		PayloadIdentity(String version, String sts2DllSha256) {
 			this.version = version == null ? "" : version;
 			this.sts2DllSha256 = sts2DllSha256 == null ? "" : sts2DllSha256;
+		}
+	}
+
+	public static final class OfflineBootstrapProbe {
+		public final String status;
+		public final boolean success;
+		public final String packId;
+		public final String targetId;
+		public final String compatVersion;
+		public final String packZipSha256;
+		public final String payloadVersion;
+		public final String sts2DllSha256;
+		public String failureSummary;
+		public final String writtenUtc;
+
+		OfflineBootstrapProbe(String status, boolean success, String packId, String targetId, String compatVersion, String packZipSha256, String payloadVersion, String sts2DllSha256, String failureSummary, String writtenUtc) {
+			this.status = status == null ? "" : status;
+			this.success = success;
+			this.packId = packId == null ? "" : packId;
+			this.targetId = targetId == null ? "" : targetId;
+			this.compatVersion = compatVersion == null ? "" : compatVersion;
+			this.packZipSha256 = packZipSha256 == null ? "" : packZipSha256;
+			this.payloadVersion = payloadVersion == null ? "" : payloadVersion;
+			this.sts2DllSha256 = sts2DllSha256 == null ? "" : sts2DllSha256;
+			this.failureSummary = failureSummary == null ? "" : failureSummary;
+			this.writtenUtc = writtenUtc == null ? "" : writtenUtc;
+		}
+
+		private boolean matches(CompatPack pack, PayloadIdentity identity) {
+			if (pack == null || identity == null) {
+				return false;
+			}
+			JSONObject installedSource = pack.manifest.optJSONObject("installed_source");
+			String installedZipSha256 = installedSource == null ? "" : installedSource.optString("zip_sha256", "");
+			return pack.packId.equalsIgnoreCase(packId)
+				&& pack.targetId.equalsIgnoreCase(targetId)
+				&& pack.compatVersion.equalsIgnoreCase(compatVersion)
+				&& installedZipSha256.equalsIgnoreCase(packZipSha256)
+				&& identity.version.equalsIgnoreCase(payloadVersion)
+				&& identity.sts2DllSha256.equalsIgnoreCase(sts2DllSha256);
+		}
+
+		public boolean isReady() {
+			return success && "ready".equalsIgnoreCase(status);
+		}
+
+		public boolean isTerminalFailure() {
+			return "unsupported_api".equalsIgnoreCase(status)
+				|| "apply_failed".equalsIgnoreCase(status)
+				|| "runtime_failed".equalsIgnoreCase(status)
+				|| "probe_failed".equalsIgnoreCase(status)
+				|| "exception".equalsIgnoreCase(status);
 		}
 	}
 

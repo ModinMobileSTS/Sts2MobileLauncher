@@ -128,7 +128,7 @@ Compile and stage all bundled compatibility artifacts into APK assets:
 ```bash
 tools/android/stage-bundled-compat-artifacts.sh
 ```
-This stages the flattened schema-2 full compatibility family pack from `port-mod/` and the generic `offline-bootstrap/` fallback pack. The current shared v0.109.x variant keeps the stable `v0.109.0` target id while matching both v0.109.0 and v0.109.1 by their exact original DLL SHA-256 values. A target may declare `sts2_dll_sha256` as either a legacy string or a list of API-compatible hashes. The offline bootstrap is only auto-matched when an imported game payload has no installed exact SHA/version compatibility pack.
+This stages the flattened schema-2 full compatibility family pack from `port-mod/` and the generic `offline-bootstrap/` fallback pack. The current shared v0.109.x variant keeps the stable `v0.109.0` target id while matching both v0.109.0 and v0.109.1 by their exact original DLL SHA-256 values. A target may declare `sts2_dll_sha256` as either a legacy string or a list of API-compatible hashes. The offline bootstrap is only auto-matched when an imported game payload has no installed exact SHA/version compatibility pack. Its wildcard is a best-effort fallback rather than a compatibility guarantee: probe contract v2 resolves only understood runtime API shapes, marks success after real ModelDb initialization, and prevents a known-failed pack/version/payload-SHA tuple from being auto-selected again. Run `offline-bootstrap/tools/test-offline-contract.sh` to validate synthetic API changes and every locally configured original reference.
 
 If you only need to rebuild the full `port-mod` family pack, use:
 ```bash

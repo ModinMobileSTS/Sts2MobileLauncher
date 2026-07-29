@@ -941,6 +941,14 @@ final class DebugAutomationRunner {
 		}
 		status.put("compat_packs", packs);
 		status.put("selected_compat", compatToJson(new CompatPackManager(context).getSelectedPackIgnoringEnabled()));
+		File offlineProbe = new File(context.getFilesDir(), "launcher/offline-bootstrap-probe.json");
+		if (offlineProbe.isFile()) {
+			try {
+				status.put("offline_bootstrap_probe", new JSONObject(FileBrowserSupport.readTextFile(offlineProbe)));
+			} catch (Exception exception) {
+				status.put("offline_bootstrap_probe_error", exception.getMessage());
+			}
+		}
 		status.put("mods", modsToJson(repository));
 		status.put("paths", pathsToJson(launchProfiles, repository));
 		return status;

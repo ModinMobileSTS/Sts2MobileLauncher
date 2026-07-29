@@ -6,7 +6,14 @@
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
+    <OfflineBootstrapVersion Condition="'$(OfflineBootstrapVersion)' == ''">0.2.0-dev</OfflineBootstrapVersion>
   </PropertyGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>OfflineBootstrapVersion</_Parameter1>
+      <_Parameter2>$(OfflineBootstrapVersion)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
   <ItemGroup>
     <Reference Include="0Harmony">
       <HintPath>$(RuntimeReferenceDir)/0Harmony.dll</HintPath>

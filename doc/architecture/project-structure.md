@@ -7,7 +7,7 @@
 1. **Android shell / launcher / 附加设置**：位于 `android/`，负责 UI、导入、版本/兼容包管理、启动 Godot、日志和文件管理。
 2. **原版游戏 payload**：用户本地提供 PC zip，导入到应用私有目录；仓库不包含游戏本体。
 3. **Android 兼容包**：位于 `port-mod/` submodule。legacy mode 仍可按游戏版本分支编译独立 `STS2Mobile.dll` / `port_compat.pck`；flat matrix mode 从同一 checkout 的 target 配置构建 schema 2 family 包，每个 target variant 拥有自己的 dll/pck。
-4. **通用离线启动层**：位于 `offline-bootstrap/`。它独立于 `port-mod`，不静态引用 `sts2.dll`，构建 `sts2-android-offline-bootstrap.zip` 作为最低优先级 fallback；只有导入 payload 没有任何已安装 full compat 包按 SHA/version 命中时才会被自动推荐。
+4. **通用离线启动层**：位于 `offline-bootstrap/`。它独立于 `port-mod`，不静态引用 `sts2.dll`，构建 `sts2-android-offline-bootstrap.zip` 作为最低优先级 fallback；只有导入 payload 没有任何已安装 full compat 包按 SHA/version 命中时才会被自动推荐。它按运行时 API 形状解析已知 `ModelDb.Init` 合约，未知语义 fail closed；probe v2 只有在真实 two-phase 完成后才标记 `ready`，已知失败的 pack/version/SHA tuple 不再自动匹配。
 
 ## 2. 仓库目录职责
 
@@ -19,7 +19,7 @@ s2_re/
   THIRD_PARTY_LICENSES.md          # 第三方来源与许可证摘要
   android/                         # Android shell + Godot Gradle 工程
   port-mod/                        # git submodule: Android 兼容 patcher 与 target matrix
-  offline-bootstrap/               # 通用离线启动层；输出 schema 2 offline fallback compat pack
+  offline-bootstrap/               # 通用离线启动层、反射契约解析/测试；输出 schema 2 offline fallback compat pack
   tools/android/                   # runtime 同步、Gradle 环境、compat pack staging
   tools/package/                   # importer/direct APK 打包、payload zip 校验
   tools/debug/                     # ADB 自动化调试、安装、导入、启动、日志/性能采集脚本
@@ -45,7 +45,7 @@ s2_re/
 - `PayloadManager`：导入 PC zip 或 SteamPipe 下载目录、校验必需文件、patch 私有 PCK copy、写 `.payload_manifest.json` 并安装到 payload store。
 - `LaunchProfileManager`：维护 payload store 与 launch profile，支持同一游戏本体多套全局/隔离存档和 MOD 配置，profile 保存 `compat_pack_id`，schema 2 family 包还保存 `compat_target_id`；从旧 schema 1 bundled 包升级到 flat matrix 内置包时会迁移旧 `sts2-android-compat-v0.*` 选择到 `sts2-android-compat` family target；切换时不复制 PCK。
 - `GameBodyVersionManager`：legacy facade，版本选择委托给 `LaunchProfileManager`。
-- `CompatPackManager`：安装/选择/删除兼容包，从 APK assets 安装内置包；支持 schema 1 单目标包、schema 2 family 包和受限的 schema 2 offline bootstrap 包，并按 payload `sts2_dll_sha256` / version 匹配具体 target variant。`sts2_dll_sha256` 同时兼容单字符串和数组，同一 API-compatible variant 可记录多个原版 DLL SHA，精确匹配会检查全部元素；版本页和 ADB 状态会展示完整 SHA 列表并保留 legacy 主 SHA 字段。同等精确命中时优先推荐 schema 2 family 包；offline bootstrap wildcard 只在没有任何 full compat 包命中时作为最低优先级 fallback。安装 bundled 包后触发旧 bundled 选择到 flat family target 的迁移。
+- `CompatPackManager`：安装/选择/删除兼容包，从 APK assets 安装内置包；支持 schema 1 单目标包、schema 2 family 包和受限的 schema 2 offline bootstrap 包，并按 payload `sts2_dll_sha256` / version 匹配具体 target variant。`sts2_dll_sha256` 同时兼容单字符串和数组，同一 API-compatible variant 可记录多个原版 DLL SHA，精确匹配会检查全部元素；版本页和 ADB 状态会展示完整 SHA 列表并保留 legacy 主 SHA 字段。同等精确命中时优先推荐 schema 2 family 包；offline bootstrap wildcard 只在没有任何 full compat 包命中时作为最低优先级 fallback。它读取 probe v2 并按 pack id、target、compat version、source zip SHA、payload version 与 DLL SHA 校验状态：终态失败不再参与自动推荐，手动选择时显示失败详情并允许诊断重试。安装 bundled 包后触发旧 bundled 选择到 flat family target 的迁移。
 - `GameLaunchPreparationManager`：启动前准备 Mono publish 目录、兼容包 dll、overlay pck、游戏 assemblies、纹理缓存。
 - `HighRefreshRateController`：每个 `GodotApp` Activity 自持有的 Android 高刷新请求器，默认由 `android_high_refresh_rate_enabled=true` 启用。启动、恢复、焦点与 Godot 主循环回调只会启动新的 generation；实际请求必须同时满足 Activity 已 resumed、有焦点、Godot `SurfaceView` 已 attach 且 `Surface` 有效。它绑定唯一渲染 `SurfaceView` 的 `SurfaceHolder.Callback`，用 surface epoch 标识 Surface 生命周期，以 100/500/1500ms 有限重试等待 Surface，并在失去焦点、`onPause`、`onDestroy` 或 `surfaceDestroyed` 时使旧 generation、epoch 与延迟任务失效。Android 12+ 对每个有效 Surface epoch 调用一次 `Surface.setFrameRate(..., CHANGE_FRAME_RATE_ALWAYS)`；对显式高刷 mode 使用精确 preferred mode ID，仅有 alternative refresh rate 时清空 mode ID 并改用 refresh-rate-only 请求。再延迟读取实际 mode/Hz 输出 `verified` 或 `verification_mismatch`；关闭开关时清空 Window 偏好并撤销 Surface frame-rate vote，不使用 `SurfaceControl`。可在设置页“系统”分区的预加载下方关闭。
 - `DisplaySettingsPatches` / `UiScalePatches`：compat 根 Window 的逻辑缩放统一为 `CanvasItems`，前者是 `ContentScaleMode` / `ContentScaleAspect` / `ContentScaleSize` 的唯一协调者。自动比例使用原版 UI scale target，固定比例使用对应 fixed target，`global_scale` 独立作为 `ContentScaleFactor`；`fullscreen_render_size` 不参与逻辑 owner 选择，而是在游戏内修改后立即调整根 renderer render target。compat 会先完成所有高层 `ContentScale*` setter，再只通过 `RenderingServer.ViewportSetRenderDirectToScreen(false)`、`ViewportSetSize()` 与 `ViewportSetGlobalCanvasTransform()` 写入 renderer 侧目标；scene `Window`、输入变换和 Android `Surface` 都保持不变，也绝不调用 `SurfaceHolder.setFixedSize()` 或 `ViewportAttachToScreen()`。`0x0` 会恢复当前 native attachment 尺寸与原始 canvas transform。非零预设按当前 native attachment 宽高比以 Expand 语义覆盖请求矩形，例如 native `2400x1080` 选择 `1280x720` 时实际 render target 为 `1600x720`；自定义目标长边上限为 `max(4096, native 长边)`。根窗口 `SizeChanged`、应用 resume 和一致性 repair 后都会重投 renderer 状态，避免高层 setter 或窗口重建覆盖动态分辨率。

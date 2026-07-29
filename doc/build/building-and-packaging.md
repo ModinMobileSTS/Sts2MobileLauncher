@@ -154,9 +154,15 @@ android/assets/compat_packs/sts2-android-compat.zip
   SHA256SUMS
 ```
 
-`sts2-android-offline-bootstrap.zip` 由 `offline-bootstrap/tools/build-offline-pack.sh` 构建。它不引用 `sts2.dll`，manifest 使用 `pack_kind=offline-bootstrap`、`match_mode=offline-wildcard` 与 `versions=["*"]`，启动器只会在没有任何已安装 full compat 包按 SHA/version 匹配当前 payload 时自动推荐它。首次用它启动某个 payload SHA/version 组合时会弹出风险确认。
+`sts2-android-offline-bootstrap.zip` 由 `offline-bootstrap/tools/build-offline-pack.sh` 构建。它不静态引用 `sts2.dll`，manifest 使用 `pack_kind=offline-bootstrap`、`match_mode=offline-wildcard` 与 `versions=["*"]`，启动器只会在没有任何已安装 full compat 包按 SHA/version 匹配当前 payload 时自动推荐它。构建脚本会先运行 `offline-bootstrap/tools/test-offline-contract.sh`：合成测试覆盖可接受与必须拒绝的 `ModelDb.Init` API 形状，并对本机已配置的所有 original reference 做反射契约检查。当前离线包使用 `compat_version=0.2.0-dev`、`probe_contract=offline-bootstrap-v2`；首次用它启动某个 pack/version/SHA 组合时弹风险确认，真实 ModelDb two-phase 成功后才标记 `ready`，已知终态失败的同一组合不再自动匹配。
 
 compat 与 offline bootstrap 构建脚本会把 Git branch / commit / commit subject 写入构建元数据和 manifest；传给 MSBuild 的 branch/subject 会先转义逗号、分号和百分号，避免提交标题中的标点被 MSBuild 当成多个 `-p:` 属性解析。
+
+可单独运行离线契约验证：
+
+```bash
+offline-bootstrap/tools/test-offline-contract.sh
+```
 
 如果只需要构建 full compatibility family 包，可直接运行：
 

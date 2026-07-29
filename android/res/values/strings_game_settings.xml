@@ -994,7 +994,12 @@
     <string name="launch_offline_bootstrap_dialog_title">Use generic offline bootstrap?</string>
     <string name="launch_offline_bootstrap_dialog_message">Selected pack: %1$s\nPack support: %2$s\nCurrent game: %3$s\nsts2.dll: %4$s\n\nNo exact mobile compatibility pack matched this game, so the launcher selected the generic offline bootstrap. It only provides startup/bootstrap and small reflective safety patches; full mobile UI, MOD and version-specific fixes may be unavailable. This approval is remembered only for this pack, game version and sts2.dll hash.</string>
     <string name="launch_offline_bootstrap_confirm">Use offline bootstrap</string>
-    <string name="launch_profile_compat_offline_fallback_badge">[offline fallback]</string>
+    <string name="launch_offline_bootstrap_failed_dialog_title">Offline bootstrap probe failed</string>
+    <string name="launch_offline_bootstrap_failed_dialog_message">Selected pack: %1$s\nCurrent game: %2$s\nsts2.dll: %3$s\nProbe status: %4$s\n\nThe same compatibility-pack version and payload DLL previously failed its runtime capability probe:\n%5$s\n\nThe wildcard manifest only permits a best-effort fallback; it does not certify this game build. Choose another launch profile/pack, or retry only for diagnostics.</string>
+    <string name="launch_offline_bootstrap_retry">Retry offline bootstrap</string>
+    <string name="launch_profile_compat_offline_fallback_badge">[offline fallback · unverified]</string>
+    <string name="launch_profile_compat_offline_verified_badge">[offline runtime verified]</string>
+    <string name="launch_profile_compat_offline_failed_badge">[offline probe failed]</string>
     <string name="launch_compat_disabled_dialog_title">Android compatibility pack is disabled</string>
     <string name="launch_compat_disabled_dialog_message">Launching without the Android compatibility pack removes STS2Mobile.dll and the mobile overlay for this run. Steam skipping, save path redirection, MOD loading, mobile input/UI fixes and Harmony patches may be unavailable, so the game may fail to start or MODs may not load.\n\nEnable the compatibility pack for the recommended Android path, or continue only for diagnostics.</string>
     <string name="enable_compat_pack">Enable pack</string>

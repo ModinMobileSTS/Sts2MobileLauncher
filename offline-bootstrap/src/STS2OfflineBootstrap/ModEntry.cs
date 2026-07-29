@@ -50,20 +50,23 @@ public static class ModEntry
 
         AndroidPaths.ConfigureTempDirectory();
         var probe = OfflineProbe.Load();
-        probe.AddCheck("entry", true, "Offline bootstrap entry loaded.", critical: true);
+        probe.Status = "starting";
+        probe.Success = false;
+        probe.AddOrReplaceCheck("entry", true, "Offline bootstrap entry loaded.", critical: true);
+        probe.Write();
 
         try
         {
             _harmony = new Harmony("com.sts2mobile.offlinebootstrap");
             OfflineRuntimePatches.Apply(_harmony, probe);
-            probe.Success = probe.HasCriticalFailure == false;
-            probe.Status = probe.Success ? "ready" : "probe_failed";
+            probe.Success = false;
+            probe.Status = probe.HasCriticalFailure ? "unsupported_api" : "patches_installed";
         }
         catch (Exception exception)
         {
             probe.Success = false;
-            probe.Status = "exception";
-            probe.AddCheck("apply_exception", false, exception.ToString(), critical: true);
+            probe.Status = "apply_failed";
+            probe.AddOrReplaceCheck("apply_exception", false, exception.ToString(), critical: true);
             Log($"Offline bootstrap failed: {exception}");
         }
         finally
@@ -342,59 +345,85 @@ internal static class OfflineModelDbPatches
     private static readonly object PhaseLock = new object();
     private static readonly Dictionary<Type, object> PreRegisteredModels = new Dictionary<Type, object>();
     private static readonly List<Type> PreRegisteredOrder = new List<Type>();
+    private static readonly List<string> InitializationFailures = new List<string>();
     private static bool _phase1Completed;
     private static bool _phase2Completed;
+    private static bool _phaseInProgress;
     private static bool _suppressAbstractModelConstructor;
-    private static FieldInfo _modelIdBackingField;
-    private static bool _loggedModelIdSeedFailure;
+    private static int _expectedModelCount;
+    private static int _registeredModelCount;
+    private static int _constructedModelCount;
+    private static OfflineProbe _probe;
+    private static ModelDbRuntimeContract _contract;
 
     public static void Apply(Harmony harmony, OfflineProbe probe)
     {
+        _probe = probe;
         try
         {
             var modelDbType = TypeResolver.FindType("MegaCrit.Sts2.Core.Models.ModelDb");
             var abstractModelType = TypeResolver.FindType("MegaCrit.Sts2.Core.Models.AbstractModel");
-            if (modelDbType == null || abstractModelType == null)
+            var generatedSubtypesType = TypeResolver.FindType("MegaCrit.Sts2.Core.Models.AbstractModelSubtypes");
+            _contract = ModelDbRuntimeContract.Resolve(modelDbType, abstractModelType, generatedSubtypesType);
+            probe.SetModelDbContract(_contract);
+            if (!_contract.Ready)
             {
-                probe.AddCheck("modeldb_two_phase", false, "ModelDb or AbstractModel type not found.", critical: true);
+                probe.AddOrReplaceCheck("modeldb_contract", false, _contract.Diagnostic, critical: true);
                 return;
             }
+            probe.AddOrReplaceCheck("modeldb_contract", true, _contract.Diagnostic, critical: true);
 
-            var init = modelDbType.GetMethod("Init", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null, Type.EmptyTypes, null);
             var initPrefix = typeof(OfflineModelDbPatches).GetMethod(nameof(ModelDbInitPrefix), AllFlags);
-            if (init == null || initPrefix == null)
-            {
-                probe.AddCheck("modeldb_two_phase", false, "ModelDb.Init patch target not found.", critical: true);
-                return;
-            }
-            harmony.Patch(init, prefix: new HarmonyMethod(initPrefix));
-
-            var constructor = abstractModelType.GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
+            var initPostfix = typeof(OfflineModelDbPatches).GetMethod(nameof(ModelDbInitPostfix), AllFlags);
             var constructorPrefix = typeof(OfflineModelDbPatches).GetMethod(nameof(AbstractModelConstructorPrefix), AllFlags);
-            if (constructor != null && constructorPrefix != null)
+            if (initPrefix == null || initPostfix == null || constructorPrefix == null)
+                throw new MissingMethodException("Offline ModelDb Harmony patch methods were not found.");
+
+            harmony.Patch(
+                _contract.AbstractModelConstructor,
+                prefix: new HarmonyMethod(constructorPrefix) { priority = Priority.First });
+            probe.AddOrReplaceCheck("abstract_model_ctor_guard", true, "Patched AbstractModel constructor for offline two-phase ModelDb init.", critical: true);
+
+            foreach (var init in _contract.InitMethods)
             {
-                harmony.Patch(constructor, prefix: new HarmonyMethod(constructorPrefix) { priority = Priority.First });
-                probe.AddCheck("abstract_model_ctor_guard", true, "Patched AbstractModel constructor for offline two-phase ModelDb init.", critical: false);
-            }
-            else
-            {
-                probe.AddCheck("abstract_model_ctor_guard", false, "AbstractModel constructor patch target not found.", critical: false);
+                harmony.Patch(
+                    init.Method,
+                    prefix: new HarmonyMethod(initPrefix) { priority = Priority.Last },
+                    postfix: new HarmonyMethod(initPostfix) { priority = Priority.First });
+                ModEntry.Log("Patched offline ModelDb API shape " + init.Shape + ": " + init.Signature);
             }
 
-            probe.AddCheck("modeldb_two_phase", true, "Patched ModelDb.Init for offline two-phase placeholder registration.", critical: true);
-            ModEntry.Log("Patched ModelDb.Init for offline two-phase placeholder registration.");
+            probe.AddOrReplaceCheck(
+                "modeldb_two_phase",
+                true,
+                "Patched " + _contract.InitMethods.Count + " supported ModelDb.Init API shape(s) for two-phase placeholder registration.",
+                critical: true);
         }
         catch (Exception exception)
         {
-            probe.AddCheck("modeldb_two_phase", false, exception.ToString(), critical: true);
+            probe.AddOrReplaceCheck("modeldb_two_phase", false, exception.ToString(), critical: true);
             ModEntry.Log("Failed to patch offline ModelDb init: " + exception);
         }
     }
 
-    public static bool ModelDbInitPrefix()
+    public static bool ModelDbInitPrefix(MethodBase __originalMethod, object[] __args)
     {
-        RunTwoPhaseModelDbInit();
+        var init = RequireInitContract(__originalMethod);
+        if (init.HasExplicitInjectedModelTypes(__args))
+        {
+            ModEntry.Log("Preserving original ModelDb.Init for an explicit injected model type set.");
+            return true;
+        }
+        RunTwoPhaseModelDbInit(init);
         return false;
+    }
+
+    public static void ModelDbInitPostfix(MethodBase __originalMethod, object[] __args)
+    {
+        var init = RequireInitContract(__originalMethod);
+        if (init.HasExplicitInjectedModelTypes(__args))
+            return;
+        RunTwoPhaseModelDbInit(init);
     }
 
     public static bool AbstractModelConstructorPrefix(object __instance)
@@ -404,21 +433,29 @@ internal static class OfflineModelDbPatches
 
         try
         {
-            var modelDbType = TypeResolver.FindType("MegaCrit.Sts2.Core.Models.ModelDb");
-            var getId = modelDbType?.GetMethod("GetId", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null, new[] { typeof(Type) }, null);
-            var id = getId?.Invoke(null, new object[] { __instance.GetType() });
-            if (id != null)
-                TrySeedModelId(__instance, id);
+            var id = _contract.GetModelId(__instance.GetType());
+            if (id == null)
+                throw new InvalidOperationException("ModelDb.GetId returned null for " + __instance.GetType().FullName + ".");
+            _contract.SeedModelId(__instance, id);
             return false;
         }
         catch (Exception exception)
         {
-            ModEntry.Log("Offline ModelDb constructor guard failed for " + __instance.GetType().FullName + ": " + GetRootException(exception).Message);
-            return true;
+            var root = GetRootException(exception);
+            RecordInitializationFailure("AbstractModel constructor guard failed for " + __instance.GetType().FullName + ": " + root.GetType().Name + ": " + root.Message);
+            throw new InvalidOperationException("Offline ModelDb constructor guard failed for " + __instance.GetType().FullName + ".", root);
         }
     }
 
-    private static void RunTwoPhaseModelDbInit()
+    private static ModelDbInitMethodContract RequireInitContract(MethodBase method)
+    {
+        var init = _contract?.FindInitMethod(method);
+        if (init != null)
+            return init;
+        throw new InvalidOperationException("Offline ModelDb received an unrecognized Init method: " + method + ".");
+    }
+
+    private static void RunTwoPhaseModelDbInit(ModelDbInitMethodContract init)
     {
         lock (PhaseLock)
         {
@@ -427,10 +464,44 @@ internal static class OfflineModelDbPatches
                 ModEntry.Log("Offline ModelDb.Init invoked again after completion; ignoring.");
                 return;
             }
+            if (_phaseInProgress)
+                throw new InvalidOperationException("Offline ModelDb two-phase initialization was re-entered.");
+            _phaseInProgress = true;
         }
 
-        RunPhase1PreRegistration();
-        RunPreRegisteredModelConstructors();
+        _probe?.BeginModelDbInitialization(init);
+        _probe?.Write();
+        try
+        {
+            RunPhase1PreRegistration();
+            RunPreRegisteredModelConstructors();
+            if (_expectedModelCount <= 0 || _registeredModelCount != _expectedModelCount || _constructedModelCount != _expectedModelCount)
+            {
+                RecordInitializationFailure(
+                    "Model count invariant failed: expected=" + _expectedModelCount
+                    + ", registered=" + _registeredModelCount
+                    + ", constructed=" + _constructedModelCount + ".");
+            }
+            string[] failures;
+            lock (PhaseLock)
+                failures = InitializationFailures.ToArray();
+            if (failures.Length > 0)
+                throw new InvalidOperationException("Offline ModelDb initialization reported " + failures.Length + " failure(s): " + string.Join(" | ", failures.Take(8)));
+            _probe?.CompleteModelDbInitialization(_expectedModelCount, _registeredModelCount, _constructedModelCount);
+            _probe?.Write();
+        }
+        catch (Exception exception)
+        {
+            var root = GetRootException(exception);
+            _probe?.FailModelDbInitialization(root, _expectedModelCount, _registeredModelCount, _constructedModelCount, InitializationFailures);
+            _probe?.Write();
+            throw;
+        }
+        finally
+        {
+            lock (PhaseLock)
+                _phaseInProgress = false;
+        }
     }
 
     private static void RunPhase1PreRegistration()
@@ -439,149 +510,163 @@ internal static class OfflineModelDbPatches
         {
             if (_phase1Completed || _phase2Completed)
                 return;
-            _phase1Completed = true;
         }
 
-        Type[] types;
-        try
-        {
-            types = GetVanillaModelTypes();
-        }
-        catch (Exception exception)
-        {
-            ModEntry.Log("Offline ModelDb failed to enumerate vanilla model types: " + GetRootException(exception).Message);
-            return;
-        }
-
+        var types = GetVanillaModelTypes();
+        if (types.Length == 0)
+            throw new InvalidOperationException("Resolved model type source returned no concrete AbstractModel types.");
         PreRegisterModelPlaceholders(types);
+        lock (PhaseLock)
+            _phase1Completed = true;
     }
 
     private static Type[] GetVanillaModelTypes()
     {
-        var subtypesType = TypeResolver.FindType("MegaCrit.Sts2.Core.Models.AbstractModelSubtypes");
-        var allProperty = subtypesType?.GetProperty("All", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
-        var value = allProperty?.GetValue(null);
-        if (value is IEnumerable<Type> enumerable)
-            return enumerable.Where(type => type != null && !type.IsAbstract).ToArray();
-        throw new InvalidOperationException("AbstractModelSubtypes.All not found.");
+        return _contract.ReadModelTypes()
+            .Where(type => type != null && !type.IsAbstract && _contract.AbstractModelType.IsAssignableFrom(type))
+            .Distinct()
+            .ToArray();
     }
 
     private static void PreRegisterModelPlaceholders(Type[] rawTypes)
     {
-        var modelDbType = TypeResolver.FindType("MegaCrit.Sts2.Core.Models.ModelDb");
-        var abstractModelType = TypeResolver.FindType("MegaCrit.Sts2.Core.Models.AbstractModel");
-        var getId = modelDbType?.GetMethod("GetId", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null, new[] { typeof(Type) }, null);
-        var contentByIdField = modelDbType?.GetField("_contentById", BindingFlags.NonPublic | BindingFlags.Static);
-        var contentById = contentByIdField?.GetValue(null);
-        var setItem = contentById?.GetType().GetMethod("set_Item");
-        var dictionary = contentById as System.Collections.IDictionary;
-        if (modelDbType == null || abstractModelType == null || getId == null || contentById == null || setItem == null || dictionary == null)
-        {
-            ModEntry.Log("Offline ModelDb pre-registration failed: missing reflection members.");
-            return;
-        }
+        var dictionary = _contract.ReadContentById();
+        var staged = new List<StagedModelPlaceholder>();
+        var stagedIds = new HashSet<object>();
+        var preexisting = 0;
+        var types = rawTypes ?? Array.Empty<Type>();
+        _expectedModelCount = types.Length;
 
-        var registered = 0;
-        var skipped = 0;
-        lock (PhaseLock)
+        foreach (var type in types)
         {
-            foreach (var type in rawTypes ?? Array.Empty<Type>())
+            try
             {
-                if (type == null || type.IsAbstract || !abstractModelType.IsAssignableFrom(type))
-                    continue;
-                if (PreRegisteredModels.ContainsKey(type))
-                    continue;
-                try
+                var id = _contract.GetModelId(type);
+                if (id == null)
+                    throw new InvalidOperationException("ModelDb.GetId returned null.");
+                if (!stagedIds.Add(id))
+                    throw new InvalidOperationException("Duplicate ModelId was produced before placeholder commit: " + id + ".");
+                if (dictionary.Contains(id))
                 {
-                    var id = getId.Invoke(null, new object[] { type });
-                    if (id == null || dictionary.Contains(id))
-                    {
-                        skipped++;
-                        continue;
-                    }
-                    var model = RuntimeHelpers.GetUninitializedObject(type);
-                    TrySeedModelId(model, id);
-                    setItem.Invoke(contentById, new[] { id, model });
-                    PreRegisteredModels[type] = model;
-                    PreRegisteredOrder.Add(type);
-                    registered++;
+                    var existing = dictionary[id];
+                    if (existing == null || existing.GetType() != type)
+                        throw new InvalidOperationException("ModelDb already contains " + id + " mapped to " + existing?.GetType().FullName + ".");
+                    preexisting++;
+                    continue;
                 }
-                catch (Exception exception)
-                {
-                    skipped++;
-                    var root = GetRootException(exception);
-                    ModEntry.Log("Offline ModelDb pre-registration failed for " + type.FullName + ": " + root.GetType().Name + ": " + root.Message);
-                }
+                var constructor = type.GetConstructor(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null);
+                if (constructor == null)
+                    throw new MissingMethodException(type.FullName, ".ctor()");
+                var model = RuntimeHelpers.GetUninitializedObject(type);
+                _contract.SeedModelId(model, id);
+                staged.Add(new StagedModelPlaceholder(type, id, model));
+            }
+            catch (Exception exception)
+            {
+                var root = GetRootException(exception);
+                RecordInitializationFailure("Pre-registration failed for " + type.FullName + ": " + root.GetType().Name + ": " + root.Message);
             }
         }
-        ModEntry.Log("Offline ModelDb pre-registered " + registered + " vanilla model placeholder(s); skipped=" + skipped + ".");
+
+        if (InitializationFailures.Count > 0)
+            throw new InvalidOperationException("Offline ModelDb pre-registration capability check failed before dictionary commit.");
+
+        var committed = new List<StagedModelPlaceholder>();
+        try
+        {
+            foreach (var placeholder in staged)
+            {
+                dictionary[placeholder.Id] = placeholder.Model;
+                committed.Add(placeholder);
+            }
+        }
+        catch
+        {
+            foreach (var placeholder in committed)
+                dictionary.Remove(placeholder.Id);
+            throw;
+        }
+
+        lock (PhaseLock)
+        {
+            foreach (var placeholder in staged)
+            {
+                PreRegisteredModels[placeholder.Type] = placeholder.Model;
+                PreRegisteredOrder.Add(placeholder.Type);
+            }
+            _registeredModelCount = staged.Count + preexisting;
+            _constructedModelCount = preexisting;
+        }
+        ModEntry.Log("Offline ModelDb atomically pre-registered " + staged.Count + " model placeholder(s); preexisting=" + preexisting + ", expected=" + _expectedModelCount + ".");
     }
 
     private static void RunPreRegisteredModelConstructors()
     {
         List<Type> types;
         lock (PhaseLock)
-        {
             types = new List<Type>(PreRegisteredOrder);
-        }
 
         ClearModelDbDerivedCaches("before offline constructor phase");
         try
         {
             _suppressAbstractModelConstructor = true;
             var succeeded = 0;
-            var failed = 0;
             foreach (var type in types)
             {
                 object model;
                 lock (PhaseLock)
                 {
                     if (!PreRegisteredModels.TryGetValue(type, out model))
+                    {
+                        RecordInitializationFailure("Constructor phase lost placeholder for " + type.FullName + ".");
                         continue;
+                    }
                 }
                 try
                 {
                     RuntimeHelpers.RunClassConstructor(type.TypeHandle);
-                    var constructor = type.GetConstructor(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null);
-                    constructor?.Invoke(model, null);
+                    var constructor = type.GetConstructor(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null)
+                        ?? throw new MissingMethodException(type.FullName, ".ctor()");
+                    constructor.Invoke(model, null);
                     succeeded++;
                 }
                 catch (Exception exception)
                 {
-                    failed++;
                     var root = GetRootException(exception);
-                    ModEntry.Log("Offline ModelDb constructor phase failed for " + type.FullName + ": " + root.GetType().Name + ": " + root.Message);
+                    RecordInitializationFailure("Constructor phase failed for " + type.FullName + ": " + root.GetType().Name + ": " + root.Message);
                 }
             }
-            ModEntry.Log("Offline ModelDb constructor phase completed; succeeded=" + succeeded + ", failed=" + failed + ".");
+            lock (PhaseLock)
+                _constructedModelCount += succeeded;
+            ModEntry.Log("Offline ModelDb constructor phase completed; succeeded=" + succeeded + ", failed=" + InitializationFailures.Count + ".");
         }
         finally
         {
             _suppressAbstractModelConstructor = false;
             ClearModelDbDerivedCaches("after offline constructor phase");
             lock (PhaseLock)
-            {
                 _phase2Completed = true;
-            }
         }
     }
 
-    private static void TrySeedModelId(object model, object id)
+    private static void RecordInitializationFailure(string message)
     {
-        if (model == null || id == null)
-            return;
-        try
+        lock (PhaseLock)
+            InitializationFailures.Add(message ?? "Unknown ModelDb initialization failure.");
+        ModEntry.Log("Offline ModelDb " + message);
+    }
+
+    private sealed class StagedModelPlaceholder
+    {
+        public Type Type { get; }
+        public object Id { get; }
+        public object Model { get; }
+
+        public StagedModelPlaceholder(Type type, object id, object model)
         {
-            _modelIdBackingField ??= TypeResolver.FindType("MegaCrit.Sts2.Core.Models.AbstractModel")?.GetField("<Id>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
-            _modelIdBackingField?.SetValue(model, id);
-        }
-        catch (Exception exception)
-        {
-            if (!_loggedModelIdSeedFailure)
-            {
-                _loggedModelIdSeedFailure = true;
-                ModEntry.Log("Offline ModelDb failed to seed placeholder Id: " + exception.Message);
-            }
+            Type = type;
+            Id = id;
+            Model = model;
         }
     }
 
@@ -689,6 +774,9 @@ internal static class AndroidPaths
     public static string DataDir => _dataDir ??= ResolveDataDir();
     public static string AccountRoot => _accountRoot ??= ResolveLaunchContextPath("selected_account_root", Path.Combine(DataDir, "default", "1"));
     public static string GameDir => ResolveLaunchContextPath("selected_game_dir", Path.Combine(DataDir, "game"));
+    public static string CompatPackDir => ResolveLaunchContextPath("selected_compat_pack_dir", string.Empty);
+    public static string SelectedCompatPackId => ResolveLaunchContextValue("compat_pack_id");
+    public static string SelectedCompatTargetId => ResolveLaunchContextValue("compat_target_id");
 
     public static void ConfigureTempDirectory()
     {
@@ -714,17 +802,22 @@ internal static class AndroidPaths
 
     private static string ResolveLaunchContextPath(string key, string fallback)
     {
+        var value = ResolveLaunchContextValue(key);
+        return NormalizeAbsolutePath(string.IsNullOrWhiteSpace(value) ? fallback : value);
+    }
+
+    private static string ResolveLaunchContextValue(string key)
+    {
         try
         {
             var context = LaunchContext();
-            if (context.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
-                return NormalizeAbsolutePath(value);
+            return context.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : string.Empty;
         }
         catch (Exception exception)
         {
             ModEntry.Log("Launch context lookup failed for " + key + ": " + exception.Message);
+            return string.Empty;
         }
-        return NormalizeAbsolutePath(fallback);
     }
 
     private static Dictionary<string, string> LaunchContext()
@@ -811,18 +904,40 @@ internal static class AndroidPaths
 
 internal sealed class OfflineProbe
 {
-    public int Schema { get; set; } = 1;
-    public string ProbeContract { get; set; } = "offline-bootstrap-v1";
+    private readonly object _sync = new object();
+
+    public int Schema { get; set; } = 2;
+    public string ProbeContract { get; set; } = "offline-bootstrap-v2";
     public string Status { get; set; } = "starting";
     public bool Success { get; set; }
     public string WrittenUtc { get; set; }
     public string FilesDir { get; set; }
     public string GameDir { get; set; }
+    public string PackId { get; set; }
+    public string TargetId { get; set; }
+    public string CompatVersion { get; set; }
+    public string PackZipSha256 { get; set; }
+    public string BootstrapAssemblyMvid { get; set; }
     public string PayloadVersion { get; set; }
     public string Sts2DllSha256 { get; set; }
+    public string Sts2AssemblyMvid { get; set; }
+    public string ModelDbStrategy { get; set; }
+    public string ModelTypesSource { get; set; }
+    public List<string> ModelDbInitSignatures { get; set; } = new List<string>();
+    public int ExpectedModels { get; set; }
+    public int RegisteredModels { get; set; }
+    public int ConstructedModels { get; set; }
+    public string FailureSummary { get; set; }
     public List<ProbeCheck> Checks { get; set; } = new List<ProbeCheck>();
 
-    public bool HasCriticalFailure => Checks.Any(check => check.Critical && !check.Success);
+    public bool HasCriticalFailure
+    {
+        get
+        {
+            lock (_sync)
+                return Checks.Any(check => check.Critical && !check.Success);
+        }
+    }
 
     public static OfflineProbe Load()
     {
@@ -830,33 +945,134 @@ internal sealed class OfflineProbe
         {
             FilesDir = AndroidPaths.DataDir,
             GameDir = AndroidPaths.GameDir,
+            PackId = AndroidPaths.SelectedCompatPackId,
+            TargetId = AndroidPaths.SelectedCompatTargetId,
+            CompatVersion = ReadAssemblyMetadata("OfflineBootstrapVersion") ?? "unknown",
+            BootstrapAssemblyMvid = typeof(ModEntry).Module.ModuleVersionId.ToString("D"),
         };
         probe.ReadPayloadManifest();
+        probe.ReadCompatManifest();
         return probe;
+    }
+
+    public void SetModelDbContract(ModelDbRuntimeContract contract)
+    {
+        if (contract == null)
+            return;
+        lock (_sync)
+        {
+            ModelDbInitSignatures = contract.InitMethods.Select(method => method.Signature).ToList();
+            ModelDbStrategy = string.Join("+", contract.InitMethods.Select(method => method.Shape.ToString()).Distinct());
+            ModelTypesSource = contract.ModelTypesSource;
+            try { Sts2AssemblyMvid = contract.ModelDbType?.Module.ModuleVersionId.ToString("D"); }
+            catch { Sts2AssemblyMvid = string.Empty; }
+        }
+    }
+
+    public void BeginModelDbInitialization(ModelDbInitMethodContract init)
+    {
+        lock (_sync)
+        {
+            Status = "modeldb_initializing";
+            Success = false;
+            FailureSummary = string.Empty;
+        }
+        AddOrReplaceCheck("modeldb_runtime", false, "Running offline two-phase initialization through " + init.Signature + ".", critical: false);
+    }
+
+    public void CompleteModelDbInitialization(int expected, int registered, int constructed)
+    {
+        lock (_sync)
+        {
+            ExpectedModels = expected;
+            RegisteredModels = registered;
+            ConstructedModels = constructed;
+            FailureSummary = string.Empty;
+            Success = true;
+            Status = "ready";
+        }
+        AddOrReplaceCheck(
+            "modeldb_runtime",
+            true,
+            "Offline two-phase ModelDb initialization completed; expected=" + expected + ", registered=" + registered + ", constructed=" + constructed + ".",
+            critical: true);
+    }
+
+    public void FailModelDbInitialization(Exception exception, int expected, int registered, int constructed, IEnumerable<string> failures)
+    {
+        var details = failures == null ? Array.Empty<string>() : failures.Where(value => !string.IsNullOrWhiteSpace(value)).Take(16).ToArray();
+        var summary = exception?.GetType().Name + ": " + exception?.Message;
+        if (details.Length > 0)
+            summary += " | " + string.Join(" | ", details);
+        if (summary.Length > 8192)
+            summary = summary.Substring(0, 8192);
+        lock (_sync)
+        {
+            ExpectedModels = expected;
+            RegisteredModels = registered;
+            ConstructedModels = constructed;
+            FailureSummary = summary;
+            Success = false;
+            Status = "runtime_failed";
+        }
+        AddOrReplaceCheck("modeldb_runtime", false, summary, critical: true);
     }
 
     public void AddCheck(string name, bool success, string message, bool critical)
     {
-        Checks.Add(new ProbeCheck
+        AddOrReplaceCheck(name, success, message, critical);
+    }
+
+    public void AddOrReplaceCheck(string name, bool success, string message, bool critical)
+    {
+        lock (_sync)
         {
-            Name = name,
-            Success = success,
-            Critical = critical,
-            Message = message ?? string.Empty,
-        });
+            Checks.RemoveAll(check => string.Equals(check.Name, name, StringComparison.Ordinal));
+            Checks.Add(new ProbeCheck
+            {
+                Name = name,
+                Success = success,
+                Critical = critical,
+                Message = message ?? string.Empty,
+            });
+        }
     }
 
     public void Write()
     {
+        string json;
+        string status;
         try
         {
-            WrittenUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
+            lock (_sync)
+            {
+                WrittenUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
+                json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+                status = Status;
+            }
             var launcherDir = AndroidPaths.LauncherDir();
             Directory.CreateDirectory(launcherDir);
             var path = Path.Combine(launcherDir, "offline-bootstrap-probe.json");
-            var options = new JsonSerializerOptions { WriteIndented = true };
-            File.WriteAllText(path, JsonSerializer.Serialize(this, options));
-            ModEntry.Log("Wrote offline bootstrap probe: " + path);
+            var temporary = path + ".tmp-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                File.WriteAllText(temporary, json);
+                try
+                {
+                    File.Move(temporary, path, overwrite: true);
+                }
+                catch
+                {
+                    File.Copy(temporary, path, overwrite: true);
+                    File.Delete(temporary);
+                }
+            }
+            finally
+            {
+                if (File.Exists(temporary))
+                    File.Delete(temporary);
+            }
+            ModEntry.Log("Wrote offline bootstrap probe status=" + status + ": " + path);
         }
         catch (Exception exception)
         {
@@ -881,7 +1097,43 @@ internal sealed class OfflineProbe
         }
         catch (Exception exception)
         {
-            AddCheck("payload_manifest", false, exception.Message, critical: false);
+            AddOrReplaceCheck("payload_manifest", false, exception.Message, critical: false);
+        }
+    }
+
+    private void ReadCompatManifest()
+    {
+        try
+        {
+            var compatPackDir = AndroidPaths.CompatPackDir;
+            if (string.IsNullOrWhiteSpace(compatPackDir))
+                return;
+            var manifestPath = Path.Combine(compatPackDir, "compat_manifest.json");
+            if (!File.Exists(manifestPath))
+                return;
+            using var document = JsonDocument.Parse(File.ReadAllText(manifestPath));
+            PackId = FindString(document.RootElement, "pack_id") ?? PackId;
+            CompatVersion = FindString(document.RootElement, "compat_version") ?? CompatVersion;
+            PackZipSha256 = FindString(document.RootElement, "installed_source", "zip_sha256") ?? PackZipSha256;
+        }
+        catch (Exception exception)
+        {
+            AddOrReplaceCheck("compat_manifest", false, exception.Message, critical: false);
+        }
+    }
+
+    private static string ReadAssemblyMetadata(string key)
+    {
+        try
+        {
+            return typeof(ModEntry).Assembly
+                .GetCustomAttributes<AssemblyMetadataAttribute>()
+                .FirstOrDefault(attribute => string.Equals(attribute.Key, key, StringComparison.Ordinal))
+                ?.Value;
+        }
+        catch
+        {
+            return null;
         }
     }
 

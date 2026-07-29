@@ -8,7 +8,7 @@
 - **compat pack**：Android 移动端兼容包，安装到 `<files>/compat-packs/<pack_id>/`。当前兼容两种 manifest：
   - schema 1 legacy 单目标包：根目录包含 `compat_manifest.json`、`STS2Mobile.dll`、`port_compat.pck`、`SHA256SUMS`。
   - schema 2 family 包，根目录包含 `compat_manifest.json`、`SHA256SUMS`，并在 `variants/<target_id>/` 下为每个目标版本放置 `STS2Mobile.dll` 与 `port_compat.pck`。
-- **offline bootstrap**：`offline-bootstrap/` 构建的通用离线启动层，pack id 为 `sts2-android-offline-bootstrap`。它也是 schema 2 包，但 manifest 必须声明 `pack_kind=offline-bootstrap`、target `match_mode=offline-wildcard`、`versions=["*"]`；启动器只在没有 full compat 包按 SHA/version 命中当前 payload 时自动推荐它。它不静态引用 `sts2.dll`，只做 GodotSharp bootstrap、Android temp、反射式平台/存档保底补丁、原版 `ModelDb` two-phase 初始化保护和 runtime probe。
+- **offline bootstrap**：`offline-bootstrap/` 构建的通用离线启动层，pack id 为 `sts2-android-offline-bootstrap`。它也是 schema 2 包，但 manifest 必须声明 `pack_kind=offline-bootstrap`、target `match_mode=offline-wildcard`、`versions=["*"]`；启动器只在没有 full compat 包按 SHA/version 命中当前 payload 时自动推荐它。它不静态引用 `sts2.dll`，只做 GodotSharp bootstrap、Android temp、反射式平台/存档保底补丁、原版 `ModelDb` two-phase 初始化保护和 runtime probe。wildcard 只表示未知 payload 可以尝试保底，不代表已认证支持任意未来版本；probe v2 会把实际运行结果绑定到离线包版本、target、安装 source zip SHA、payload version 与精确 DLL SHA。
 - **compat fallback**：APK assets 中的 `android/assets/dotnet_bcl/STS2Mobile.dll` 与 `android/assets/port_compat.pck`，主要用于兼容旧启动路径或无已选包的兜底；正常 launcher 启动会先检查当前启动配置的 compat pack，缺包时不静默 fallback。
 - **launch profile / 启动配置**：安装在 `<files>/instances/<profile_id>/instance.json`，绑定一个 payload、一个可选 compat pack，并决定存档/设置与 MOD 使用全局目录还是 profile 独立目录。schema 2 family 包会同时记录 `compat_pack_id` 与 `compat_target_id`；兼容包选择属于启动配置，不再有运行时全局选中包 fallback。
 - **普通用户 MOD**：默认放在全局 `<files>/mods/`；当当前 launch profile 的 `mods_mode=isolated` 时放在 `<files>/instances/<profile_id>/mods/`。由游戏原版 `ModManager` 在被兼容层 patch 后扫描加载。
@@ -56,9 +56,11 @@ offline bootstrap:
   - 默认 matrix mode：调用 `port-mod/tools/build-compat-matrix.sh`，从同一 checkout 的 `targets/active/*/target.json` 生成 schema 2 family zip。
   - `COMPAT_PACK_BUILD_MODE=legacy`：按 `tools/android/bundled-compat-packs.json` 构建多个 schema 1 分支包，非当前分支使用临时 git worktree；仅用于回退诊断。
   - 输出到 gitignored 的 `android/assets/compat_packs/*.zip`，随本地 APK 打包但不由 git 跟踪。
+- `offline-bootstrap/tools/test-offline-contract.sh`
+  - 用合成 API 形状检查安全接受/拒绝规则，并对本机已配置的所有 original `sts2.dll` 做只读反射契约验证；不把任何游戏程序集作为静态编译引用。
 - `offline-bootstrap/tools/build-offline-pack.sh`
-  - 构建通用离线启动层，不读取 `port-mod/targets`，不接受 `ReferenceFlavor`，不引用 `sts2.dll`。
-  - 输出 `sts2-android-offline-bootstrap.zip`。
+  - 构建通用离线启动层，不读取 `port-mod/targets` 来生成版本 variant，不接受 `ReferenceFlavor`，不静态引用 `sts2.dll`；构建前运行上述契约测试。
+  - 输出 `sts2-android-offline-bootstrap.zip`，当前 `compat_version=0.2.0-dev`、`probe_contract=offline-bootstrap-v2`。
 - `tools/android/stage-bundled-compat-artifacts.sh`
   - APK 打包使用的统一 staging 入口：一次清理 assets 后依次 stage full compat family 包和 offline bootstrap 包。
 
@@ -92,7 +94,7 @@ offline bootstrap:
 4. `PckPatcher` 只修改私有 PCK copy，禁用 Sentry autoload/gdextension 元数据，避免 Android 缺少桌面 Sentry 扩展导致启动前解析错误。
 5. 写入 staging 中的 `.payload_manifest.json`，包含 `release_info`、`version`、`commit`、`sts2_dll_sha256`、PCK patch 结果等。
 6. 按 manifest 身份生成 `payload_id`，原子安装到 `<files>/payloads/<payload_id>/game/`；同一 payload 已存在时只替换 payload store 中的该目录，不再复制到 `<files>/game/`。
-7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload；新建 profile 时会按 payload manifest 中的 `sts2_dll_sha256` 与 `version` 填入推荐 compat pack。匹配评分顺序为：命中 target 单 SHA 或 SHA 数组任一元素、target 主版本、manifest 显式支持版本、offline bootstrap wildcard。schema 2 family 包在同等精确命中时优先；offline bootstrap 只有在没有任何 full compat 包命中当前 payload 时才会自动填入。schema 2 family 包会写入 `compat_pack_id` 和 `compat_target_id`；已有 profile 不会在每次导入/启动时被覆盖，只有旧 bundled schema 1 pack id 到 flat family pack 的升级迁移会自动改写。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot`、`source.steam.depots[]` 与 `source.steam.concurrent_chunks` 中记录。v0.109.0/v0.109.1 的 DLL SHA 都由稳定 id `v0.109.0` 的共享 variant 精确匹配。
+7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload；新建 profile 时会按 payload manifest 中的 `sts2_dll_sha256` 与 `version` 填入推荐 compat pack。匹配评分顺序为：命中 target 单 SHA 或 SHA 数组任一元素、target 主版本、manifest 显式支持版本、offline bootstrap wildcard。schema 2 family 包在同等精确命中时优先；offline bootstrap 只有在没有任何 full compat 包命中当前 payload 时才会自动填入。若 probe v2 已记录相同 `pack_id + target_id + compat_version + source zip SHA + payload version + sts2.dll SHA` 的终态失败，wildcard 不再为新配置自动匹配该离线包；用户仍可手工选择并从风险对话框重试。schema 2 family 包会写入 `compat_pack_id` 和 `compat_target_id`；已有 profile 不会在每次导入/启动时被覆盖，只有旧 bundled schema 1 pack id 到 flat family pack 的升级迁移会自动改写。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot`、`source.steam.depots[]` 与 `source.steam.concurrent_chunks` 中记录。v0.109.0/v0.109.1 的 DLL SHA 都由稳定 id `v0.109.0` 的共享 variant 精确匹配。
 8. 旧安装中的 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制。
 
 ## 5. 启动前检查
@@ -104,7 +106,7 @@ offline bootstrap:
    - 只读取当前 launch profile 的 `compat_pack_id` / `compat_target_id` 并解析已安装包。
    - 若配置未选择兼容包或引用的包已删除，阻止启动并提示编辑启动配置。
    - 若选中包 manifest 支持版本列表与 payload version 不一致，弹出风险对话框，用户可取消、去启动配置页或强制启动。
-   - 若选中包是 offline bootstrap wildcard，首次启动当前 `pack_id + target_id + compat_version + payload version + sts2.dll SHA` 组合时弹出风险确认；确认后只记住该组合。offline bootstrap 运行时会写 `<files>/launcher/offline-bootstrap-probe.json` 记录反射 probe 结果。
+   - 若选中包是 offline bootstrap wildcard，首次启动当前 `pack_id + target_id + compat_version + source zip SHA + payload version + sts2.dll SHA` 组合时弹出风险确认；确认后只记住该组合。offline bootstrap 运行时原子写 `<files>/launcher/offline-bootstrap-probe.json`：`starting -> patches_installed -> modeldb_initializing -> ready` 表示完整成功；`unsupported_api`、`apply_failed`、`runtime_failed` 是终态失败。版本页选择器会区分“未验证 / 已验证 / 探测失败”；相同 tuple 曾失败时每次启动都显示失败详情并只允许显式重试，不把旧确认当成成功认证。ADB 自动化 `status` 也会把原始 JSON 放入 `offline_bootstrap_probe`。
 3. 启动前 launcher 会为当前 launch profile account root 创建一份本地 `before-launch` 存档快照（默认只保留最近 5 个）。若 Steam Cloud 模式配置为“启动前拉取”或“完整自动”，且已保存 Steam refresh token，则随后拉取当前 account root 的 Steam Cloud 文件；若 WebDAV 模式配置为“启动前拉取”或“完整自动”，且已配置 WebDAV URL，则继续拉取同一 account root 的 WebDAV 文件。任一同步失败时会弹窗允许取消、打开对应云存档中心或跳过同步继续启动。
 4. 启动后台线程执行 `GameLaunchPreparationManager.prepareForLaunch()`。
 5. 准备完成后启动 `GodotApp` 并附加 `launch_prepared=true`。
@@ -168,7 +170,9 @@ STS2Mobile.ModEntry
 
 ## 8. STS2Mobile patch 顺序
 
-当前 `ModEntry.Apply()` 主要顺序：
+以下长列表描述 **full compat**。offline bootstrap 只应用最小反射补丁；其中 `ModelDbRuntimeContract` 按 API 形状而不是游戏版本解析 `ModelDb.Init`，安全接受无参 `Init()` 和带默认 null 的 `Init(Type[]? injectedModelTypes = null)`，正常 null 路径执行原版模型 two-phase，显式 `Type[]` 保留原方法。它还会在接管前验证模型类型枚举、`GetId(Type)`、可写内容字典、模型 ID storage 与基类构造器；未知参数/返回语义或歧义成员会 fail closed。placeholder 先在内存中完整 staging，再原子写入字典，真实构造完成后 probe 才从 `modeldb_initializing` 进入 `ready`。
+
+当前 full compat `ModEntry.Apply()` 主要顺序：
 
 1. temp 目录配置、build info 日志与 `HarmonyAndroidCompat` 后端准备。Android 上默认贴近 `../s2` 的 minimal bootstrap：不启用旧 native resolver / `DMDType=cecil` override，但会在真正的 `MonoMod.Utils` / `MonoMod.Core` 程序集上强制 MonoMod 使用 Android/Mono 后端，避免 HarmonyOS 等 ROM 被误判为 Posix/Linux 后在 `HarmonyLib.PatchFunctions.UpdateWrapper()` 中抛 `NotImplementedException`；`monomod_android_libc_shim` 仍由 AndroidSystem 按需提供指令缓存刷新和 `/proc/self/mem` executable-page patch fallback。`HarmonyMethodReferenceImporterShim` 会在后续大量 Harmony patch 前自检 `MMReflectionImporter` 是否丢失 STS2 方法引用上的 required/optional custom modifiers，必要时用极窄 postfix 原地修正带 modifiers 的 `sts2` 方法导入，避免普通 MOD patch 原方法体时生成无法绑定的动态 `MemberRef`。`EarlyLocalizationFallbackPatches` 会在普通 MOD 加载前保护 `LocString.GetFormattedText()`：Android/Mono 若在 MOD initializer 的 `PatchAll` 阶段提前运行游戏 UI 类型静态构造、而 `LocManager.Initialize()` 尚未执行，只临时返回 `locTable.locEntryKey` fallback；`LocManager.Initialize()` 正常结束后该 fallback 失效，后续本地化异常仍按原样抛出。`DeferredModPatchQueue` 会在普通 MOD initializer / `PatchAll` 窗口拦截 `PatchProcessor.Patch()`，对目标为 `sts2` 程序集 Godot/UI 类型（`MegaCrit.Sts2.Core.Nodes.*`、`MegaCrit.Sts2.addons.*` 或 `Godot.Node`/`Control` 派生类，且存在静态初始化器）的用户 MOD patch 排队，等 `ExecuteEssential` 完成 `LocManager.Initialize()`、`ModelDb.Init()`、`ModelIdSerializationCache.Init()`、`ModelDb.InitIds()` 以及原版网络 `MessageTypes.Initialize()` / `ActionTypes.Initialize()` 后按原顺序重放；模型类 patch 不进入该队列，避免破坏 MOD 的 `ModelDb.Init` 前置 hook，也不能漏掉原版网络类型表初始化，否则单人战斗结束写 `CombatReplay` 时也会因 `INetAction` 无法映射 ID 而失败。若 MOD 在 `ModelIdSerializationCache.Init()` 前误调用 `AbstractModel.InitId()`，兼容层只跳过该早调用，后续 `ModelDb.InitIds()` 仍会统一完成排序 ID 初始化。早期初始化不得调用 Godot C# API（例如 `OS.GetName()` / `ProjectSettings.GlobalizePath()`），避免 Godot `StringName`/JNI 尚未稳定时崩溃；静态/虚方法 Harmony self-test 默认跳过，仅在 `<files>/launcher/enable_harmony_selftest.flag` 存在时运行，旧 bootstrap 仅在 `<files>/launcher/enable_old_harmony_compat_bootstrap.flag` 存在时作为诊断启用。
 2. `PlatformPatches` 与 `SavePathPatches` 作为保命 patch 最先独立应用；前者跳过桌面 Steam 初始化，后者重定向当前 launch profile 的存档/设置路径。两组 patch 分别捕获异常，避免后续诊断或 UI patch 在特定 ROM 上失败时导致原版 `steam_api64` 路径重新执行。
@@ -278,6 +282,7 @@ OS.GetDataDir()/port_compat.pck
 adb logcat | grep -E 'Sts2|STS2Mobile|GODOT'
 adb shell run-as com.megacrit.sts2re ls files/compat-packs
 adb shell run-as com.megacrit.sts2re cat files/launcher/selected_compat_pack.json
+adb shell run-as com.megacrit.sts2re cat files/launcher/offline-bootstrap-probe.json
 adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 adb shell run-as com.megacrit.sts2re cat files/logs/android-launch.log
 adb shell run-as com.megacrit.sts2re cat files/logs/sts2.log
