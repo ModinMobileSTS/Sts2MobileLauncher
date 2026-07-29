@@ -1,7 +1,7 @@
 # AGENTS.md
 
 面向后续编码代理/维护者的项目速览与操作约定。当前目录为本仓库根目录。
-最后同步：2026-07-28。
+最后同步：2026-07-29。
 
 ## 0. 总原则
 
@@ -212,7 +212,7 @@ s2_re/
   - `PayloadManager`：导入/校验/安装 PC 游戏 zip 或 SteamPipe 下载目录到 payload store。
   - `LaunchProfileManager`：维护 `<files>/payloads/<payload_id>/game/` 与 `<files>/instances/<profile_id>/instance.json`，支持同一游戏本体创建多个全局/隔离存档和 MOD 的启动配置，并把 `compat_pack_id` 作为每个配置自己的选择；schema 2 family 兼容包还会保存 `compat_target_id`。从旧 schema 1 bundled 包升级到 flat matrix 内置包时会按旧 pack id / payload 匹配迁移到 `sts2-android-compat` family target。切换配置不复制 PCK。游戏本体缺失时配置仍保留且可选择/编辑，启动时提示用户重新导入、下载或重新绑定。
   - `GameBodyVersionManager`：legacy facade，版本选择委托给 `LaunchProfileManager`，不再执行 active/归档目录复制。
-  - `CompatPackManager`：安装、导入、删除兼容包；从 APK assets 安装内置兼容包；支持 schema 1 单目标包和 schema 2 family 包的 `targets[]` variant；按 payload manifest 的 dll sha/version 匹配目标版本供新建/编辑启动配置使用，`sts2_dll_sha256` 可为单字符串或多 SHA 数组且任一元素都可精确命中，schema 2 family 包优先于旧 schema 1 包。版本详情会显示全部短 SHA，ADB 状态同时输出 legacy 主 SHA 与完整数组。安装 bundled 包后会触发旧 bundled pack id 到 flat family target 的启动配置迁移。兼容包页不再提供全局“选中”动作，删除兼容包也不静默替换各启动配置的 `compat_pack_id` / `compat_target_id`。
+  - `CompatPackManager`：安装、导入、删除兼容包；从 APK assets 安装内置兼容包；支持 schema 1 单目标包和 schema 2 family 包的 `targets[]` variant；按 payload manifest 的 dll sha/version 匹配目标版本供新建/编辑启动配置使用，`sts2_dll_sha256` 可为单字符串或多 SHA 数组且任一元素都可精确命中，schema 2 family 包优先于旧 schema 1 包。版本详情会显示全部短 SHA，ADB 状态同时输出 legacy 主 SHA 与完整数组。安装 bundled 包后会触发旧 bundled pack id 到 flat family target 的启动配置迁移。兼容包页不再提供全局“选中”动作，schema 2 family 目标按 `pack_id` 自动分组并可折叠，子项展示 target 名称/支持版本/通道；删除兼容包也不静默替换各启动配置的 `compat_pack_id` / `compat_target_id`。
   - `GameLaunchPreparationManager`：启动前后台准备 Mono publish 目录、兼容包 dll、overlay pck、payload assembly 和纹理缓存清理。
   - `DebugAutomationActivity` / `DebugAutomationReceiver`：ADB 自动化调试入口；host 侧 `tools/debug/sts2-adb-debug.sh` 用 `run-as` 写入 `<files>/automation/token.txt` 后，通过 exported 调试 Activity 触发状态查询、配置修改、payload/compat/MOD 私有 inbox 导入、启动准备、启动游戏和日志/性能采集。Receiver 仅作为兼容广播入口转交 Activity；长任务不要直接放在 BroadcastReceiver 生命周期内。
 - `GodotApp`：真正的 Godot 游戏 Activity。

@@ -525,8 +525,10 @@ public final class CompatPackManager {
 					target.optString("match_mode", manifest.optString("match_mode", "")),
 					target.optInt("selection_priority", manifest.optInt("selection_priority", 0)),
 					manifest.optString("display_name", packId),
+					target.optString("display_name", ""),
 					manifest.optString("compat_version", ""),
-					manifest.optString("channel", target.optString("channel", "")),
+					manifest.optString("channel", ""),
+					target.optString("channel", manifest.optString("channel", "")),
 					targetVersion,
 					targetVersions,
 					target.optString("commit", ""),
@@ -556,8 +558,10 @@ public final class CompatPackManager {
 			manifest.optString("match_mode", ""),
 			manifest.optInt("selection_priority", 0),
 			manifest.optString("display_name", packId),
+			target == null ? "" : target.optString("display_name", ""),
 			manifest.optString("compat_version", ""),
 			manifest.optString("channel", ""),
+			target == null ? manifest.optString("channel", "") : target.optString("channel", manifest.optString("channel", "")),
 			targetVersion,
 			targetVersions,
 			target == null ? "" : target.optString("commit", ""),
@@ -985,8 +989,10 @@ public final class CompatPackManager {
 		public final String matchMode;
 		public final int selectionPriority;
 		public final String displayName;
+		public final String targetDisplayName;
 		public final String compatVersion;
 		public final String channel;
+		public final String targetChannel;
 		public final String targetVersion;
 		public final List<String> targetVersions;
 		public final String targetCommit;
@@ -999,15 +1005,17 @@ public final class CompatPackManager {
 		public final JSONObject manifest;
 		public final boolean ready;
 
-		CompatPack(String packId, String targetId, String packKind, String matchMode, int selectionPriority, String displayName, String compatVersion, String channel, String targetVersion, List<String> targetVersions, String targetCommit, List<String> targetSts2DllSha256s, long installedAtUnix, File dir, File dllFile, File overlayPckFile, JSONObject manifest, boolean ready) {
+		CompatPack(String packId, String targetId, String packKind, String matchMode, int selectionPriority, String displayName, String targetDisplayName, String compatVersion, String channel, String targetChannel, String targetVersion, List<String> targetVersions, String targetCommit, List<String> targetSts2DllSha256s, long installedAtUnix, File dir, File dllFile, File overlayPckFile, JSONObject manifest, boolean ready) {
 			this.packId = packId == null ? "" : packId;
 			this.targetId = targetId == null ? "" : targetId;
 			this.packKind = packKind == null ? "" : packKind;
 			this.matchMode = matchMode == null ? "" : matchMode;
 			this.selectionPriority = selectionPriority;
 			this.displayName = TextUtils.isEmpty(displayName) ? this.packId : displayName;
+			this.targetDisplayName = targetDisplayName == null ? "" : targetDisplayName;
 			this.compatVersion = compatVersion == null ? "" : compatVersion;
 			this.channel = channel == null ? "" : channel;
+			this.targetChannel = targetChannel == null ? "" : targetChannel;
 			this.targetVersion = targetVersion == null ? "" : targetVersion;
 			this.targetVersions = targetVersions == null ? new ArrayList<>() : new ArrayList<>(targetVersions);
 			if (this.targetVersions.isEmpty() && !TextUtils.isEmpty(this.targetVersion)) {

@@ -1026,6 +1026,18 @@
     <string name="version_manager_profile_list_subtitle">Saves: %1$s · Compat: %2$s</string>
     <string name="version_manager_payload_list_subtitle">Size: %1$s · Files: %2$d</string>
     <string name="version_manager_compat_list_subtitle">Version: %1$s</string>
+    <string name="version_manager_compat_group_subtitle">Compat layer %1$s · %2$d target(s)</string>
+    <string name="version_manager_compat_group_offline_subtitle">Offline fallback · Compat layer %1$s · %2$d target(s)</string>
+    <string name="version_manager_compat_group_expand">Expand compatibility targets</string>
+    <string name="version_manager_compat_group_collapse">Collapse compatibility targets</string>
+    <string name="version_manager_compat_offline_target_title">Generic offline fallback</string>
+    <string name="version_manager_compat_any_version">Any imported version</string>
+    <string name="version_manager_compat_target_versions">Supports %1$s</string>
+    <string name="version_manager_compat_target_versions_channel">Supports %1$s · %2$s</string>
+    <string name="version_manager_compat_channel_stable">Stable</string>
+    <string name="version_manager_compat_channel_beta">Beta</string>
+    <string name="version_manager_compat_channel_fallback">Offline fallback</string>
+    <string name="version_manager_compat_channel_mixed">Mixed</string>
     <string name="version_manager_select_game_body">Select body</string>
     <string name="version_manager_game_ready_format">Selected game: %1$s</string>
     <string name="version_manager_selected_compat_format">Compat: %1$s · target %2$s</string>
@@ -1053,6 +1065,8 @@
     <string name="version_manager_detail_save_mode">Save/settings root</string>
     <string name="version_manager_detail_mods_mode">MOD root</string>
     <string name="version_manager_detail_compat_pack">Compatibility pack</string>
+    <string name="version_manager_detail_parent_compat_pack">Parent compatibility pack</string>
+    <string name="version_manager_detail_target_id">Target ID</string>
     <string name="version_manager_detail_game_version">Game version</string>
     <string name="version_manager_detail_commit">Commit</string>
     <string name="version_manager_detail_sts2_dll_sha">sts2.dll SHA-256</string>
@@ -1066,6 +1080,7 @@
     <string name="import_compat_pack">Import compat pack</string>
     <string name="install_bundled_compat_packs">Install bundled packs</string>
     <string name="version_manager_select">Select</string>
+    <string name="version_manager_delete_entire_compat_pack">Delete entire compatibility pack</string>
     <string name="status_busy_import_compat_pack">Importing compatibility pack…</string>
     <string name="status_import_compat_pack_done">Compatibility pack installed: %1$s</string>
     <string name="status_busy_install_bundled_compat">Installing bundled compatibility packs…</string>
@@ -1073,7 +1088,7 @@
     <string name="status_busy_delete_compat_pack">Deleting compatibility pack…</string>
     <string name="status_delete_compat_pack_done">Compatibility pack deleted.</string>
     <string name="delete_compat_pack_confirm_title">Delete compatibility pack?</string>
-    <string name="delete_compat_pack_confirm_message">This deletes only the mobile compatibility pack. Launch profiles that referenced it are kept and will show the pack as missing until edited.</string>
+    <string name="delete_compat_pack_confirm_message">This deletes the entire mobile compatibility pack and all of its target variants. Launch profiles that referenced it are kept and will show the pack as missing until edited.</string>
     <string name="status_busy_archive_game_version">Registering selected game body…</string>
     <string name="status_archive_game_version_done">Game body registered: %1$s</string>
     <string name="status_busy_select_game_version">Selecting game body…</string>

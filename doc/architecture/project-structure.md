@@ -122,7 +122,7 @@ Steam 认证状态另存于 Android 加密偏好 `sts2_steam_auth`，不作为�
 当前实现是“payload store + launch profile”的完整多实例模型：
 
 - 导入 PC zip 或 SteamPipe 下载完成后，payload 安装到 `<files>/payloads/<payload_id>/game/`，`payload_id` 由版本、commit 与 payload hash 派生；同一 payload 不再复制到固定 active 目录。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot` 与 `source.steam.*` 中记录 app/depot/manifest/branch、`concurrent_chunks` 等诊断信息。Steam 本体任务目录由 branch、已选 app/depot/manifest 与下载布局版本生成稳定 fingerprint；未完成文件保存在同目录的 `*.steam.part`，重试时逐 chunk 校验后只补缺失内容，完整文件也会先校验再复用。成功导入前所有 part 文件都会完成校验并原子改为正式文件名；旧 `staging-*` / `failed-*` 会清理，其他 fingerprint 任务超过 7 天才清理。
-- 版本页以 Material 3 分段页呈现三类对象：`启动配置`、`游戏本体`、`兼容包`。列表项点击后从底部抽屉查看路径、版本、文件统计等详情；兼容包页只负责安装/导入/删除，具体使用哪个兼容包只能在创建或编辑启动配置时选择。
+- 版本页以 Material 3 分段页呈现三类对象：`启动配置`、`游戏本体`、`兼容包`。列表项点击后从底部抽屉查看路径、版本、文件统计等详情；兼容包页只负责安装/导入/删除，具体使用哪个兼容包只能在创建或编辑启动配置时选择。schema 2 family 兼容包在兼容包页按 `pack_id` 分组显示，组标题展示兼容层版本和目标数量，组内子项展示各 target 的名称、支持游戏版本与通道；折叠只影响界面显示，不改变匹配或启动配置。
 - 版本页维护 `<files>/instances/<profile_id>/instance.json` 启动配置。一个 profile 绑定一个 payload、一个可选 compat pack，并分别记录 save/settings 与 MOD 使用 `global` 还是 `isolated`。schema 2 family 包会额外记录 `compat_target_id`，因此未来停止内置某个旧 target 时，可以只移出该 target 配置，不影响其他 target；旧 bundled schema 1 选择会在新版内置 family 包安装后自动改写为 family pack + target。
 - 切换游戏版本/配置只更新 `<files>/launcher/selected_instance.json` 与 SharedPreferences，不复制 `SlayTheSpire2.pck` 或解压目录；删除游戏本体或兼容包不会删除启动配置，配置会保留缺失引用并在启动前提示。
 - 同一个 payload 可以创建多个 profile：例如同一 beta 本体分别使用全局 MOD、独立 MOD、独立存档等。

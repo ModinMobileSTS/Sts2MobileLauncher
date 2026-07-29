@@ -1025,6 +1025,18 @@
     <string name="version_manager_profile_list_subtitle">存档：%1$s · 兼容：%2$s</string>
     <string name="version_manager_payload_list_subtitle">大小：%1$s · 文件：%2$d 个</string>
     <string name="version_manager_compat_list_subtitle">版本：%1$s</string>
+    <string name="version_manager_compat_group_subtitle">兼容层 %1$s · %2$d 个目标</string>
+    <string name="version_manager_compat_group_offline_subtitle">离线兜底 · 兼容层 %1$s · %2$d 个目标</string>
+    <string name="version_manager_compat_group_expand">展开兼容包目标</string>
+    <string name="version_manager_compat_group_collapse">收起兼容包目标</string>
+    <string name="version_manager_compat_offline_target_title">通用离线兜底</string>
+    <string name="version_manager_compat_any_version">任意导入版本</string>
+    <string name="version_manager_compat_target_versions">支持 %1$s</string>
+    <string name="version_manager_compat_target_versions_channel">支持 %1$s · %2$s</string>
+    <string name="version_manager_compat_channel_stable">稳定</string>
+    <string name="version_manager_compat_channel_beta">Beta</string>
+    <string name="version_manager_compat_channel_fallback">离线兜底</string>
+    <string name="version_manager_compat_channel_mixed">混合</string>
     <string name="version_manager_select_game_body">选择本体</string>
     <string name="version_manager_game_ready_format">已选游戏：%1$s</string>
     <string name="version_manager_selected_compat_format">兼容包：%1$s · 目标 %2$s</string>
@@ -1052,6 +1064,8 @@
     <string name="version_manager_detail_save_mode">存档/设置目录</string>
     <string name="version_manager_detail_mods_mode">MOD 目录</string>
     <string name="version_manager_detail_compat_pack">兼容包</string>
+    <string name="version_manager_detail_parent_compat_pack">所属兼容包</string>
+    <string name="version_manager_detail_target_id">目标 ID</string>
     <string name="version_manager_detail_game_version">游戏版本</string>
     <string name="version_manager_detail_commit">提交</string>
     <string name="version_manager_detail_sts2_dll_sha">sts2.dll SHA-256</string>
@@ -1065,6 +1079,7 @@
     <string name="import_compat_pack">导入兼容包</string>
     <string name="install_bundled_compat_packs">安装内置兼容包</string>
     <string name="version_manager_select">选择</string>
+    <string name="version_manager_delete_entire_compat_pack">删除整个兼容包</string>
     <string name="status_busy_import_compat_pack">正在导入兼容包…</string>
     <string name="status_import_compat_pack_done">兼容包已安装：%1$s</string>
     <string name="status_busy_install_bundled_compat">正在安装内置兼容包…</string>
@@ -1072,7 +1087,7 @@
     <string name="status_busy_delete_compat_pack">正在删除兼容包…</string>
     <string name="status_delete_compat_pack_done">兼容包已删除。</string>
     <string name="delete_compat_pack_confirm_title">删除兼容包？</string>
-    <string name="delete_compat_pack_confirm_message">只会删除该移动端兼容包；引用它的启动配置会保留，并在编辑前显示为兼容包缺失。</string>
+    <string name="delete_compat_pack_confirm_message">会删除整个移动端兼容包及其中的全部目标版本；引用它的启动配置会保留，并在编辑前显示为兼容包缺失。</string>
     <string name="status_busy_archive_game_version">正在登记已选游戏本体…</string>
     <string name="status_archive_game_version_done">游戏本体已登记：%1$s</string>
     <string name="status_busy_select_game_version">正在选择游戏本体…</string>

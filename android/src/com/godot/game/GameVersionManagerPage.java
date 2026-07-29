@@ -26,9 +26,14 @@ import com.google.android.material.shape.ShapeAppearanceModel;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 public final class GameVersionManagerPage {
 	private static final int TAB_PROFILES = 1;
@@ -45,6 +50,7 @@ public final class GameVersionManagerPage {
 	private final CompatPackManager compatPackManager;
 	private final LaunchProfileManager launchProfileManager;
 	private final ExtraSettingsActions actions;
+	private final Set<String> collapsedCompatPackIds = new HashSet<>();
 
 	public GameVersionManagerPage(Context context, ExtraSettingsActions actions) {
 		this.context = context;
@@ -155,7 +161,7 @@ public final class GameVersionManagerPage {
 			return;
 		}
 		if (lastSelectedTab == TAB_COMPAT) {
-			populateCompatTab(content, packs);
+			populateCompatTab(content, packs, selectedProfile);
 			return;
 		}
 		populateProfilesTab(content, payloads, profiles, packs, selectedProfile);
@@ -232,7 +238,7 @@ public final class GameVersionManagerPage {
 		}
 	}
 
-	private void populateCompatTab(LinearLayout content, List<CompatPackManager.CompatPack> packs) {
+	private void populateCompatTab(LinearLayout content, List<CompatPackManager.CompatPack> packs, LaunchProfileManager.LaunchProfile selectedProfile) {
 		LinearLayout actionsRow = ExtraSettingsUi.horizontal(context);
 		MaterialButton importPack = neutralButton(context.getString(R.string.version_manager_import_short), R.drawable.ic_upload_file_24);
 		importPack.setOnClickListener(v -> actions.requestImportCompatPack());
@@ -247,16 +253,184 @@ public final class GameVersionManagerPage {
 			return;
 		}
 
+		for (CompatPackGroup group : groupCompatPacks(packs)) {
+			ExtraSettingsUi.addSmallSpacing(content, buildCompatPackGroup(group, selectedProfile));
+		}
+	}
+
+	private List<CompatPackGroup> groupCompatPacks(List<CompatPackManager.CompatPack> packs) {
+		Map<String, CompatPackGroup> grouped = new LinkedHashMap<>();
+		if (packs == null) {
+			return new ArrayList<>();
+		}
 		for (CompatPackManager.CompatPack pack : packs) {
-			String subtitle = context.getString(R.string.version_manager_compat_list_subtitle, TextUtils.isEmpty(pack.compatVersion) ? context.getString(R.string.unknown) : pack.compatVersion);
-			ExtraSettingsUi.addSmallSpacing(content, listItem(
+			if (pack == null) {
+				continue;
+			}
+			String groupId = TextUtils.isEmpty(pack.packId) ? pack.selectionLabel() : pack.packId;
+			CompatPackGroup group = grouped.get(groupId);
+			if (group == null) {
+				group = new CompatPackGroup(groupId, pack);
+				grouped.put(groupId, group);
+			}
+			group.targets.add(pack);
+		}
+		return new ArrayList<>(grouped.values());
+	}
+
+	private View buildCompatPackGroup(CompatPackGroup group, LaunchProfileManager.LaunchProfile selectedProfile) {
+		LinearLayout root = ExtraSettingsUi.vertical(context);
+		LinearLayout header = ExtraSettingsUi.horizontal(context);
+		header.setGravity(Gravity.CENTER_VERTICAL);
+		header.setPadding(ExtraSettingsUi.dp(context, 4), ExtraSettingsUi.dp(context, 10), 0, ExtraSettingsUi.dp(context, 10));
+		header.setClickable(true);
+		header.setFocusable(true);
+		ExtraSettingsUi.applyRipple(header);
+
+		LinearLayout textColumn = ExtraSettingsUi.vertical(context);
+		TextView title = ExtraSettingsUi.text(context, group.pack.displayName, 14, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, Typeface.BOLD);
+		title.setSingleLine(true);
+		title.setEllipsize(TextUtils.TruncateAt.END);
+		textColumn.addView(title);
+		TextView meta = ExtraSettingsUi.caption(context, compatGroupSubtitle(group));
+		meta.setSingleLine(true);
+		meta.setEllipsize(TextUtils.TruncateAt.END);
+		LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		metaParams.topMargin = ExtraSettingsUi.dp(context, 2);
+		textColumn.addView(meta, metaParams);
+		LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		header.addView(textColumn, textParams);
+
+		MaterialButton expand = ExtraSettingsUi.iconButton(context, R.drawable.ic_expand_less_24);
+		header.addView(expand);
+
+		LinearLayout targets = ExtraSettingsUi.vertical(context);
+		targets.setPadding(ExtraSettingsUi.dp(context, 12), 0, 0, 0);
+		for (CompatPackManager.CompatPack pack : group.targets) {
+			View targetItem = listItem(
 				R.drawable.ic_extension_24,
-				pack.displayName,
-				"",
-				subtitle,
+				compatTargetTitle(pack),
+				isCurrentCompatTarget(pack, selectedProfile) ? context.getString(R.string.version_manager_current_badge) : "",
+				compatTargetSubtitle(pack),
 				v -> showCompatSheet(pack),
 				TextUtils.TruncateAt.MIDDLE
-			));
+			);
+			LinearLayout.LayoutParams targetParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			targetParams.topMargin = targets.getChildCount() == 0 ? 0 : ExtraSettingsUi.dp(context, 4);
+			targets.addView(targetItem, targetParams);
+		}
+		root.addView(header);
+		root.addView(targets);
+
+		boolean collapsed = collapsedCompatPackIds.contains(group.id);
+		targets.setVisibility(collapsed ? View.GONE : View.VISIBLE);
+		setCompatGroupExpandButton(expand, collapsed);
+		View.OnClickListener toggle = v -> {
+			boolean nextCollapsed = !collapsedCompatPackIds.contains(group.id);
+			if (nextCollapsed) {
+				collapsedCompatPackIds.add(group.id);
+			} else {
+				collapsedCompatPackIds.remove(group.id);
+			}
+			targets.setVisibility(nextCollapsed ? View.GONE : View.VISIBLE);
+			setCompatGroupExpandButton(expand, nextCollapsed);
+		};
+		header.setOnClickListener(toggle);
+		expand.setOnClickListener(toggle);
+		return root;
+	}
+
+	private void setCompatGroupExpandButton(MaterialButton button, boolean collapsed) {
+		MaterialSymbols.applyButtonIcon(button, collapsed ? R.drawable.ic_expand_more_24 : R.drawable.ic_expand_less_24, ColorStateList.valueOf(ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT), 24);
+		button.setContentDescription(context.getString(collapsed ? R.string.version_manager_compat_group_expand : R.string.version_manager_compat_group_collapse));
+	}
+
+	private String compatGroupSubtitle(CompatPackGroup group) {
+		String version = TextUtils.isEmpty(group.pack.compatVersion) ? context.getString(R.string.unknown) : group.pack.compatVersion;
+		if (group.pack.isOfflineWildcard()) {
+			return context.getString(R.string.version_manager_compat_group_offline_subtitle, version, group.targets.size());
+		}
+		return context.getString(R.string.version_manager_compat_group_subtitle, version, group.targets.size());
+	}
+
+	private boolean isCurrentCompatTarget(CompatPackManager.CompatPack pack, LaunchProfileManager.LaunchProfile selectedProfile) {
+		return pack != null
+			&& selectedProfile != null
+			&& pack.packId.equals(selectedProfile.compatPackId)
+			&& TextUtils.equals(pack.targetId, selectedProfile.compatTargetId);
+	}
+
+	private String compatTargetTitle(CompatPackManager.CompatPack pack) {
+		if (pack == null) {
+			return context.getString(R.string.unknown);
+		}
+		if (pack.isOfflineWildcard()) {
+			return context.getString(R.string.version_manager_compat_offline_target_title);
+		}
+		if (!TextUtils.isEmpty(pack.targetDisplayName)) {
+			return pack.targetDisplayName;
+		}
+		String versions = compatTargetVersionsLabel(pack);
+		if (!TextUtils.isEmpty(versions) && !context.getString(R.string.unknown).equals(versions)) {
+			return versions;
+		}
+		return TextUtils.isEmpty(pack.targetId) ? pack.displayName : pack.targetId;
+	}
+
+	private String compatTargetSubtitle(CompatPackManager.CompatPack pack) {
+		String versions = compatTargetVersionsLabel(pack);
+		String channel = compatTargetChannelLabel(pack);
+		if (TextUtils.isEmpty(channel)) {
+			return context.getString(R.string.version_manager_compat_target_versions, versions);
+		}
+		return context.getString(R.string.version_manager_compat_target_versions_channel, versions, channel);
+	}
+
+	private String compatTargetVersionsLabel(CompatPackManager.CompatPack pack) {
+		if (pack == null) {
+			return context.getString(R.string.unknown);
+		}
+		if (pack.isOfflineWildcard()) {
+			return context.getString(R.string.version_manager_compat_any_version);
+		}
+		if (pack.targetVersions != null && !pack.targetVersions.isEmpty()) {
+			return TextUtils.join(" / ", pack.targetVersions);
+		}
+		if (!TextUtils.isEmpty(pack.targetVersion)) {
+			return pack.targetVersion;
+		}
+		if (!TextUtils.isEmpty(pack.targetSts2DllSha256)) {
+			return shortHash(pack.targetSts2DllSha256);
+		}
+		return context.getString(R.string.unknown);
+	}
+
+	private String compatTargetDetailLabel(CompatPackManager.CompatPack pack) {
+		if (pack != null && pack.isOfflineWildcard()) {
+			return context.getString(R.string.version_manager_compat_any_version);
+		}
+		return pack == null ? context.getString(R.string.unknown) : pack.targetLabel();
+	}
+
+	private String compatTargetChannelLabel(CompatPackManager.CompatPack pack) {
+		if (pack == null) {
+			return "";
+		}
+		String value = !TextUtils.isEmpty(pack.targetChannel) ? pack.targetChannel : pack.channel;
+		if (TextUtils.isEmpty(value)) {
+			return "";
+		}
+		switch (value.trim().toLowerCase(Locale.ROOT)) {
+			case "stable":
+				return context.getString(R.string.version_manager_compat_channel_stable);
+			case "beta":
+				return context.getString(R.string.version_manager_compat_channel_beta);
+			case "fallback":
+				return context.getString(R.string.version_manager_compat_channel_fallback);
+			case "mixed":
+				return context.getString(R.string.version_manager_compat_channel_mixed);
+			default:
+				return value;
 		}
 	}
 
@@ -423,12 +597,17 @@ public final class GameVersionManagerPage {
 
 	private void showCompatSheet(CompatPackManager.CompatPack pack) {
 		BottomSheetDialog dialog = createBottomSheetDialog();
-		LinearLayout content = buildSheetContent(pack.displayName);
+		LinearLayout content = buildSheetContent(compatTargetTitle(pack));
 		LinearLayout details = sheetDetailsContainer(content);
-		addSheetDetailRow(details, R.drawable.ic_extension_24, R.string.version_manager_detail_target_version, pack.targetLabel());
+		addSheetDetailRow(details, R.drawable.ic_layers_24, R.string.version_manager_detail_parent_compat_pack, pack.displayName);
+		if (!TextUtils.isEmpty(pack.targetId)) {
+			addSheetDetailRow(details, R.drawable.ic_code_24, R.string.version_manager_detail_target_id, pack.targetId);
+		}
+		addSheetDetailRow(details, R.drawable.ic_extension_24, R.string.version_manager_detail_target_version, compatTargetDetailLabel(pack));
 		addSheetDetailRow(details, R.drawable.ic_badge_24, R.string.version_manager_detail_compat_version, TextUtils.isEmpty(pack.compatVersion) ? context.getString(R.string.unknown) : pack.compatVersion);
-		if (!TextUtils.isEmpty(pack.channel)) {
-			addSheetDetailRow(details, R.drawable.ic_layers_24, R.string.version_manager_detail_channel, pack.channel);
+		String channel = compatTargetChannelLabel(pack);
+		if (!TextUtils.isEmpty(channel)) {
+			addSheetDetailRow(details, R.drawable.ic_layers_24, R.string.version_manager_detail_channel, channel);
 		}
 		addSheetDetailRow(details, R.drawable.ic_folder_24, R.string.version_manager_detail_storage_path, pack.dir.getAbsolutePath());
 		if (!pack.targetSts2DllSha256s.isEmpty()) {
@@ -439,7 +618,7 @@ public final class GameVersionManagerPage {
 		}
 
 		LinearLayout actionsLayout = sheetActionsContainer(content);
-		addSheetAction(actionsLayout, errorButton(context.getString(R.string.delete), R.drawable.ic_delete_24, v -> {
+		addSheetAction(actionsLayout, errorButton(context.getString(R.string.version_manager_delete_entire_compat_pack), R.drawable.ic_delete_24, v -> {
 			dialog.dismiss();
 			actions.requestDeleteCompatPack(pack.packId);
 		}));
@@ -686,5 +865,16 @@ public final class GameVersionManagerPage {
 			label.append(hash);
 		}
 		return label.toString();
+	}
+
+	private static final class CompatPackGroup {
+		final String id;
+		final CompatPackManager.CompatPack pack;
+		final List<CompatPackManager.CompatPack> targets = new ArrayList<>();
+
+		CompatPackGroup(String id, CompatPackManager.CompatPack pack) {
+			this.id = id;
+			this.pack = pack;
+		}
 	}
 }
