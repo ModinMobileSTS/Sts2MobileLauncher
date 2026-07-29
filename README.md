@@ -128,7 +128,7 @@ Compile and stage all bundled compatibility artifacts into APK assets:
 ```bash
 tools/android/stage-bundled-compat-artifacts.sh
 ```
-This stages the flattened schema-2 full compatibility family pack from `port-mod/` and the generic `offline-bootstrap/` fallback pack. The offline bootstrap is only auto-matched when an imported game payload has no installed exact SHA/version compatibility pack.
+This stages the flattened schema-2 full compatibility family pack from `port-mod/` and the generic `offline-bootstrap/` fallback pack. The current shared v0.109.x variant keeps the stable `v0.109.0` target id while matching both v0.109.0 and v0.109.1 by their exact original DLL SHA-256 values. A target may declare `sts2_dll_sha256` as either a legacy string or a list of API-compatible hashes. The offline bootstrap is only auto-matched when an imported game payload has no installed exact SHA/version compatibility pack.
 
 If you only need to rebuild the full `port-mod` family pack, use:
 ```bash
@@ -142,10 +142,10 @@ COMPAT_PACK_BUILD_MODE=legacy tools/android/stage-bundled-compat-packs.sh
 When bringing up a new game version, run the source-level port compatibility audit before editing targets or patches:
 ```bash
 tools/port_mod_ast_audit.py \
-  --old-source ../s2_original/s201080 \
-  --new-source ../s2_original/s201090 \
+  --old-source ../s2_original/s201090 \
+  --new-source ../s2_original/s201091 \
   --port-mod port-mod/STS2AndroidPortCompat \
-  --out .agent/reports/v109-port-mod-ast-audit
+  --out .agent/reports/v1091-port-mod-ast-audit
 ```
 See [`doc/build/building-and-packaging.md`](doc/build/building-and-packaging.md) for report details and status meanings.
 

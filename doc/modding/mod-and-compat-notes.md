@@ -110,7 +110,7 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 | `v0.107.0` beta（旧测试） | `v0.107.0-beta` | `.env`: `STS2_ORIGINAL_V1070_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1070_ROOT` | `original-v0.107.0` |
 | `v0.107.1` stable | `v0.107.1` | `.env`: `STS2_ORIGINAL_V1071_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1071_ROOT` | `original-v0.107.1` |
 | `v0.108.0` stable | `v0.108.0` | `.env`: `STS2_ORIGINAL_V1080_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1080_ROOT` | `original-v0.108.0` |
-| `v0.109.0` public beta | `v0.109.0` | `.env`: `STS2_ORIGINAL_V1090_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1090_ROOT` | `original-v0.109.0` |
+| `v0.109.0` / `v0.109.1` public beta | `v0.109.0`（稳定 id，显示 v0.109.x） | `.env`: `STS2_ORIGINAL_V1090_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1090_ROOT`（历史名，指向最新 v0.109.1） | `original-v0.109.0` |
 
 开发步骤建议：
 
@@ -133,7 +133,7 @@ tools/android/stage-bundled-compat-packs.sh
 tools/package/build_importer_apk.sh
 ```
 
-只调试单个 target 时可运行 `(cd port-mod && ./tools/build-compat-matrix.sh --target v0.109.0)`；legacy schema 1 诊断包仍用 `REFERENCE_FLAVOR=original` / `original-v0.106.1` / `original-v0.107.0` 指定对应原版 gate，单独调试 `v0.107.1` / `v0.108.0` / `v0.109.0` 可分别用 `REFERENCE_FLAVOR=original-v0.107.1` / `original-v0.108.0` / `original-v0.109.0`。
+只调试单个 target 时可运行 `(cd port-mod && ./tools/build-compat-matrix.sh --target v0.109.0)`；该稳定 target id 同时覆盖 v0.109.0/v0.109.1，历史 `original-v0.109.0` flavor 应指向最新 v0.109.1 引用。legacy schema 1 诊断包仍用 `REFERENCE_FLAVOR=original` / `original-v0.106.1` / `original-v0.107.0` 指定对应原版 gate，单独调试 `v0.107.1` / `v0.108.0` / `v0.109.x` 可分别用 `REFERENCE_FLAVOR=original-v0.107.1` / `original-v0.108.0` / `original-v0.109.0`。
 
 ## 8. 新增游戏版本 checklist
 
@@ -141,7 +141,7 @@ tools/package/build_importer_apk.sh
 
 1. 准备对应 PC 原版/解包目录或 DLL 引用目录，并在 `.env.example` / 文档中增加对应 `STS2_ORIGINAL_*_REFERENCE_DIR` 说明。
 2. 为新版本定义 `ReferenceFlavor` 到 `CompatReferenceDir` 的解析方式（脚本映射或显式环境变量），不要提交指向个人 workspace 的 symlink。
-3. 在 `port-mod/targets/active/<target_id>/target.json` 新增 target 描述，包含 `target_id`、`versions`、`reference_flavor`、`source`、可选 `sts2_dll_sha256` 与 compile constants。
+3. 在 `port-mod/targets/active/<target_id>/target.json` 新增 target 描述，包含 `target_id`、`versions`、`reference_flavor`、`source`、可选 `sts2_dll_sha256` 与 compile constants；同一 API-compatible variant 支持多个原版 DLL 时，`sts2_dll_sha256` 可写去重后的字符串数组。
 4. 若源码需要版本差异，优先新增 target adapter/capability；只有无法避免时才使用少量条件编译。
 5. 用对应 `ReferenceFlavor` 做 compile gate，并运行 `port-mod/tools/build-compat-matrix.sh` 覆盖所有 active target。
 6. 运行 `tools/android/stage-bundled-compat-packs.sh`。
@@ -158,7 +158,7 @@ tools/package/build_importer_apk.sh
 - Shader/resource overlay 资源应放入 `port-mod/overlay/`，重新打包 `port_compat.pck` 后才能生效。
 - 普通 MOD loader 的目标是尽量复用游戏原本的 scanner、dependency sort 和 TryLoadMod，减少与 PC 行为分叉。
 - LAN 兼容层只适配 Android transport/UI/settings/player/save；`MessageTypes` 消息发现与排序、`NetMessageBus` 序列化/反序列化必须继续由匹配版本的原版程序集负责。不要维护 Android 固定消息表，也不要仅按内置类型重建排序，否则会同时破坏未修改 PC 联机和普通 MOD 自定义 `INetMessage`。
-- `v0.103.x`、`v0.107.1` / `v0.108.0` stable target、`v0.109.0` public beta target、`v0.106.1` beta 与 `v0.107.0` beta target 应保持同一套 Android/Mono MOD 初始化不变式：加载任何 MOD 前只允许预注册原版模型占位；每个 MOD initializer 期间只允许短暂隐藏“非原版类型命中早期原版占位”的 `ModelDb.Contains(Type)` 结果，避免与原版同名的 MOD 模型因 Android 提前占位误报重复；若 MOD 因早期占位误判 ModelDb 已初始化并调用 `AbstractModel.InitId()`，兼容层只在 `ModelIdSerializationCache.Init()` 完成前跳过该次早调用，后续正常 `ModelDb.InitIds()` 会统一设置排序 ID，不得提前动态分配 net ID；MOD 自定义模型占位必须等到所有 MOD Harmony patch 应用后、`ModelDb.Init()` 前再按最终 ID 注册。v0.109.0 的 `ModelDb.Init(Type[]? injectedModelTypes = null)` 正常 null 路径继续走 two-phase 初始化，显式测试注入集合保留原版行为。用户 MOD 在 initializer / `PatchAll` 中 patch STS2 Godot/UI 类型时，`DeferredModPatchQueue` 可将带静态初始化器的 UI patch 延后到 `ExecuteEssential` 完成后重放；不要把普通模型类 patch 一并延后，否则会破坏 MOD 依赖的 `ModelDb.Init` 前置 hook 时序。
+- `v0.103.x`、`v0.107.1` / `v0.108.0` stable target、共享 `v0.109.x` public beta target、`v0.106.1` beta 与 `v0.107.0` beta target 应保持同一套 Android/Mono MOD 初始化不变式：加载任何 MOD 前只允许预注册原版模型占位；每个 MOD initializer 期间只允许短暂隐藏“非原版类型命中早期原版占位”的 `ModelDb.Contains(Type)` 结果，避免与原版同名的 MOD 模型因 Android 提前占位误报重复；若 MOD 因早期占位误判 ModelDb 已初始化并调用 `AbstractModel.InitId()`，兼容层只在 `ModelIdSerializationCache.Init()` 完成前跳过该次早调用，后续正常 `ModelDb.InitIds()` 会统一设置排序 ID，不得提前动态分配 net ID；MOD 自定义模型占位必须等到所有 MOD Harmony patch 应用后、`ModelDb.Init()` 前再按最终 ID 注册。v0.109.0/v0.109.1 托管 API 与方法 IL 相同，`ModelDb.Init(Type[]? injectedModelTypes = null)` 正常 null 路径继续走 two-phase 初始化，显式测试注入集合保留原版行为。用户 MOD 在 initializer / `PatchAll` 中 patch STS2 Godot/UI 类型时，`DeferredModPatchQueue` 可将带静态初始化器的 UI patch 延后到 `ExecuteEssential` 完成后重放；不要把普通模型类 patch 一并延后，否则会破坏 MOD 依赖的 `ModelDb.Init` 前置 hook 时序。
 
 ## 10. MOD 兼容性排查规范
 
@@ -208,24 +208,24 @@ schema 2 family manifest：
   "schema": 2,
   "pack_id": "sts2-android-compat",
   "display_name": "STS2 Android Compatibility",
-  "compat_version": "0.4.1",
+  "compat_version": "0.4.2",
   "channel": "mixed",
   "targets": [
     {
-      "target_id": "v0.108.0",
-      "versions": ["v0.108.0"],
-      "source": "original_pc_reference_v0.108.0",
-      "sts2_dll_sha256": "...",
+      "target_id": "v0.109.0",
+      "versions": ["v0.109.0", "v0.109.1"],
+      "source": "original_pc_reference_v0.109.1",
+      "sts2_dll_sha256": ["<v0.109.0 sha256>", "<v0.109.1 sha256>"],
       "artifacts": {
-        "dll": "variants/v0.108.0/STS2Mobile.dll",
-        "overlay_pck": "variants/v0.108.0/port_compat.pck"
+        "dll": "variants/v0.109.0/STS2Mobile.dll",
+        "overlay_pck": "variants/v0.109.0/port_compat.pck"
       }
     }
   ]
 }
 ```
 
-`CompatPackManager` 对 schema 1 优先用 `target_game.version` 与 payload manifest 的 `version` 精确匹配；对 schema 2 会把 `targets[]` 展开成可选 variant，并优先按 payload 的 `sts2_dll_sha256` 精确匹配，再回落到 `version` / `versions` 列表。启动配置保存 `compat_pack_id`；schema 2 还保存 `compat_target_id`，因此一个 family 包可以覆盖多个游戏版本，也可以在停止维护旧 target 后把它拆成独立 legacy 包。
+`CompatPackManager` 对 schema 1 优先用 `target_game.version` 与 payload manifest 的 `version` 精确匹配；对 schema 2 会把 `targets[]` 展开成可选 variant，并优先按 payload 的 `sts2_dll_sha256` 精确匹配，再回落到 `version` / `versions` 列表。`sts2_dll_sha256` 兼容旧的单字符串和多 SHA 数组，数组任一元素命中都按精确 SHA 评分；版本页显示全部短 SHA，ADB 状态同时输出 legacy 主 SHA 与 `target_sts2_dll_sha256s`。启动配置保存 `compat_pack_id`；schema 2 还保存 `compat_target_id`，因此一个 family 包可以覆盖多个 API-compatible 游戏版本，也可以在停止维护旧 target 后把它拆成独立 legacy 包。
 
 ## 12. 用户 MOD 测试建议
 

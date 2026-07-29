@@ -213,7 +213,7 @@ public final class CompatPackManager {
 		if (pack == null || !pack.ready || identity == null || TextUtils.isEmpty(identity.version)) {
 			return 0;
 		}
-		if (!TextUtils.isEmpty(identity.sts2DllSha256) && identity.sts2DllSha256.equalsIgnoreCase(pack.targetSts2DllSha256)) {
+		if (pack.supportsSts2DllSha256(identity.sts2DllSha256)) {
 			return 400;
 		}
 		if (!pack.isOfflineWildcard() && identity.version.equalsIgnoreCase(pack.targetVersion)) {
@@ -530,7 +530,7 @@ public final class CompatPackManager {
 					targetVersion,
 					targetVersions,
 					target.optString("commit", ""),
-					readTargetDllSha(target),
+					readTargetDllShas(target),
 					manifest.optLong("installed_at_unix", dir.lastModified() / 1000L),
 					dir,
 					dll,
@@ -561,7 +561,7 @@ public final class CompatPackManager {
 			targetVersion,
 			targetVersions,
 			target == null ? "" : target.optString("commit", ""),
-			target == null ? "" : target.optString("sts2_dll_sha256", ""),
+			readTargetDllShas(target),
 			manifest.optLong("installed_at_unix", dir.lastModified() / 1000L),
 			dir,
 			dll,
@@ -590,19 +590,33 @@ public final class CompatPackManager {
 		return versions;
 	}
 
-	private String readTargetDllSha(JSONObject target) {
+	private List<String> readTargetDllShas(JSONObject target) {
+		List<String> hashes = new ArrayList<>();
 		if (target == null) {
-			return "";
+			return hashes;
 		}
-		JSONArray hashes = target.optJSONArray("sts2_dll_sha256");
-		if (hashes != null && hashes.length() > 0) {
-			return hashes.optString(0, "");
+		JSONArray values = target.optJSONArray("sts2_dll_sha256");
+		if (values != null) {
+			for (int i = 0; i < values.length(); i++) {
+				addTargetDllSha(hashes, values.optString(i, ""));
+			}
+			return hashes;
 		}
-		String value = target.optString("sts2_dll_sha256", "");
-		if (!TextUtils.isEmpty(value)) {
-			return value;
+		addTargetDllSha(hashes, target.optString("sts2_dll_sha256", ""));
+		return hashes;
+	}
+
+	private void addTargetDllSha(List<String> hashes, String value) {
+		String normalized = value == null ? "" : value.trim();
+		if (TextUtils.isEmpty(normalized)) {
+			return;
 		}
-		return "";
+		for (String existing : hashes) {
+			if (normalized.equalsIgnoreCase(existing)) {
+				return;
+			}
+		}
+		hashes.add(normalized);
 	}
 
 	private String readArtifactPath(JSONObject target, String key, String fallback) {
@@ -976,6 +990,7 @@ public final class CompatPackManager {
 		public final String targetVersion;
 		public final List<String> targetVersions;
 		public final String targetCommit;
+		public final List<String> targetSts2DllSha256s;
 		public final String targetSts2DllSha256;
 		public final long installedAtUnix;
 		public final File dir;
@@ -984,7 +999,7 @@ public final class CompatPackManager {
 		public final JSONObject manifest;
 		public final boolean ready;
 
-		CompatPack(String packId, String targetId, String packKind, String matchMode, int selectionPriority, String displayName, String compatVersion, String channel, String targetVersion, List<String> targetVersions, String targetCommit, String targetSts2DllSha256, long installedAtUnix, File dir, File dllFile, File overlayPckFile, JSONObject manifest, boolean ready) {
+		CompatPack(String packId, String targetId, String packKind, String matchMode, int selectionPriority, String displayName, String compatVersion, String channel, String targetVersion, List<String> targetVersions, String targetCommit, List<String> targetSts2DllSha256s, long installedAtUnix, File dir, File dllFile, File overlayPckFile, JSONObject manifest, boolean ready) {
 			this.packId = packId == null ? "" : packId;
 			this.targetId = targetId == null ? "" : targetId;
 			this.packKind = packKind == null ? "" : packKind;
@@ -999,7 +1014,8 @@ public final class CompatPackManager {
 				this.targetVersions.add(this.targetVersion);
 			}
 			this.targetCommit = targetCommit == null ? "" : targetCommit;
-			this.targetSts2DllSha256 = targetSts2DllSha256 == null ? "" : targetSts2DllSha256;
+			this.targetSts2DllSha256s = targetSts2DllSha256s == null ? new ArrayList<>() : new ArrayList<>(targetSts2DllSha256s);
+			this.targetSts2DllSha256 = this.targetSts2DllSha256s.isEmpty() ? "" : this.targetSts2DllSha256s.get(0);
 			this.installedAtUnix = installedAtUnix;
 			this.dir = dir;
 			this.dllFile = dllFile;
@@ -1010,6 +1026,18 @@ public final class CompatPackManager {
 
 		public boolean isOfflineWildcard() {
 			return PACK_KIND_OFFLINE_BOOTSTRAP.equals(packKind) && MATCH_MODE_OFFLINE_WILDCARD.equals(matchMode) && targetVersions.contains("*");
+		}
+
+		public boolean supportsSts2DllSha256(String sha256) {
+			if (TextUtils.isEmpty(sha256)) {
+				return false;
+			}
+			for (String supportedSha256 : targetSts2DllSha256s) {
+				if (sha256.equalsIgnoreCase(supportedSha256)) {
+					return true;
+				}
+			}
+			return false;
 		}
 
 		public String targetLabel() {

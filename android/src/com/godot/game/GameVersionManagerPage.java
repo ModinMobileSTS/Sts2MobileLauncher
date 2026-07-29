@@ -431,8 +431,8 @@ public final class GameVersionManagerPage {
 			addSheetDetailRow(details, R.drawable.ic_layers_24, R.string.version_manager_detail_channel, pack.channel);
 		}
 		addSheetDetailRow(details, R.drawable.ic_folder_24, R.string.version_manager_detail_storage_path, pack.dir.getAbsolutePath());
-		if (!TextUtils.isEmpty(pack.targetSts2DllSha256)) {
-			addSheetDetailRow(details, R.drawable.ic_article_24, R.string.version_manager_detail_target_dll_sha, shortHash(pack.targetSts2DllSha256));
+		if (!pack.targetSts2DllSha256s.isEmpty()) {
+			addSheetDetailRow(details, R.drawable.ic_article_24, R.string.version_manager_detail_target_dll_sha, shortHashes(pack.targetSts2DllSha256s));
 		}
 		if (pack.installedAtUnix > 0) {
 			addSheetDetailRow(details, R.drawable.ic_article_24, R.string.version_manager_detail_installed_at, formatTime(pack.installedAtUnix));
@@ -671,5 +671,20 @@ public final class GameVersionManagerPage {
 			return "";
 		}
 		return value.substring(0, Math.min(12, value.length()));
+	}
+
+	private String shortHashes(List<String> values) {
+		StringBuilder label = new StringBuilder();
+		for (String value : values) {
+			String hash = shortHash(value);
+			if (TextUtils.isEmpty(hash)) {
+				continue;
+			}
+			if (label.length() > 0) {
+				label.append(" / ");
+			}
+			label.append(hash);
+		}
+		return label.toString();
 	}
 }

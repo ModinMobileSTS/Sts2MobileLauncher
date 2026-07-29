@@ -977,6 +977,11 @@ final class DebugAutomationRunner {
 		json.put("target_version", pack.targetVersion);
 		json.put("target_label", pack.targetLabel());
 		json.put("target_sts2_dll_sha256", pack.targetSts2DllSha256);
+		JSONArray targetDllShas = new JSONArray();
+		for (String sha256 : pack.targetSts2DllSha256s) {
+			targetDllShas.put(sha256);
+		}
+		json.put("target_sts2_dll_sha256s", targetDllShas);
 		json.put("ready", pack.ready);
 		json.put("dir", pack.dir.getAbsolutePath());
 		json.put("dll", pack.dllFile.getAbsolutePath());

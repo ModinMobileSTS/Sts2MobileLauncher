@@ -1,6 +1,6 @@
 # MOD 与兼容包加载流程
 
-本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。当前说明适用于内置的 `v0.103.x` / `v0.107.1` / `v0.108.0` 正式/稳定兼容 target、当前 `v0.109.0` public-beta target，以及旧 `v0.106.1` / `v0.107.0` beta 兼容 target。
+本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。当前说明适用于内置的 `v0.103.x` / `v0.107.1` / `v0.108.0` 正式/稳定兼容 target、当前共享 `v0.109.x`（v0.109.0/v0.109.1，稳定 target id 为 `v0.109.0`）public-beta target，以及旧 `v0.106.1` / `v0.107.0` beta 兼容 target。
 
 ## 1. 术语
 
@@ -70,7 +70,7 @@ offline bootstrap:
    - 复制到私有临时目录。
    - 安全解压、寻找 `compat_manifest.json`。
    - schema 1 校验根目录 `STS2Mobile.dll` 与 `port_compat.pck` 存在；schema 2 校验 `targets[]` 中每个 artifact 指向的 variant dll/pck 存在。
-   - 普通 full compat 包不允许在版本或 `sts2_dll_sha256` 中使用 `*`。只有 schema 2 且 `pack_kind=offline-bootstrap`、`match_mode=offline-wildcard` 的 target 可以声明完整版本字符串 `*`；`target_id` 和 `sts2_dll_sha256` 仍不允许通配符。
+   - 普通 full compat 包不允许在版本或 `sts2_dll_sha256` 中使用 `*`。`sts2_dll_sha256` 可为 legacy 单字符串，也可为同一 API-compatible variant 的 SHA 数组；精确匹配会遍历全部元素。只有 schema 2 且 `pack_kind=offline-bootstrap`、`match_mode=offline-wildcard` 的 target 可以声明完整版本字符串 `*`；`target_id` 和每个 `sts2_dll_sha256` 仍不允许通配符。
    - 安装到 `<files>/compat-packs/<pack_id>/`。
    - 不会自动把新安装的包设为全局选中包；用户需要在创建或编辑启动配置时选择。
    - 从旧 schema 1 bundled 包升级到 flat matrix 包时，会把启动配置中旧 `sts2-android-compat-v0.*` bundled pack id 自动迁移到 `sts2-android-compat` family 包和对应 `compat_target_id`。例如 `sts2-android-compat-v0.107.0-beta` 会迁移为 `compat_pack_id=sts2-android-compat`、`compat_target_id=v0.107.0-beta`；用户手动导入/选择的非 bundled 包不会被覆盖。
@@ -92,7 +92,7 @@ offline bootstrap:
 4. `PckPatcher` 只修改私有 PCK copy，禁用 Sentry autoload/gdextension 元数据，避免 Android 缺少桌面 Sentry 扩展导致启动前解析错误。
 5. 写入 staging 中的 `.payload_manifest.json`，包含 `release_info`、`version`、`commit`、`sts2_dll_sha256`、PCK patch 结果等。
 6. 按 manifest 身份生成 `payload_id`，原子安装到 `<files>/payloads/<payload_id>/game/`；同一 payload 已存在时只替换 payload store 中的该目录，不再复制到 `<files>/game/`。
-7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload；新建 profile 时会按 payload manifest 中的 `sts2_dll_sha256` 与 `version` 填入推荐 compat pack。匹配评分顺序为：精确 `sts2.dll` SHA、target 主版本、manifest 显式支持版本、offline bootstrap wildcard。schema 2 family 包在同等精确命中时优先；offline bootstrap 只有在没有任何 full compat 包命中当前 payload 时才会自动填入。schema 2 family 包会写入 `compat_pack_id` 和 `compat_target_id`；已有 profile 不会在每次导入/启动时被覆盖，只有旧 bundled schema 1 pack id 到 flat family pack 的升级迁移会自动改写。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot`、`source.steam.depots[]` 与 `source.steam.concurrent_chunks` 中记录。
+7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload；新建 profile 时会按 payload manifest 中的 `sts2_dll_sha256` 与 `version` 填入推荐 compat pack。匹配评分顺序为：命中 target 单 SHA 或 SHA 数组任一元素、target 主版本、manifest 显式支持版本、offline bootstrap wildcard。schema 2 family 包在同等精确命中时优先；offline bootstrap 只有在没有任何 full compat 包命中当前 payload 时才会自动填入。schema 2 family 包会写入 `compat_pack_id` 和 `compat_target_id`；已有 profile 不会在每次导入/启动时被覆盖，只有旧 bundled schema 1 pack id 到 flat family pack 的升级迁移会自动改写。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot`、`source.steam.depots[]` 与 `source.steam.concurrent_chunks` 中记录。v0.109.0/v0.109.1 的 DLL SHA 都由稳定 id `v0.109.0` 的共享 variant 精确匹配。
 8. 旧安装中的 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制。
 
 ## 5. 启动前检查
@@ -230,7 +230,7 @@ OS.GetDataDir()/port_compat.pck
 
 另外 `TransitionMaterialPatches` 会在 `NTransition._Ready` 后复制场景默认 `ShaderMaterial`，并在原版 `AssetCache.GetMaterial()` 返回 `fade_transition_mat.tres` / `fight_transition_mat.tres` 时返回缓存材质的副本。全局 disposal guard 已阻止 cache cleanup 显式释放资源；该补丁仍作为纵深保护，隔离 transition tween 对共享材质状态的修改并兼容旧兼容包行为。
 
-`v0.107.0-beta`、`v0.107.1`、`v0.108.0` 与 `v0.109.0` target 的 `MapDrawingSceneCachePatches` 同样作为资源 owner 纵深保护：它拦截 `NMapDrawings.CreateLineForPlayer()`，让 v107-v109 地图画笔绘制/橡皮线条从 Android 兼容层自持有的 `PackedScene` 实例化，避免长期字段依赖已经离开 cache 索引的场景；橡皮线条会同步刷新 `_eraserMaterial`，保留原版保存时通过材质判断 eraser line 的行为。
+`v0.107.0-beta`、`v0.107.1`、`v0.108.0` 与共享 `v0.109.x` target 的 `MapDrawingSceneCachePatches` 同样作为资源 owner 纵深保护：它拦截 `NMapDrawings.CreateLineForPlayer()`，让 v107-v109 地图画笔绘制/橡皮线条从 Android 兼容层自持有的 `PackedScene` 实例化，避免长期字段依赖已经离开 cache 索引的场景；橡皮线条会同步刷新 `_eraserMaterial`，保留原版保存时通过材质判断 eraser line 的行为。
 
 是否启用由附加设置中的 `shader_compatibility_mode` 控制。
 
@@ -240,7 +240,7 @@ OS.GetDataDir()/port_compat.pck
 
 `ModLoaderPatches` 行为：
 
-- Prefix 替换 `ModManager.Initialize()`，避免 Android 上高风险 IL transpiler；`v0.107.0` 起原方法返回 `Task`，跳过原方法时兼容层会返回 `Task.CompletedTask`，避免 `ExecuteVeryEarly()` `await` 到 `null`。`v0.107.1` 起原版用 `ModManager.State` 取代旧 `_initialized`，兼容层会反射写入 `Initialized`，并继续保留旧字段写入以兼容 `v0.107.0`。`v0.108.0` 保持该路径，并额外处理 `JoinFlow` 构造函数注入 `INetClientGameService`、Spine `SetAnimation()` 返回值移除、`AbstractModel` 构造器改用 `ModelDb.GetByIdOrNull()` 后对两阶段 placeholder 的同 ID 同 type 重复检测，以及原版 `ExecuteEssential()` 新增的 `AssemblyInfo.Init()` / `SavedPropertiesTypeCache.Init()` 启动顺序。`v0.109.0` 延续 Spine/JoinFlow API，并把 `ModelDb.Init` 改为带可选 `Type[]? injectedModelTypes`；兼容层通过 Harmony `__args` 兼容旧无参和新签名，正常 null 路径继续 Android two-phase 初始化，显式测试注入集合保留原版行为。版本新增网络消息继续由原版 `MessageTypes` / `ContentSorter` 初始化自动纳入排序，兼容层不维护版本消息清单。
+- Prefix 替换 `ModManager.Initialize()`，避免 Android 上高风险 IL transpiler；`v0.107.0` 起原方法返回 `Task`，跳过原方法时兼容层会返回 `Task.CompletedTask`，避免 `ExecuteVeryEarly()` `await` 到 `null`。`v0.107.1` 起原版用 `ModManager.State` 取代旧 `_initialized`，兼容层会反射写入 `Initialized`，并继续保留旧字段写入以兼容 `v0.107.0`。`v0.108.0` 保持该路径，并额外处理 `JoinFlow` 构造函数注入 `INetClientGameService`、Spine `SetAnimation()` 返回值移除、`AbstractModel` 构造器改用 `ModelDb.GetByIdOrNull()` 后对两阶段 placeholder 的同 ID 同 type 重复检测，以及原版 `ExecuteEssential()` 新增的 `AssemblyInfo.Init()` / `SavedPropertiesTypeCache.Init()` 启动顺序。`v0.109.0` 延续 Spine/JoinFlow API，并把 `ModelDb.Init` 改为带可选 `Type[]? injectedModelTypes`；v0.109.1 的托管 API 与方法 IL 和 v0.109.0 完全相同，因此复用同一 variant。兼容层通过 Harmony `__args` 兼容旧无参和新签名，正常 null 路径继续 Android two-phase 初始化，显式测试注入集合保留原版行为。版本新增网络消息继续由原版 `MessageTypes` / `ContentSorter` 初始化自动纳入排序，兼容层不维护版本消息清单。
 - 设置原版私有字段 `_settings`、`_fileIo`、`_gameVersion`。
 - 添加 assembly resolve fallback。
 - 为对齐 PC 时序，在用户 MOD 的 Harmony patch 全部应用前不对任何 MOD 模型类型调用 `ModelDb.GetId`/`GetEntry`，也不提前调用完整 `LocManager.Initialize()`。原版模型占位提前到**加载任何 MOD 之前**（`ModLoaderPatches` 触发，原版不带前缀，安全，修复 MOD patch getter / MOD 静态构造引用原版模型的早访问）；每个 MOD initializer 期间只隐藏非原版类型命中早期原版占位的 `ModelDb.Contains(Type)` 结果，避免同名模型误判；如果 MOD 因早期占位误判 ModelDb 已初始化而提前调用 `AbstractModel.InitId()`，兼容层会在 `ModelIdSerializationCache.Init()` 完成前跳过这次调用，等后续 `ModelDb.InitIds()` 统一设置排序 ID，避免提前分配或污染 net ID；MOD 自定义模型占位延迟到 `ModelDb.Init()` 之前的 phase 1，按最终 ID 进行。早期 UI 类型静态构造里的本地化格式化失败由 `EarlyLocalizationFallbackPatches` 临时兜底；直接 patch STS2 Godot/UI 类型且可能触发 `.cctor` 的用户 MOD patch 由 `DeferredModPatchQueue` 排队到 `ExecuteEssential` 初始化完成后重放。

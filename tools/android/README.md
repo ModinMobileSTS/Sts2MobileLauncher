@@ -19,7 +19,9 @@ Important variables in `.env`:
 - `STS2_FMOD_PLUGIN_AAR`, `STS2_CRYPTO_NATIVE_JAR` — runtime artifacts copied
   by `sync-runtime-from-references.sh`.
 - `STS2_ORIGINAL_V103_REFERENCE_DIR`, `STS2_ORIGINAL_V1061_REFERENCE_DIR`, `STS2_ORIGINAL_V1070_REFERENCE_DIR`, `STS2_ORIGINAL_V1071_REFERENCE_DIR`, `STS2_ORIGINAL_V1080_REFERENCE_DIR`, and `STS2_ORIGINAL_V1090_REFERENCE_DIR`
-  (or their `*_ROOT` shortcuts) — original PC compile-gate DLL directories.
+  (or their `*_ROOT` shortcuts) — original PC compile-gate DLL directories. The
+  historical `V1090` name identifies the shared v0.109.x target and should point
+  to the latest verified v0.109.1 reference.
 
 Use:
 
