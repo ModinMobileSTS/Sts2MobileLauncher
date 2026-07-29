@@ -86,7 +86,7 @@ public final class CompatPackManager {
 			return null;
 		}
 		try {
-			return readPack(new File(getCompatPacksRootDir(), id), getSelectedTargetIdIgnoringEnabled());
+			return readSelectionPack(new File(getCompatPacksRootDir(), id), getSelectedTargetIdIgnoringEnabled());
 		} catch (Exception ignored) {
 			return null;
 		}
@@ -141,7 +141,7 @@ public final class CompatPackManager {
 			writeSelectedCompatJson("", null);
 			return;
 		}
-		CompatPack pack = readPack(new File(getCompatPacksRootDir(), packId), targetId);
+		CompatPack pack = readSelectionPack(new File(getCompatPacksRootDir(), packId), targetId);
 		if (pack == null || !pack.ready) {
 			throw new IOException("Compat pack is not installed or incomplete: " + packId + (TextUtils.isEmpty(targetId) ? "" : "/" + targetId));
 		}
@@ -579,6 +579,14 @@ public final class CompatPackManager {
 		return readPack(dir, "");
 	}
 
+	private CompatPack readSelectionPack(File dir, String requestedTargetId) throws Exception {
+		CompatPack pack = readPack(dir, requestedTargetId);
+		if (pack != null && pack.manifest.optInt("schema", 1) >= 2 && TextUtils.isEmpty(sanitizeId(requestedTargetId))) {
+			return null;
+		}
+		return pack;
+	}
+
 	private CompatPack readPack(File dir, String requestedTargetId) throws Exception {
 		List<CompatPack> packs = readPacks(dir);
 		if (packs.isEmpty()) {
@@ -591,6 +599,7 @@ public final class CompatPackManager {
 					return pack;
 				}
 			}
+			return null;
 		}
 		return packs.get(0);
 	}
@@ -1030,7 +1039,7 @@ public final class CompatPackManager {
 				normalizedId = "";
 			}
 			String normalizedTargetId = sanitizeId(compatTargetId);
-			CompatPack pack = TextUtils.isEmpty(normalizedId) ? null : readPack(new File(getCompatPacksRootDir(), normalizedId), normalizedTargetId);
+			CompatPack pack = TextUtils.isEmpty(normalizedId) ? null : readSelectionPack(new File(getCompatPacksRootDir(), normalizedId), normalizedTargetId);
 			writeSelectedCompatJson(normalizedId, pack);
 		} catch (Exception ignored) {
 		}

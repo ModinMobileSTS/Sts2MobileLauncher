@@ -71,6 +71,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	private boolean bundledPayloadAutoExtractCheckRunning;
 	private boolean bundledCompatPackBootstrapFinished;
 	private boolean pendingLauncherDirectLaunch;
+	private boolean pendingCompatRecommendationLaunch;
 	private boolean preLaunchLocalSnapshotCreated;
 	private boolean cleanExitMaintenanceChecked;
 	private int currentTabId = R.id.nav_game;
@@ -278,6 +279,28 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				return;
 			}
 			pendingLauncherDirectLaunch = false;
+			pendingCompatRecommendationLaunch = false;
+			launchGame();
+		});
+	}
+
+	private void runPendingCompatRecommendationLaunch() {
+		if (!pendingCompatRecommendationLaunch || !bundledCompatPackBootstrapFinished) {
+			return;
+		}
+		View anchor = findViewById(android.R.id.content);
+		if (anchor == null) {
+			return;
+		}
+		anchor.post(() -> {
+			if (!pendingCompatRecommendationLaunch || isFinishing() || isDestroyed()) {
+				return;
+			}
+			if (busy || bundledPayloadAutoExtractCheckRunning) {
+				anchor.postDelayed(this::runPendingCompatRecommendationLaunch, 500);
+				return;
+			}
+			pendingCompatRecommendationLaunch = false;
 			launchGame();
 		});
 	}
@@ -328,7 +351,12 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			}
 			CompatPackManager.CompatPack selectedCompatPack = compatPackManager.getSelectedPack();
 			if (selectedCompatPack == null) {
-				showMessage(getString(R.string.launch_requires_compat_pack));
+				if (!bundledCompatPackBootstrapFinished) {
+					pendingCompatRecommendationLaunch = true;
+					showMessage(getString(R.string.status_checking_compat_recommendation));
+					return;
+				}
+				showMissingCompatPackSheet(payloadStatus);
 				return;
 			}
 			if (!compatPackManager.isPackCompatibleWithPayload(selectedCompatPack, payloadStatus.manifest)) {
@@ -697,7 +725,13 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			return null;
 		}
 		for (CompatPackManager.CompatPack pack : packs) {
-			if (pack.packId.equals(packId) && (TextUtils.isEmpty(targetId) || targetId.equals(pack.targetId))) {
+			if (!pack.packId.equals(packId)) {
+				continue;
+			}
+			if (!TextUtils.isEmpty(targetId) && targetId.equals(pack.targetId)) {
+				return pack;
+			}
+			if (TextUtils.isEmpty(targetId) && pack.manifest.optInt("schema", 1) < 2) {
 				return pack;
 			}
 		}
@@ -1190,6 +1224,271 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			})
 			.setPositiveButton(R.string.import_game_payload, (dialog, which) -> requestImportGamePayload())
 			.show();
+	}
+
+	private void showMissingCompatPackSheet(PayloadManager.Status payloadStatus) {
+		CompatRecommendation recommendation = findCompatRecommendation(payloadStatus);
+		BottomSheetDialog dialog = new BottomSheetDialog(this);
+		dialog.setOnShowListener(unused -> {
+			if (dialog.getWindow() != null) {
+				dialog.getWindow().setDimAmount(0.56f);
+			}
+		});
+
+		LinearLayout content = ExtraSettingsUi.vertical(this);
+		content.setPadding(ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 12), ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 32));
+		GradientDrawable background = new GradientDrawable();
+		background.setColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
+		float radius = ExtraSettingsUi.dp(this, 28);
+		background.setCornerRadii(new float[] { radius, radius, radius, radius, 0, 0, 0, 0 });
+		content.setBackground(background);
+
+		View handle = new View(this);
+		GradientDrawable handleBackground = new GradientDrawable();
+		handleBackground.setColor(Color.argb(104, 202, 196, 208));
+		handleBackground.setCornerRadius(ExtraSettingsUi.dp(this, 2));
+		handle.setBackground(handleBackground);
+		LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 32), ExtraSettingsUi.dp(this, 4));
+		handleParams.gravity = Gravity.CENTER_HORIZONTAL;
+		handleParams.bottomMargin = ExtraSettingsUi.dp(this, 24);
+		content.addView(handle, handleParams);
+
+		content.addView(ExtraSettingsUi.text(this, R.string.launch_compat_recommendation_sheet_title, 22, ExtraSettingsUi.COLOR_ON_SURFACE, android.graphics.Typeface.BOLD));
+		TextView introduction = ExtraSettingsUi.body(this, R.string.launch_compat_recommendation_sheet_message);
+		LinearLayout.LayoutParams introductionParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		introductionParams.topMargin = ExtraSettingsUi.dp(this, 8);
+		content.addView(introduction, introductionParams);
+
+		TextView gameIdentity = ExtraSettingsUi.caption(this, buildCompatRecommendationPayloadLabel(payloadStatus));
+		gameIdentity.setTextIsSelectable(true);
+		LinearLayout.LayoutParams gameIdentityParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		gameIdentityParams.topMargin = ExtraSettingsUi.dp(this, 10);
+		content.addView(gameIdentity, gameIdentityParams);
+
+		View recommendationCard = recommendation == null
+			? buildNoCompatRecommendationCard()
+			: buildCompatRecommendationCard(recommendation);
+		LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		cardParams.topMargin = ExtraSettingsUi.dp(this, 18);
+		content.addView(recommendationCard, cardParams);
+
+		LinearLayout actions = ExtraSettingsUi.vertical(this);
+		LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		actionsParams.topMargin = ExtraSettingsUi.dp(this, 20);
+		content.addView(actions, actionsParams);
+
+		if (recommendation != null) {
+			int useLabel = recommendation.kind == CompatRecommendationKind.OFFLINE
+				? R.string.launch_compat_use_offline_recommendation
+				: R.string.launch_compat_use_recommendation;
+			MaterialButton useRecommendation = ExtraSettingsUi.filledButton(this, useLabel, R.drawable.ic_check_circle_24);
+			useRecommendation.setAllCaps(false);
+			useRecommendation.setMinHeight(ExtraSettingsUi.dp(this, 48));
+			useRecommendation.setOnClickListener(v -> applyCompatRecommendationAndContinue(dialog, recommendation));
+			actions.addView(useRecommendation, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		}
+
+		MaterialButton manage = ExtraSettingsUi.outlineButton(this, R.string.launch_compat_open_management, R.drawable.ic_layers_24);
+		manage.setAllCaps(false);
+		manage.setMinHeight(ExtraSettingsUi.dp(this, 48));
+		manage.setOnClickListener(v -> {
+			dialog.dismiss();
+			openCompatPackManagement();
+		});
+		LinearLayout.LayoutParams manageParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		manageParams.topMargin = recommendation == null ? 0 : ExtraSettingsUi.dp(this, 10);
+		actions.addView(manage, manageParams);
+
+		dialog.setContentView(content);
+		dialog.show();
+	}
+
+	private CompatRecommendation findCompatRecommendation(PayloadManager.Status payloadStatus) {
+		if (payloadStatus == null || payloadStatus.manifest == null) {
+			return null;
+		}
+		List<CompatPackManager.CompatPack> installedPacks = compatPackManager.listInstalledPacks();
+		List<CompatPackManager.CompatPack> fullPacks = new ArrayList<>();
+		List<CompatPackManager.CompatPack> offlinePacks = new ArrayList<>();
+		for (CompatPackManager.CompatPack pack : installedPacks) {
+			if (pack == null || !pack.ready) {
+				continue;
+			}
+			if (pack.isOfflineWildcard()) {
+				offlinePacks.add(pack);
+			} else if (!compatPackManager.isOfflineBootstrapPack(pack)) {
+				fullPacks.add(pack);
+			}
+		}
+
+		CompatPackManager.CompatPack match = compatPackManager.findBestMatch(payloadStatus.manifest, fullPacks);
+		if (match != null) {
+			return new CompatRecommendation(match, isBundledCompatPack(match) ? CompatRecommendationKind.BUNDLED : CompatRecommendationKind.INSTALLED);
+		}
+		match = compatPackManager.findBestMatch(payloadStatus.manifest, offlinePacks);
+		return match == null ? null : new CompatRecommendation(match, CompatRecommendationKind.OFFLINE);
+	}
+
+	private boolean isBundledCompatPack(CompatPackManager.CompatPack pack) {
+		return pack != null
+			&& pack.manifest.optJSONObject("installed_source") != null
+			&& "bundled_asset".equals(pack.manifest.optJSONObject("installed_source").optString("kind", ""));
+	}
+
+	private View buildCompatRecommendationCard(CompatRecommendation recommendation) {
+		boolean offline = recommendation.kind == CompatRecommendationKind.OFFLINE;
+		int accent = offline ? ExtraSettingsUi.COLOR_WARNING : ExtraSettingsUi.COLOR_PRIMARY;
+		MaterialCardView card = ExtraSettingsUi.card(this);
+		card.setCardBackgroundColor(offline ? Color.rgb(54, 43, 31) : Color.rgb(30, 50, 39));
+		card.setStrokeColor(accent);
+		card.setStrokeWidth(ExtraSettingsUi.dp(this, 1));
+		LinearLayout cardContent = ExtraSettingsUi.cardContent(this, card);
+		cardContent.setPadding(ExtraSettingsUi.dp(this, 18), ExtraSettingsUi.dp(this, 16), ExtraSettingsUi.dp(this, 18), ExtraSettingsUi.dp(this, 16));
+
+		LinearLayout header = ExtraSettingsUi.horizontal(this);
+		header.setGravity(Gravity.CENTER_VERTICAL);
+		header.addView(ExtraSettingsUi.iconCircle(
+			this,
+			offline ? R.drawable.ic_extension_24 : R.drawable.ic_auto_awesome_24,
+			offline ? Color.rgb(91, 67, 35) : ExtraSettingsUi.COLOR_PRIMARY_CONTAINER,
+			offline ? ExtraSettingsUi.COLOR_WARNING : ExtraSettingsUi.COLOR_ON_PRIMARY_CONTAINER
+		));
+
+		LinearLayout labels = ExtraSettingsUi.vertical(this);
+		LinearLayout.LayoutParams labelsParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		labelsParams.setMarginStart(ExtraSettingsUi.dp(this, 14));
+		header.addView(labels, labelsParams);
+		int badgeRes = recommendation.kind == CompatRecommendationKind.BUNDLED
+			? R.string.launch_compat_recommendation_bundled_badge
+			: (recommendation.kind == CompatRecommendationKind.INSTALLED
+				? R.string.launch_compat_recommendation_installed_badge
+				: R.string.launch_compat_recommendation_offline_badge);
+		labels.addView(ExtraSettingsUi.text(this, badgeRes, 11, accent, android.graphics.Typeface.BOLD));
+		TextView packName = ExtraSettingsUi.text(this, recommendation.pack.displayName, 17, ExtraSettingsUi.COLOR_ON_SURFACE, android.graphics.Typeface.BOLD);
+		packName.setLineSpacing(ExtraSettingsUi.dp(this, 2), 1f);
+		LinearLayout.LayoutParams packNameParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		packNameParams.topMargin = ExtraSettingsUi.dp(this, 3);
+		labels.addView(packName, packNameParams);
+		cardContent.addView(header);
+
+		TextView target = ExtraSettingsUi.body(this, getString(
+			R.string.launch_compat_recommendation_target_format,
+			compatRecommendationTargetName(recommendation.pack),
+			compatRecommendationVersions(recommendation.pack)
+		));
+		LinearLayout.LayoutParams targetParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		targetParams.topMargin = ExtraSettingsUi.dp(this, 12);
+		cardContent.addView(target, targetParams);
+
+		int descriptionRes = recommendation.kind == CompatRecommendationKind.BUNDLED
+			? R.string.launch_compat_recommendation_bundled_description
+			: (recommendation.kind == CompatRecommendationKind.INSTALLED
+				? R.string.launch_compat_recommendation_installed_description
+				: R.string.launch_compat_recommendation_offline_description);
+		TextView description = ExtraSettingsUi.body(this, descriptionRes);
+		description.setTextColor(offline ? ExtraSettingsUi.COLOR_WARNING : ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT);
+		LinearLayout.LayoutParams descriptionParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		descriptionParams.topMargin = ExtraSettingsUi.dp(this, 8);
+		cardContent.addView(description, descriptionParams);
+		return card;
+	}
+
+	private View buildNoCompatRecommendationCard() {
+		MaterialCardView card = ExtraSettingsUi.card(this);
+		card.setCardBackgroundColor(Color.rgb(54, 43, 31));
+		card.setStrokeColor(ExtraSettingsUi.COLOR_WARNING);
+		LinearLayout cardContent = ExtraSettingsUi.cardContent(this, card);
+		cardContent.setPadding(ExtraSettingsUi.dp(this, 18), ExtraSettingsUi.dp(this, 16), ExtraSettingsUi.dp(this, 18), ExtraSettingsUi.dp(this, 16));
+		cardContent.addView(ExtraSettingsUi.text(this, R.string.launch_compat_no_recommendation_title, 16, ExtraSettingsUi.COLOR_ON_SURFACE, android.graphics.Typeface.BOLD));
+		TextView description = ExtraSettingsUi.body(this, R.string.launch_compat_no_recommendation_message);
+		description.setTextColor(ExtraSettingsUi.COLOR_WARNING);
+		LinearLayout.LayoutParams descriptionParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		descriptionParams.topMargin = ExtraSettingsUi.dp(this, 6);
+		cardContent.addView(description, descriptionParams);
+		return card;
+	}
+
+	private String buildCompatRecommendationPayloadLabel(PayloadManager.Status payloadStatus) {
+		String version = payloadStatus == null || payloadStatus.manifest == null ? "" : compatPackManager.getPayloadVersion(payloadStatus.manifest);
+		if (TextUtils.isEmpty(version) && payloadStatus != null) {
+			version = payloadStatus.shortVersionLabel();
+		}
+		if (TextUtils.isEmpty(version)) {
+			version = getString(R.string.unknown);
+		}
+		String dllSha = payloadStatus == null || payloadStatus.manifest == null ? "" : compatPackManager.getPayloadSts2DllSha256(payloadStatus.manifest);
+		if (!TextUtils.isEmpty(dllSha) && dllSha.length() > 12) {
+			dllSha = dllSha.substring(0, 12);
+		}
+		if (TextUtils.isEmpty(dllSha)) {
+			dllSha = getString(R.string.unknown);
+		}
+		return getString(R.string.launch_compat_recommendation_game_format, version, dllSha);
+	}
+
+	private String compatRecommendationTargetName(CompatPackManager.CompatPack pack) {
+		if (pack == null) {
+			return getString(R.string.unknown);
+		}
+		if (!TextUtils.isEmpty(pack.targetDisplayName)) {
+			return pack.targetDisplayName;
+		}
+		if (!TextUtils.isEmpty(pack.targetId)) {
+			return pack.targetId;
+		}
+		return pack.displayName;
+	}
+
+	private String compatRecommendationVersions(CompatPackManager.CompatPack pack) {
+		if (pack == null) {
+			return getString(R.string.unknown);
+		}
+		if (pack.isOfflineWildcard()) {
+			return getString(R.string.version_manager_compat_any_version);
+		}
+		if (pack.targetVersions != null && !pack.targetVersions.isEmpty()) {
+			return TextUtils.join(" / ", pack.targetVersions);
+		}
+		if (!TextUtils.isEmpty(pack.targetVersion)) {
+			return pack.targetVersion;
+		}
+		if (!TextUtils.isEmpty(pack.targetSts2DllSha256)) {
+			return pack.targetSts2DllSha256.substring(0, Math.min(12, pack.targetSts2DllSha256.length()));
+		}
+		return getString(R.string.unknown);
+	}
+
+	private void applyCompatRecommendationAndContinue(BottomSheetDialog dialog, CompatRecommendation recommendation) {
+		if (busy || recommendation == null || recommendation.pack == null) {
+			return;
+		}
+		busy = true;
+		dialog.dismiss();
+		showMessage(getString(R.string.status_applying_compat_recommendation));
+		new Thread(() -> {
+			try {
+				compatPackManager.selectPack(recommendation.pack.packId, recommendation.pack.targetId);
+				runOnUiThread(() -> {
+					busy = false;
+					refreshCurrentScreen();
+					launchGame();
+				});
+			} catch (Exception exception) {
+				runOnUiThread(() -> {
+					busy = false;
+					showError(exception);
+				});
+			}
+		}, "sts2-apply-compat-recommendation").start();
+	}
+
+	private void openCompatPackManagement() {
+		GameVersionManagerPage.selectCompatTab();
+		if (contentFrame == null) {
+			showMainShell();
+		}
+		selectNavigationItem(R.id.nav_versions);
+		openTab(R.id.nav_versions);
 	}
 
 	private void showCompatDisabledLaunchWarning() {
@@ -1685,12 +1984,14 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 					bundledCompatPackBootstrapFinished = true;
 					refreshCurrentScreen();
 					runPendingLauncherDirectLaunch();
+					runPendingCompatRecommendationLaunch();
 				});
 			} catch (Exception exception) {
 				Log.w(TAG, "Unable to install bundled compatibility packs.", exception);
 				runOnUiThread(() -> {
 					bundledCompatPackBootstrapFinished = true;
 					runPendingLauncherDirectLaunch();
+					runPendingCompatRecommendationLaunch();
 				});
 			}
 		}, "sts2-compat-bootstrap").start();
@@ -2018,6 +2319,22 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				});
 			}
 		}).start();
+	}
+
+	private enum CompatRecommendationKind {
+		BUNDLED,
+		INSTALLED,
+		OFFLINE
+	}
+
+	private static final class CompatRecommendation {
+		final CompatPackManager.CompatPack pack;
+		final CompatRecommendationKind kind;
+
+		CompatRecommendation(CompatPackManager.CompatPack pack, CompatRecommendationKind kind) {
+			this.pack = pack;
+			this.kind = kind;
+		}
 	}
 
 	private interface SteamCloudOperation {

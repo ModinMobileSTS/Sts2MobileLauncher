@@ -124,6 +124,8 @@ tools/android/stage-bundled-compat-artifacts.sh
 ```
 现在默认会从单个 checkout 构建 schema 2 扁平化 full family 包，并同时构建最低优先级的通用离线保底包。离线包的 wildcard 只代表允许尽力尝试，不是任意未来版本的兼容保证；probe v2 只接管已理解的运行时 API 形状，在真实 ModelDb 初始化成功后才标记通过，并避免已知失败的相同 pack/version/payload SHA 组合再次自动选中。可单独运行 `offline-bootstrap/tools/test-offline-contract.sh`，验证合成 API 变更和本机已配置的所有原版引用。
 
+当前启动配置没有可用兼容包时，点击启动不再只显示错误，而会打开推荐 Bottom Sheet：先推荐与当前本体匹配的内置或已安装 full target；只有没有 full target 命中时，才提供通用离线兜底。用户点“使用推荐并继续”后才会修改当前启动配置，也可以直接从面板进入兼容包管理。
+
 只构建 full family 包可运行 `tools/android/stage-bundled-compat-packs.sh`。legacy 分版本分支包仍可用于诊断：
 ```bash
 COMPAT_PACK_BUILD_MODE=legacy tools/android/stage-bundled-compat-packs.sh

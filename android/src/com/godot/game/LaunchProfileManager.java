@@ -778,7 +778,13 @@ public final class LaunchProfileManager {
 		}
 		try {
 			for (CompatPackManager.CompatPack pack : new CompatPackManager(context).listInstalledPacks()) {
-				if (pack.packId.equals(packId) && (TextUtils.isEmpty(targetId) || targetId.equals(pack.targetId))) {
+				if (!pack.packId.equals(packId)) {
+					continue;
+				}
+				if (!TextUtils.isEmpty(targetId) && targetId.equals(pack.targetId)) {
+					return pack;
+				}
+				if (TextUtils.isEmpty(targetId) && pack.manifest.optInt("schema", 1) < 2) {
 					return pack;
 				}
 			}

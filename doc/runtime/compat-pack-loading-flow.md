@@ -103,8 +103,9 @@ offline bootstrap:
 
 1. 检查当前 launch profile 绑定的 payload 是否 ready；配置存在但本体缺失/被删除时不 fallback 到旧 `<files>/game/`，而是提示重新导入/下载、切换配置或编辑配置；没有 payload 时提示导入，直装版可先解压内置 payload。
 2. 如果 Android 兼容包开关启用：
-   - 只读取当前 launch profile 的 `compat_pack_id` / `compat_target_id` 并解析已安装包。
-   - 若配置未选择兼容包或引用的包已删除，阻止启动并提示编辑启动配置。
+   - 只读取当前 launch profile 的 `compat_pack_id` / `compat_target_id` 并解析已安装包；schema 2 family 必须有真实存在的 target，target id 为空或已移除时不得静默回落到 family 第一个 variant。
+   - 若配置未选择兼容包、引用的包已删除或 target 缺失，启动请求会先等待本次 APK 内置兼容包安装 bootstrap 完成，再弹出 MD3 Bottom Sheet。推荐分两层计算：先仅在内置/已安装 full 包中沿用 DLL SHA、主版本、显式支持版本与 schema/priority 评分选最佳 target；只有没有任何 full 命中时，才从未记录当前 tuple 终态失败的 offline wildcard 中选择通用离线包。
+   - Bottom Sheet 展示当前 payload 版本/短 DLL SHA、推荐来源（内置、已安装或通用离线兜底）与具体 target。用户点“使用推荐并继续”后才把 `compat_pack_id + compat_target_id` 写回当前 profile 并重新进入完整启动校验；点“打开兼容包管理”会直接进入“版本 → 兼容包”。没有可安全自动推荐项时只提供管理入口，启动器不会静默覆盖 profile。
    - 若选中包 manifest 支持版本列表与 payload version 不一致，弹出风险对话框，用户可取消、去启动配置页或强制启动。
    - 若选中包是 offline bootstrap wildcard，首次启动当前 `pack_id + target_id + compat_version + source zip SHA + payload version + sts2.dll SHA` 组合时弹出风险确认；确认后只记住该组合。offline bootstrap 运行时原子写 `<files>/launcher/offline-bootstrap-probe.json`：`starting -> patches_installed -> modeldb_initializing -> ready` 表示完整成功；`unsupported_api`、`apply_failed`、`runtime_failed` 是终态失败。版本页选择器会区分“未验证 / 已验证 / 探测失败”；相同 tuple 曾失败时每次启动都显示失败详情并只允许显式重试，不把旧确认当成成功认证。ADB 自动化 `status` 也会把原始 JSON 放入 `offline_bootstrap_probe`。
 3. 启动前 launcher 会为当前 launch profile account root 创建一份本地 `before-launch` 存档快照（默认只保留最近 5 个）。若 Steam Cloud 模式配置为“启动前拉取”或“完整自动”，且已保存 Steam refresh token，则随后拉取当前 account root 的 Steam Cloud 文件；若 WebDAV 模式配置为“启动前拉取”或“完整自动”，且已配置 WebDAV URL，则继续拉取同一 account root 的 WebDAV 文件。任一同步失败时会弹窗允许取消、打开对应云存档中心或跳过同步继续启动。

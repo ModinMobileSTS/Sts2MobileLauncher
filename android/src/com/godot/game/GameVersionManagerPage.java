@@ -45,6 +45,10 @@ public final class GameVersionManagerPage {
 		lastSelectedTab = TAB_PROFILES;
 	}
 
+	public static void selectCompatTab() {
+		lastSelectedTab = TAB_COMPAT;
+	}
+
 	private final Context context;
 	private final PayloadManager payloadManager;
 	private final CompatPackManager compatPackManager;
@@ -801,7 +805,13 @@ public final class GameVersionManagerPage {
 			return null;
 		}
 		for (CompatPackManager.CompatPack pack : packs) {
-			if (packId.equals(pack.packId) && (TextUtils.isEmpty(targetId) || targetId.equals(pack.targetId))) {
+			if (!packId.equals(pack.packId)) {
+				continue;
+			}
+			if (!TextUtils.isEmpty(targetId) && targetId.equals(pack.targetId)) {
+				return pack;
+			}
+			if (TextUtils.isEmpty(targetId) && pack.manifest.optInt("schema", 1) < 2) {
 				return pack;
 			}
 		}
