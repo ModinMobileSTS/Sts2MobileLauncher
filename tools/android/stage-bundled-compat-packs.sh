@@ -76,6 +76,7 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/DeferredModPatchQueue.cs" \
     "STS2AndroidPortCompat/Patches/ModelDbInitPatch.cs" \
     "STS2AndroidPortCompat/Patches/ModLoaderPatches.cs" \
+    "STS2AndroidPortCompat/Patches/RunHistoryPatches.cs" \
     "STS2AndroidPortCompat/Patches/SavePathPatches.cs" \
     "STS2AndroidPortCompat/Patches/RenderDiagnosticPatches.cs" \
     "STS2AndroidPortCompat/Patches/DebugMenuPatches.cs" \
