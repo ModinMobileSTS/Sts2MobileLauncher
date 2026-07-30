@@ -19,6 +19,9 @@ s2_re/
   THIRD_PARTY_LICENSES.md          # 第三方来源与许可证摘要
   android/                         # Android shell + Godot Gradle 工程
   port-mod/                        # git submodule: Android 兼容 patcher 与 target matrix
+    STS2AndroidPortCompat/         # full compat C# / Harmony patch 源码
+    tests/DeferredModPatchQueue.Tests/ # 合成 sts2 fixture；回归 PatchAll 过早 UI cctor，不含商业代码
+    tools/test-deferred-mod-patch-queue.sh # 运行上述 #33 Ekyso Harmony 回归
   offline-bootstrap/               # 通用离线启动层、反射契约解析/测试；输出 schema 2 offline fallback compat pack
   tools/android/                   # runtime 同步、Gradle 环境、compat pack staging
   tools/package/                   # importer/direct APK 打包、payload zip 校验
