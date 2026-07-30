@@ -42,7 +42,6 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
-import android.view.inputmethod.InputMethodManager;
 
 import org.json.JSONObject;
 
@@ -727,7 +726,10 @@ public class GodotApp extends GodotActivity {
 		if (event == null || event.getKeyCode() != KeyEvent.KEYCODE_VOLUME_UP || !isGameWindowInteractive()) {
 			return false;
 		}
-		return isVolumeUpSoftKeyboardEnabled();
+		if (!isVolumeUpSoftKeyboardEnabled()) {
+			return false;
+		}
+		return GodotKeyboardBridge.canShowSoftKeyboard(getGodot(), getGodotKeyboardRootView());
 	}
 
 	private boolean isVolumeUpSoftKeyboardEnabled() {
@@ -835,47 +837,25 @@ public class GodotApp extends GodotActivity {
 			Log.e("GODOT", "Unable to show soft keyboard because current GodotApp instance is null.");
 			return false;
 		}
-		activity.showSoftKeyboardForGame();
+		return activity.showSoftKeyboardForGame();
+	}
+
+	private boolean showSoftKeyboardForGame() {
+		if (!isGameWindowInteractive()) {
+			Log.w("GODOT", "Unable to show soft keyboard because the game window is not interactive.");
+			return false;
+		}
+		runOnUiThread(() -> {
+			if (!isGameWindowInteractive()
+				|| !GodotKeyboardBridge.showSoftKeyboard(getGodot(), getGodotKeyboardRootView())) {
+				Log.w("GODOT", "Godot soft-keyboard request was not accepted.");
+			}
+		});
 		return true;
 	}
 
-	private void showSoftKeyboardForGame() {
-		runOnUiThread(() -> {
-			try {
-				View targetView = getKeyboardTargetView();
-				targetView.setFocusableInTouchMode(true);
-				targetView.requestFocus();
-				targetView.post(() -> {
-					try {
-						InputMethodManager inputMethodManager = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-						if (inputMethodManager == null) {
-							return;
-						}
-						inputMethodManager.restartInput(targetView);
-						boolean shown = inputMethodManager.showSoftInput(targetView, InputMethodManager.SHOW_IMPLICIT);
-						if (!shown) {
-							inputMethodManager.showSoftInput(targetView, InputMethodManager.SHOW_FORCED);
-						}
-					} catch (Exception exception) {
-						Log.e("GODOT", "Failed to show soft keyboard for game input.", exception);
-					}
-				});
-			} catch (Exception exception) {
-				Log.e("GODOT", "Failed to prepare soft keyboard target view.", exception);
-			}
-		});
-	}
-
-	private View getKeyboardTargetView() {
-		Godot godot = getGodot();
-		if (godot != null && godot.getRenderView() != null && godot.getRenderView().getView() != null) {
-			return godot.getRenderView().getView();
-		}
-		View currentFocus = getCurrentFocus();
-		if (currentFocus != null) {
-			return currentFocus;
-		}
-		return getWindow().getDecorView();
+	private View getGodotKeyboardRootView() {
+		return getWindow() == null ? null : getWindow().getDecorView();
 	}
 
 	private File getSettingsFile() {
