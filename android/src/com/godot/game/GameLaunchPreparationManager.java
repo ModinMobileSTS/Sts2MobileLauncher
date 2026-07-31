@@ -443,7 +443,10 @@ public final class GameLaunchPreparationManager {
 			}
 			org.json.JSONObject root = new org.json.JSONObject(FileBrowserSupport.readTextFile(manifestFile));
 			org.json.JSONObject compat = root.optJSONObject("compat");
-			return compat != null && compat.optJSONObject("pck_patches") != null;
+			org.json.JSONObject patches = compat == null ? null : compat.optJSONObject("pck_patches");
+			return patches != null
+				&& patches.optInt("schema", 0) >= PckPatcher.PATCH_SCHEMA
+				&& patches.optBoolean("sentry_bootstrap_supported", false);
 		} catch (Exception exception) {
 			return false;
 		}

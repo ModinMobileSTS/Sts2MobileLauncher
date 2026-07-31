@@ -19,9 +19,9 @@ android.release_keystore_file=${HOME}/.android/debug.keystore
 android.release_keystore_password=android
 android.release_keystore_alias=androiddebugkey
 
-# Compatibility build defaults. The historical flavor name now identifies the shared
-# v0.109.x target; configure STS2_ORIGINAL_V1090_* with the latest v0.109.1 reference.
-compat.default_reference_flavor=original-v0.109.0
+# Compatibility build defaults. v0.110.0 is the current public-beta compile gate;
+# the historical v0.109.x flavor remains available for explicit older-target builds.
+compat.default_reference_flavor=original-v0.110.0
 # Use "matrix" for one schema-2 family pack. Set "legacy" only when you need
 # per-version branch packs for back-compat diagnostics.
 compat.pack_build_mode=matrix

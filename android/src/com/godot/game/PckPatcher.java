@@ -15,18 +15,30 @@ import java.util.Arrays;
  * Length-preserving patches for app-private Godot PCK payload copies.
  *
  * <p>The PC payload declares the Sentry GDExtension/autoload in project metadata.
- * Android builds do not ship that extension, so Godot tries to parse the GDScript
- * autoload before the C# compatibility MOD can run and emits noisy parse errors.
- * This patcher mutates only the extracted private PCK copy, never the user's zip.</p>
+ * Android builds do not ship the desktop extension, and v0.110.0 also moved the
+ * first autoload from GDScript SentryInit to C# SentryBootstrap. Both forms can
+ * run before the compatibility layer, so this patcher disables their metadata in
+ * the extracted private PCK copy without ever mutating the user's zip.</p>
  */
 public final class PckPatcher {
+	public static final int PATCH_SCHEMA = 2;
+
 	private static final String TAG = "Sts2Re";
 	private static final int MAGIC = 0x43504447; // GDPC, little endian int.
 	private static final int HEADER_SIZE = 104;
 	private static final int PACK_REL_FILEBASE = 0x02;
-	private static final byte[] PROJECT_BINARY_SEARCH = "autoload/SentryInit".getBytes(StandardCharsets.UTF_8);
-	private static final byte[] PROJECT_BINARY_REPLACE = "disabled/SentryInit".getBytes(StandardCharsets.UTF_8);
-	private static final byte[] PROJECT_GODOT_SEARCH = "SentryInit=\"*res://addons/sentry/SentryInit.gd\"".getBytes(StandardCharsets.UTF_8);
+	private static final byte[][] PROJECT_BINARY_SEARCHES = {
+		"autoload/SentryInit".getBytes(StandardCharsets.UTF_8),
+		"autoload/SentryBootstrap".getBytes(StandardCharsets.UTF_8),
+	};
+	private static final byte[][] PROJECT_BINARY_REPLACEMENTS = {
+		"disabled/SentryInit".getBytes(StandardCharsets.UTF_8),
+		"disabled/SentryBootstrap".getBytes(StandardCharsets.UTF_8),
+	};
+	private static final byte[][] PROJECT_GODOT_SEARCHES = {
+		"SentryInit=\"*res://addons/sentry/SentryInit.gd\"".getBytes(StandardCharsets.UTF_8),
+		"SentryBootstrap=\"*res://addons/sentry/SentryBootstrap.cs\"".getBytes(StandardCharsets.UTF_8),
+	};
 	private static final byte[] EXTENSION_LIST_SEARCH = "res://addons/sentry/sentry.gdextension".getBytes(StandardCharsets.UTF_8);
 
 	private PckPatcher() {
@@ -88,14 +100,22 @@ public final class PckPatcher {
 				long nextEntryOffset = raf.getFilePointer();
 				if (isProjectBinary(path)) {
 					result.seenProjectBinary = true;
-					if (patchEntryBytes(raf, fileBase + relativeOffset, size, PROJECT_BINARY_SEARCH, PROJECT_BINARY_REPLACE, null)) {
-						result.projectBinaryPatched = true;
+					for (int patchIndex = 0; patchIndex < PROJECT_BINARY_SEARCHES.length; patchIndex++) {
+						if (patchEntryBytes(raf, fileBase + relativeOffset, size, PROJECT_BINARY_SEARCHES[patchIndex], PROJECT_BINARY_REPLACEMENTS[patchIndex], null)) {
+							result.projectBinaryPatched = true;
+						}
+					}
+					if (result.projectBinaryPatched) {
 						writeEntryMd5(raf, fileBase + relativeOffset, size, md5Offset);
 					}
 				} else if (isProjectGodot(path)) {
 					result.seenProjectGodot = true;
-					if (patchEntryBytes(raf, fileBase + relativeOffset, size, PROJECT_GODOT_SEARCH, null, (byte) ';')) {
-						result.projectGodotPatched = true;
+					for (byte[] search : PROJECT_GODOT_SEARCHES) {
+						if (patchEntryBytes(raf, fileBase + relativeOffset, size, search, null, (byte) ';')) {
+							result.projectGodotPatched = true;
+						}
+					}
+					if (result.projectGodotPatched) {
 						writeEntryMd5(raf, fileBase + relativeOffset, size, md5Offset);
 					}
 				} else if (isExtensionList(path)) {
@@ -250,8 +270,9 @@ public final class PckPatcher {
 		public JSONObject toJson() {
 			JSONObject object = new JSONObject();
 			try {
-				object.put("schema", 1);
+				object.put("schema", PATCH_SCHEMA);
 				object.put("sentry_autoload_disabled", seenProjectBinary || seenProjectGodot);
+				object.put("sentry_bootstrap_supported", true);
 				object.put("seen_project_binary", seenProjectBinary);
 				object.put("seen_project_godot", seenProjectGodot);
 				object.put("seen_extension_list", seenExtensionList);

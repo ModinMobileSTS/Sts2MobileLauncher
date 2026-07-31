@@ -30,6 +30,11 @@ PCK_HEADER_SIZE = struct.calcsize(PCK_HEADER_FORMAT)
 PCK_ALIGNMENT = 16
 ZIP_COMPRESSION_LEVEL = 9
 SPINE_IMPORTED_SUFFIXES = (".spatlas", ".spskel")
+SENTRY_AUTOLOAD_BINARY_REPLACEMENTS = (
+    (b"autoload/SentryInit", b"disabled/SentryInit"),
+    (b"autoload/SentryBootstrap", b"disabled/SentryBootstrap"),
+)
+SENTRY_AUTOLOAD_NAMES = ("SentryInit", "SentryBootstrap")
 
 REQUIRED_ZIP_ENTRIES = {
     "release_info.json",
@@ -49,6 +54,7 @@ ALWAYS_KEEP_DATA_BASENAMES = {
     "MonoMod.Backports.dll",
     "MonoMod.ILHelpers.dll",
     "Sentry.dll",
+    "Sentry.Godot.dll",
     "SharpGen.Runtime.dll",
     "SharpGen.Runtime.COM.dll",
     "SmartFormat.dll",
@@ -657,7 +663,11 @@ def patch_project_binary(project_dir: Path) -> bool:
     if not project_binary.is_file():
         return False
     data = project_binary.read_bytes()
-    patched = data.replace(b"autoload/SentryInit", b"disabled/SentryInit")
+    patched = data
+    for search, replacement in SENTRY_AUTOLOAD_BINARY_REPLACEMENTS:
+        if len(search) != len(replacement):
+            raise BuildError("Sentry project.binary replacement must preserve length")
+        patched = patched.replace(search, replacement)
     if patched == data:
         return False
     project_binary.write_bytes(patched)
@@ -708,7 +718,7 @@ def patch_project_files(project_dir: Path) -> dict:
                 saw_etc2_astc = True
             in_rendering = stripped == "[rendering]"
             saw_rendering = saw_rendering or in_rendering
-        if stripped.startswith("SentryInit="):
+        if any(stripped.startswith(name + "=") for name in SENTRY_AUTOLOAD_NAMES):
             raw = ";" + raw
         if stripped.startswith("textures/vram_compression/import_etc2_astc="):
             raw = "textures/vram_compression/import_etc2_astc=true"

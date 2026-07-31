@@ -225,6 +225,9 @@ PY
 _sts2_pack_reference_flavor() {
   local branch="$1"
   case "$branch" in
+    *v0.110.0*|*1100*)
+      printf '%s\n' "original-v0.110.0"
+      ;;
     *v0.108.0*|*1080*)
       printf '%s\n' "original-v0.108.0"
       ;;
@@ -244,7 +247,7 @@ _sts2_pack_reference_flavor() {
       printf '%s\n' "original"
       ;;
     *)
-      sts2_config_value '' compat.default_reference_flavor original-v0.109.0
+      sts2_config_value '' compat.default_reference_flavor original-v0.110.0
       ;;
   esac
 }

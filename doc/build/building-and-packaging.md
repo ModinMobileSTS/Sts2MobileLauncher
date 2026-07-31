@@ -51,6 +51,8 @@ STS2_ORIGINAL_V1071_REFERENCE_DIR=/path/to/v0.107.1/bin/Debug
 STS2_ORIGINAL_V1080_REFERENCE_DIR=/path/to/v0.108.0/bin/Debug
 # Historical V1090 name gates the shared v0.109.x target; point it at the latest v0.109.1 reference.
 STS2_ORIGINAL_V1090_REFERENCE_DIR=/path/to/v0.109.1/bin/Debug
+# Current public-beta target.
+STS2_ORIGINAL_V1100_REFERENCE_DIR=/path/to/v0.110.0/bin/Debug
 ```
 
 `STS2_ORIGINAL_*_REFERENCE_DIR` 目录需包含 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll`。这些是 compile gate 引用，不提交到仓库。
@@ -109,13 +111,15 @@ android/assets/dotnet_bcl/STS2Mobile.dll
 android/assets/port_compat.pck
 ```
 
-默认 `ReferenceFlavor` 来自 `local.properties` 的 `compat.default_reference_flavor`（示例为 `original-v0.109.0`）。可临时覆盖：
+默认 `ReferenceFlavor` 来自 `local.properties` 的 `compat.default_reference_flavor`（示例为 `original-v0.110.0`）。可临时覆盖：
 
 ```bash
 # 当前稳定版 v0.108.0
 REFERENCE_FLAVOR=original-v0.108.0 tools/android/build-port-mod.sh
 
-# 当前 public-beta v0.109.x（历史 flavor 名，引用使用最新 v0.109.1）
+# 当前 public-beta v0.110.0
+REFERENCE_FLAVOR=original-v0.110.0 tools/android/build-port-mod.sh
+# v0.109.x（历史 flavor 名，引用使用最新 v0.109.1）
 REFERENCE_FLAVOR=original-v0.109.0 tools/android/build-port-mod.sh
 # stable v0.107.1
 REFERENCE_FLAVOR=original-v0.107.1 tools/android/build-port-mod.sh
@@ -178,6 +182,7 @@ tools/android/stage-bundled-compat-packs.sh
 - `v0.107.1`（stable，`ReferenceFlavor=original-v0.107.1`）
 - `v0.108.0`（当前稳定版，`ReferenceFlavor=original-v0.108.0`）
 - `v0.109.0`（稳定 target id，显示为 v0.109.x，同时支持 v0.109.0/v0.109.1；历史 `ReferenceFlavor=original-v0.109.0` 指向最新 v0.109.1 引用）
+- `v0.110.0`（当前 public beta，独立 API/protocol target，`ReferenceFlavor=original-v0.110.0`）
 
 同一 variant 覆盖多个 API-compatible 原版 DLL 时，target 的 `sts2_dll_sha256` 可声明为字符串数组；构建脚本会原样写入 schema 2 manifest，启动器会遍历全部元素做精确 SHA 匹配。旧单字符串 manifest 继续兼容。
 
@@ -203,7 +208,7 @@ legacy 模式读取 `tools/android/bundled-compat-packs.json`（或 `local.prope
 
 ```bash
 cd port-mod
-./tools/build-compat-matrix.sh --target v0.109.0
+./tools/build-compat-matrix.sh --target v0.110.0
 ./tools/build-compat-matrix.sh
 ```
 
@@ -215,10 +220,10 @@ cd port-mod
 
 ```bash
 tools/port_mod_ast_audit.py \
-  --old-source ../s2_original/s201090 \
-  --new-source ../s2_original/s201091 \
+  --old-source ../s2_original/s201091 \
+  --new-source ../s2_original/s201100 \
   --port-mod port-mod/STS2AndroidPortCompat \
-  --out .agent/reports/v1091-port-mod-ast-audit
+  --out .agent/reports/v110-port-mod-ast-audit
 ```
 
 输出目录包含：
@@ -315,6 +320,7 @@ tools/package/build_android_body_zip.sh \
 - 临时工程会从 `.tscn` / `.tres` 引用合成缺失的 `.uid` sidecar，确保重导出的 `.godot/uid_cache.bin` 继续匹配原场景里的 `uid://...` 引用，避免 Android 首帧资源绑定崩溃。
 - Spine `.atlas` / `.skel` 导入产物是平台无关资源；若 headless Linux export 环境没有 Spine editor importer，脚本会从源工程 `.godot/imported` 注入 `.spatlas` / `.spskel` 与对应 `.atlas.import` / `.skel.import` remap 到最终 PCK，并在缺失时失败，避免主菜单、地图节点或战斗场景黑屏。
 - 产物仍满足 `validate_payload_zip.py` 与当前 launcher 导入格式，可在导入版 APK 中当普通 payload zip 导入；输入 PC zip 若包含单一顶层目录（例如 `Slay the Spire 2/...`），脚本会自动识别并在输出 zip 中展平。
+- 源工程 patch 同时禁用旧 `SentryInit` 与 v0.110.0 起使用的 C# `SentryBootstrap` autoload，并移除桌面 Sentry GDExtension；managed dependency keep-list 从原版 `sts2.deps.json` 推导，因此 v0.110.0 的 `Sentry.Godot.dll` 会和原版 `sts2.dll` 一起保留。
 
 常用本地示例：
 
@@ -331,11 +337,17 @@ tools/package/build_android_body_zip.sh \
   --source-dir "/path/to/s201080" \
   --out "dist/payload/sts2-v0.108.0-android-body.zip"
 
-# v0.109.1 当前 public beta
+# v0.109.1 旧 public beta
 tools/package/build_android_body_zip.sh \
   --pc-zip "/path/to/sts2-v0.109.1.zip" \
   --source-dir "/path/to/s201091" \
   --out "dist/payload/sts2-v0.109.1-android-body.zip"
+
+# v0.110.0 当前 public beta
+tools/package/build_android_body_zip.sh \
+  --pc-zip "/path/to/sts2-v0.110.0.zip" \
+  --source-dir "/path/to/s201100" \
+  --out "dist/payload/sts2-v0.110.0-android-body.zip"
 ```
 
 临时工程和 Godot 日志默认写入 `.agent/tmp/android-body-build/`，该目录不入库；生成的 zip 应留在 `dist/` 或其他本地输出目录，不要提交。
@@ -378,7 +390,10 @@ rg 'preferredRefreshRate' \
 # payload zip 校验
 tools/package/validate_payload_zip.py "/path/to/SlayTheSpire2.zip"
 
-# 当前 public-beta v0.109.x compile gate（历史 flavor 名，CompatReferenceDir 指向 v0.109.1）
+# 当前 public-beta v0.110.0 compile gate
+REFERENCE_FLAVOR=original-v0.110.0 tools/android/build-port-mod.sh
+
+# 旧 v0.109.x compile gate（历史 flavor 名，CompatReferenceDir 指向 v0.109.1）
 REFERENCE_FLAVOR=original-v0.109.0 tools/android/build-port-mod.sh
 
 # v0.107.1 / v0.103.x / 旧 beta compile gate
@@ -396,8 +411,8 @@ tools/android/generate-material-symbol-vectors.py --check
 
 # standalone dotnet 编译也可显式传入 CompatReferenceDir
 "$DOTNET_BIN" build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj \
-  -p:ReferenceFlavor=original-v0.109.0 \
-  -p:CompatReferenceDir="$STS2_ORIGINAL_V1090_REFERENCE_DIR" -v:q
+  -p:ReferenceFlavor=original-v0.110.0 \
+  -p:CompatReferenceDir="$STS2_ORIGINAL_V1100_REFERENCE_DIR" -v:q
 ```
 
 ## 13. ADB 自动化调试

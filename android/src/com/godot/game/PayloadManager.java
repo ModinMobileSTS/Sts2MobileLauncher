@@ -553,6 +553,18 @@ public final class PayloadManager {
 				root.put("compat", compat);
 			}
 			compat.put("pck_patches", patchResult.toJson());
+			File pck = new File(gameDir, PCK_FILE_NAME);
+			if (pck.isFile()) {
+				String pckSha256 = sha256(pck);
+				JSONObject identity = root.optJSONObject("identity");
+				if (identity != null) {
+					identity.put("pck_sha256_after_patch", pckSha256);
+				}
+				JSONObject game = root.optJSONObject("game");
+				if (game != null) {
+					game.put("pck_sha256_after_patch", pckSha256);
+				}
+			}
 			writeTextFile(manifestFile, root.toString(2));
 		} catch (Exception exception) {
 			android.util.Log.w("Sts2Re", "Failed to update payload manifest with PCK patch info", exception);
