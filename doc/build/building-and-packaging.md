@@ -78,7 +78,7 @@ STS2_ORIGINAL_V1100_REFERENCE_DIR=/path/to/v0.110.0/bin/Debug
 - 默认 build type：`release`，脚本执行 `assembleMonoRelease`
 - ABI：`arm64-v8a`
 - applicationId：`com.megacrit.sts2re`
-- versionName/versionCode：`v0.1.7` / `109`
+- versionName/versionCode：`v0.1.8` / `110`
 
 `release` build type 当前保留 `debuggable true`，便于本地 sideload 和 `run-as` 验证。package 脚本默认使用 `RELEASE_KEYSTORE_*` 或 `local.properties` 中的签名配置；本地测试可使用 Android debug keystore，正式发布前必须重新配置签名和安全策略。
 
