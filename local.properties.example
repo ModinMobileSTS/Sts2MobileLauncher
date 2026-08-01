@@ -19,7 +19,8 @@ android.release_keystore_file=${HOME}/.android/debug.keystore
 android.release_keystore_password=android
 android.release_keystore_alias=androiddebugkey
 
-# Compatibility build defaults. v0.110.0 is the current public-beta compile gate;
+# Compatibility build defaults. The historical v0.110.0 flavor currently gates
+# the shared v0.110.x public-beta target against the latest v0.110.1 reference;
 # the historical v0.109.x flavor remains available for explicit older-target builds.
 compat.default_reference_flavor=original-v0.110.0
 # Use "matrix" for one schema-2 family pack. Set "legacy" only when you need
