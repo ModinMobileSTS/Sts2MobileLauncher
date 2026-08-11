@@ -86,6 +86,7 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/ShaderCompatibilityPatches.cs" \
     "STS2AndroidPortCompat/Patches/AndroidStartupLoadingScreen.cs" \
     "STS2AndroidPortCompat/Patches/AndroidSettingsMerge.cs" \
+    "STS2AndroidPortCompat/Patches/AndroidFontCoveragePatches.cs" \
     "STS2AndroidPortCompat/Patches/AndroidInGameSettingsPatches.cs" \
     "STS2AndroidPortCompat/Patches/LanMultiplayerPatches.cs" \
     "STS2AndroidPortCompat/Patches/MobileTooltipPatches.cs" \
