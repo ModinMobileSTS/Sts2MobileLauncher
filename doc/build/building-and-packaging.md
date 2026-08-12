@@ -93,7 +93,7 @@ tools/android/sync-runtime-from-references.sh
 - Godot Android template AAR/native libs
 - `.NET/Godot` BCL/runtime DLL
 - crypto native jar
-- FMOD AAR，并应用 `tools/android/fmod-shim/` 中的 Java shim
+- FMOD AAR，并应用 `tools/android/fmod-shim/` 中的 Java shim；该 shim 补齐旧 native runtime 需要的 URI 文件描述符、耳机插拔和音频设备枚举回调。同步脚本会替换全部生成的 `FMOD*.class`，并在写回后校验 AAR 内的 `libs/fmod.jar`，缺少目标 jar 或 class 时直接终止构建
 - Gradle wrapper jar
 
 这些产物位于 `android/assets/dotnet_bcl/`、`android/libs/` 等 gitignored 路径，不手工维护。长期源码化状态和剩余阻塞见 [`source-dependencies.md`](source-dependencies.md)。

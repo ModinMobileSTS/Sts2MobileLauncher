@@ -480,7 +480,7 @@ source tools/android/env-from-s2.sh
 tools/android/sync-runtime-from-references.sh
 ```
 
-同步内容包括：Godot template AAR/native libs、`.NET/Godot` BCL/runtime DLL、crypto native jar、FMOD AAR（带 FMOD Java shim patch）、Gradle wrapper jar。
+同步内容包括：Godot template AAR/native libs、`.NET/Godot` BCL/runtime DLL、crypto native jar、FMOD AAR（带 FMOD Java shim patch，补齐 URI 文件描述符、耳机插拔与音频设备枚举回调）、Gradle wrapper jar。FMOD patch 必须替换编译生成的全部 `FMOD*.class`，并在写回后校验 AAR 内 `libs/fmod.jar` 的 class 内容；目标 jar 或任一 class 缺失时构建应 fail closed，不能静默保留未 patch 的 AAR。
 
 ### 9.3 导入版 APK
 

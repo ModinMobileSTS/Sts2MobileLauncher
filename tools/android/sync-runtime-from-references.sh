@@ -49,7 +49,7 @@ patch_fmod_aar() {
   trap 'rm -rf "$work"' RETURN
   mkdir -p "$work/classes"
   "$LOCAL_JAVAC" -source 17 -target 17 -cp "$ANDROID_JAR" -d "$work/classes" "$FMOD_SHIM_SRC"
-  python3 - "$aar" "$work/classes/org/fmod/FMOD.class" <<'PYEOF'
+  python3 - "$aar" "$work/classes" <<'PYEOF'
 import io
 import os
 import sys
@@ -57,31 +57,58 @@ import tempfile
 import zipfile
 
 aar_path = sys.argv[1]
-shim_class_path = sys.argv[2]
-with open(shim_class_path, 'rb') as fh:
-    shim_class = fh.read()
+classes_root = sys.argv[2]
+replacement_names = {}
+for root, _, files in os.walk(classes_root):
+    for name in files:
+        if not name.endswith('.class'):
+            continue
+        path = os.path.join(root, name)
+        relative = os.path.relpath(path, classes_root).replace(os.sep, '/')
+        if relative.startswith('org/fmod/FMOD'):
+            with open(path, 'rb') as fh:
+                replacement_names[relative] = fh.read()
+
+if not replacement_names:
+    raise SystemExit('FMOD shim compilation produced no org/fmod/FMOD class files')
 
 fd, tmp_path = tempfile.mkstemp(prefix=os.path.basename(aar_path), suffix='.tmp', dir=os.path.dirname(aar_path) or '.')
 os.close(fd)
 try:
     with zipfile.ZipFile(aar_path, 'r') as src, zipfile.ZipFile(tmp_path, 'w') as dst:
+        found_fmod_jar = False
         for item in src.infolist():
             data = src.read(item.filename)
             if item.filename == 'libs/fmod.jar':
+                found_fmod_jar = True
                 jar_in = io.BytesIO(data)
                 jar_out = io.BytesIO()
-                replaced = False
+                replaced_names = set()
                 with zipfile.ZipFile(jar_in, 'r') as jsrc, zipfile.ZipFile(jar_out, 'w') as jdst:
                     for jitem in jsrc.infolist():
-                        jdata = jsrc.read(jitem.filename)
-                        if jitem.filename == 'org/fmod/FMOD.class':
-                            jdata = shim_class
-                            replaced = True
+                        jdata = replacement_names.get(jitem.filename, jsrc.read(jitem.filename))
+                        if jitem.filename in replacement_names:
+                            replaced_names.add(jitem.filename)
                         jdst.writestr(jitem, jdata)
-                    if not replaced:
-                        jdst.writestr('org/fmod/FMOD.class', shim_class)
+                    for name, replacement in replacement_names.items():
+                        if name not in replaced_names:
+                            jdst.writestr(name, replacement)
                 data = jar_out.getvalue()
             dst.writestr(item, data)
+
+    if not found_fmod_jar:
+        raise SystemExit(f'FMOD plugin AAR has no libs/fmod.jar: {aar_path}')
+
+    with zipfile.ZipFile(tmp_path, 'r') as patched_aar:
+        with zipfile.ZipFile(io.BytesIO(patched_aar.read('libs/fmod.jar')), 'r') as patched_jar:
+            for name, replacement in replacement_names.items():
+                try:
+                    actual = patched_jar.read(name)
+                except KeyError as error:
+                    raise SystemExit(f'Patched FMOD jar is missing {name}: {aar_path}') from error
+                if actual != replacement:
+                    raise SystemExit(f'Patched FMOD class verification failed for {name}: {aar_path}')
+
     os.replace(tmp_path, aar_path)
 finally:
     if os.path.exists(tmp_path):
