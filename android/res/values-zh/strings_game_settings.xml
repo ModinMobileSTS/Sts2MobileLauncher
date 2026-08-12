@@ -302,7 +302,7 @@
     <string name="show_mobile_emoji_button_switch">显示联机表情按钮</string>
     <string name="show_mobile_emoji_button_help">控制手机版联机时是否显示悬浮表情按钮。想要界面更干净时可以关闭。</string>
     <string name="max_multiplayer_enabled_switch">启用自定义最大联机人数</string>
-    <string name="max_multiplayer_enabled_help">开启后，游戏内设置的最大联机人数才会生效。关闭后使用原版默认的 4 人上限。关闭此项可避免修改函数签名导致的 mod 兼容问题。</string>
+    <string name="max_multiplayer_enabled_help">开启后，游戏内设置的最大联机人数才会生效。超过 4 人仍属实验功能：兼容包已动态扩展宝箱遗物槽和休息点角色槽，但其他原版界面仍可能存在四人假设。关闭后恢复原版 4 人上限，并降低潜在 MOD 冲突。</string>
     <string name="quick_sl_enabled_switch">启用快速 SL（重打按钮）</string>
     <string name="quick_sl_enabled_help">开启后，单人游戏暂停菜单中会添加一个"重打"按钮，可以重新加载上一次自动存档。关闭可避免潜在的 mod 冲突。</string>
     <string name="section_scale">缩放</string>

@@ -202,7 +202,7 @@ legacy 分支构建模式仍可显式启用，用于回退诊断或对照旧发�
 COMPAT_PACK_BUILD_MODE=legacy tools/android/stage-bundled-compat-packs.sh
 ```
 
-legacy 模式读取 `tools/android/bundled-compat-packs.json`（或 `local.properties` 的 `compat.bundled_packs_config`），非当前分支使用 `compat.worktree_root`（默认 `.agent/worktrees/compat-packs/`）临时 worktree 构建；当前分支可直接使用 dirty worktree 方便测试。stage 脚本还会把共享热修源码注入 legacy worktree；该列表必须包含 `ModEntry.cs` 新增的直接依赖，目前包括 `DevTools/*.cs`、`RunHistoryPatches.cs`、`CombatAnimationWarmupPatches.cs` 和资源释放保护所需的 `AndroidAssetCacheLifecyclePatches.cs`。
+legacy 模式读取 `tools/android/bundled-compat-packs.json`（或 `local.properties` 的 `compat.bundled_packs_config`），非当前分支使用 `compat.worktree_root`（默认 `.agent/worktrees/compat-packs/`）临时 worktree 构建；当前分支可直接使用 dirty worktree 方便测试。stage 脚本还会把共享热修源码注入 legacy worktree；该列表必须包含 `ModEntry.cs` 新增的直接依赖，目前包括 `DevTools/*.cs`、`RunHistoryPatches.cs`、`CombatAnimationWarmupPatches.cs`、`ExtendedMultiplayerRoomPatches.cs` 和资源释放保护所需的 `AndroidAssetCacheLifecyclePatches.cs`。
 
 也可以直接在 submodule 中局部构建 matrix 包：
 
@@ -213,6 +213,13 @@ cd port-mod
 ```
 
 `--target` 只构建单个 target；不带参数会构建 `targets/active/` 下所有目标。未来停止维护旧版本时，将对应目录移到 `targets/archived/`，默认 matrix 构建就不会再内置它；需要临时导出 legacy 目标时可用 `BUILD_ARCHIVED_TARGETS=1`。
+
+修改超过四人的房间 UI 适配后，先运行不含商业代码的合成回归，再跑完整 matrix：
+
+```bash
+port-mod/tools/test-extended-multiplayer-rooms.sh
+port-mod/tools/build-compat-matrix.sh
+```
 
 ## 7. 游戏版本更新后的 port-mod 语法树审计
 

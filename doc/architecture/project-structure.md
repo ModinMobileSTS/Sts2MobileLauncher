@@ -21,7 +21,9 @@ s2_re/
   port-mod/                        # git submodule: Android 兼容 patcher 与 target matrix
     STS2AndroidPortCompat/         # full compat C# / Harmony patch 源码
     tests/DeferredModPatchQueue.Tests/ # 合成 sts2 fixture；回归 PatchAll 过早 UI cctor，不含商业代码
+    tests/ExtendedMultiplayerRoom.Tests/ # 合成 Godot/STS2 shape；回归超过四人的宝箱/休息点 UI，不含商业代码
     tools/test-deferred-mod-patch-queue.sh # 运行上述 #33 Ekyso Harmony 回归
+    tools/test-extended-multiplayer-rooms.sh # 运行超过四人房间 UI 合成回归
   offline-bootstrap/               # 通用离线启动层、反射契约解析/测试；输出 schema 2 offline fallback compat pack
   tools/android/                   # runtime 同步、Gradle 环境、compat pack staging
   tools/package/                   # importer/direct APK 打包、payload zip 校验
@@ -52,6 +54,7 @@ s2_re/
 - `GameLaunchPreparationManager`：启动前准备 Mono publish 目录、兼容包 dll、overlay pck、游戏 assemblies、纹理缓存。
 - `HighRefreshRateController`：每个 `GodotApp` Activity 自持有的 Android 高刷新请求器，默认由 `android_high_refresh_rate_enabled=true` 启用。启动、恢复、焦点与 Godot 主循环回调只会启动新的 generation；实际请求必须同时满足 Activity 已 resumed、有焦点、Godot `SurfaceView` 已 attach 且 `Surface` 有效。它绑定唯一渲染 `SurfaceView` 的 `SurfaceHolder.Callback`，用 surface epoch 标识 Surface 生命周期，以 100/500/1500ms 有限重试等待 Surface，并在失去焦点、`onPause`、`onDestroy` 或 `surfaceDestroyed` 时使旧 generation、epoch 与延迟任务失效。Android 12+ 对每个有效 Surface epoch 调用一次 `Surface.setFrameRate(..., CHANGE_FRAME_RATE_ALWAYS)`；对显式高刷 mode 使用精确 preferred mode ID，仅有 alternative refresh rate 时清空 mode ID 并改用 refresh-rate-only 请求。再延迟读取实际 mode/Hz 输出 `verified` 或 `verification_mismatch`；关闭开关时清空 Window 偏好并撤销 Surface frame-rate vote，不使用 `SurfaceControl`。可在设置页“系统”分区的预加载下方关闭。
 - `DisplaySettingsPatches` / `UiScalePatches`：compat 根 Window 的逻辑缩放统一为 `CanvasItems`，前者是 `ContentScaleMode` / `ContentScaleAspect` / `ContentScaleSize` 的唯一协调者。自动比例使用原版 UI scale target，固定比例使用对应 fixed target，`global_scale` 独立作为 `ContentScaleFactor`；`fullscreen_render_size` 不参与逻辑 owner 选择，而是在游戏内修改后立即调整根 renderer render target。compat 会先完成所有高层 `ContentScale*` setter，再只通过 `RenderingServer.ViewportSetRenderDirectToScreen(false)`、`ViewportSetSize()` 与 `ViewportSetGlobalCanvasTransform()` 写入 renderer 侧目标；scene `Window`、输入变换和 Android `Surface` 都保持不变，也绝不调用 `SurfaceHolder.setFixedSize()` 或 `ViewportAttachToScreen()`。`0x0` 会恢复当前 native attachment 尺寸与原始 canvas transform。非零预设按当前 native attachment 宽高比以 Expand 语义覆盖请求矩形，例如 native `2400x1080` 选择 `1280x720` 时实际 render target 为 `1600x720`；自定义目标长边上限为 `max(4096, native 长边)`。根窗口 `SizeChanged`、应用 resume 和一致性 repair 后都会重投 renderer 状态，避免高层 setter 或窗口重建覆盖动态分辨率。
+- `ExtendedMultiplayerRoomPatches`：只处理超过四人的客户端房间 UI 四槽限制，不改变玩法或网络状态。宝箱按同步器当前遗物数动态实例化 holder、用可见槽位保护本地默认焦点并按玩家数分散奖励/剪刀石头布手势；休息点在原版 `_Ready()` 的玩家索引循环前创建有序角色容器。四人及以下保持原版布局；其他原版界面仍可能包含四人假设，因此 `max_multiplayer_players > 4` 仍标记为实验功能。
 - `godot-debug-menu` overlay：打包进 `port-mod/overlay/addons/debug_menu/`，由设置页“系统”分区的性能显示开关控制，默认关闭；开启后下次启动显示 FPS、CPU/GPU frame graph 与渲染器/硬件信息。
 
 ## 4. 版本矩阵

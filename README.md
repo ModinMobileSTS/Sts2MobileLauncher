@@ -41,6 +41,8 @@ This project is an experimental, unofficial Android port and launcher framework 
 2. **Android Compatibility Pack (`port-mod/` submodule):** Acts as a low-level hook (based on Harmony), loaded at the very beginning of the game boot process. It intercepts and fixes various PC-to-Android incompatibilities (e.g., input adaptation, path redirection, PC-specific shader replacement, Mod loader bridging).
 3. **Base Game (Provided by User):** Supplied by the user either by importing the PC version's `SlayTheSpire2.zip` or by legally downloading it via the SteamPipe API after logging into their Steam account within the app.
 
+Custom player counts above four remain experimental. The full compatibility pack now dynamically creates treasure relic holders and rest-site character slots, including safe fifth-player focus and distinct treasure award/fight hand placement; this fixes the five-player chest flow that previously stopped after rock-paper-scissors. Other vanilla screens may still contain four-player assumptions, so the configurable capacity is not a guarantee that every player count is supported end to end.
+
 ---
 
 ## Legal Disclaimer

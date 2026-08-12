@@ -302,7 +302,7 @@
     <string name="show_mobile_emoji_button_switch">Show multiplayer emoji button</string>
     <string name="show_mobile_emoji_button_help">Controls whether the floating emoji button is shown in multiplayer on mobile. Turn this off if you want a cleaner screen.</string>
     <string name="max_multiplayer_enabled_switch">Enable custom max multiplayer players</string>
-    <string name="max_multiplayer_enabled_help">When enabled, the in-game max multiplayer players setting takes effect. When disabled, the vanilla default of 4 players is used. Turning this off avoids signature changes that may conflict with some mods.</string>
+    <string name="max_multiplayer_enabled_help">When enabled, the in-game max player setting takes effect. More than 4 players is experimental: the compatibility pack expands treasure relic and rest-site character slots, but other vanilla screens may still assume 4 players. Disable this to use the vanilla 4-player limit and reduce potential MOD conflicts.</string>
     <string name="quick_sl_enabled_switch">Enable quick save/load (retry button)</string>
     <string name="quick_sl_enabled_help">When enabled, a Retry button is added to the pause menu during single-player runs, allowing you to reload the last autosave. Turn this off to avoid potential mod conflicts.</string>
     <string name="section_scale">Scale</string>
