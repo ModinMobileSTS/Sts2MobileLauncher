@@ -31,7 +31,8 @@ cp local.properties.example local.properties
 | `STS2_ORIGINAL_V1071_ROOT` 或 `STS2_ORIGINAL_V1071_REFERENCE_DIR` | v0.107.1 stable original compile gate 引用。 |
 | `STS2_ORIGINAL_V1080_ROOT` 或 `STS2_ORIGINAL_V1080_REFERENCE_DIR` | v0.108.0 stable original compile gate 引用。 |
 | `STS2_ORIGINAL_V1090_ROOT` 或 `STS2_ORIGINAL_V1090_REFERENCE_DIR` | 共享 v0.109.x target 的 original compile gate；变量名为兼容旧脚本保留，应指向最新 v0.109.1 引用。 |
-| `STS2_ORIGINAL_V1100_ROOT` 或 `STS2_ORIGINAL_V1100_REFERENCE_DIR` | 共享 v0.110.x public-beta target 的 original compile gate；历史变量名，当前应指向最新 v0.110.1 引用。 |
+| `STS2_ORIGINAL_V1100_ROOT` 或 `STS2_ORIGINAL_V1100_REFERENCE_DIR` | 共享 v0.110.x public-beta target 的 original compile gate；历史变量名，应指向 v0.110.1 引用。 |
+| `STS2_ORIGINAL_V1110_ROOT` 或 `STS2_ORIGINAL_V1110_REFERENCE_DIR` | 当前 v0.111.0 public-beta 独立 target 的 original compile gate。 |
 | `RELEASE_KEYSTORE_FILE` / `RELEASE_KEYSTORE_PASSWORD` / `RELEASE_KEYSTORE_ALIAS` | 本地 APK 签名参数。默认可用 Android debug keystore，正式发布请改为私有 release keystore。 |
 
 可选快捷项：
@@ -52,7 +53,7 @@ cp local.properties.example local.properties
 | `android.importer.dist` | `dist/sts2-re-importer.apk` | 导入版稳定副本。 |
 | `android.direct.dist` | `dist/sts2-re-direct.apk` | 直装版稳定副本。 |
 | `android.release_keystore_*` | debug keystore 兼容默认值 | 本地签名 fallback；更建议把密码类值放到 `.env` 或 CI secrets。 |
-| `compat.default_reference_flavor` | `original-v0.110.0` | 共享 v0.110.x public-beta fallback 的默认 compile gate；历史 flavor 名称保留，当前引用应指向 v0.110.1；旧 v0.109.x flavor 仍可显式选择。 |
+| `compat.default_reference_flavor` | `original-v0.111.0` | 当前 v0.111.0 public-beta fallback 的默认 compile gate；旧 v0.110.x / v0.109.x flavor 仍可显式选择。 |
 | `compat.pack_build_mode` | `matrix` | `matrix` 使用 `port-mod/targets/active/*/target.json` 从单 checkout 构建 schema 2 family 包；`legacy` 使用多分支/worktree 构建 schema 1 包，仅用于回退诊断。 |
 | `compat.bundled_packs_config` | `tools/android/bundled-compat-packs.json` | 内置兼容包列表。 |
 | `compat.asset_dir` | `android/assets/compat_packs` | 内置兼容包输出到 APK assets 的目录；生成 zip 已 gitignore，不提交。 |
@@ -104,6 +105,7 @@ DOTNET_BIN=/path/to/dotnet
 STS2_ANDROID_RUNTIME_REFERENCE_ROOT=/path/to/reference-launcher/android
 STS2_ORIGINAL_V103_REFERENCE_DIR=/path/to/s21032/.godot/mono/temp/bin/Debug
 STS2_ORIGINAL_V1061_REFERENCE_DIR=/path/to/s201061/.godot/mono/temp/bin/Debug
+STS2_ORIGINAL_V1110_REFERENCE_DIR=/path/to/v0.111.0/data_sts2_windows_x86_64
 ```
 
 `port-mod/refs/*/*.dll` symlink 不再是构建脚本所需输入；如需 standalone IDE 编译，可以在本地自行放置或用环境变量传 `CompatReferenceDir`，但不要提交游戏/运行时 DLL 或指向个人目录的 symlink。

@@ -15,8 +15,8 @@ import java.util.Arrays;
  * Length-preserving patches for app-private Godot PCK payload copies.
  *
  * <p>The PC payload declares the Sentry GDExtension/autoload in project metadata.
- * Android builds do not ship the desktop extension, and v0.110.0 also moved the
- * first autoload from GDScript SentryInit to C# SentryBootstrap. Both forms can
+ * Android builds do not ship the desktop extension, and v0.110.0 and later use
+ * the C# SentryBootstrap autoload instead of the earlier GDScript SentryInit. Both forms can
  * run before the compatibility layer, so this patcher disables their metadata in
  * the extracted private PCK copy without ever mutating the user's zip.</p>
  */

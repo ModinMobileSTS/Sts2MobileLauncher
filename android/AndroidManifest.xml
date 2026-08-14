@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:versionCode="110"
-    android:versionName="v0.1.8"
+    android:versionCode="111"
+    android:versionName="v0.1.9"
     android:installLocation="auto" >
 
     <supports-screens

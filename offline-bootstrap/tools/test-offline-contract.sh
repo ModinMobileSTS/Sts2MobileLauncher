@@ -39,6 +39,7 @@ if [[ "$SYNTHETIC_ONLY" != "1" ]]; then
     "v0.108.0:STS2_ORIGINAL_V1080_REFERENCE_DIR"
     "v0.109.x:STS2_ORIGINAL_V1090_REFERENCE_DIR"
     "v0.110.x:STS2_ORIGINAL_V1100_REFERENCE_DIR"
+    "v0.111.0:STS2_ORIGINAL_V1110_REFERENCE_DIR"
   )
   for reference in "${references[@]}"; do
     label="${reference%%:*}"

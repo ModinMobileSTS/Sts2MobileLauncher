@@ -18,12 +18,12 @@ Important variables in `.env`:
   containing `libs/`, `assets/dotnet_bcl/`, and `gradle/wrapper/gradle-wrapper.jar`.
 - `STS2_FMOD_PLUGIN_AAR`, `STS2_CRYPTO_NATIVE_JAR` — runtime artifacts copied
   by `sync-runtime-from-references.sh`.
-- `STS2_ORIGINAL_V103_REFERENCE_DIR`, `STS2_ORIGINAL_V1061_REFERENCE_DIR`, `STS2_ORIGINAL_V1070_REFERENCE_DIR`, `STS2_ORIGINAL_V1071_REFERENCE_DIR`, `STS2_ORIGINAL_V1080_REFERENCE_DIR`, `STS2_ORIGINAL_V1090_REFERENCE_DIR`, and `STS2_ORIGINAL_V1100_REFERENCE_DIR`
+- `STS2_ORIGINAL_V103_REFERENCE_DIR`, `STS2_ORIGINAL_V1061_REFERENCE_DIR`, `STS2_ORIGINAL_V1070_REFERENCE_DIR`, `STS2_ORIGINAL_V1071_REFERENCE_DIR`, `STS2_ORIGINAL_V1080_REFERENCE_DIR`, `STS2_ORIGINAL_V1090_REFERENCE_DIR`, `STS2_ORIGINAL_V1100_REFERENCE_DIR`, and `STS2_ORIGINAL_V1110_REFERENCE_DIR`
   (or their `*_ROOT` shortcuts) — original PC compile-gate DLL directories. The
   historical `V1090` name identifies the shared v0.109.x target and should point
   to the latest verified v0.109.1 reference; `V1100` is the historical flavor for
-  the shared v0.110.x public-beta target and should point to the latest verified
-  v0.110.1 reference.
+  the shared v0.110.x target and should point to v0.110.1; `V1110` identifies the
+  current independent v0.111.0 public-beta target.
 
 Use:
 

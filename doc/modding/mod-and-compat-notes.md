@@ -111,7 +111,8 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 | `v0.107.1` stable | `v0.107.1` | `.env`: `STS2_ORIGINAL_V1071_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1071_ROOT` | `original-v0.107.1` |
 | `v0.108.0` stable | `v0.108.0` | `.env`: `STS2_ORIGINAL_V1080_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1080_ROOT` | `original-v0.108.0` |
 | `v0.109.0` / `v0.109.1` beta（旧测试） | `v0.109.0`（稳定 id，显示 v0.109.x） | `.env`: `STS2_ORIGINAL_V1090_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1090_ROOT`（历史名，指向最新 v0.109.1） | `original-v0.109.0` |
-| `v0.110.0` / `v0.110.1` public beta | `v0.110.0`（显示 v0.110.x） | `.env`: `STS2_ORIGINAL_V1100_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1100_ROOT`（当前指向 v0.110.1） | `original-v0.110.0` |
+| `v0.110.0` / `v0.110.1` public beta（旧测试） | `v0.110.0`（显示 v0.110.x） | `.env`: `STS2_ORIGINAL_V1100_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1100_ROOT`（指向 v0.110.1） | `original-v0.110.0` |
+| `v0.111.0` public beta | `v0.111.0` | `.env`: `STS2_ORIGINAL_V1110_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1110_ROOT` | `original-v0.111.0` |
 
 开发步骤建议：
 
@@ -123,7 +124,7 @@ git -C port-mod status --short --branch
 (cd port-mod && ./tools/build-compat-matrix.sh)
 
 # 3. 可选：构建当前 fallback 或 legacy schema 1 诊断包
-REFERENCE_FLAVOR=original-v0.110.0 tools/android/build-port-mod.sh
+REFERENCE_FLAVOR=original-v0.111.0 tools/android/build-port-mod.sh
 # 或
 tools/android/build-port-mod.sh
 # 或
@@ -134,9 +135,9 @@ tools/android/stage-bundled-compat-packs.sh
 tools/package/build_importer_apk.sh
 ```
 
-只调试当前 target 时可运行 `(cd port-mod && ./tools/build-compat-matrix.sh --target v0.110.0)`；共享 v0.109.x 的稳定 target id `v0.109.0` 仍同时覆盖 v0.109.0/v0.109.1，历史 `original-v0.109.0` flavor 应指向最新 v0.109.1 引用；稳定 target id `v0.110.0` 同时覆盖 v0.110.0/v0.110.1，历史 `original-v0.110.0` flavor 当前应指向最新 v0.110.1 引用。legacy schema 1 诊断包仍用 `REFERENCE_FLAVOR=original` / `original-v0.106.1` / `original-v0.107.0` 指定对应原版 gate，单独调试 `v0.107.1` / `v0.108.0` / `v0.109.x` / `v0.110.x` 可分别用 `original-v0.107.1` / `original-v0.108.0` / `original-v0.109.0` / `original-v0.110.0`。
+只调试当前 target 时可运行 `(cd port-mod && ./tools/build-compat-matrix.sh --target v0.111.0)`；共享 v0.109.x 的稳定 target id `v0.109.0` 仍同时覆盖 v0.109.0/v0.109.1，历史 `original-v0.109.0` flavor 应指向最新 v0.109.1 引用；稳定 target id `v0.110.0` 同时覆盖 v0.110.0/v0.110.1，历史 `original-v0.110.0` flavor 应指向 v0.110.1 引用。legacy schema 1 诊断包仍用 `REFERENCE_FLAVOR=original` / `original-v0.106.1` / `original-v0.107.0` 指定对应原版 gate，单独调试 `v0.107.1` / `v0.108.0` / `v0.109.x` / `v0.110.x` / `v0.111.0` 可分别使用对应 `original-v*` flavor。
 
-v0.110.0 是游戏 MOD API 更新，不只是 Android target 更新；v0.110.1 仅包含不触达 Android compat 的 AutoSlay/lobby 实现修复，继续共用 v0.110.x target：原版移除了 `Scare`、`OutbreakPower`、旧 `LobbyPlayer`、`JoinFlow.MockInfo`、`MegaInput.accept/releaseCard` 与旧 controller/keyboard mapping API。直接静态引用这些类型或成员的普通 MOD 必须发布匹配 v0.110.x 的版本；full compat 不会向 `sts2.dll` 伪造已删除成员。
+v0.110.0 是游戏 MOD API 更新，不只是 Android target 更新；v0.110.1 仅包含不触达 Android compat 的 AutoSlay/lobby 实现修复，继续共用 v0.110.x target。该 API 线移除了 `Scare`、`OutbreakPower`、旧 `LobbyPlayer`、`JoinFlow.MockInfo`、`MegaInput.accept/releaseCard` 与旧 controller/keyboard mapping API。v0.111.0 再次使用独立 target：原版新增 transport-level `HandshakeManager`，`NetClientGameService` / `NetHostGameService` 构造时必须传入 `PeerVersionInfo`，版本、ModelDb hash 与 MOD 校验在消息总线启用前完成；Android LAN 只传入 `PeerVersionInfo.LocalDefault()` 并继续使用原版握手与 wire protocol。`AnimState` 同时把 trigger branch 字段改名并增加条件 next-state graph，compat 动画预热会读取两种字段形状。直接静态引用这些变化成员的普通 MOD 必须发布匹配 v0.111.0 的版本；full compat 不会向 `sts2.dll` 伪造已删除成员。
 
 ## 8. 新增游戏版本 checklist
 
@@ -162,7 +163,7 @@ v0.110.0 是游戏 MOD API 更新，不只是 Android target 更新；v0.110.1 �
 - 普通 MOD loader 的目标是尽量复用游戏原本的 scanner、dependency sort 和 TryLoadMod，减少与 PC 行为分叉。
 - LAN 兼容层只适配 Android transport/UI/settings/player/save；`MessageTypes` 消息发现与排序、`NetMessageBus` 序列化/反序列化必须继续由匹配版本的原版程序集负责。不要维护 Android 固定消息表，也不要仅按内置类型重建排序，否则会同时破坏未修改 PC 联机和普通 MOD 自定义 `INetMessage`。
 - `max_multiplayer_players > 4` 是实验性 host/lobby 容量，不代表原版所有玩法 UI 已支持任意人数。`ExtendedMultiplayerRoomPatches` 只补齐已确认的确定性四槽故障：宝箱按同步器遗物数量动态创建 holder、保护默认焦点并分散手势，休息点在原版按玩家索引前创建角色容器；不得在该补丁中重写宝箱生成、投票/奖励归属、休息点选项或网络消息。修改后运行 `port-mod/tools/test-extended-multiplayer-rooms.sh` 和完整 active target matrix。
-- `v0.103.x`、`v0.107.1` / `v0.108.0` stable target、共享 `v0.109.x` target、共享 `v0.110.x` public beta target、`v0.106.1` beta 与 `v0.107.0` beta target 应保持同一套 Android/Mono MOD 初始化不变式：加载任何 MOD 前只允许预注册原版模型占位；每个 MOD initializer 期间只允许短暂隐藏“非原版类型命中早期原版占位”的 `ModelDb.Contains(Type)` 结果，避免与原版同名的 MOD 模型因 Android 提前占位误报重复；若 MOD 因早期占位误判 ModelDb 已初始化并调用 `AbstractModel.InitId()`，兼容层只在 `ModelIdSerializationCache.Init()` 完成前跳过该次早调用，后续正常 `ModelDb.InitIds()` 会统一设置排序 ID，不得提前动态分配 net ID；MOD 自定义模型占位必须等到所有 MOD Harmony patch 应用后、`ModelDb.Init()` 前再按最终 ID 注册。v0.109.0/v0.109.1 托管 API 与方法 IL 相同，`ModelDb.Init(Type[]? injectedModelTypes = null)` 正常 null 路径继续走 two-phase 初始化，显式测试注入集合保留原版行为。用户 MOD 在 initializer 中通过 direct `PatchProcessor.Patch()` 或 `Harmony.PatchAll()` patch STS2 Godot/UI 类型时，`DeferredModPatchQueue` 只将带静态初始化器的危险 target 延后到 `ExecuteEssential` 完成后重放；PatchAll 使用 Harmony 原始逐目标 job replay，不能把一个 patch class 整体延迟或手工丢失 prefix/postfix/transpiler/finalizer/inner patch、Harmony ID、优先级、prepare/cleanup。普通模型 target 必须立即应用，否则会破坏 MOD 依赖的 `ModelDb.Init` 前置 hook 时序。修改这一路径后运行 `port-mod/tools/test-deferred-mod-patch-queue.sh`。
+- `v0.103.x`、`v0.107.1` / `v0.108.0` stable target、共享 `v0.109.x` / `v0.110.x` target、独立 `v0.111.0` public-beta target、`v0.106.1` beta 与 `v0.107.0` beta target 应保持同一套 Android/Mono MOD 初始化不变式：加载任何 MOD 前只允许预注册原版模型占位；每个 MOD initializer 期间只允许短暂隐藏“非原版类型命中早期原版占位”的 `ModelDb.Contains(Type)` 结果，避免与原版同名的 MOD 模型因 Android 提前占位误报重复；若 MOD 因早期占位误判 ModelDb 已初始化并调用 `AbstractModel.InitId()`，兼容层只在 `ModelIdSerializationCache.Init()` 完成前跳过该次早调用，后续正常 `ModelDb.InitIds()` 会统一设置排序 ID，不得提前动态分配 net ID；MOD 自定义模型占位必须等到所有 MOD Harmony patch 应用后、`ModelDb.Init()` 前再按最终 ID 注册。v0.109.0/v0.109.1 托管 API 与方法 IL 相同，`ModelDb.Init(Type[]? injectedModelTypes = null)` 正常 null 路径继续走 two-phase 初始化，显式测试注入集合保留原版行为。用户 MOD 在 initializer 中通过 direct `PatchProcessor.Patch()` 或 `Harmony.PatchAll()` patch STS2 Godot/UI 类型时，`DeferredModPatchQueue` 只将带静态初始化器的危险 target 延后到 `ExecuteEssential` 完成后重放；PatchAll 使用 Harmony 原始逐目标 job replay，不能把一个 patch class 整体延迟或手工丢失 prefix/postfix/transpiler/finalizer/inner patch、Harmony ID、优先级、prepare/cleanup。普通模型 target 必须立即应用，否则会破坏 MOD 依赖的 `ModelDb.Init` 前置 hook 时序。修改这一路径后运行 `port-mod/tools/test-deferred-mod-patch-queue.sh`。
 
 ## 10. MOD 兼容性排查规范
 
@@ -212,21 +213,18 @@ schema 2 family manifest：
   "schema": 2,
   "pack_id": "sts2-android-compat",
   "display_name": "STS2 Android Compatibility",
-  "compat_version": "0.5.1-dev",
+  "compat_version": "0.6.0-dev",
   "channel": "mixed",
   "targets": [
     {
-      "target_id": "v0.110.0",
-      "versions": ["v0.110.0", "v0.110.1"],
-      "source": "original_pc_reference_v0.110.1",
+      "target_id": "v0.111.0",
+      "versions": ["v0.111.0"],
+      "source": "original_pc_reference_v0.111.0",
       "steam_branch": "public-beta",
-      "sts2_dll_sha256": [
-        "7a2592364fdc6ff4c42bb5f1ff41f9fa12155f84de772e203ace1b088ebb607d",
-        "7c446efabf80614c429b5088e87101423aa5bb4c04fc3e73393261f6e6d404fd"
-      ],
+      "sts2_dll_sha256": "0861bfa1df347538d932f22d580e75420f08082792eb914e53b4882764acdbe9",
       "artifacts": {
-        "dll": "variants/v0.110.0/STS2Mobile.dll",
-        "overlay_pck": "variants/v0.110.0/port_compat.pck"
+        "dll": "variants/v0.111.0/STS2Mobile.dll",
+        "overlay_pck": "variants/v0.111.0/port_compat.pck"
       }
     }
   ]
