@@ -91,6 +91,9 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/LanMultiplayerPatches.cs" \
     "STS2AndroidPortCompat/Patches/ExtendedMultiplayerRoomPatches.cs" \
     "STS2AndroidPortCompat/Patches/MobileTooltipPatches.cs" \
+    "STS2AndroidPortCompat/Patches/MobileReactionButtonPatches.cs" \
+    "STS2AndroidPortCompat/Patches/MobileReactionPointerState.cs" \
+    "STS2AndroidPortCompat/Patches/MobileReactionVisibilityPolicy.cs" \
     "STS2AndroidPortCompat/Patches/DisplaySettingsPatches.cs" \
     "STS2AndroidPortCompat/Patches/TransitionMaterialPatches.cs" \
     "STS2AndroidPortCompat/Patches/QuickRestartPatches.cs"; do

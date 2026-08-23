@@ -42,6 +42,7 @@ This project is an experimental, unofficial Android port and launcher framework 
 3. **Base Game (Provided by User):** Supplied by the user either by importing the PC version's `SlayTheSpire2.zip` or by legally downloading it via the SteamPipe API after logging into their Steam account within the app.
 
 Custom player counts above four remain experimental. The full compatibility pack now dynamically creates treasure relic holders and rest-site character slots, including safe fifth-player focus and distinct treasure award/fight hand placement; this fixes the five-player chest flow that previously stopped after rock-paper-scissors. Other vanilla screens may still contain four-player assumptions, so the configurable capacity is not a guarantee that every player count is supported end to end.
+On Android, the full compatibility pack restores the multiplayer reaction button that is missing from the imported PC scene. It remains available after entering a multiplayer lobby, including the character/ready screen and visible wait overlays, not only after the run has started. Touch and drag from the floating button to choose one of the original reaction-wheel wedges, then release to send it through the payload's existing reaction synchronizer. The Extra Settings → System switch `Show multiplayer emoji button` controls the button at runtime and defaults to enabled.
 
 ---
 
