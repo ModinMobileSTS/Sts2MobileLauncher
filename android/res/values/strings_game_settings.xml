@@ -27,6 +27,7 @@
     <string name="status_mod_save_transfer_done">Transferred %1$d profile slot(s) from “%2$s” to “%3$s”.</string>
     <string name="status_mod_save_transfer_no_source">No transferable saves were found in “%1$s”.</string>
     <string name="section_mod">MOD</string>
+    <string name="mod_list_loading">Scanning installed MODs…</string>
     <string name="mod_master_switch">Allow loading MODs</string>
     <string name="import_mod">Import MOD</string>
     <string name="workshop_open">Workshop</string>

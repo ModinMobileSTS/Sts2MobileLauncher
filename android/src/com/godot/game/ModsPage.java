@@ -46,6 +46,7 @@ import android.text.SpannableString;
 
 import androidx.appcompat.widget.PopupMenu;
 import androidx.core.widget.NestedScrollView;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -60,6 +61,7 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -69,8 +71,17 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class ModsPage {
+	private static final ExecutorService MOD_SCAN_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
+		Thread thread = new Thread(runnable, "Sts2ModManifestScan");
+		thread.setPriority(Thread.NORM_PRIORITY - 1);
+		return thread;
+	});
+
 	private static final int FILTER_GROUP_ID = 2000;
 	private static final int FILTER_ALL_ID = 2001;
 	private static final int FILTER_ENABLED_ID = 2002;
@@ -123,6 +134,7 @@ public final class ModsPage {
 	private final List<ModIssue> currentIssues = new ArrayList<>();
 	private final Map<String, String> modNotesById = new HashMap<>();
 
+	private final AtomicInteger scanGeneration = new AtomicInteger();
 	private RecyclerView recyclerView;
 	private ModsListAdapter adapter;
 	private MaterialCardView bottomPanelCard;
@@ -139,6 +151,7 @@ public final class ModsPage {
 	private boolean bottomPanelCollapsed;
 	private JSONObject cachedSettings;
 	private Runnable pendingSearchRefresh;
+	private boolean dataLoaded;
 	private String dragGhostGroupId;
 	private int dragGhostIndex = -1;
 	private boolean dragGhostForGroup;
@@ -177,6 +190,16 @@ public final class ModsPage {
 
 		frame.addView(column, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 		frame.addView(buildBottomPanel(), bottomPanelParams());
+		frame.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+			@Override public void onViewAttachedToWindow(View view) {}
+
+			@Override public void onViewDetachedFromWindow(View view) {
+				scanGeneration.incrementAndGet();
+				if (pendingSearchRefresh != null) {
+					mainHandler.removeCallbacks(pendingSearchRefresh);
+				}
+			}
+		});
 		refreshList();
 		return frame;
 	}
@@ -283,7 +306,7 @@ public final class ModsPage {
 				if (pendingSearchRefresh != null) {
 					mainHandler.removeCallbacks(pendingSearchRefresh);
 				}
-				pendingSearchRefresh = () -> refreshList();
+				pendingSearchRefresh = ModsPage.this::rebuildFilteredList;
 				mainHandler.postDelayed(pendingSearchRefresh, 150);
 			}
 			@Override public void afterTextChanged(Editable s) {}
@@ -478,7 +501,7 @@ public final class ModsPage {
 			item.setChecked(true);
 			sortMode = value;
 			rememberChipScroll();
-			refreshList();
+			rebuildFilteredList();
 			return true;
 		});
 		popup.show();
@@ -569,7 +592,7 @@ public final class ModsPage {
 		filter = value;
 		selectedModIds.clear();
 		rememberChipScroll();
-		refreshList();
+		rebuildFilteredList();
 	}
 
 	private void updateSelectionActionsPanel() {
@@ -683,29 +706,75 @@ public final class ModsPage {
 	}
 
 	private void refreshList() {
+		int expectedGeneration = scanGeneration.incrementAndGet();
+		if (!dataLoaded && adapter != null) {
+			adapter.submit(Collections.singletonList(ListItem.empty(R.string.mod_list_loading)));
+		}
+		MOD_SCAN_EXECUTOR.execute(() -> {
+			try {
+				JSONObject settings = repository.loadSettingsJson();
+				Map<String, String> notes = repository.loadAllModNotes();
+				String gameVersion = resolveCurrentGameVersion();
+				List<ExtraSettingsRepository.ModEntry> allMods = repository.listInstalledModManifests();
+				LoadedMods loaded = new LoadedMods(settings, notes, gameVersion, allMods);
+				mainHandler.post(() -> applyLoadedMods(expectedGeneration, loaded));
+			} catch (Exception exception) {
+				mainHandler.post(() -> applyLoadFailure(expectedGeneration, exception));
+			}
+		});
+	}
+
+	private void applyLoadedMods(int expectedGeneration, LoadedMods loaded) {
+		if (expectedGeneration != scanGeneration.get() || adapter == null) {
+			return;
+		}
+		cachedSettings = loaded.settings;
+		modNotesById.clear();
+		modNotesById.putAll(loaded.notes);
+		currentGameVersion = loaded.gameVersion;
+		currentAllMods.clear();
+		currentAllMods.addAll(loaded.mods);
+		dataLoaded = true;
+		rebuildFilteredList();
+	}
+
+	private void applyLoadFailure(int expectedGeneration, Exception exception) {
+		if (expectedGeneration != scanGeneration.get() || adapter == null) {
+			return;
+		}
+		dataLoaded = false;
+		currentAllMods.clear();
+		currentFilteredMods.clear();
+		currentBuckets.clear();
+		listItems.clear();
+		listItems.add(ListItem.error(exception));
+		adapter.submit(new ArrayList<>(listItems));
+		updateSelectionActionsPanel();
+		issuesByModId.clear();
+		currentIssues.clear();
+		updateWarningBadge();
+	}
+
+	private void rebuildFilteredList() {
+		if (!dataLoaded || cachedSettings == null || adapter == null) {
+			return;
+		}
 		clearDragGhost(false);
 		currentFilteredMods.clear();
-		currentAllMods.clear();
 		currentBuckets.clear();
 		listItems.clear();
 		try {
-			cachedSettings = repository.loadSettingsJson();
-			modNotesById.clear();
-			modNotesById.putAll(repository.loadAllModNotes());
-			currentGameVersion = resolveCurrentGameVersion();
-			List<ExtraSettingsRepository.ModEntry> allMods = repository.listInstalledModManifests();
-			currentAllMods.addAll(allMods);
-			rebuildModIssues(allMods);
-			List<ExtraSettingsRepository.ModEntry> filtered = filterMods(cachedSettings, allMods);
+			rebuildModIssues(currentAllMods);
+			List<ExtraSettingsRepository.ModEntry> filtered = filterMods(cachedSettings, currentAllMods);
 			sortMods(filtered);
 			currentFilteredMods.addAll(filtered);
 			Set<String> installedIds = new HashSet<>();
-			for (ExtraSettingsRepository.ModEntry entry : allMods) {
+			for (ExtraSettingsRepository.ModEntry entry : currentAllMods) {
 				installedIds.add(entry.modId);
 			}
 			selectedModIds.retainAll(installedIds);
 			expandedModIds.retainAll(installedIds);
-			if (allMods.isEmpty()) {
+			if (currentAllMods.isEmpty()) {
 				listItems.add(ListItem.empty(R.string.status_no_mods));
 			} else if (filtered.isEmpty()) {
 				listItems.add(ListItem.empty(R.string.mod_no_filter_results));
@@ -729,13 +798,7 @@ public final class ModsPage {
 			updateSelectionActionsPanel();
 			updateWarningBadge();
 		} catch (Exception exception) {
-			listItems.clear();
-			listItems.add(ListItem.error(exception));
-			submitListPreservingScroll(new ArrayList<>(listItems));
-			updateSelectionActionsPanel();
-			issuesByModId.clear();
-			currentIssues.clear();
-			updateWarningBadge();
+			applyLoadFailure(scanGeneration.get(), exception);
 		}
 	}
 
@@ -1901,9 +1964,20 @@ public final class ModsPage {
 		private final List<ListItem> items = new ArrayList<>();
 
 		void submit(List<ListItem> next) {
+			List<ListItem> previous = new ArrayList<>(items);
+			DiffUtil.DiffResult diff = DiffUtil.calculateDiff(new DiffUtil.Callback() {
+				@Override public int getOldListSize() { return previous.size(); }
+				@Override public int getNewListSize() { return next.size(); }
+				@Override public boolean areItemsTheSame(int oldPosition, int newPosition) {
+					return previous.get(oldPosition).sameIdentity(next.get(newPosition));
+				}
+				@Override public boolean areContentsTheSame(int oldPosition, int newPosition) {
+					return previous.get(oldPosition).sameContent(next.get(newPosition));
+				}
+			});
 			items.clear();
 			items.addAll(next);
-			notifyDataSetChanged();
+			diff.dispatchUpdatesTo(this);
 		}
 
 		@Override
@@ -1932,7 +2006,7 @@ public final class ModsPage {
 
 		@Override
 		public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
-			onBindViewHolder(holder, position, new ArrayList<>());
+			onBindViewHolder(holder, position, Collections.emptyList());
 		}
 
 		@Override
@@ -2104,6 +2178,7 @@ public final class ModsPage {
 		private final LinearLayout details;
 		private ExtraSettingsRepository.ModEntry boundEntry;
 		private String boundGroupId;
+		private String detailsBuiltForModId;
 		private final boolean[] enabledState = new boolean[] { true };
 
 		ModViewHolder(View itemView) {
@@ -2150,12 +2225,17 @@ public final class ModsPage {
 					actions.showError(exception);
 				}
 			});
-			rebuildDetails(entry, expanded);
+			if (expanded) {
+				rebuildDetails(entry, true);
+			} else {
+				// Do not allocate the hidden detail hierarchy while scrolling collapsed cards.
+				setDetailsExpandedImmediately(details, false);
+			}
 			View.OnClickListener itemClick = v -> {
 				if (!selectedModIds.isEmpty()) {
 					toggleSelected(entry.modId);
 				} else {
-					toggleCardExpanded(entry.modId, details);
+					toggleExpanded(entry);
 				}
 			};
 			card.setOnClickListener(itemClick);
@@ -2172,6 +2252,22 @@ public final class ModsPage {
 			});
 		}
 
+		private void toggleExpanded(ExtraSettingsRepository.ModEntry entry) {
+			boolean expanded;
+			if (expandedModIds.contains(entry.modId)) {
+				expandedModIds.remove(entry.modId);
+				expanded = false;
+			} else {
+				expandedModIds.add(entry.modId);
+				expanded = true;
+			}
+			if (expanded && (!entry.modId.equals(detailsBuiltForModId) || details.getChildCount() == 0)) {
+				// Build while hidden, then animate only the now-materialized detail tree.
+				rebuildDetails(entry, false);
+			}
+			animateDetailsVisibility(details, expanded);
+		}
+
 		void bindTitle(ExtraSettingsRepository.ModEntry entry) {
 			title.setText(emptyToDash(displayNameFor(entry)));
 		}
@@ -2184,7 +2280,11 @@ public final class ModsPage {
 			boolean selected = selectedModIds.contains(entry.modId);
 			applyModCardStyle(card, enabled, selected, issuesByModId.containsKey(entry.modId));
 			switchView.setEnabled(selectedModIds.isEmpty());
-			// Update select button label in details if present
+			if (expandedModIds.contains(entry.modId)) {
+				detailsBuiltForModId = null;
+				rebuildDetails(entry, true);
+			}
+			// Update select button label in details if present.
 			View select = details.findViewWithTag("select_btn");
 			if (select instanceof MaterialButton) {
 				((MaterialButton) select).setContentDescription(context.getString(selected ? R.string.mod_action_unselect : R.string.mod_action_select));
@@ -2196,20 +2296,27 @@ public final class ModsPage {
 				return;
 			}
 			boolean expanded = expandedModIds.contains(entry.modId);
-			if (expanded && details.getChildCount() == 0) {
+			if (expanded) {
 				rebuildDetails(entry, true);
 			} else {
-				setDetailsExpandedImmediately(details, expanded);
+				setDetailsExpandedImmediately(details, false);
 			}
 		}
 
 		private void rebuildDetails(ExtraSettingsRepository.ModEntry entry, boolean expanded) {
 			cancelDetailsAnimation(details);
+			if (entry == null) {
+				setDetailsExpandedImmediately(details, false);
+				return;
+			}
+			if (entry.modId.equals(detailsBuiltForModId) && details.getChildCount() > 0) {
+				setDetailsExpandedImmediately(details, expanded);
+				return;
+			}
 			details.removeAllViews();
 			details.setPadding(0, 0, 0, ExtraSettingsUi.dp(context, 16));
 			DashedDivider divider = new DashedDivider(context);
 			details.addView(divider, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ExtraSettingsUi.dp(context, 1)));
-
 			LinearLayout body = ExtraSettingsUi.vertical(context);
 			body.setPadding(ExtraSettingsUi.dp(context, 36), ExtraSettingsUi.dp(context, 8), 0, 0);
 			TextView description = ExtraSettingsUi.text(context, TextUtils.isEmpty(entry.description) ? context.getString(R.string.mod_description_empty) : entry.description, 13, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, Typeface.NORMAL);
@@ -2247,7 +2354,6 @@ public final class ModsPage {
 					addIssueDetailRow(body, issue.message);
 				}
 			}
-
 			LinearLayout actionsRow = ExtraSettingsUi.horizontal(context);
 			actionsRow.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
 			MaterialButton select = detailIconButton(R.drawable.ic_check_circle_24, selectedModIds.contains(entry.modId) ? R.string.mod_action_unselect : R.string.mod_action_select);
@@ -2267,8 +2373,10 @@ public final class ModsPage {
 			actionParams.topMargin = ExtraSettingsUi.dp(context, 12);
 			body.addView(actionsRow, actionParams);
 			details.addView(body);
+			detailsBuiltForModId = entry.modId;
 			setDetailsExpandedImmediately(details, expanded);
 		}
+
 	}
 
 	private final class GhostViewHolder extends RecyclerView.ViewHolder {
@@ -2313,18 +2421,6 @@ public final class ModsPage {
 		} catch (Exception ignored) {
 			return false;
 		}
-	}
-
-	private void toggleCardExpanded(String modId, View details) {
-		boolean expanded;
-		if (expandedModIds.contains(modId)) {
-			expandedModIds.remove(modId);
-			expanded = false;
-		} else {
-			expandedModIds.add(modId);
-			expanded = true;
-		}
-		animateDetailsVisibility(details, expanded);
 	}
 
 	private void setDetailsExpandedImmediately(View details, boolean expanded) {
@@ -3551,6 +3647,20 @@ public final class ModsPage {
 		return result;
 	}
 
+	private static final class LoadedMods {
+		final JSONObject settings;
+		final Map<String, String> notes;
+		final String gameVersion;
+		final List<ExtraSettingsRepository.ModEntry> mods;
+
+		LoadedMods(JSONObject settings, Map<String, String> notes, String gameVersion, List<ExtraSettingsRepository.ModEntry> mods) {
+			this.settings = settings;
+			this.notes = notes == null ? Collections.emptyMap() : new HashMap<>(notes);
+			this.gameVersion = gameVersion == null ? "" : gameVersion;
+			this.mods = mods == null ? Collections.emptyList() : new ArrayList<>(mods);
+		}
+	}
+
 	private static final class ListItem {
 		final int type;
 		final ModGroupBucket bucket;
@@ -3592,6 +3702,56 @@ public final class ModsPage {
 
 		static ListItem ghost(String groupId, int index, boolean forGroup) {
 			return new ListItem(TYPE_GHOST, null, false, groupId, null, 0, null, index, forGroup);
+		}
+
+		boolean sameIdentity(ListItem other) {
+			if (other == null || type != other.type) {
+				return false;
+			}
+			switch (type) {
+				case TYPE_GROUP:
+					return TextUtils.equals(groupId, other.groupId);
+				case TYPE_MOD:
+					return TextUtils.equals(groupId, other.groupId)
+						&& entry != null && other.entry != null
+						&& TextUtils.equals(entry.modId, other.entry.modId)
+						&& TextUtils.equals(entry.relativePath, other.entry.relativePath);
+				case TYPE_EMPTY:
+					return emptyTextRes == other.emptyTextRes;
+				case TYPE_GHOST:
+					return TextUtils.equals(groupId, other.groupId)
+						&& ghostIndex == other.ghostIndex
+						&& groupGhost == other.groupGhost;
+				case TYPE_ERROR:
+				default:
+					return true;
+			}
+		}
+
+		boolean sameContent(ListItem other) {
+			if (!sameIdentity(other)) {
+				return false;
+			}
+			switch (type) {
+				case TYPE_GROUP:
+					return collapsed == other.collapsed
+						&& bucket != null && other.bucket != null
+						&& TextUtils.equals(bucket.label, other.bucket.label)
+						&& bucket.entries.size() == other.bucket.entries.size();
+				case TYPE_MOD:
+					return entry == other.entry;
+				case TYPE_ERROR:
+					return TextUtils.equals(errorMessage(error), errorMessage(other.error));
+				default:
+					return true;
+			}
+		}
+
+		private static String errorMessage(Exception exception) {
+			if (exception == null) {
+				return "";
+			}
+			return exception.getMessage() == null ? exception.toString() : exception.getMessage();
 		}
 	}
 

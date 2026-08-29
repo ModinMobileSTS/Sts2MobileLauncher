@@ -27,6 +27,7 @@
     <string name="status_mod_save_transfer_done">已将 %1$d 个档位从“%2$s”转移到“%3$s”。</string>
     <string name="status_mod_save_transfer_no_source">在“%1$s”中没有找到可转移的存档。</string>
     <string name="section_mod">MOD</string>
+    <string name="mod_list_loading">正在扫描已安装 MOD…</string>
     <string name="mod_master_switch">允许加载 MOD</string>
     <string name="import_mod">导入 MOD</string>
     <string name="workshop_open">创意工坊</string>
