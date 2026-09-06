@@ -87,6 +87,7 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/CombatBackgroundPatches.cs" \
     "STS2AndroidPortCompat/Patches/EventLayoutPatches.cs" \
     "STS2AndroidPortCompat/Patches/MobileLayoutPatches.cs" \
+    "STS2AndroidPortCompat/Patches/MerchantLayoutPatches.cs" \
     "STS2AndroidPortCompat/Patches/CombatAnimationWarmupPatches.cs" \
     "STS2AndroidPortCompat/Patches/LifecycleAndPerformancePatches.cs" \
     "STS2AndroidPortCompat/Patches/AndroidAudioLifecyclePatches.cs" \

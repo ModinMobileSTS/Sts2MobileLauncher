@@ -308,6 +308,7 @@ tools/git/report-heads.sh
 - 仅在 `COMPAT_PACK_BUILD_MODE=legacy` 时，stage 脚本才会为非当前 legacy 分支创建临时 worktree 到 `.agent/worktrees/compat-packs/`，避免旧分支补丁互相污染；当前 checkout 若正好是某个 legacy 分支且有未提交改动，脚本会用 dirty worktree 构建对应 legacy 包，便于本地诊断。legacy worktree 会从当前共享源码列表注入跨版本热修；新增 `ModEntry.cs` 直接引用的源码文件时必须同步加入该列表，当前列表需包含 `DevTools/*.cs`、`RunHistoryPatches.cs`、`CombatAnimationWarmupPatches.cs`、`ExtendedMultiplayerRoomPatches.cs`、`MobileReactionButtonPatches.cs`、`MobileReactionVisibilityPolicy.cs`、`MobileReactionPointerState.cs`、`MobileReactionWheelPlacement.cs` 与资源释放保护所需的 `AndroidAssetCacheLifecyclePatches.cs`。
   资源安全热修的 legacy 注入还必须包含 `UiScalePatches.cs`、`CombatBackgroundPatches.cs`、`EventLayoutPatches.cs`、`MobileLayoutPatches.cs`、`LifecycleAndPerformancePatches.cs`、`LearnedWarmAssetStore.cs` 与 `AndroidParticlePreprocessPatches.cs`，保持所有 legacy 包的节点订阅、load-only gate 和学习缓存协议一致。
   表情入口的 legacy 注入同时必须包含 `MobileReactionSurfaceTracker.cs`，不能回退每 250ms 全树递归扫描的旧显示检查。
+  商店缩放热修的 legacy 注入必须包含 `MerchantLayoutPatches.cs`；打开动画按商品面板的 `AnchorTop` 与商店当前 Control 高度插值锚点偏移，不能用根窗口 `ContentScaleSize.Y` 代替实际可用高度，也不能恢复固定绝对 Y 目标，否则 `global_scale > 100%`、组合缩放或动画中改缩放会再次把底排推出屏幕。保留原版商品尺寸、购买行为和动画曲线，不修改全局 ContentScale 或渲染分辨率。
 - flat matrix 模式下，通用源码改动只在当前 checkout 上维护；版本差异优先放入 `port-mod/targets/active/<target_id>/target.json`、target capabilities/adapter 或极少量条件编译，不再为普通共用功能复制到多个分支。停止内置某个早期版本时，把对应 target 移到 `targets/archived/`，默认 matrix 构建会跳过它。
 
 ### 8.2 构建入口
