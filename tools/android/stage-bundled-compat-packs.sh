@@ -81,6 +81,12 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/RenderDiagnosticPatches.cs" \
     "STS2AndroidPortCompat/Patches/DebugMenuPatches.cs" \
     "STS2AndroidPortCompat/Patches/AndroidAssetCacheLifecyclePatches.cs" \
+    "STS2AndroidPortCompat/Patches/AndroidParticlePreprocessPatches.cs" \
+    "STS2AndroidPortCompat/Patches/LearnedWarmAssetStore.cs" \
+    "STS2AndroidPortCompat/Patches/UiScalePatches.cs" \
+    "STS2AndroidPortCompat/Patches/CombatBackgroundPatches.cs" \
+    "STS2AndroidPortCompat/Patches/EventLayoutPatches.cs" \
+    "STS2AndroidPortCompat/Patches/MobileLayoutPatches.cs" \
     "STS2AndroidPortCompat/Patches/CombatAnimationWarmupPatches.cs" \
     "STS2AndroidPortCompat/Patches/LifecycleAndPerformancePatches.cs" \
     "STS2AndroidPortCompat/Patches/ShaderCompatibilityPatches.cs" \
@@ -92,6 +98,7 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/ExtendedMultiplayerRoomPatches.cs" \
     "STS2AndroidPortCompat/Patches/MobileTooltipPatches.cs" \
     "STS2AndroidPortCompat/Patches/MobileReactionButtonPatches.cs" \
+    "STS2AndroidPortCompat/Patches/MobileReactionSurfaceTracker.cs" \
     "STS2AndroidPortCompat/Patches/MobileReactionPointerState.cs" \
     "STS2AndroidPortCompat/Patches/MobileReactionWheelPlacement.cs" \
     "STS2AndroidPortCompat/Patches/MobileReactionVisibilityPolicy.cs" \
