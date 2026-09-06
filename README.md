@@ -65,6 +65,8 @@ The creation of this project relies heavily on the explorations of the open-sour
   An unofficial mobile launcher for STS1. The reverse-engineered integration and source code for `steam-protocol`, `steam-content` (SteamPipe game downloads), and Steam Cloud saves in this project are primarily ported/adapted from it.
 - **[WorkshopAndroidDownloader](https://github.com/Apricityx/WorkshopAndroidDownloader)**
   Android Steam Workshop downloader reference used for the launcher Workshop browsing, download, and update-tracking flow.
+- **[Spire Supply Station / 尖塔补给站](https://workshop.apricityx.top), by apricityx**
+  Optional anonymous Workshop download service. Enable **Download with Spire Supply Station** in Workshop settings (off by default); the About icon beside the switch provides acknowledgements, copyright information and external links. The native downloader does not send Steam login credentials to the service. Site-default content has no verified game branch; see [Workshop download notes](doc/modding/mod-and-compat-notes.md#41-可选的尖塔补给站下载) and the [service terms](https://workshop.apricityx.top/legal/terms).
 - **[STS2-RitsuLib](https://github.com/BAKAOLC/STS2-RitsuLib) / [BaseLib-StS2](https://github.com/Alchyr/BaseLib-StS2)**
   Served as vital test baseline reference libraries for troubleshooting Android MOD compatibility.
 - **[Google Material Symbols](https://fonts.google.com/icons)**

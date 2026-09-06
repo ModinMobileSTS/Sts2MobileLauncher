@@ -108,93 +108,59 @@ class UgcWorkshopDownloader(
                 log("Depot key request failed for depot=${item.depotId}: ${it.message}")
             }.getOrNull()
 
-            val manifest = downloadManifest(
-                appId = request.appId,
-                item = item,
-                contentServers = downloadServers,
-                proxyServer = serverPool.proxyServer,
-                manifestRequestCode = manifestRequestCode,
-                contentClient = contentClient,
-                cdnTransport = cdnTransport,
-                cdnAuthTokenCache = cdnAuthTokenCache,
-                log = log,
-            )
-            val preparedManifest = when {
-                manifest.filenamesEncrypted && depotKey != null -> {
-                    log("Decrypting encrypted manifest filenames with depot key")
-                    runCatching { manifest.decryptFilenames(depotKey) }
-                        .getOrElse {
-                            it.throwIfCancellation()
-                            log("Manifest filename decryption failed; continuing with encoded names: ${it.message}")
-                            manifest
-                        }
-                }
-
-                manifest.filenamesEncrypted -> {
-                    log("Manifest filenames are encrypted but depot key is unavailable; continuing with encoded names")
-                    manifest
-                }
-
-                else -> manifest
-            }
-
-            emit(DownloadEvent.StateChanged(DownloadState.Downloading))
-            val chunks = preparedManifest.uniqueChunks()
-            val totalBytes = chunks.sumOf { it.uncompressedLength.toLong() }
-            val totalFiles = preparedManifest.files.count {
-                it.linkTarget.isNullOrBlank() && !preparedManifest.requiresDirectory(it)
-            }
-            log("Manifest ${preparedManifest.manifestId} contains ${preparedManifest.files.size} files and ${chunks.size} unique chunks")
-            emit(
-                DownloadEvent.Progress(
-                    writtenBytes = 0L,
-                    totalBytes = totalBytes,
-                    completedChunks = 0,
-                    totalChunks = chunks.size,
-                    completedFiles = 0,
-                    totalFiles = totalFiles,
-                ),
-            )
-
-            val stageDir = File(request.outputDir, ".chunks").apply { mkdirs() }
-            cacheChunks(
-                appId = request.appId,
-                depotId = item.depotId,
-                contentServers = downloadServers,
-                proxyServer = serverPool.proxyServer,
-                contentClient = contentClient,
-                cdnTransport = cdnTransport,
-                cdnAuthTokenCache = cdnAuthTokenCache,
-                chunks = chunks,
-                stageDir = stageDir,
-                depotKey = depotKey,
-                totalFiles = totalFiles,
-                emit = emit,
-                log = log,
-            )
-
-            assembleFiles(
-                manifest = preparedManifest,
-                outputDir = request.outputDir,
-                stageDir = stageDir,
-                totalBytes = totalBytes,
-                totalChunks = chunks.size,
-                totalFiles = totalFiles,
-                emit = emit,
-                log = log,
-            )
+            downloadAuthorized(request, item, downloadServers, depotKey, manifestRequestCode,
+                { server, path, expectedLength ->
+                    requestBytes(server, serverPool.proxyServer, path, request.appId, item.depotId,
+                        contentClient, cdnTransport, cdnAuthTokenCache, expectedLength)
+                }, emit, log)
         }
     }
 
+    internal suspend fun downloadAuthorized(
+        request: WorkshopDownloadRequest,
+        item: ResolvedWorkshopItem.UgcManifestItem,
+        servers: List<CdnServer>,
+        depotKey: ByteArray?,
+        manifestRequestCode: ULong,
+        fetchBytes: suspend (CdnServer, String, Long?) -> ByteArray,
+        emit: suspend (DownloadEvent) -> Unit,
+        log: suspend (String) -> Unit,
+    ) = withContext(Dispatchers.IO) {
+        val manifest = downloadManifest(item, servers, manifestRequestCode, fetchBytes, log)
+        require(manifest.depotId == item.depotId && manifest.manifestId == item.manifestId) {
+            "Steam manifest identity does not match the requested content"
+        }
+        val preparedManifest = when {
+            !manifest.filenamesEncrypted -> manifest
+            request.useSupplyStation -> manifest.decryptFilenames(requireNotNull(depotKey) { "Encrypted manifest requires a depot key" })
+            depotKey != null -> runCatching { manifest.decryptFilenames(depotKey) }.getOrElse {
+                it.throwIfCancellation()
+                log("Manifest filename decryption failed; continuing with encoded names: ${it.message}")
+                manifest
+            }
+            else -> {
+                log("Manifest filenames are encrypted but depot key is unavailable; continuing with encoded names")
+                manifest
+            }
+        }
+        emit(DownloadEvent.StateChanged(DownloadState.Downloading))
+        val chunks = preparedManifest.uniqueChunks()
+        val totalBytes = chunks.sumOf { it.uncompressedLength.toLong() }
+        val totalFiles = preparedManifest.files.count {
+            it.linkTarget.isNullOrBlank() && !preparedManifest.requiresDirectory(it)
+        }
+        log("Manifest ${preparedManifest.manifestId} contains ${preparedManifest.files.size} files and ${chunks.size} unique chunks")
+        emit(DownloadEvent.Progress(0L, totalBytes, 0, chunks.size, 0, totalFiles))
+        val stageDir = File(request.outputDir, ".chunks").apply { mkdirs() }
+        cacheChunks(item.depotId, servers, fetchBytes, chunks, stageDir, depotKey, totalFiles, emit, log)
+        assembleFiles(preparedManifest, request.outputDir, stageDir, totalBytes, chunks.size, totalFiles, emit, log)
+    }
+
     private suspend fun downloadManifest(
-        appId: UInt,
         item: ResolvedWorkshopItem.UgcManifestItem,
         contentServers: List<CdnServer>,
-        proxyServer: CdnServer?,
         manifestRequestCode: ULong,
-        contentClient: SteamContentClient,
-        cdnTransport: SteamCdnTransport,
-        cdnAuthTokenCache: SteamCdnAuthTokenCache,
+        fetchBytes: suspend (CdnServer, String, Long?) -> ByteArray,
         log: suspend (String) -> Unit,
     ): DepotManifest {
         var lastError: Throwable? = null
@@ -207,16 +173,7 @@ class UgcWorkshopDownloader(
                         append("/$manifestRequestCode")
                     }
                 }
-                val bytes = requestBytes(
-                    server = server,
-                    proxyServer = proxyServer,
-                    path = path,
-                    appId = appId,
-                    depotId = item.depotId,
-                    contentClient = contentClient,
-                    cdnTransport = cdnTransport,
-                    cdnAuthTokenCache = cdnAuthTokenCache,
-                )
+                val bytes = fetchBytes(server, path, null)
                 return DepotManifestParser.parse(unzipSingleEntry(bytes))
             } catch (error: Throwable) {
                 error.throwIfCancellation()
@@ -228,13 +185,9 @@ class UgcWorkshopDownloader(
     }
 
     private suspend fun cacheChunks(
-        appId: UInt,
         depotId: UInt,
         contentServers: List<CdnServer>,
-        proxyServer: CdnServer?,
-        contentClient: SteamContentClient,
-        cdnTransport: SteamCdnTransport,
-        cdnAuthTokenCache: SteamCdnAuthTokenCache,
+        fetchBytes: suspend (CdnServer, String, Long?) -> ByteArray,
         chunks: List<ManifestChunk>,
         stageDir: File,
         depotKey: ByteArray?,
@@ -273,13 +226,9 @@ class UgcWorkshopDownloader(
                     }
 
                     val processed = downloadChunkWithRetries(
-                        appId = appId,
                         depotId = depotId,
                         contentServers = contentServers,
-                        proxyServer = proxyServer,
-                        contentClient = contentClient,
-                        cdnTransport = cdnTransport,
-                        cdnAuthTokenCache = cdnAuthTokenCache,
+                        fetchBytes = fetchBytes,
                         chunk = chunk,
                         depotKey = depotKey,
                         log = log,
@@ -326,13 +275,9 @@ class UgcWorkshopDownloader(
     }
 
     private suspend fun downloadChunkWithRetries(
-        appId: UInt,
         depotId: UInt,
         contentServers: List<CdnServer>,
-        proxyServer: CdnServer?,
-        contentClient: SteamContentClient,
-        cdnTransport: SteamCdnTransport,
-        cdnAuthTokenCache: SteamCdnAuthTokenCache,
+        fetchBytes: suspend (CdnServer, String, Long?) -> ByteArray,
         chunk: ManifestChunk,
         depotKey: ByteArray?,
         log: suspend (String) -> Unit,
@@ -343,17 +288,7 @@ class UgcWorkshopDownloader(
             for (server in rotateServers(contentServers, attempt - 1)) {
                 try {
                     val path = "depot/$depotId/chunk/${chunk.idHex}"
-                    val raw = requestBytes(
-                        server = server,
-                        proxyServer = proxyServer,
-                        path = path,
-                        appId = appId,
-                        depotId = depotId,
-                        contentClient = contentClient,
-                        cdnTransport = cdnTransport,
-                        cdnAuthTokenCache = cdnAuthTokenCache,
-                        expectedLength = chunk.compressedLength.toLong().takeIf { it > 0L },
-                    )
+                    val raw = fetchBytes(server, path, chunk.compressedLength.toLong().takeIf { it > 0L })
                     return ChunkProcessor.process(raw, chunk, depotKey)
                 } catch (error: Throwable) {
                     error.throwIfCancellation()

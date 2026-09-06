@@ -9,6 +9,7 @@ data class WorkshopDownloadRequest(
     val outputDir: File,
     val branch: String = "public",
     val selectedVariant: WorkshopResolvedVariant? = null,
+    val useSupplyStation: Boolean = false,
 )
 
 

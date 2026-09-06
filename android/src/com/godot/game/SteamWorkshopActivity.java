@@ -69,6 +69,8 @@ import okhttp3.OkHttpClient;
 import okhttp3.Protocol;
 import okhttp3.Request;
 import okhttp3.Response;
+import top.apricityx.workshop.workshop.SpireSupplyStationClient;
+import top.apricityx.workshop.workshop.DownloadFailureMessagesKt;
 
 public class SteamWorkshopActivity extends AppCompatActivity {
 	private static final String WORKSHOP_WEB_URL = "https://steamcommunity.com/app/2868840/workshop/";
@@ -1396,6 +1398,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		meta.setMaxLines(2);
 		meta.setEllipsize(TextUtils.TruncateAt.END);
 		content.addView(meta, fullWidthTopMargin(10));
+		if (SpireSupplyStationClient.SOURCE.equals(entry.resolutionSource)) {
+			content.addView(ExtraSettingsUi.caption(this, getString(R.string.workshop_supply_station_branch_notice)), fullWidthTopMargin(6));
+		}
 		LinearLayout actions = ExtraSettingsUi.horizontal(this);
 		actions.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
 		actions.addView(primary);
@@ -1513,6 +1518,11 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		content.addView(ExtraSettingsUi.iconTitleRow(this, R.drawable.ic_settings_24, R.string.workshop_settings_title, R.string.workshop_settings_subtitle, null));
 		settingsSummaryText = ExtraSettingsUi.body(this, "");
 		content.addView(settingsSummaryText, fullWidthTopMargin(10));
+		content.addView(settingsSwitchRow(R.drawable.ic_download_24, R.string.workshop_supply_station,
+			getString(R.string.workshop_supply_station_hint), SteamWorkshopPreferences.isSupplyStationEnabled(this), checked -> {
+				SteamWorkshopPreferences.setSupplyStationEnabled(this, checked);
+				showSettings();
+			}, this::showSupplyStationAbout), fullWidthTopMargin(12));
 		content.addView(settingsActionRow(R.drawable.ic_folder_24, R.string.workshop_download_group, getString(R.string.workshop_download_group_hint), SteamWorkshopPreferences.getDownloadGroup(this), this::showDownloadGroupDialog), fullWidthTopMargin(12));
 		content.addView(settingsActionRow(R.drawable.ic_sync_24, R.string.workshop_download_branch, getString(R.string.workshop_download_branch_hint), workshopDownloadBranchSettingLabel(), this::showDownloadBranchDialog), fullWidthTopMargin(8));
 		content.addView(settingsActionRow(R.drawable.ic_tune_24, R.string.workshop_concurrent_chunks, getString(R.string.workshop_concurrent_chunks_hint), Integer.toString(SteamWorkshopPreferences.getConcurrentChunks(this)), this::showConcurrentChunksDialog), fullWidthTopMargin(8));
@@ -1529,6 +1539,35 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}), fullWidthTopMargin(8));
 		refreshSettingsSummary();
 		return card;
+	}
+
+	private void showSupplyStationAbout() {
+		LinearLayout content = ExtraSettingsUi.vertical(this);
+		content.setPadding(ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 12));
+		TextView explanation = ExtraSettingsUi.body(this, R.string.workshop_supply_station_about_body);
+		explanation.setTextIsSelectable(true);
+		content.addView(explanation);
+		content.addView(ExtraSettingsUi.sectionTitle(this, R.string.workshop_supply_station_credits), fullWidthTopMargin(16));
+		content.addView(ExtraSettingsUi.body(this, R.string.workshop_supply_station_credits_body), fullWidthTopMargin(6));
+		content.addView(ExtraSettingsUi.sectionTitle(this, R.string.workshop_supply_station_copyright), fullWidthTopMargin(16));
+		content.addView(ExtraSettingsUi.body(this, R.string.workshop_supply_station_copyright_body), fullWidthTopMargin(6));
+		addSupplyStationLink(content, R.string.workshop_supply_station_visit, "");
+		addSupplyStationLink(content, R.string.workshop_supply_station_about, "/about");
+		addSupplyStationLink(content, R.string.workshop_supply_station_copyright, "/legal/copyright");
+		addSupplyStationLink(content, R.string.workshop_supply_station_terms, "/legal/terms");
+		ScrollView scroll = new ScrollView(this);
+		scroll.addView(content);
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.workshop_supply_station_about)
+			.setView(scroll)
+			.setPositiveButton(android.R.string.ok, null)
+			.show();
+	}
+
+	private void addSupplyStationLink(LinearLayout parent, int label, String path) {
+		MaterialButton link = ExtraSettingsUi.textButton(this, getString(label), R.drawable.ic_open_in_new_24);
+		link.setOnClickListener(v -> openUrl(SpireSupplyStationClient.BASE_URL + path));
+		parent.addView(link, fullWidthTopMargin(8));
 	}
 
 	private View settingsActionRow(int iconRes, int titleRes, String subtitle, String value, Runnable onClick) {
@@ -1549,12 +1588,23 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private View settingsSwitchRow(int iconRes, int titleRes, String subtitle, boolean checked, BoolConsumer onChanged) {
+		return settingsSwitchRow(iconRes, titleRes, subtitle, checked, onChanged, null);
+	}
+
+	private View settingsSwitchRow(int iconRes, int titleRes, String subtitle, boolean checked, BoolConsumer onChanged, Runnable aboutAction) {
 		MaterialCardView card = ExtraSettingsUi.card(this);
 		card.setCardBackgroundColor(ExtraSettingsUi.COLOR_SURFACE_VARIANT);
 		card.setStrokeWidth(0);
 		card.setRadius(ExtraSettingsUi.dp(this, 16));
-		LinearLayout row = settingsBaseRow(iconRes, titleRes, subtitle);
+		LinearLayout row = settingsBaseRow(iconRes, titleRes, subtitle, aboutAction == null ? 2 : Integer.MAX_VALUE);
+		if (aboutAction != null) {
+			MaterialButton about = ExtraSettingsUi.iconButton(this, R.drawable.ic_info_24);
+			about.setContentDescription(getString(R.string.workshop_supply_station_about));
+			about.setOnClickListener(v -> aboutAction.run());
+			row.addView(about);
+		}
 		MaterialSwitch toggle = new MaterialSwitch(this);
+		toggle.setContentDescription(getString(titleRes));
 		toggle.setChecked(checked);
 		toggle.setOnCheckedChangeListener((buttonView, value) -> onChanged.accept(value));
 		row.addView(toggle);
@@ -1563,6 +1613,10 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private LinearLayout settingsBaseRow(int iconRes, int titleRes, String subtitle) {
+		return settingsBaseRow(iconRes, titleRes, subtitle, 2);
+	}
+
+	private LinearLayout settingsBaseRow(int iconRes, int titleRes, String subtitle, int subtitleLines) {
 		LinearLayout row = ExtraSettingsUi.horizontal(this);
 		row.setGravity(Gravity.CENTER_VERTICAL);
 		row.setPadding(ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 12), ExtraSettingsUi.dp(this, 14), ExtraSettingsUi.dp(this, 12));
@@ -1574,7 +1628,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		texts.addView(ExtraSettingsUi.label(this, titleRes));
 		if (!TextUtils.isEmpty(subtitle)) {
 			TextView sub = ExtraSettingsUi.caption(this, subtitle);
-			sub.setMaxLines(2);
+			sub.setMaxLines(subtitleLines);
 			sub.setEllipsize(TextUtils.TruncateAt.END);
 			texts.addView(sub, fullWidthTopMargin(3));
 		}
@@ -1622,7 +1676,16 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 				},
 				exception -> {
 					finishDownloadTask(item.getPublishedFileId());
-					showError(exception);
+					if (SteamWorkshopPreferences.isSupplyStationEnabled(this)) {
+						new MaterialAlertDialogBuilder(this)
+							.setTitle(R.string.workshop_supply_station_prerequisites_title)
+							.setMessage(R.string.workshop_supply_station_prerequisites_failed)
+							.setNegativeButton(android.R.string.cancel, null)
+							.setPositiveButton(R.string.workshop_download_current_only, (dialog, which) -> downloadAndImport(item, false))
+							.show();
+					} else {
+						showError(exception);
+					}
 				},
 				false
 			);
@@ -1800,6 +1863,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private String workshopBranchSourceLabel(String source) {
+		if (SpireSupplyStationClient.SOURCE.equals(source)) {
+			return getString(R.string.workshop_supply_station_source);
+		}
 		if ("cm_get_item_info_author_snapshot".equals(source)) {
 			return getString(R.string.workshop_branch_source_author_snapshot);
 		}
@@ -2036,6 +2102,17 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			}
 			DownloadTask existing = downloadTasks.get(next.item.getPublishedFileId());
 			if (existing != null && existing.isActive() && existing.downloadStarted) {
+				continue;
+			}
+			if (SteamWorkshopPreferences.isSupplyStationEnabled(this)) {
+				boolean sameSourceUpdate = next.updateExisting && next.selectedOption != null
+					&& SpireSupplyStationClient.BRANCH.equals(next.selectedOption.getBranch());
+				startDownloadAndImport(next.item, new SteamWorkshopDownloader(this).supplyStationOption(), sameSourceUpdate);
+				continue;
+			}
+			if (next.selectedOption != null && SpireSupplyStationClient.BRANCH.equals(next.selectedOption.getBranch())) {
+				finishDownloadTask(next.item.getPublishedFileId());
+				showError(new IOException(getString(R.string.workshop_supply_station_disabled_update)));
 				continue;
 			}
 			if (next.selectedOption == null) {
@@ -2421,6 +2498,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private String workshopDownloadBranchSettingLabel() {
+		if (SteamWorkshopPreferences.isSupplyStationEnabled(this)) {
+			return getString(R.string.workshop_supply_station_default_content);
+		}
 		String mode = SteamWorkshopPreferences.getDownloadBranchMode(this);
 		if (SteamWorkshopPreferences.BRANCH_MODE_PUBLIC.equals(mode)) {
 			return getString(R.string.workshop_download_branch_public);
@@ -2810,14 +2890,16 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 
 	private String userFacingErrorMessage(Exception exception) {
 		String message = exception == null || exception.getMessage() == null ? String.valueOf(exception) : exception.getMessage();
+		if (exception instanceof SteamWorkshopDownloader.SupplyStationDownloadException) {
+			return message;
+		}
 		if (shouldAppendWorkshopLoginHint(message)) {
 			String hint = getString(R.string.workshop_download_login_hint);
-			if (isSteamCdnUnauthorizedFailure(message)) {
-				return hint;
+			String result = message.contains(hint) ? message : message + "\n\n" + hint;
+			if (!SteamWorkshopPreferences.isSupplyStationEnabled(this)) {
+				result += "\n\n" + getString(R.string.workshop_supply_station_auth_hint);
 			}
-			if (!message.contains(hint)) {
-				return message + "\n\n" + hint;
-			}
+			return result;
 		}
 		if (shouldAppendWorkshopNetworkHint(message)) {
 			String hint = getString(R.string.workshop_download_network_hint);
@@ -2829,30 +2911,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private boolean shouldAppendWorkshopLoginHint(String message) {
-		if (TextUtils.isEmpty(message)) {
-			return false;
-		}
-		if (isSteamCdnUnauthorizedFailure(message)) {
-			return true;
-		}
-		String lower = message.toLowerCase(Locale.ROOT);
-		return lower.contains("unauthorized")
-			|| lower.contains("forbidden")
-			|| lower.contains("access denied")
-			|| lower.contains("permission")
-			|| lower.contains("not logged")
-			|| lower.contains("login required")
-			|| lower.contains("requires login")
-			|| lower.contains("http 401")
-			|| lower.contains("http 403")
-			|| lower.contains(" 401")
-			|| lower.contains(" 403");
+		return DownloadFailureMessagesKt.isSteamAuthorizationFailure(message);
 	}
 
-	private boolean isSteamCdnUnauthorizedFailure(String message) {
-		return !TextUtils.isEmpty(message)
-			&& message.toLowerCase(Locale.ROOT).contains("steam cdn request failed: 401");
-	}
 
 	private boolean shouldAppendWorkshopNetworkHint(String message) {
 		if (TextUtils.isEmpty(message)) {

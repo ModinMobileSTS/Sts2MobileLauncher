@@ -60,6 +60,19 @@ MOD 卡片默认折叠，只显示左侧拖拽手柄、名称、版本/作者和
 
 创意工坊下载实现参考 `Apricityx/WorkshopAndroidDownloader`：公开 `file_url` 走直链下载，UGC manifest 路径走 SteamPipe CDN chunk 下载；当用户在分支候选中选择 author snapshot 或默认 manifest fallback 时，下载器使用该候选的 manifest，并把对应 branch 传给 `ContentServerDirectory.GetManifestRequestCode#1`；未登录时下载器会尝试匿名 Steam 会话和公开 CDN 回退，部分公开 MOD 可直接下载，受限/需拥有权限的条目仍可能要求登录。后台下载线程使用低优先级，直链和 UGC 路径都会合并进度事件；UGC 分块下载默认并发 2，设置页可调 1-8。默认开启的“创意工坊兼容访问”会把 `steamcommunity.com`、常见 Steam 图片媒体域和 `api.steampowered.com` 请求转到参考项目同款 `steamcommunity.rmbgame.net` / `steamstore.rmbgame.net` 路径，并保留逻辑 Host；UGC manifest/chunk 下载沿用参考项目的 SteamPipe CDN 处理，允许 Steam 内容目录返回的 HTTP-only CDN endpoint，并跟随这些区域内容节点返回的 HTTP(S) 301/302 等跳转。共享 CDN transport 必须先走 Steam 指定 proxy 再回退 origin；Workshop 下载调用方采用连接/读取/写入/整次请求 `25/75/75/120s` 的折中超时，共享 transport 不得用本体下载策略覆盖它；depot token 只用于 SteamPipe 内容节点及其重定向目标，不进入 Community/API 的 rmbgame 兼容访问；Android network security 继续允许 Steam 内容目录动态返回的明文 endpoint。关闭后只使用原始 Steam 域名和普通 SteamPipe CDN 行为。当前 UI 只把成功下载出的文件作为普通用户 MOD 导入，不恢复游戏进程内的桌面 Steam Workshop 枚举。
 
+### 4.1 可选的尖塔补给站下载
+
+“创意工坊 → 设置”新增 **使用尖塔补给站下载**，说明为“使用apricityx的尖塔补给站实现不登录匿名下载”，默认关闭。开关左侧的“关于”图标可查看服务说明、鸣谢、版权声明，并跳转 [尖塔补给站](https://workshop.apricityx.top)、[关于页面](https://workshop.apricityx.top/about)、[版权声明](https://workshop.apricityx.top/legal/copyright) 和 [用户协议](https://workshop.apricityx.top/legal/terms)。
+
+- 开启后，新开始的下载直接通过 `SpireSupplyStationClient` 获取下载描述与短期 CDN 授权，不读取 Steam 登录令牌，不建立 Steam CM 会话，也不先解析 Steam 分支。UGC 文件仍经现有 Kotlin manifest/chunk 解密、解压、校验和 staging 导入流程；不安装或执行站点的浏览器脚本。关闭时保留原 Steam 下载路径，不自动回退或切源。
+- 站点目前提供默认内容，**游戏分支未验证**。“下载分支”偏好会保留，但不控制站点文件。安装命名空间固定为 `supply-station-default`，记录 `resolution_source=spire_supply_station` 和实际 manifest；这个名字不是 Steam 分支或版本兼容认证，已下载卡片会明确显示来源与限制。
+- Steam 源记录改用站点下载时仍进行同 ID 冲突确认，不把未知分支当作原记录直接覆盖；站点自身的更新沿用站点命名空间。开关关闭后，站点记录的更新会提示重新开启，或从条目页面改走 Steam 并选择分支。
+- 浏览、截图、前置 MOD 检查和常规更新检查仍沿用现有 Steam 公开元数据路径，此开关不是浏览目录换源。前置列表读取失败时，只有站点模式提供明确的“检查未完成”提示，用户确认后可只下载当前条目；不能把检查失败解释为无依赖。
+- Steam 下载的 401/403、`NoLicense`、`AccessDenied` 等授权错误会提示可在设置中开启该功能；普通网络或本地文件权限错误不添加该引导。站点自身授权失败不误报为用户需要登录 Steam。
+- CDN token、depot key、request code 与签名 URL 不写入安装 metadata 或下载日志；授权刷新时校验内容身份，不能在同一任务混用不同 manifest。站点及 CDN 的 TLS 校验保持开启。服务不保证所有条目可匿名下载；使用和分发仍需遵守 Steam、站点及 MOD 作者许可。
+
+回归入口：`tools/android/gradle-with-s2-env.sh :steam-content:test`，覆盖关闭时不访问站点、开启时不访问 Steam CM、加密下载及凭证刷新、错误条目/内容变更拒绝、授权错误识别。
+
 ## 5. NexusMods 商店导入
 
 `NexusModsStoreActivity` 仍作为实验性页面保留，但 `ModsPage` 暂时不展示入口。后续重新开放时需继续遵循：

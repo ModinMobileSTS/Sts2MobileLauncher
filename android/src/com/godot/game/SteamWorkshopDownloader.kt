@@ -10,6 +10,9 @@ import java.util.concurrent.TimeUnit
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import top.apricityx.workshop.workshop.SpireSupplyStationClient
 import kotlinx.coroutines.runBlocking
 import okhttp3.Protocol
 import kotlinx.serialization.json.Json
@@ -33,10 +36,16 @@ class SteamWorkshopDownloader(private val context: Context) {
     class CancellationToken {
         private val cancelled = AtomicBoolean(false)
 
+        @Volatile private var job: Job? = null
         fun cancel() {
             cancelled.set(true)
+            job?.cancel()
         }
 
+        fun bind(value: Job?) {
+            job = value
+            if (cancelled.get()) value?.cancel()
+        }
         fun throwIfCancelled() {
             if (cancelled.get() || Thread.currentThread().isInterrupted) {
                 throw IOException("Workshop download cancelled.")
@@ -75,6 +84,13 @@ class SteamWorkshopDownloader(private val context: Context) {
         val fallbackReason: String,
         val matchedBranchMin: String,
         val matchedBranchMax: String,
+    )
+
+    class SupplyStationDownloadException(message: String) : IOException(message)
+
+    fun supplyStationOption(): BranchOption = BranchOption(
+        SpireSupplyStationClient.BRANCH, "", "", SpireSupplyStationClient.SOURCE,
+        context.getString(R.string.workshop_supply_station_branch_notice), "", "", 0L, "", 0L,
     )
 
     fun loadBranchOptions(item: SteamWorkshopCatalog.Item): List<BranchOption> = runBlocking {
@@ -135,10 +151,13 @@ class SteamWorkshopDownloader(private val context: Context) {
         cancellationToken: CancellationToken? = null,
     ): Result = runBlocking {
         val appContext = context.applicationContext
+        val useSupplyStation = selectedOption?.source == SpireSupplyStationClient.SOURCE ||
+            (selectedOption == null && SteamWorkshopPreferences.isSupplyStationEnabled(appContext))
+        cancellationToken?.bind(currentCoroutineContext()[Job])
         val identity = SteamClientIdentity(appContext)
         val client = createWorkshopNetworkClient(appContext)
         cancellationToken?.throwIfCancelled()
-        val account = createAccountSession(appContext, identity)
+        val account = if (useSupplyStation) null else createAccountSession(appContext, identity)
         val outputDir = prepareOutputDir(appContext, item.publishedFileId.toString())
         val engine = WorkshopDownloadEngine.createDefault(
             client = client,
@@ -155,7 +174,8 @@ class SteamWorkshopDownloader(private val context: Context) {
             publishedFileLanguage = "schinese",
         )
         val selectedVariant = selectedOption?.toResolvedVariant()
-        val branch = normalizeWorkshopBranch(selectedOption?.branch ?: selectedVariant?.branch ?: "public")
+        val branch = if (useSupplyStation) SpireSupplyStationClient.BRANCH else
+            normalizeWorkshopBranch(selectedOption?.branch ?: selectedVariant?.branch ?: "public")
         var resolvedResolution: WorkshopItemResolution? = null
         var sawDeterminateProgress = false
         var lastPercent = 0
@@ -169,6 +189,7 @@ class SteamWorkshopDownloader(private val context: Context) {
                 outputDir = outputDir,
                 branch = branch,
                 selectedVariant = selectedVariant,
+                useSupplyStation = useSupplyStation,
             ),
         ).collect { event ->
             cancellationToken?.throwIfCancelled()
@@ -209,7 +230,11 @@ class SteamWorkshopDownloader(private val context: Context) {
                 is DownloadEvent.Completed -> {
                     emit(listener, Progress(100, "Workshop download complete."))
                 }
-                is DownloadEvent.Failed -> throw IOException(userFacingFailureMessage(event.message))
+                is DownloadEvent.Failed -> {
+                    if (useSupplyStation) throw SupplyStationDownloadException(
+                        context.getString(R.string.workshop_supply_station_failure, event.message))
+                    throw IOException(event.message)
+                }
                 is DownloadEvent.LogAppended -> Unit
             }
         }
@@ -276,57 +301,6 @@ class SteamWorkshopDownloader(private val context: Context) {
             DownloadState.Failed -> false
         }
 
-    private fun userFacingFailureMessage(message: String): String {
-        val trimmed = message.trim().ifBlank { "Workshop download failed." }
-        if (isSteamCdnUnauthorizedFailure(trimmed)) {
-            return context.getString(R.string.workshop_download_login_hint)
-        }
-        if (needsSteamLoginHint(trimmed)) {
-            val hint = context.getString(R.string.workshop_download_login_hint)
-            return if (!trimmed.contains(hint)) {
-                "$trimmed\n\n$hint"
-            } else {
-                trimmed
-            }
-        }
-        val hint = context.getString(R.string.workshop_download_network_hint)
-        return if (needsNetworkHint(trimmed) && !trimmed.contains(hint)) {
-            "$trimmed\n\n$hint"
-        } else {
-            trimmed
-        }
-    }
-
-    private fun isSteamCdnUnauthorizedFailure(message: String): Boolean =
-        message.contains("Steam CDN request failed: 401", ignoreCase = true)
-
-    private fun needsSteamLoginHint(message: String): Boolean {
-        val lower = message.lowercase()
-        return lower.contains("unauthorized") ||
-            lower.contains("forbidden") ||
-            lower.contains("access denied") ||
-            lower.contains("permission") ||
-            lower.contains("not logged") ||
-            lower.contains("login required") ||
-            lower.contains("requires login") ||
-            lower.contains("http 401") ||
-            lower.contains("http 403") ||
-            lower.contains(" 401") ||
-            lower.contains(" 403")
-    }
-
-    private fun needsNetworkHint(message: String): Boolean {
-        val lower = message.lowercase()
-        return lower.contains("ugc manifest") ||
-            lower.contains("manifest") ||
-            lower.contains("timeout") ||
-            lower.contains("timed out") ||
-            lower.contains("connection") ||
-            lower.contains("network") ||
-            lower.contains("unreachable") ||
-            lower.contains("failed to connect") ||
-            lower.contains("unable to download")
-    }
 
     private fun addDefaultManifestBranchFallbackOptions(
         context: Context,

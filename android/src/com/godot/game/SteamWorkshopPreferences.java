@@ -17,6 +17,7 @@ public final class SteamWorkshopPreferences {
 	private static final String KEY_DOWNLOAD_BRANCH_MODE = "download_branch_mode";
 	private static final String KEY_CUSTOM_DOWNLOAD_BRANCH = "custom_download_branch";
 	private static final String KEY_DIRECT_ACCESS_ENABLED = "direct_access_enabled";
+	private static final String KEY_SUPPLY_STATION_ENABLED = "supply_station_enabled";
 
 	private SteamWorkshopPreferences() {
 	}
@@ -75,6 +76,14 @@ public final class SteamWorkshopPreferences {
 
 	public static void setDirectAccessEnabled(Context context, boolean enabled) {
 		preferences(context).edit().putBoolean(KEY_DIRECT_ACCESS_ENABLED, enabled).apply();
+	}
+
+	public static boolean isSupplyStationEnabled(Context context) {
+		return preferences(context).getBoolean(KEY_SUPPLY_STATION_ENABLED, false);
+	}
+
+	public static void setSupplyStationEnabled(Context context, boolean enabled) {
+		preferences(context).edit().putBoolean(KEY_SUPPLY_STATION_ENABLED, enabled).apply();
 	}
 
 	private static SharedPreferences preferences(Context context) {

@@ -18,6 +18,7 @@ class WorkshopDownloadEngine(
     private val resolver: PublishedFileResolver,
     private val directDownloader: DirectWorkshopDownloader,
     private val ugcWorkshopDownloader: UgcWorkshopDownloader,
+    private val supplyStationClient: SpireSupplyStationClient,
 ) {
     fun download(request: WorkshopDownloadRequest): Flow<DownloadEvent> = channelFlow {
         request.outputDir.mkdirs()
@@ -44,7 +45,9 @@ class WorkshopDownloadEngine(
             send(DownloadEvent.StateChanged(DownloadState.Resolving))
             emitLog("Resolving workshop metadata for app=${request.appId} publishedFileId=${request.publishedFileId} branch=${request.branch}")
 
-            val resolved = resolver.resolve(request.appId, request.publishedFileId, request.branch, request.selectedVariant)
+            val stationDownload = if (request.useSupplyStation) supplyStationClient.resolve(request) else null
+            val resolved = stationDownload?.item
+                ?: resolver.resolve(request.appId, request.publishedFileId, request.branch, request.selectedVariant)
             send(DownloadEvent.Resolved(resolved.resolution))
             metadataFile.writeText(resolved.metadataJson)
             emitLog("Metadata saved to ${metadataFile.name}")
@@ -64,7 +67,11 @@ class WorkshopDownloadEngine(
                             "matched=${resolved.resolution.matchedBranchMin}..${resolved.resolution.matchedBranchMax} " +
                             "fallback=${resolved.resolution.fallbackReason}",
                     )
-                    ugcWorkshopDownloader.download(request, resolved, ::emitEvent, ::emitLog)
+                    if (stationDownload != null) {
+                        stationDownload.downloadUgc(ugcWorkshopDownloader, ::emitEvent, ::emitLog)
+                    } else {
+                        ugcWorkshopDownloader.download(request, resolved, ::emitEvent, ::emitLog)
+                    }
                 }
             }
 
@@ -78,7 +85,10 @@ class WorkshopDownloadEngine(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
-            val failureMessage = error.userVisibleDownloadFailureMessage()
+            val failureMessage = if (request.useSupplyStation &&
+                (error is kotlinx.serialization.SerializationException || error.message.orEmpty().contains("://"))) {
+                "Invalid supply station response or download address"
+            } else error.userVisibleDownloadFailureMessage()
             send(DownloadEvent.LogAppended("Download failed: $failureMessage"))
             send(DownloadEvent.StateChanged(DownloadState.Failed))
             send(DownloadEvent.Failed(failureMessage))
@@ -112,6 +122,7 @@ class WorkshopDownloadEngine(
                     sessionConnector = sessionConnector,
                     allowPublicCdnFallbackOnSessionFailure = allowPublicCdnFallbackOnSessionFailure,
                 ),
+                supplyStationClient = SpireSupplyStationClient(client),
             )
         }
     }
