@@ -29,16 +29,28 @@ import java.util.HashSet;
 public class FMOD {
     private static final String TAG = "FMOD";
     private static final int TYPE_REMOTE_SUBMIX = 25;
-    private static Context gContext;
+    private static volatile Context gContext;
+    private static volatile boolean gAudioCompatibilityMode;
     private static final PluginBroadcastReceiver gPluginBroadcastReceiver = new PluginBroadcastReceiver();
-    private static PluginAudioDeviceCallback gPluginAudioDeviceCallback;
+    private static volatile PluginAudioDeviceCallback gPluginAudioDeviceCallback;
 
     public FMOD() {
     }
 
+    /** Must be set before the native FMOD system is initialized. */
+    public static void setAudioCompatibilityMode(boolean enabled) {
+        gAudioCompatibilityMode = enabled;
+        Log.i(TAG, "Audio compatibility mode=" + enabled + "; AAudio/low-latency=" + !enabled);
+    }
+
     public static synchronized void init(Context context) {
+        Context applicationContext = context != null ? context.getApplicationContext() : null;
+        // GodotApp initializes before native startup; the Godot plugin calls us again.
+        if (applicationContext != null && applicationContext == gContext) {
+            return;
+        }
         close();
-        gContext = context != null ? context.getApplicationContext() : null;
+        gContext = applicationContext;
         if (gContext == null) {
             return;
         }
@@ -123,7 +135,7 @@ public class FMOD {
 
     public static boolean supportsLowLatency() {
         int blockSize = getOutputBlockSize();
-        return lowLatencyFlag() && proAudioFlag() && !isBluetoothOn() && blockSize > 0 && blockSize <= 1024;
+        return !gAudioCompatibilityMode && lowLatencyFlag() && !isBluetoothOn() && blockSize > 0 && blockSize <= 1024;
     }
 
     public static boolean lowLatencyFlag() {
@@ -139,7 +151,7 @@ public class FMOD {
     }
 
     public static boolean supportsAAudio() {
-        return Build.VERSION.SDK_INT >= 27;
+        return !gAudioCompatibilityMode && Build.VERSION.SDK_INT >= 27;
     }
 
     public static int getOutputSampleRate() {
@@ -177,16 +189,20 @@ public class FMOD {
     }
 
     public static boolean isBluetoothOn() {
-        if (gContext == null) {
-            return false;
+        for (AudioDeviceInfo device : getAudioDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+            switch (device.getType()) {
+                case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
+                case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
+                case AudioDeviceInfo.TYPE_HEARING_AID:
+                case AudioDeviceInfo.TYPE_BLE_HEADSET:
+                case AudioDeviceInfo.TYPE_BLE_SPEAKER:
+                case AudioDeviceInfo.TYPE_BLE_BROADCAST:
+                    return true;
+                default:
+                    break;
+            }
         }
-        try {
-            AudioManager audioManager = (AudioManager) gContext.getSystemService(Context.AUDIO_SERVICE);
-            return audioManager != null && (audioManager.isBluetoothA2dpOn() || audioManager.isBluetoothScoOn());
-        } catch (Throwable throwable) {
-            Log.w(TAG, "isBluetoothOn failed", throwable);
-            return false;
-        }
+        return false;
     }
 
     public static String getDeviceName(int deviceId) {
@@ -201,7 +217,7 @@ public class FMOD {
     }
 
     public static int[] getDevices(int flags) {
-        AudioDeviceInfo[] devices = filterDevices(getAudioDevices(flags));
+        AudioDeviceInfo[] devices = getAudioDevices(flags);
         int[] ids = new int[devices.length];
         for (int i = 0; i < devices.length; i++) {
             ids[i] = devices[i].getId();
@@ -219,7 +235,8 @@ public class FMOD {
             if (audioManager == null) {
                 return new AudioDeviceInfo[0];
             }
-            return audioManager.getDevices(flags);
+            // The bundled native library uses this older API, not getDevices().
+            return filterDevices(audioManager.getDevices(flags));
         } catch (Throwable throwable) {
             Log.w(TAG, "getAudioDevices failed", throwable);
             return new AudioDeviceInfo[0];
@@ -256,7 +273,7 @@ public class FMOD {
     }
 
     private static AudioDeviceInfo findAudioDevice(int deviceId) {
-        for (AudioDeviceInfo device : filterDevices(getAudioDevices(AudioManager.GET_DEVICES_ALL))) {
+        for (AudioDeviceInfo device : getAudioDevices(AudioManager.GET_DEVICES_ALL)) {
             if (device.getId() == deviceId) {
                 return device;
             }
@@ -270,13 +287,25 @@ public class FMOD {
 
     private static native void SetOutputEnumerationChanged();
 
+    private static void notifyOutputRouteChanged() {
+        // Enumeration and AAudio stream reconnection are distinct native signals.
+        try {
+            SetOutputEnumerationChanged();
+        } catch (UnsatisfiedLinkError error) {
+            Log.w(TAG, "FMOD output enumeration callback is unavailable", error);
+        }
+        try {
+            OutputAAudioHeadphonesChanged();
+        } catch (UnsatisfiedLinkError error) {
+            Log.w(TAG, "FMOD headphone callback is unavailable", error);
+        }
+    }
+
     private static final class PluginBroadcastReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
-            try {
-                OutputAAudioHeadphonesChanged();
-            } catch (UnsatisfiedLinkError error) {
-                Log.w(TAG, "FMOD headphone callback is unavailable", error);
+            if (gContext != null && intent != null && Intent.ACTION_HEADSET_PLUG.equals(intent.getAction())) {
+                notifyOutputRouteChanged();
             }
         }
     }
@@ -301,6 +330,9 @@ public class FMOD {
         }
 
         private void updateDevices(AudioDeviceInfo[] devices, boolean added) {
+            if (this != gPluginAudioDeviceCallback) {
+                return;
+            }
             boolean inputChanged = false;
             boolean outputChanged = false;
             for (AudioDeviceInfo device : filterDevices(devices)) {
@@ -317,15 +349,16 @@ public class FMOD {
                     deviceSet.remove(deviceId);
                 }
             }
-            try {
-                if (inputChanged) {
+            if (inputChanged) {
+                try {
                     SetInputEnumerationChanged();
+                } catch (UnsatisfiedLinkError error) {
+                    Log.w(TAG, "FMOD input enumeration callback is unavailable", error);
                 }
-                if (outputChanged) {
-                    SetOutputEnumerationChanged();
-                }
-            } catch (UnsatisfiedLinkError error) {
-                Log.w(TAG, "FMOD audio device callback is unavailable", error);
+            }
+            if (outputChanged) {
+                // Also covers USB and Bluetooth outputs which do not send HEADSET_PLUG.
+                notifyOutputRouteChanged();
             }
         }
     }

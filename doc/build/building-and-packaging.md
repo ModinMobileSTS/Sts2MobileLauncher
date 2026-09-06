@@ -95,7 +95,7 @@ tools/android/sync-runtime-from-references.sh
 - Godot Android template AAR/native libs
 - `.NET/Godot` BCL/runtime DLL
 - crypto native jar
-- FMOD AAR，并应用 `tools/android/fmod-shim/` 中的 Java shim；该 shim 补齐旧 native runtime 需要的 URI 文件描述符、耳机插拔和音频设备枚举回调。同步脚本会替换全部生成的 `FMOD*.class`，并在写回后校验 AAR 内的 `libs/fmod.jar`，缺少目标 jar 或 class 时直接终止构建
+- FMOD AAR，并应用 `tools/android/fmod-shim/` 中的 Java shim；该 shim 补齐旧 native runtime 的 URI 文件描述符与设备枚举 ABI，统一过滤 remote-submix，并在有线、USB、蓝牙输出变化时分别通知设备枚举与 AAudio 输出重连。`audio_compatibility_mode` 在 native 初始化前决定是否禁用 AAudio/低延迟路径，重复 plugin 初始化不会清除此选择。同步脚本替换全部生成的 `FMOD*.class` 并校验 AAR 内 `libs/fmod.jar`，缺少目标 jar 或 class 时直接终止构建
 - Gradle wrapper jar
 
 这些产物位于 `android/assets/dotnet_bcl/`、`android/libs/` 等 gitignored 路径，不手工维护。长期源码化状态和剩余阻塞见 [`source-dependencies.md`](source-dependencies.md)。

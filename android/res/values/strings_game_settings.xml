@@ -314,7 +314,7 @@
     <string name="renderer_option_opengl_es3">OpenGL ES 3.0 (compatibility)</string>
     <string name="section_audio">Audio</string>
     <string name="audio_compatibility_switch">Enable audio compatibility mode</string>
-    <string name="audio_compatibility_hint">Uses more conservative FMOD audio buffer settings on next launch. Keep this off by default; turn it on if a device has no sound or unstable audio.</string>
+    <string name="audio_compatibility_hint">Uses FMOD’s legacy output path instead of AAudio and disables low-latency output on next launch. Try this if a device has no sound or unstable audio; latency may increase. Restart the game after changing this setting.</string>
     <string name="section_input">Input</string>
     <string name="mobile_two_finger_inspect_switch">Enable two-finger inspect</string>
     <string name="mobile_two_finger_inspect_hint">Enabled by default. When on, placing a second finger on screen triggers card inspect / alternate preview behavior. Turn this off if it causes touch issues on your device.</string>

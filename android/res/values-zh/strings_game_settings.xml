@@ -314,7 +314,7 @@
     <string name="renderer_option_opengl_es3">OpenGL ES 3.0（兼容模式）</string>
     <string name="section_audio">声音</string>
     <string name="audio_compatibility_switch">启用声音兼容模式</string>
-    <string name="audio_compatibility_hint">会在下次启动游戏时使用更保守的 FMOD 音频缓冲设置。默认建议关闭；如果某些设备没有声音或声音不稳定，可以开启试试。</string>
+    <string name="audio_compatibility_hint">下次启动时停用 AAudio 与低延迟输出，改走 FMOD 旧式音频路径。设备无声或音频不稳定时可尝试开启，延迟可能增加。修改后需重启游戏。</string>
     <string name="section_input">输入</string>
     <string name="mobile_two_finger_inspect_switch">启用双指查看</string>
     <string name="mobile_two_finger_inspect_hint">默认开启。开启后，屏幕上放下第二根手指会触发卡牌查看 / 右键预览行为。如果你的设备上它会导致触控异常，可以关闭。</string>

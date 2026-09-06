@@ -147,7 +147,15 @@ public class GodotApp extends GodotActivity {
 		}
 		applyConfiguredScreenOrientation();
 		EdgeToEdge.enable(this);
+		boolean audioCompatibilityMode = false;
 		try {
+			audioCompatibilityMode = new ExtraSettingsRepository(this).loadSettingsJson()
+				.optBoolean("audio_compatibility_mode", false);
+		} catch (Exception exception) {
+			Log.w(TAG, "Unable to read audio compatibility mode; using FMOD defaults.", exception);
+		}
+		try {
+			FMOD.setAudioCompatibilityMode(audioCompatibilityMode);
 			FMOD.init(this);
 		} catch (Throwable throwable) {
 			Log.w(TAG, "FMOD init failed; continuing so launcher diagnostics remain available.", throwable);
