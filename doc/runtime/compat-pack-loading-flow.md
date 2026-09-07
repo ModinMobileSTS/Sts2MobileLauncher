@@ -112,6 +112,10 @@ offline bootstrap:
 4. 启动后台线程执行 `GameLaunchPreparationManager.prepareForLaunch()`。
 5. 准备完成后启动 `GodotApp` 并附加 `launch_prepared=true`。
 
+Steam Cloud 与 WebDAV 的非强制同步使用逐文件的共同基线：仅本地变化时拉取会保留本地文件，仅远端变化时可以拉取，两端分叉或没有共同基线而内容不同时要求用户明确选择。强制拉取/上传仍可按用户选择覆盖。空操作和部分同步都只为 SHA-1 与长度确认一致的文件推进基线；未同步、缺失或分叉文件保留最后共同基线。旧版曾记录的 `local_sha1 != remote_sha1` 条目不再被当作共同祖先，升级后可能需要先确认一次保留哪端，不能静默推断胜方。
+
+本地快照先写 `.part`，关闭 ZIP 并校验 schema 1 元数据、文件数量和路径清单后才重命名发布。恢复列表忽略缺少 ZIP 中央目录或元数据/清单不完整的存档；恢复时还逐文件校验长度和 CRC，全部通过后才创建 `before-restore` 备份并替换账号目录。恢复 staging 与 `.snapshot-rollback-*` 位于当前 profile 的快照目录，不参与账号目录发现；先把原账号目录移入 rollback，再移入完整 staging，第二次 rename 失败则回滚原目录。若回滚本身也失败，保留 rollback 并在异常中记录位置，不删除原存档。只有恢复成功后才执行快照保留数量裁剪；该过程不承诺两次 rename 之间的断电/强杀原子性，可通过保留的目录或安全快照恢复。
+
 ## 6. Launch preparation
 
 `GameLaunchPreparationManager.prepareForLaunch()` 顺序：

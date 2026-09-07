@@ -19,10 +19,14 @@ import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
+import java.util.Set;
+import java.util.zip.CRC32;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
 public final class LocalSaveSnapshotManager {
@@ -57,23 +61,41 @@ public final class LocalSaveSnapshotManager {
 		if (!snapshotFile.isFile()) {
 			throw new IOException("Local save snapshot is missing: " + snapshotId);
 		}
-		if (hasSaveFiles(getAccountRootDir())) {
-			createSnapshot("before-restore", true, false);
-		}
 		File accountRoot = getAccountRootDir();
-		File stagingRoot = new File(getSnapshotRootDir(), ".restore-staging-" + System.nanoTime());
-		FileBrowserSupport.deleteRecursively(stagingRoot);
+		// The snapshot store shares app-private storage, but is not scanned as an account.
+		File parent = getSnapshotRootDir();
+		String suffix = Long.toString(System.nanoTime());
+		File stagingRoot = new File(parent, ".snapshot-staging-" + suffix);
+		File rollbackRoot = new File(parent, ".snapshot-rollback-" + suffix);
 		FileBrowserSupport.ensureDirectory(stagingRoot);
 		try {
-			unzipSnapshot(snapshotFile, stagingRoot);
-			FileBrowserSupport.deleteRecursively(accountRoot);
-			FileBrowserSupport.ensureDirectory(accountRoot);
-			copyDirectoryContents(stagingRoot, accountRoot);
-			return findSnapshotById(snapshotFile.getName());
+			// Validate all entries and their CRCs before touching the current saves or retention.
+			JSONObject metadata = unzipSnapshot(snapshotFile, stagingRoot);
+			Snapshot snapshot = snapshotFromMetadata(snapshotFile, metadata);
+			if (hasSaveFiles(accountRoot)) {
+				createSnapshot("before-restore", true, false);
+			}
+			installRestoredSaves(stagingRoot, accountRoot, rollbackRoot);
+			pruneSnapshots();
+			return snapshot;
 		} finally {
 			FileBrowserSupport.deleteRecursively(stagingRoot);
-			pruneSnapshots();
 		}
+	}
+
+	private static void installRestoredSaves(File stagingRoot, File accountRoot, File rollbackRoot) throws IOException {
+			boolean hadAccount = accountRoot.exists();
+			if (hadAccount && !accountRoot.renameTo(rollbackRoot)) {
+				throw new IOException("Unable to preserve current saves: " + accountRoot);
+			}
+			if (!stagingRoot.renameTo(accountRoot)) {
+				IOException failure = new IOException("Unable to install restored saves: " + accountRoot);
+				if (hadAccount && !rollbackRoot.renameTo(accountRoot)) {
+					failure.addSuppressed(new IOException("Original saves retained at: " + rollbackRoot));
+				}
+				throw failure;
+			}
+			FileBrowserSupport.deleteRecursively(rollbackRoot);
 	}
 
 	public List<Snapshot> listSnapshots() {
@@ -86,7 +108,11 @@ public final class LocalSaveSnapshotManager {
 			if (!file.isFile() || !file.getName().toLowerCase(Locale.ROOT).endsWith(".zip")) {
 				continue;
 			}
-			snapshots.add(readSnapshot(file));
+			try {
+				snapshots.add(readSnapshot(file));
+			} catch (Exception ignored) {
+				// Incomplete/invalid archives are not usable recovery points. Leave them for diagnosis.
+			}
 		}
 		snapshots.sort((a, b) -> Long.compare(b.createdAtMs, a.createdAtMs));
 		return snapshots;
@@ -119,9 +145,18 @@ public final class LocalSaveSnapshotManager {
 		long createdAtMs = System.currentTimeMillis();
 		String timestamp = new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date(createdAtMs));
 		File snapshotFile = FileBrowserSupport.buildUniqueChild(getSnapshotRootDir(), timestamp + "-" + normalizedReason + ".zip");
-		try (ZipOutputStream output = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(snapshotFile)))) {
-			writeMetadata(output, createdAtMs, normalizedReason, accountRoot);
-			zipDirectoryRecursive(accountRoot, accountRoot, output);
+		File temporary = File.createTempFile(".snapshot-", ".part", snapshotFile.getParentFile());
+		try {
+			try (ZipOutputStream output = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(temporary)))) {
+				writeMetadata(output, createdAtMs, normalizedReason, accountRoot);
+				zipDirectoryRecursive(accountRoot, accountRoot, output);
+			}
+			readSnapshotMetadata(temporary);
+			if (!temporary.renameTo(snapshotFile)) {
+				throw new IOException("Unable to publish local save snapshot: " + snapshotFile);
+			}
+		} finally {
+			FileBrowserSupport.deleteRecursively(temporary);
 		}
 		if (pruneAfterCreate) {
 			pruneSnapshots();
@@ -140,17 +175,12 @@ public final class LocalSaveSnapshotManager {
 		}
 	}
 
-	private Snapshot findSnapshotById(String id) {
-		for (Snapshot snapshot : listSnapshots()) {
-			if (snapshot.id.equals(id)) {
-				return snapshot;
-			}
-		}
-		return readSnapshot(new File(getSnapshotRootDir(), id));
+
+	private Snapshot readSnapshot(File file) throws Exception {
+		return snapshotFromMetadata(file, readSnapshotMetadata(file));
 	}
 
-	private Snapshot readSnapshot(File file) {
-		JSONObject metadata = readSnapshotMetadata(file);
+	private Snapshot snapshotFromMetadata(File file, JSONObject metadata) {
 		String id = file.getName();
 		String reason = metadata.optString("reason", inferReason(id));
 		long createdAtMs = metadata.optLong("created_at_ms", file.lastModified());
@@ -160,22 +190,80 @@ public final class LocalSaveSnapshotManager {
 		return new Snapshot(id, reason, createdAtMs, file.length(), fileCount, profileId, accountRoot);
 	}
 
-	private JSONObject readSnapshotMetadata(File file) {
-		if (file == null || !file.isFile()) {
-			return new JSONObject();
+	private JSONObject readSnapshotMetadata(File file) throws Exception {
+		try (ZipFile zip = new ZipFile(file)) {
+			return validateSnapshot(zip);
 		}
-		try (ZipInputStream input = new ZipInputStream(new BufferedInputStream(new FileInputStream(file)))) {
-			ZipEntry entry;
-			while ((entry = input.getNextEntry()) != null) {
-				if (!entry.isDirectory() && METADATA_ENTRY.equals(entry.getName())) {
-					ByteArrayOutputStream output = new ByteArrayOutputStream();
-					copy(input, output);
-					return new JSONObject(new String(output.toByteArray(), StandardCharsets.UTF_8));
+	}
+
+	private JSONObject validateSnapshot(ZipFile zip) throws Exception {
+		ZipEntry metadataEntry = zip.getEntry(METADATA_ENTRY);
+		if (metadataEntry == null || metadataEntry.isDirectory()) {
+			throw new IOException("Snapshot metadata is missing.");
+		}
+		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+		copySnapshotEntry(zip, metadataEntry, buffer);
+		JSONObject metadata = new JSONObject(new String(buffer.toByteArray(), StandardCharsets.UTF_8));
+		JSONArray paths = metadata.optJSONArray("paths");
+		if (metadata.optInt("schema", -1) != 1 || !"sts2_local_save_snapshot".equals(metadata.optString("type"))
+			|| paths == null || paths.length() == 0 || metadata.optInt("file_count", -1) != paths.length()) {
+			throw new IOException("Invalid snapshot metadata or file count.");
+		}
+		Set<String> expected = new HashSet<>();
+		for (int i = 0; i < paths.length(); i++) {
+			String name = paths.getString(i);
+			validateSnapshotPath(name);
+			if (METADATA_ENTRY.equals(name) || !expected.add(name)) {
+				throw new IOException("Duplicate snapshot path: " + name);
+			}
+		}
+		Set<String> seen = new HashSet<>();
+		Enumeration<? extends ZipEntry> entries = zip.entries();
+		while (entries.hasMoreElements()) {
+			ZipEntry entry = entries.nextElement();
+			String name = entry.getName();
+			validateSnapshotPath(entry.isDirectory() ? name.substring(0, name.length() - 1) : name);
+			if (!seen.add(name)) {
+				throw new IOException("Duplicate snapshot entry: " + name);
+			}
+			if (!entry.isDirectory() && !METADATA_ENTRY.equals(name)) {
+				if (entry.getSize() < 0 || entry.getCrc() < 0 || !expected.remove(name)) {
+					throw new IOException("Unexpected snapshot entry: " + name);
 				}
 			}
-		} catch (Exception ignored) {
 		}
-		return new JSONObject();
+		if (!expected.isEmpty()) {
+			throw new IOException("Snapshot is missing save files: " + expected);
+		}
+		return metadata;
+	}
+
+	private static void validateSnapshotPath(String name) throws IOException {
+		if (name.isEmpty() || name.startsWith("/") || name.indexOf('\\') >= 0) {
+			throw new IOException("Invalid snapshot path: " + name);
+		}
+		for (String part : name.split("/", -1)) {
+			if (part.isEmpty() || ".".equals(part) || "..".equals(part)) {
+				throw new IOException("Invalid snapshot path: " + name);
+			}
+		}
+	}
+
+	private static void copySnapshotEntry(ZipFile zip, ZipEntry entry, OutputStream output) throws IOException {
+		CRC32 crc = new CRC32();
+		long size = 0;
+		try (InputStream input = zip.getInputStream(entry)) {
+			byte[] buffer = new byte[8192];
+			int read;
+			while ((read = input.read(buffer)) != -1) {
+				output.write(buffer, 0, read);
+				crc.update(buffer, 0, read);
+				size += read;
+			}
+		}
+		if (size != entry.getSize() || crc.getValue() != entry.getCrc()) {
+			throw new IOException("Snapshot checksum mismatch: " + entry.getName());
+		}
 	}
 
 	private void writeMetadata(ZipOutputStream output, long createdAtMs, String reason, File accountRoot) throws Exception {
@@ -186,10 +274,10 @@ public final class LocalSaveSnapshotManager {
 		root.put("reason", reason);
 		root.put("profile_id", getProfileId());
 		root.put("account_root", accountRoot.getAbsolutePath());
-		root.put("file_count", countFiles(accountRoot));
 		root.put("retention_limit", getRetentionLimit());
 		JSONArray paths = new JSONArray();
 		collectRelativePaths(accountRoot, accountRoot, paths);
+		root.put("file_count", paths.length());
 		root.put("paths", paths);
 		output.putNextEntry(new ZipEntry(METADATA_ENTRY));
 		output.write(root.toString(2).getBytes(StandardCharsets.UTF_8));
@@ -220,44 +308,34 @@ public final class LocalSaveSnapshotManager {
 		output.closeEntry();
 	}
 
-	private void unzipSnapshot(File snapshotFile, File targetDir) throws Exception {
-		try (ZipInputStream input = new ZipInputStream(new BufferedInputStream(new FileInputStream(snapshotFile)))) {
-			ZipEntry entry;
-			while ((entry = input.getNextEntry()) != null) {
-				String name = entry.getName() == null ? "" : entry.getName().replace('\\', '/');
-				if (name.isEmpty() || METADATA_ENTRY.equals(name)) {
+	private JSONObject unzipSnapshot(File snapshotFile, File targetDir) throws Exception {
+		try (ZipFile zip = new ZipFile(snapshotFile)) {
+			JSONObject metadata = validateSnapshot(zip);
+			Enumeration<? extends ZipEntry> entries = zip.entries();
+			String rootPath = targetDir.getCanonicalPath();
+			while (entries.hasMoreElements()) {
+				ZipEntry entry = entries.nextElement();
+				String name = entry.getName();
+				if (METADATA_ENTRY.equals(name)) {
 					continue;
 				}
 				File target = new File(targetDir, name);
-				String rootPath = targetDir.getCanonicalPath();
-				String targetPath = target.getCanonicalPath();
-				if (!targetPath.equals(rootPath) && !targetPath.startsWith(rootPath + File.separator)) {
+				if (!target.getCanonicalPath().startsWith(rootPath + File.separator)) {
 					throw new IOException("Snapshot entry escapes target directory: " + name);
 				}
 				if (entry.isDirectory()) {
 					FileBrowserSupport.ensureDirectory(target);
 					continue;
 				}
-				File parent = target.getParentFile();
-				if (parent != null) {
-					FileBrowserSupport.ensureDirectory(parent);
-				}
+				FileBrowserSupport.ensureDirectory(target.getParentFile());
 				try (OutputStream output = new BufferedOutputStream(new FileOutputStream(target))) {
-					copy(input, output);
+					copySnapshotEntry(zip, entry, output);
 				}
 			}
+			return metadata;
 		}
 	}
 
-	private void copyDirectoryContents(File sourceDir, File targetDir) throws IOException {
-		File[] children = sourceDir.listFiles();
-		if (children == null) {
-			return;
-		}
-		for (File child : children) {
-			FileBrowserSupport.copyEntryRecursively(child, new File(targetDir, child.getName()));
-		}
-	}
 
 	private boolean hasSaveFiles(File root) {
 		return countFiles(root) > 0;

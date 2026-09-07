@@ -59,6 +59,9 @@ dependencies {
     devImplementation 'com.github.L-JINBIN:MTDataFilesProvider:v1.0.0'
     releaseImplementation 'com.github.L-JINBIN:MTDataFilesProvider:v1.0.0'
 
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.15.1'
+
     if (rootProject.findProject(":lib")) {
         implementation project(":lib")
     } else if (rootProject.findProject(":godot:lib")) {
@@ -282,6 +285,7 @@ android {
             aidl.srcDirs = ['aidl']
             assets.srcDirs = ['assets']
         }
+        test.java.srcDirs = ['test']
         debug.jniLibs.srcDirs = ['libs/debug', 'libs/debug/vulkan_validation_layers']
         dev.jniLibs.srcDirs = ['libs/dev']
         release.jniLibs.srcDirs = ['libs/release']

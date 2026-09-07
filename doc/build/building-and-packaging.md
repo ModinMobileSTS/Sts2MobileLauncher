@@ -371,6 +371,15 @@ tools/package/build_android_body_zip.sh \
 # Steam 可恢复认证协议单元测试
 tools/android/gradle-with-s2-env.sh :steam-protocol:test
 
+# 启动器数据安全回归（Robolectric；无需账号、商业 payload 或连接设备）
+tools/android/gradle-with-s2-env.sh testMonoReleaseUnitTest \
+  --tests com.godot.game.CloudSyncSafetyTest \
+  --tests com.godot.game.LocalSaveSnapshotSafetyTest \
+  --tests com.godot.game.ModImportSafetyTest
+
+# full compat manifest 别名越界/符号链接回归（合成 API shape）
+dotnet run --project port-mod/tests/ModManifestAlias.Tests/ModManifestAlias.Tests.csproj
+
 # Java/Kotlin/Steam 子模块编译检查
 tools/android/gradle-with-s2-env.sh :compileMonoDebugJavaWithJavac
 

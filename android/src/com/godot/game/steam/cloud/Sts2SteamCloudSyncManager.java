@@ -104,7 +104,7 @@ public final class Sts2SteamCloudSyncManager {
 				writeManifest(remoteEntries);
 				writeBaseline(localEntriesBeforePull, remoteEntries);
 				SteamAuthStore.recordPullSuccess(context);
-				String summary = "Steam Cloud pull skipped: all " + remoteEntries.size() + " supported file(s) already match local files.";
+				String summary = "Steam Cloud pull skipped: no remote changes to apply; local changes preserved.";
 				writeDiagnostics("pull-summary.txt", summary + "\n");
 				report(listener, 100, summary);
 				return summary;
@@ -128,7 +128,7 @@ public final class Sts2SteamCloudSyncManager {
 				writeManifest(remoteEntries);
 				writeBaseline(collectLocalEntries(), remoteEntries);
 				SteamAuthStore.recordPullSuccess(context);
-				String summary = "Pulled " + downloadEntries.size() + " changed/missing Steam Cloud file(s); skipped " + (remoteEntries.size() - downloadEntries.size()) + " unchanged. Backup: " + backup.getName();
+				String summary = "Pulled " + downloadEntries.size() + " changed/missing Steam Cloud file(s); preserved " + (remoteEntries.size() - downloadEntries.size()) + " unchanged or locally modified. Backup: " + backup.getName();
 				writeDiagnostics("pull-summary.txt", summary + "\n");
 				report(listener, 100, summary);
 				return summary;
@@ -290,8 +290,10 @@ public final class Sts2SteamCloudSyncManager {
 			} else {
 				remoteChanged = !remote.sha1.equalsIgnoreCase(base.optString("remote_sha1", ""));
 			}
-			if (!force && localChanged && remoteChanged) {
-				conflicts.add(remote.localRelativePath);
+			if (!force && localChanged) {
+				if (remoteChanged) {
+					conflicts.add(remote.localRelativePath);
+				}
 				continue;
 			}
 			downloads.add(remote);
@@ -436,7 +438,9 @@ public final class Sts2SteamCloudSyncManager {
 				continue;
 			}
 			String path = entry.optString("local_relative_path", "").toLowerCase(Locale.ROOT);
-			if (!path.isEmpty()) {
+			// Older releases persisted divergent observations. They are not a common ancestor.
+			String hash = entry.optString("local_sha1", "");
+			if (!path.isEmpty() && !hash.isEmpty() && hash.equalsIgnoreCase(entry.optString("remote_sha1", ""))) {
 				map.put(path, entry);
 			}
 		}
@@ -469,16 +473,20 @@ public final class Sts2SteamCloudSyncManager {
 		root.put("profile_id", getProfileId());
 		root.put("account_root", getAccountRootDir().getAbsolutePath());
 		root.put("synced_at_ms", System.currentTimeMillis());
-		JSONArray entries = new JSONArray();
+		// Keep the last agreed content for files skipped by this operation, including missing files.
+		Map<String, JSONObject> agreed = baselineByLocal(readJsonQuietly(getBaselineFile()));
 		for (LocalEntry local : localEntries) {
 			RemoteEntry remote = remoteByLocal.get(local.localRelativePath.toLowerCase(Locale.ROOT));
+			if (!isSameCloudContent(local, remote)) {
+				continue;
+			}
 			JSONObject json = local.toJson();
-			json.put("remote_path", remote == null ? local.remotePath : remote.remotePath);
-			json.put("remote_sha1", remote == null ? "" : remote.sha1);
-			json.put("remote_timestamp_ms", remote == null ? 0L : remote.timestampMs);
-			entries.put(json);
+			json.put("remote_path", remote.remotePath);
+			json.put("remote_sha1", remote.sha1);
+			json.put("remote_timestamp_ms", remote.timestampMs);
+			agreed.put(local.localRelativePath.toLowerCase(Locale.ROOT), json);
 		}
-		root.put("entries", entries);
+		root.put("entries", new JSONArray(agreed.values()));
 		writeText(getBaselineFile(), root.toString(2));
 	}
 

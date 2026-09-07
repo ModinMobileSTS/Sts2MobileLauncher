@@ -91,6 +91,7 @@ public final class ExtraSettingsRepository {
 	public static final String OPERATION_PRESET_TOUCH = "touch";
 	public static final String OPERATION_PRESET_ORIGINAL = "original";
 
+	private static final String[] MOD_FILE_NAME_KEYS = {"id", "mod_id", "modId", "ID", "pck_name", "pckName", "PckName"};
 	private final Context context;
 
 	public ExtraSettingsRepository(Context context) {
@@ -714,7 +715,8 @@ public final class ExtraSettingsRepository {
 		}
 	}
 
-	private PreparedModImport finishPreparedModImport(File stagingRoot, String displayName, String normalizedName) {
+	private PreparedModImport finishPreparedModImport(File stagingRoot, String displayName, String normalizedName) throws IOException {
+		validateModImportPaths(stagingRoot);
 		normalizeRuntimeModAliases(stagingRoot);
 		List<ModEntry> incomingEntries = new ArrayList<>();
 		collectManifestFiles(stagingRoot, stagingRoot, incomingEntries);
@@ -1039,6 +1041,52 @@ public final class ExtraSettingsRepository {
 		}
 	}
 
+	private void validateModImportPaths(File stagingRoot) throws IOException {
+		List<File> files = new ArrayList<>();
+		collectRegularFiles(stagingRoot, files);
+		for (File file : files) {
+			if (!file.getName().toLowerCase(Locale.ROOT).endsWith(".json")) {
+				continue;
+			}
+			JSONObject manifest;
+			try {
+				manifest = new JSONObject(readTextFile(file));
+			} catch (JSONException ignored) {
+				continue; // Not every JSON resource is a MOD manifest.
+			}
+			for (String key : MOD_FILE_NAME_KEYS) {
+				String name = manifest.optString(key, "").trim();
+				if (!name.isEmpty() && !isSafeModBaseName(name)) {
+					throw new IOException("Invalid MOD " + key + " in " + file.getName() + ": " + name);
+				}
+			}
+		}
+	}
+
+	private static boolean isSafeModBaseName(String name) {
+		if (name == null || name.trim().isEmpty() || ".".equals(name) || "..".equals(name)) {
+			return false;
+		}
+		for (int i = 0; i < name.length(); i++) {
+			char c = name.charAt(i);
+			if (c < 32 || "/\\:*?\"<>|".indexOf(c) >= 0) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private static File requireModSibling(File parent, String name) throws IOException {
+		if (parent == null || !isSafeModBaseName(name)) {
+			throw new IOException("Invalid MOD file name: " + name);
+		}
+		File file = new File(parent, name);
+		if (!new File(parent.getCanonicalFile(), name).equals(file.getCanonicalFile())) {
+			throw new IOException("MOD file escapes manifest directory: " + name);
+		}
+		return file;
+	}
+
 	private void normalizeRuntimeModAliases(File modsRoot) {
 		List<ModEntry> entries = new ArrayList<>();
 		collectManifestFiles(modsRoot, modsRoot, entries);
@@ -1063,15 +1111,15 @@ public final class ExtraSettingsRepository {
 		if (parent == null) {
 			return;
 		}
-		File preferred = new File(parent, entry.modId + ".json");
-		File manifest = entry.manifestFile.getCanonicalFile();
+		File preferred = requireModSibling(parent, entry.modId + ".json");
+		File manifest = requireModSibling(parent, entry.manifestFile.getName()).getCanonicalFile();
 		File preferredCanonical = preferred.getCanonicalFile();
 		if (manifest.equals(preferredCanonical) || !preferredCanonical.isFile()) {
 			return;
 		}
 		ModEntry preferredEntry = tryParseModEntry(preferredCanonical);
 		if (preferredEntry != null && entry.modId.equals(preferredEntry.modId) && isGeneratedManifestAlias(preferredEntry.manifestFile)) {
-			deleteIfExists(entry.manifestFile);
+			deleteIfExists(requireModSibling(parent, entry.manifestFile.getName()));
 		}
 	}
 
@@ -1098,8 +1146,8 @@ public final class ExtraSettingsRepository {
 			return;
 		}
 		if (".json".equals(extension)) {
-			File source = entry.manifestFile;
-			File target = new File(parent, entry.modId + extension);
+			File source = requireModSibling(parent, entry.manifestFile.getName());
+			File target = requireModSibling(parent, entry.modId + extension);
 			if (!source.equals(target) && source.isFile() && !target.exists()) {
 				copyRecursively(source, target);
 				markGeneratedManifestAlias(target);
@@ -1109,8 +1157,8 @@ public final class ExtraSettingsRepository {
 		if (entry.modId.equals(entry.pckName)) {
 			return;
 		}
-		File source = new File(parent, entry.pckName + extension);
-		File target = new File(parent, entry.modId + extension);
+		File source = requireModSibling(parent, entry.pckName + extension);
+		File target = requireModSibling(parent, entry.modId + extension);
 		if (!source.isFile() || target.exists()) {
 			return;
 		}
@@ -1120,14 +1168,17 @@ public final class ExtraSettingsRepository {
 	public void deleteMod(ModEntry modEntry) throws Exception {
 		File manifestFile = modEntry.manifestFile;
 		File parent = manifestFile.getParentFile();
-		deleteIfExists(manifestFile);
+		if (!isSafeModBaseName(modEntry.modId) || !isSafeModBaseName(modEntry.pckName)) {
+			throw new IOException("Invalid MOD file name.");
+		}
+		deleteIfExists(requireModSibling(parent, manifestFile.getName()));
 		if (parent != null) {
-			deleteIfExists(new File(parent, modEntry.modId + ".json"));
-			deleteIfExists(new File(parent, modEntry.modId + ".pck"));
-			deleteIfExists(new File(parent, modEntry.modId + ".dll"));
+			deleteIfExists(requireModSibling(parent, modEntry.modId + ".json"));
+			deleteIfExists(requireModSibling(parent, modEntry.modId + ".pck"));
+			deleteIfExists(requireModSibling(parent, modEntry.modId + ".dll"));
 			if (!modEntry.modId.equals(modEntry.pckName)) {
-				deleteIfExists(new File(parent, modEntry.pckName + ".pck"));
-				deleteIfExists(new File(parent, modEntry.pckName + ".dll"));
+				deleteIfExists(requireModSibling(parent, modEntry.pckName + ".pck"));
+				deleteIfExists(requireModSibling(parent, modEntry.pckName + ".dll"));
 			}
 			pruneEmptyDirectories(parent, getModsRootDir());
 		}
@@ -2175,7 +2226,7 @@ public final class ExtraSettingsRepository {
 	}
 
 	private void collectManifestFiles(File rootDirectory, File directory, List<ModEntry> results) {
-		if (directory == null || !directory.isDirectory()) {
+		if (directory == null || !directory.isDirectory() || isSymbolicLink(directory)) {
 			return;
 		}
 		File[] files = directory.listFiles();
@@ -2183,6 +2234,9 @@ public final class ExtraSettingsRepository {
 			return;
 		}
 		for (File file : files) {
+			if (isSymbolicLink(file)) {
+				continue;
+			}
 			if (file.isDirectory()) {
 				collectManifestFiles(rootDirectory, file, results);
 			} else if (file.getName().toLowerCase(Locale.ROOT).endsWith(".json")) {
@@ -2211,7 +2265,7 @@ public final class ExtraSettingsRepository {
 				manifest.optString("modId", ""),
 				manifest.optString("ID", "")
 			).trim();
-			if (modId.isEmpty()) {
+			if (!isSafeModBaseName(modId)) {
 				return null;
 			}
 			String pckName = firstNonEmpty(
@@ -2221,6 +2275,9 @@ public final class ExtraSettingsRepository {
 				findPayloadBaseName(manifestFile.getParentFile()),
 				modId
 			).trim();
+			if (!isSafeModBaseName(pckName)) {
+				return null;
+			}
 			String displayName = firstNonEmpty(manifest.optString("name", ""), manifest.optString("display_name", ""), modId).trim();
 			String version = firstNonEmpty(manifest.optString("version", ""), manifest.optString("mod_version", ""), manifest.optString("Version", ""));
 			String authors = readAuthors(manifest);
@@ -2302,7 +2359,11 @@ public final class ExtraSettingsRepository {
 		if (parent == null || !parent.isDirectory() || TextUtils.isEmpty(baseName) || TextUtils.isEmpty(extension)) {
 			return false;
 		}
-		return new File(parent, baseName + extension).isFile();
+		try {
+			return requireModSibling(parent, baseName + extension).isFile();
+		} catch (IOException ignored) {
+			return false;
+		}
 	}
 
 	private String readAuthors(JSONObject manifest) {
