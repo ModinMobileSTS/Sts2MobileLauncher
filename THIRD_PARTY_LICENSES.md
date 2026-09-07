@@ -28,6 +28,7 @@
 | 组件 | 本仓库位置/用途 | 许可证/注意事项 |
 | --- | --- | --- |
 | Godot Engine Android template | `android/` Gradle template 结构、`GodotApp.java` 等；构建时同步 Godot Android AAR / GodotSharp / Mono publish runtime 到 gitignored 路径。 | MIT。保留 Godot 文件头；完整 runtime 不入库。 |
+| Godot.NET.Sdk 4.5.1（仅原生回归） | `port-mod/tests/FramePreparation.Tests` 用官方 Godot .NET SDK 编译合成测试场景，配合官方桌面引擎验证真实 ResourceLoader/节点生命周期；不改变发布 APK 的依赖。 | MIT；<https://github.com/godotengine/godot>。测试引擎下载与生成产物仅保留在 ignored 路径，不提交。 |
 | Material Symbols Rounded | `android/res/font/material_symbols_rounded.ttf` 作为离线生成输入；`tools/android/generate-material-symbol-vectors.py` 从字体导出 `android/res/drawable/ic_ms_*.xml` 官方轮廓 vector，Java 侧 `MaterialSymbols` 运行时加载这些 vector 统一启动器 MD3 图标。 | Google Fonts / Material Symbols，Apache-2.0；生成的 vector 资源仍按该来源审计。 |
 | FMOD Android plugin | 通过 `.env` 的 `STS2_FMOD_PLUGIN_AAR` 同步到 `android/libs/`，用于音频插件兼容。 | FMOD 自身许可；本仓库不提交 AAR，分发前需确认授权。 |
 | .NET / Godot Mono runtime 与 crypto native jar | 通过 `.env` / `tools/android/sync-runtime-from-references.sh` 同步到 `android/assets/dotnet_bcl/` 等 gitignored 路径。 | .NET / Godot / 上游组件各自许可证；发布包前审计实际打入 APK 的文件。 |

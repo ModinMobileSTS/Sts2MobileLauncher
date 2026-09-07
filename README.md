@@ -73,6 +73,8 @@ The creation of this project relies heavily on the explorations of the open-sour
   Provides the official rounded icon outlines used by the launcher UI, generated into Android vector drawables from the bundled font.
 - **[Android desugar_jdk_libs](https://github.com/google/desugar_jdk_libs)**
   Provides Java 8+ library API compatibility (including `java.time`) for Android 7.x devices.
+- **[Godot Engine / Godot.NET.Sdk](https://github.com/godotengine/godot)**
+  Provides the engine and Android template. The test-only Godot.NET.Sdk 4.5.1 harness also exercises native resource preparation and shader lifecycle behavior using synthetic scenes, without commercial game data or additional APK dependencies.
 
 *(For detailed third-party open-source licenses, including test-only Kotlin Test/JUnit, [Robolectric](https://github.com/robolectric/robolectric) (launcher data-safety regressions), and OkHttp MockWebServer dependencies that are not packaged into the APK, please see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
 

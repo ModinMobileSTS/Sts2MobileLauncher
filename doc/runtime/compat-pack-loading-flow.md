@@ -212,6 +212,8 @@ STS2Mobile.ModEntry
 
   合成回归使用实际打包的 Harmony、不包含商业游戏实现：在仓库根加载 `.env` 后运行 `"$DOTNET_BIN" run --project port-mod/tests/MobileHotPath.Tests -c Release -p:HarmonyReferenceDir="$PWD/android/assets/dotnet_bcl"`，再追加 `-p:LegacyIntent=true` 验证没有原版动画帧列表的旧 API。覆盖模式切换、长按重建、拖动/松手、详情父节点迁移、稳定帧分配预算、意图动态变化和释放事件语义；本机合成分配结果不能直接解释为 Android FPS 提升。
 
+  Shader 兼容不再 patch `Node.AddChild` / `AddChildSafely` 并重复扫描整棵新增子树。`NGame._Ready` 后仅在开关启用时订阅 `SceneTree.NodeAdded`，收集实际新增的 CanvasItem，同一批节点在父子 `_Ready` 全部完成后的 idle 回调统一检查，避免漏掉父节点 `_Ready` 对子材质的赋值。被移除/释放的节点跳过；初次安装与手动启用时才遍历已有树，使用索引而不是 `GetChildren()` 数组。关闭时退订，默认关闭路径不会增加逐节点设置查询；重新启用会补齐已有节点。替代 Shader 按有限路径表复用，每个节点仍获得独立材质副本，不修改原始共享材质，卡面 `canvas_group_mask_blur.gdshader` 仍不替换。关闭开关不会把已替换材质恢复原版，需要重启才能完全撤销。
+
 7. intent animation、quick restart、lifecycle/performance。`QuickRestartPatches` 在 pause menu 提供 Android 内置“重打/Retry”按钮：快速重开会先等待当前 run save 任务，再读取 autosave；淡出后清理旧 run，并执行原版保存恢复入口（`RunManager.SetUpSavedSinglePlayer()`，`v0.107.0` 为 `SetUpSavedSingleplayer()`；返回 `Task` 的版本会等待完成）以完整初始化 `NetService` / `MapSelectionSynchronizer` 等同步器后才调用 `NGame.LoadRun()`，避免资源预加载关闭或 IO 较慢时新 `RunState` 提前进入地图初始化、触发 `MapSelectionSynchronizer.GetVote()` 越界；若淡出后任一步失败，会先尝试 `FadeIn()` 解除黑屏遮罩，再显示错误弹窗。`AndroidAssetCacheLifecyclePatches` 只修正 Android 资源释放生命周期：原版私有 `AssetCache.RemoveAndGetResource()` 仍照常从 cache 索引移除条目，原版 asset-set 选择、missed-set 清理和兼容层 protected-path 过滤均不变，但它的返回值会被置空，从而阻止 `UnloadAssets()` / `UnloadMissedCacheAssets()` 显式 `Dispose()` 仍可能被节点、对象池或异步任务持有的 Godot `Resource`。`LifecycleAndPerformancePatches` 保留默认预加载范围和 warm-cache 保护策略；关闭预加载只在内层 `LoadAssets` 阻止加载并返回已完成的空 session，外层 `LoadAssetSets` 仍执行原版 cache/missed-set 淘汰，不再因开关跳过整段维护：它在 `NMainMenu._Ready` 后启动安全 deferred preload，并在需要细分或额外 warmup 时接管原版 `LoadCommonAndMainMenuAssets()`：
    - `preload_enabled`：总开关，默认 `true`。
    - `preload_startup_common_enabled`：主菜单后加载 `AssetSets.CommonAssets`，默认 `true`。
@@ -235,6 +237,19 @@ STS2Mobile.ModEntry
    Android 附加设置页在顶部“系统”分区的系统卡片中显示 `preload_enabled` 总开关、预加载下方默认开启的 `android_high_refresh_rate_enabled` 高刷新请求开关，以及默认关闭的性能 overlay 开关；预加载右侧箭头打开预加载详细管理 BottomSheet，默认不会自动展开。总开关开/关只写入自身，不改写上述细分项目；BottomSheet 的“恢复默认”只重置细分项目，不修改 `preload_enabled`。预加载详细 BottomSheet 刚打开时内容区上滑会切到全屏展开，展开后滚动内容区不会下拉关闭，只有顶部手柄接受下拉关闭手势。默认组合保持本次改动前的预加载行为，不额外启用 VFX/菜单/shader/code/gameplay warmup，但会保留保护已预热缓存与学习漏载资源。
    缩放事件订阅随场景节点 `TreeExiting` 立即解除、重新进树恢复，重复 Ready 不叠加，避免旧房间、事件布局和主菜单被静态事件长期持有。资源释放仍保留 disposal guard，不新增强制 GC 或提前 Dispose；事件初始化也不新增吞异常或“假成功”兜底。
    `AndroidParticlePreprocessPatches` 只在背景初始化后处理已知瀑布巨人/欧罗巴斯背景中的标准持续环境粒子：preprocess 超过两个寿命周期时缩为一个完整周期加原相位余数，不改 amount/material/lifetime/speed。爆发型、一次性、拖尾、sub-emitter、未知材质和本来不超过两周期的粒子不改；因此欧罗巴斯长寿命星点和爆发型特效并不因这个补丁被截短。这是减少首次背景预模拟负担的有限修正，不代表已确认具体闪退或卡死的根因。合成边界回归：`port-mod/tools/test-resource-safety.sh`。
+
+   兼容层的通用/主菜单资源、学习缓存/实战补全资源与 VFX 预热通过 `AndroidResourcePreloader` 共用一个在途请求，使用 Godot 后台加载而非主线程同步读取；不额外开启子资源并行，避免放大 VFX 共享资源竞争。Godot 主线程逐帧查看状态，只有完成时才 Get 并写入原有 cache；失败请求消费后上报到现有预加载日志，不用同步加载掩盖失败。实例化、挂树、Shader 实际绘制预热仍在主线程，原版运行时 `AssetLoadingSession`、预加载范围、缓存保护和所有默认开关不变。立即就绪/缓存命中的批次也按约 2ms 或最多 8 项让出下一帧；单个 native 操作不可抢占，因此不是硬实时帧预算。该策略优先保持预热期间响应，串行逐帧等待可能延长总预热时间；不能消除持续 GPU 满载，也不自动开启更重的全量预热。
+
+   原生回归 `port-mod/tests/FramePreparation.Tests` 使用 Godot 4.5.1 .NET 与实际打包 Harmony，只构造合成场景/损坏资源。覆盖后台准备的完整结果、主线程继续推进、单请求约束、完成前不得 Get、失败请求平衡和后续恢复，以及 Shader 父 `_Ready`、重入树、释放、材质隔离和开关切换。准备好官方 .NET 版 Godot 路径 `GODOT_BIN`，在仓库根加载 `.env` 后运行：
+
+   ```bash
+   "$DOTNET_BIN" build port-mod/tests/FramePreparation.Tests -p:HarmonyReferenceDir="$PWD/android/assets/dotnet_bcl"
+   # Linux: expose libgcc unwinding symbols to the embedded .NET/MonoMod host.
+   LD_PRELOAD=libgcc_s.so.1 DOTNET_ROOT="$(dirname "$(realpath "$DOTNET_BIN")")" "$GODOT_BIN" --headless --path port-mod/tests/FramePreparation.Tests
+   ```
+
+   损坏资源用例会输出预期的 Godot Parse Error，最终必须看到 `PASS` 且进程成功退出。桌面 headless 回归不等于 Android GPU/帧率实测；高刷请求、原版 FPS 上限、VSync、画质和特效数量均未因这项优化而改变。
+
 8. LAN bootstrap。`LanMultiplayerBootstrapPatches` 在主菜单就绪后才尝试应用本地 LAN 兼容补丁；若 `settings.save` 中 `lan_multiplayer_enabled=false`，或已加载 `sts2_lan_connect` / STS2 Game Lobby 大厅 MOD，`LanMultiplayerPatches` 会整组跳过，避免 Android LAN host/join、玩家 ID 等适配与大厅 MOD 自己的联机协议 profile 冲突。内置 LAN 补丁只处理 Android transport/UI/settings/player/save 兼容，不 patch `MessageTypes.ToId`、`MessageTypes.TryGetMessageType` 或 `NetMessageBus.TryDeserializeMessage`，也不维护固定消息表；消息类型发现、排序、ID 与序列化/反序列化始终由当前 payload 对应版本的原版实现负责，因此 Android 与未修改 PC 使用同一 wire protocol，普通 MOD 自定义 `INetMessage` 也继续按原版规则参与排序。v0.111.0 构造 host/client service 时额外传入 `PeerVersionInfo.LocalDefault()`，随后完全交给原版 transport-level `HandshakeManager` 在消息总线启用前校验游戏版本、ModelDb hash 和 gameplay/non-gameplay MOD；Android 不复制握手数据结构，也不回退旧 lobby-message 校验。启用本地 LAN patch 时，兼容层还会拦截多人读档 canonicalize 的本地玩家 ID：如果当前自定义平台/玩家 ID 不在 `current_run_mp.save` 的玩家列表中，会优先使用隐藏稳定字段 `lan_multiplayer_save_player_id`、旧自动 LAN ID 或单玩家存档中的唯一 `NetId`，避免用户修改自定义平台 ID 后旧多人存档被误判为不属于本机。`max_multiplayer_players` 只扩展 host/lobby 容量；超过四人的运行仍属实验模式，本次已覆盖宝箱和休息点的确定性四槽故障，但不能据此认定原版所有房间和任意配置人数都已兼容。
 9. `ModLoaderPatches`。
 10. save diagnostic。
