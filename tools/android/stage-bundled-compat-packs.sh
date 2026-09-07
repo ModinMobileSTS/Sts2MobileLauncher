@@ -95,6 +95,9 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/ShaderCompatibilityPatches.cs" \
     "STS2AndroidPortCompat/Patches/AndroidStartupLoadingScreen.cs" \
     "STS2AndroidPortCompat/Patches/AndroidResourcePreloader.cs" \
+    "STS2AndroidPortCompat/Patches/CombatVfxPoolPatches.cs" \
+    "STS2AndroidPortCompat/Patches/RuntimeAssetLoadingPatches.cs" \
+    "STS2AndroidPortCompat/Patches/AndroidFontSizeScaler.cs" \
     "STS2AndroidPortCompat/Patches/AndroidSettingsMerge.cs" \
     "STS2AndroidPortCompat/Patches/AndroidFontCoveragePatches.cs" \
     "STS2AndroidPortCompat/Patches/AndroidInGameSettingsPatches.cs" \
