@@ -559,8 +559,8 @@ android/src/com/godot/game/steam/core/SteamClientIdentity.kt
 ```text
 用户点击“从 Steam 下载游戏本体”
   -> 检查 Steam 登录状态
-  -> 选择 branch / 版本
-  -> 解析 appinfo 与 depot candidates
+  -> 选择 branch，或从当前清单/手动输入指定 ManifestID
+  -> 分支模式解析 appinfo 与 depot candidates；精确模式只使用 Windows depot 2868841 + 指定 ID
   -> 下载 manifest
   -> 确认 manifest 含 payload 必需文件
   -> 估算大小与磁盘空间
@@ -578,10 +578,13 @@ android/src/com/godot/game/steam/core/SteamClientIdentity.kt
 
 当前入口位于 `SteamAccountActivity` 的游戏下载页：
 
-- 未登录时点击下载会先要求登录 Steam；已登录后可选择 `public`、`public-beta` 或自定义 branch。
+- 下载仍需要拥有游戏的 Steam 账号；可选择 `public`、`public-beta` 或“自定义”卡片。选中自定义后展开“分支名 / Manifest”切换；Manifest 内再切换“当前清单 / 手动输入”，共用页面底部下载按钮，切换模式保留已填文本，但只采用当前模式的数据。
 - “并发下载分块”提供 1 / 2 / 4 三档，默认 2。1 适合内存/网络较弱设备，2 是吞吐与资源占用的默认平衡，4 适合连接与设备资源较好的环境。
 - 下载进行中会锁定并发设置，显示文件/chunk/字节进度和停止按钮；停止通过 `PayloadManager.ImportControl` 传播到 coroutine，并取消正在执行的 OkHttp Call。
 - 当前 payload worker 由 Steam 中心 Activity 启动的后台线程持有；它不阻塞 UI 主线程，但还不是跨 Activity/进程恢复的独立 foreground download service。
+- 当前清单通过已登录 Steam CM 的 appinfo 获取 Windows x64 depot `2868841` 的可见分支 Manifest，展示分支、ManifestID 和分支更新时间；只在进入列表时自动查询，并提供刷新。它不是完整历史目录，不抓取 SteamDB，也不把发行商密钥嵌入客户端。列表异步 single-flight，Activity 销毁、账号切换或开始下载时取消旧查询，generation 拦住迟到 UI 回调；刷新后原 ID 已不在列表中时清除选择，不静默改选新版本。
+- 手动输入接受 `1..18446744073709551615` 的十进制 ID，规范化前后空白和前导零；授权请求分支可选，空白按 `public` 请求。ManifestID 不是 BuildID 或 Workshop item ID。精确模式要求返回的 depot/manifest 身份一致并包含所有必需文件；授权失败、ID 不可用或缺少文件时明确失败，不回退当前版本、不混合其他快照。
+- 下载后仍按 `release_info.json` 与 DLL SHA 识别版本和匹配兼容包；旧版本不保证 Android 可运行。安装会创建或选择启动配置，新配置仍按既有行为共用全局存档/MOD，运行旧本体前应在版本页改用隔离配置。
 
 ### 9.3 Depot 解析
 
@@ -726,7 +729,9 @@ Steam 多文件下载没有单个 source zip sha256，可在 manifest 中记录�
 
 - `source.kind=steam_depot`
 - `source.steam.app_id`
-- `source.steam.branch`
+- `source.steam.branch`：分支模式或 appinfo 当前列表已确认的来源分支；手动 Manifest 输入时为空，不能把授权请求参数当内容分支供 Workshop 自动推断。
+- `source.steam.request_branch`：本次请求 manifest 授权使用的分支；depot 记录也区分 `branch` 与 `request_branch`。
+- `source.steam.selection_mode`：`branch` 或 `manifest`；精确 ManifestID 保留在 `source.steam.depots[].manifest_id` 十进制字符串中。
 - `source.steam.concurrent_chunks`
 - `source.steam.depots[]`
 - `source.steam.downloaded_at_unix`

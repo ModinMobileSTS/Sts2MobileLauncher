@@ -177,7 +177,7 @@ public final class SteamDownloadProgressPanel {
 		cancelButton.setEnabled(enabled);
 	}
 
-	public void reset(String branch) {
+	public void reset(String selectionLabel) {
 		lastBytesAtMs = 0L;
 		lastDownloadedBytes = 0L;
 		lastLabelUpdateAtMs = 0L;
@@ -186,7 +186,7 @@ public final class SteamDownloadProgressPanel {
 		displayedRateBps = 0L;
 		rateWindow.clear();
 		sparklineView.clearSamples();
-		branchView.setText(context.getString(R.string.steam_download_branch_format, branch == null ? "" : branch));
+		branchView.setText(context.getString(R.string.steam_download_selection_format, selectionLabel == null ? "" : selectionLabel));
 		phaseView.setText(R.string.steam_download_phase_other);
 		speedLabelView.setText(context.getString(R.string.steam_download_speed_label) + ": " + context.getString(R.string.steam_em_dash));
 		peakValueView.setText(context.getString(R.string.steam_em_dash));

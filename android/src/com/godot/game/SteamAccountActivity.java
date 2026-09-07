@@ -103,6 +103,24 @@ public class SteamAccountActivity extends AppCompatActivity {
 	private MaterialCardView payloadConcurrentChunksCard;
 	private LinearLayout branchCustomDetails;
 	private TextInputEditText customBranchInput;
+    private View customBranchField;
+    private LinearLayout manifestDetails;
+    private LinearLayout manualManifestFields;
+    private LinearLayout manifestListBlock;
+    private android.widget.RadioGroup manifestChoices;
+    private TextInputLayout manifestIdLayout;
+    private TextInputEditText manifestIdInput;
+    private TextInputEditText manifestRequestBranchInput;
+    private TextView manifestListStatus;
+    private MaterialButton manifestRefreshButton;
+    private boolean customManifestMode;
+    private boolean manualManifestMode;
+    private boolean manifestListLoading;
+    private boolean manifestListAttempted;
+    private int manifestListGeneration;
+    private Thread manifestListThread;
+    private String manifestAccountKey = "";
+    private Sts2SteamPayloadDownloader.ManifestOption selectedManifest;
 	private TextView payloadConcurrentChunksValueView;
 	private MaterialButton downloadButton;
 	private MaterialButton loginButton;
@@ -161,10 +179,31 @@ public class SteamAccountActivity extends AppCompatActivity {
 		super.onCreate(savedInstanceState);
 		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
 		SystemBarInsetsHelper.enableEdgeToEdge(this);
+        if (savedInstanceState != null) {
+            selectedBranch = savedInstanceState.getInt("download_branch", BRANCH_PUBLIC);
+            customManifestMode = savedInstanceState.getBoolean("custom_manifest");
+            manualManifestMode = savedInstanceState.getBoolean("manual_manifest");
+        }
 		buildUi();
+        if (savedInstanceState != null) {
+            customBranchInput.setText(savedInstanceState.getString("custom_branch_text", ""));
+            manifestIdInput.setText(savedInstanceState.getString("manifest_id_text", ""));
+            manifestRequestBranchInput.setText(savedInstanceState.getString("manifest_request_branch", ""));
+        }
 		refreshStatus();
 		showFirstOpenSafetyNoticeIfNeeded();
 	}
+
+    @Override
+    protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putInt("download_branch", selectedBranch);
+        state.putBoolean("custom_manifest", customManifestMode);
+        state.putBoolean("manual_manifest", manualManifestMode);
+        state.putString("custom_branch_text", inputText(customBranchInput));
+        state.putString("manifest_id_text", inputText(manifestIdInput));
+        state.putString("manifest_request_branch", inputText(manifestRequestBranchInput));
+    }
 
 	@Override
 	protected void onStart() {
@@ -207,6 +246,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 		pendingAuthUsername = null;
 		pendingAuthPassword = null;
 		dismissSteamAuthDialog();
+        cancelManifestListRequest();
 		if (downloadProgressPanel != null) {
 			downloadProgressPanel.stopAnimations();
 		}
@@ -604,26 +644,56 @@ public class SteamAccountActivity extends AppCompatActivity {
 		texts.addView(desc, descParams);
 		content.addView(row);
 
-		if (branch == BRANCH_CUSTOM) {
-			branchCustomDetails = ExtraSettingsUi.vertical(this);
-			branchCustomDetails.setVisibility(View.GONE);
-			LinearLayout.LayoutParams detailsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-			detailsParams.topMargin = ExtraSettingsUi.dp(this, 12);
-			content.addView(branchCustomDetails, detailsParams);
-			branchCustomDetails.addView(ExtraSettingsUi.divider(this));
-			TextInputLayout inputLayout = new TextInputLayout(this);
-			inputLayout.setHint(getString(R.string.steam_branch_custom_hint));
-			inputLayout.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
-			inputLayout.setBoxBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
-			customBranchInput = new TextInputEditText(inputLayout.getContext());
-			customBranchInput.setSingleLine(true);
-			customBranchInput.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
-			customBranchInput.setHintTextColor(ExtraSettingsUi.COLOR_MUTED);
-			inputLayout.addView(customBranchInput);
-			LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-			inputParams.topMargin = ExtraSettingsUi.dp(this, 10);
-			branchCustomDetails.addView(inputLayout, inputParams);
-		}
+        if (branch == BRANCH_CUSTOM) {
+            branchCustomDetails = ExtraSettingsUi.vertical(this);
+            branchCustomDetails.setVisibility(View.GONE);
+            LinearLayout.LayoutParams detailsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            detailsParams.topMargin = ExtraSettingsUi.dp(this, 12);
+            content.addView(branchCustomDetails, detailsParams);
+            branchCustomDetails.addView(ExtraSettingsUi.divider(this));
+            ExtraSettingsUi.addSmallSpacing(branchCustomDetails, downloadModeToggle(
+                R.string.steam_custom_mode_branch, R.string.steam_custom_mode_manifest, customManifestMode,
+                value -> { customManifestMode = value; applyCustomDownloadMode(); }
+            ));
+            TextInputLayout inputLayout = downloadInput(R.string.steam_branch_custom_hint);
+            customBranchInput = (TextInputEditText) inputLayout.getEditText();
+            customBranchField = inputLayout;
+            ExtraSettingsUi.addSmallSpacing(branchCustomDetails, inputLayout);
+
+            manifestDetails = ExtraSettingsUi.vertical(this);
+            ExtraSettingsUi.addSmallSpacing(branchCustomDetails, manifestDetails);
+            manifestDetails.addView(ExtraSettingsUi.caption(this, getString(R.string.steam_manifest_hint)));
+            ExtraSettingsUi.addSmallSpacing(manifestDetails, downloadModeToggle(
+                R.string.steam_manifest_mode_list, R.string.steam_manifest_mode_manual, manualManifestMode,
+                value -> { manualManifestMode = value; applyCustomDownloadMode(); }
+            ));
+            manifestListBlock = ExtraSettingsUi.vertical(this);
+            ExtraSettingsUi.addSmallSpacing(manifestDetails, manifestListBlock);
+            manifestListStatus = ExtraSettingsUi.caption(this, getString(R.string.steam_manifest_list_hint));
+            manifestListBlock.addView(manifestListStatus);
+            manifestChoices = new android.widget.RadioGroup(this);
+            manifestChoices.setOrientation(android.widget.RadioGroup.VERTICAL);
+            manifestListBlock.addView(manifestChoices);
+            manifestRefreshButton = ExtraSettingsUi.outlineButton(this, R.string.steam_manifest_refresh, R.drawable.ic_sync_24);
+            manifestRefreshButton.setOnClickListener(v -> {
+                if (!SteamAuthStore.readSnapshot(this).refreshTokenConfigured) showLoginDialog();
+                else loadCurrentManifests();
+            });
+            ExtraSettingsUi.addSmallSpacing(manifestListBlock, manifestRefreshButton);
+
+            manualManifestFields = ExtraSettingsUi.vertical(this);
+            ExtraSettingsUi.addSmallSpacing(manifestDetails, manualManifestFields);
+            manifestIdLayout = downloadInput(R.string.steam_manifest_id_hint);
+            manifestIdInput = (TextInputEditText) manifestIdLayout.getEditText();
+            manifestIdInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+            manualManifestFields.addView(manifestIdLayout);
+            TextInputLayout requestBranch = downloadInput(R.string.steam_manifest_request_branch_hint);
+            manifestRequestBranchInput = (TextInputEditText) requestBranch.getEditText();
+            ExtraSettingsUi.addSmallSpacing(manualManifestFields, requestBranch);
+            ExtraSettingsUi.addSmallSpacing(manualManifestFields, ExtraSettingsUi.caption(this, getString(R.string.steam_manifest_manual_hint)));
+            ExtraSettingsUi.addSmallSpacing(manifestDetails, ExtraSettingsUi.caption(this, getString(R.string.steam_manifest_compat_warning)));
+            applyCustomDownloadMode();
+        }
 
 		card.setOnClickListener(v -> {
 			if (busy) {
@@ -635,6 +705,153 @@ public class SteamAccountActivity extends AppCompatActivity {
 		return card;
 	}
 
+    private MaterialButtonToggleGroup downloadModeToggle(int firstLabel, int secondLabel, boolean secondSelected, java.util.function.Consumer<Boolean> changed) {
+        MaterialButtonToggleGroup group = new MaterialButtonToggleGroup(this);
+        group.setSingleSelection(true);
+        group.setSelectionRequired(true);
+        MaterialButton first = segmentedButton(firstLabel);
+        MaterialButton second = segmentedButton(secondLabel);
+        first.setId(View.generateViewId());
+        second.setId(View.generateViewId());
+        group.addView(first, new LinearLayout.LayoutParams(0, ExtraSettingsUi.dp(this, 48), 1f));
+        group.addView(second, new LinearLayout.LayoutParams(0, ExtraSettingsUi.dp(this, 48), 1f));
+        group.check(secondSelected ? second.getId() : first.getId());
+        group.addOnButtonCheckedListener((buttons, checkedId, checked) -> {
+            if (checked) changed.accept(checkedId == second.getId());
+        });
+        return group;
+    }
+
+    private TextInputLayout downloadInput(int hint) {
+        TextInputLayout layout = new TextInputLayout(this);
+        layout.setHint(getString(hint));
+        layout.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
+        layout.setBoxBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
+        TextInputEditText input = new TextInputEditText(layout.getContext());
+        input.setSingleLine(true);
+        input.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+        input.setHintTextColor(ExtraSettingsUi.COLOR_MUTED);
+        layout.addView(input);
+        return layout;
+    }
+
+    private static String inputText(TextInputEditText input) {
+        return input == null || input.getText() == null ? "" : input.getText().toString().trim();
+    }
+
+    private void applyCustomDownloadMode() {
+        if (manifestDetails == null) return;
+        customBranchField.setVisibility(customManifestMode ? View.GONE : View.VISIBLE);
+        manifestDetails.setVisibility(customManifestMode ? View.VISIBLE : View.GONE);
+        manifestListBlock.setVisibility(manualManifestMode ? View.GONE : View.VISIBLE);
+        manualManifestFields.setVisibility(manualManifestMode ? View.VISIBLE : View.GONE);
+        if (selectedTab == TAB_DOWNLOAD && selectedBranch == BRANCH_CUSTOM && customManifestMode && !manualManifestMode
+            && !manifestListAttempted && !manifestListLoading && !busy && !steamAuthActive) {
+            loadCurrentManifests();
+        }
+    }
+
+    private void cancelManifestListRequest() {
+        manifestListGeneration++;
+        if (manifestListLoading) {
+            manifestListAttempted = false;
+            manifestListStatus.setText(R.string.steam_manifest_list_hint);
+        }
+        if (manifestListThread != null) {
+            manifestListThread.interrupt();
+            manifestListThread = null;
+        }
+        manifestListLoading = false;
+    }
+
+    private void loadCurrentManifests() {
+        if (manifestListLoading || busy || steamAuthActive) return;
+        if (!SteamAuthStore.readSnapshot(this).refreshTokenConfigured) {
+            manifestListStatus.setText(R.string.steam_manifest_list_login_required);
+            return;
+        }
+        manifestListAttempted = true;
+        manifestListLoading = true;
+        int generation = ++manifestListGeneration;
+        manifestListStatus.setText(R.string.steam_manifest_loading);
+        manifestRefreshButton.setEnabled(false);
+        Context appContext = getApplicationContext();
+        manifestListThread = new Thread(() -> {
+            try {
+                List<Sts2SteamPayloadDownloader.ManifestOption> options = new Sts2SteamPayloadDownloader(appContext).listCurrentManifests();
+                runOnUiThread(() -> {
+                    if (generation != manifestListGeneration || isDestroyed() || isFinishing()) return;
+                    manifestListThread = null;
+                    manifestListLoading = false;
+                    renderManifestChoices(options);
+                    updateDownloadUiVisibility();
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    if (generation != manifestListGeneration || isDestroyed() || isFinishing()) return;
+                    manifestListThread = null;
+                    manifestListLoading = false;
+                    manifestListStatus.setText(getString(R.string.steam_manifest_list_failed, formatOperationError(error)));
+                    updateDownloadUiVisibility();
+                });
+            }
+        }, "sts2-steam-manifest-list");
+        manifestListThread.start();
+    }
+
+    private void renderManifestChoices(List<Sts2SteamPayloadDownloader.ManifestOption> options) {
+        Sts2SteamPayloadDownloader.ManifestOption previous = selectedManifest;
+        selectedManifest = null;
+        manifestChoices.removeAllViews();
+        manifestListStatus.setText(options.isEmpty() ? R.string.steam_manifest_list_empty : R.string.steam_manifest_list_hint);
+        for (Sts2SteamPayloadDownloader.ManifestOption option : options) {
+            com.google.android.material.radiobutton.MaterialRadioButton choice = new com.google.android.material.radiobutton.MaterialRadioButton(this);
+            choice.setId(View.generateViewId());
+            choice.setMinHeight(ExtraSettingsUi.dp(this, 64));
+            choice.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+            choice.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            String updated = option.getBranchUpdatedAt() > 0
+                ? android.text.format.DateFormat.getDateFormat(this).format(new java.util.Date(option.getBranchUpdatedAt() * 1000L))
+                : getString(R.string.unknown);
+            choice.setText(getString(R.string.steam_manifest_option, option.getBranch(), option.getManifestId(), updated));
+            manifestChoices.addView(choice, new android.widget.RadioGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            choice.setOnCheckedChangeListener((button, checked) -> {
+                if (checked) selectedManifest = option;
+            });
+            if (previous != null && previous.getBranch().equals(option.getBranch()) && previous.getManifestId().equals(option.getManifestId())) {
+                choice.setChecked(true);
+            }
+        }
+    }
+
+    private Sts2SteamPayloadDownloader.Selection resolvePayloadSelection() {
+        if (selectedBranch == BRANCH_CUSTOM && customManifestMode) {
+            if (!manualManifestMode) {
+                if (selectedManifest == null) {
+                    showMessage(getString(R.string.steam_manifest_choose_required));
+                    return null;
+                }
+                return Sts2SteamPayloadDownloader.Selection.fromCurrentManifest(selectedManifest);
+            }
+            try {
+                Sts2SteamPayloadDownloader.Selection selection = Sts2SteamPayloadDownloader.Selection.forManifest(
+                    inputText(manifestIdInput), inputText(manifestRequestBranchInput));
+                manifestIdLayout.setError(null);
+                return selection;
+            } catch (IllegalArgumentException error) {
+                manifestIdLayout.setError(getString(R.string.steam_manifest_id_invalid));
+                manifestIdInput.requestFocus();
+                return null;
+            }
+        }
+        String branch = resolveSelectedBranch();
+        if (TextUtils.isEmpty(branch)) {
+            showMessage(getString(R.string.steam_branch_custom_required));
+            return null;
+        }
+        return Sts2SteamPayloadDownloader.Selection.forBranch(branch);
+    }
+
 	private void applyBranchSelection() {
 		styleBranchCard(branchPublicCard, radioPublic, selectedBranch == BRANCH_PUBLIC);
 		styleBranchCard(branchBetaCard, radioBeta, selectedBranch == BRANCH_BETA);
@@ -642,6 +859,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 		if (branchCustomDetails != null) {
 			branchCustomDetails.setVisibility(selectedBranch == BRANCH_CUSTOM ? View.VISIBLE : View.GONE);
 		}
+        applyCustomDownloadMode();
 	}
 
 	private void styleBranchCard(MaterialCardView card, View radio, boolean selected) {
@@ -1424,20 +1642,19 @@ public class SteamAccountActivity extends AppCompatActivity {
 	}
 
 	private void startPayloadDownload() {
+        Sts2SteamPayloadDownloader.Selection selection = resolvePayloadSelection();
+        if (selection == null) return;
 		SteamAuthStore.AuthSnapshot snapshot = SteamAuthStore.readSnapshot(this);
 		if (!snapshot.refreshTokenConfigured) {
 			showMessage(getString(R.string.steam_download_login_required));
 			showLoginDialog();
 			return;
 		}
-		String branch = resolveSelectedBranch();
-		if (TextUtils.isEmpty(branch)) {
-			showMessage(getString(R.string.steam_branch_custom_required));
-			return;
-		}
+        String branch = selection.isManifest() ? "Manifest " + selection.getManifestId() + " · " + selection.getRequestBranch() : selection.getRequestBranch();
 		if (busy || steamAuthActive) {
 			return;
 		}
+        cancelManifestListRequest();
 		busy = true;
 		downloadingPayload = true;
 		activeDownloadControl = new PayloadManager.ImportControl();
@@ -1450,7 +1667,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 		final PayloadManager.ImportControl control = activeDownloadControl;
 		new Thread(() -> {
 			try {
-				PayloadManager.Status status = new Sts2SteamPayloadDownloader(this).downloadAndInstall(branch, progress -> {
+                PayloadManager.Status status = new Sts2SteamPayloadDownloader(getApplicationContext()).downloadAndInstall(selection, progress -> {
 					runOnUiThread(() -> {
 						if (downloadProgressPanel != null) {
 							downloadProgressPanel.update(
@@ -1532,7 +1749,21 @@ public class SteamAccountActivity extends AppCompatActivity {
 			// Keep the card clickable while busy so the user receives an explanation.
 			payloadConcurrentChunksCard.setAlpha(busy || downloadingPayload ? 0.72f : 1f);
 		}
+        if (branchCustomDetails != null) {
+            setDownloadInputsEnabled(branchCustomDetails, !busy && !steamAuthActive);
+            manifestRefreshButton.setEnabled(!busy && !steamAuthActive && !manifestListLoading);
+        }
 	}
+
+    private void setDownloadInputsEnabled(View view, boolean enabled) {
+        view.setEnabled(enabled);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                setDownloadInputsEnabled(group.getChildAt(i), enabled);
+            }
+        }
+    }
 
 	private void confirmCloudOverwrite() {
 		new MaterialAlertDialogBuilder(this)
@@ -1834,6 +2065,15 @@ public class SteamAccountActivity extends AppCompatActivity {
 	private void refreshStatusOnly() {
 		SteamAuthStore.AuthSnapshot snapshot = SteamAuthStore.readSnapshot(this);
 		boolean loggedIn = snapshot.refreshTokenConfigured;
+        String accountKey = loggedIn ? snapshot.accountName + ":" + snapshot.steamId64 : "";
+        if (!manifestAccountKey.equals(accountKey)) {
+            cancelManifestListRequest();
+            manifestAccountKey = accountKey;
+            manifestListAttempted = false;
+            selectedManifest = null;
+            if (manifestChoices != null) manifestChoices.removeAllViews();
+        }
+        applyCustomDownloadMode();
 		String account = loggedIn
 			? (TextUtils.isEmpty(snapshot.accountName) ? getString(R.string.steam_account_title) : snapshot.accountName)
 			: getString(R.string.steam_not_logged_in);

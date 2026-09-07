@@ -40,13 +40,57 @@ class Sts2SteamPayloadDownloader(private val context: Context) {
         val totalBytes: Long = 0L,
     )
 
+    data class ManifestOption(
+        val branch: String,
+        val manifestId: String,
+        val branchUpdatedAt: Long,
+    )
+
+    class Selection private constructor(
+        val requestBranch: String,
+        val manifestId: String,
+        val sourceBranch: String,
+    ) {
+        val isManifest: Boolean get() = manifestId.isNotEmpty()
+
+        companion object {
+            @JvmStatic
+            fun forBranch(branch: String): Selection {
+                val normalized = branch.trim().ifBlank { DEFAULT_BRANCH }
+                return Selection(normalized, "", normalized)
+            }
+
+            @JvmStatic
+            fun forManifest(manifestId: String, requestBranch: String): Selection = Selection(
+                requestBranch.trim().ifBlank { DEFAULT_BRANCH },
+                normalizeManifestId(manifestId),
+                "",
+            )
+
+            @JvmStatic
+            fun fromCurrentManifest(option: ManifestOption): Selection = Selection(
+                option.branch,
+                normalizeManifestId(option.manifestId),
+                option.branch,
+            )
+
+            private fun normalizeManifestId(value: String): String {
+                val trimmed = value.trim()
+                require(trimmed.isNotEmpty() && trimmed.all { it in '0'..'9' }) { "Invalid ManifestID" }
+                val id = trimmed.toULongOrNull()
+                require(id != null && id > 0uL) { "Invalid ManifestID" }
+                return id.toString()
+            }
+        }
+    }
+
     fun downloadAndInstall(
-        branch: String,
+        selection: Selection,
         listener: ((Progress) -> Unit)? = null,
         control: PayloadManager.ImportControl? = null,
     ): PayloadManager.Status = runBlocking {
         val appContext = context.applicationContext
-        val normalizedBranch = branch.trim().ifBlank { DEFAULT_BRANCH }
+        val normalizedBranch = selection.requestBranch
         val concurrentChunks = SteamSettings.getPayloadConcurrentChunks(appContext)
         val auth = SteamAuthStore.readAuthMaterial(appContext)
             ?: throw IOException("Steam account is not logged in.")
@@ -80,11 +124,15 @@ class Sts2SteamPayloadDownloader(private val context: Context) {
         val manifests = mutableListOf<PreparedCandidate>()
         identity.createSession(client).use { session ->
             session.connectWithRefreshToken(cmServers, account)
-            emit(listener, Progress("resolve", 5, "Reading Steam app info…"))
-            val appInfo = parseAppInfo(session.requestAppProductInfo(STS2_APP_ID))
-            candidates = resolveDepotCandidates(session, STS2_APP_ID, appInfo, normalizedBranch, linkedSetOf())
-                .distinctBy { "${it.appId}:${it.depotId}:${it.manifestId}" }
-                .sortedWith(compareBy<DepotManifestCandidate> { preferredDepotRank(it.depotId) }.thenBy { it.depotId.toLong() })
+            emit(listener, Progress("resolve", 5, if (selection.isManifest) "Reading specified Steam manifest…" else "Reading Steam app info…"))
+            candidates = if (selection.isManifest) {
+                listOf(DepotManifestCandidate(STS2_APP_ID, WINDOWS_DEPOT_ID, selection.manifestId.toULong(), normalizedBranch))
+            } else {
+                val appInfo = parseAppInfo(session.requestAppProductInfo(STS2_APP_ID))
+                resolveDepotCandidates(session, STS2_APP_ID, appInfo, normalizedBranch, linkedSetOf())
+                    .distinctBy { "${it.appId}:${it.depotId}:${it.manifestId}" }
+                    .sortedWith(compareBy<DepotManifestCandidate> { preferredDepotRank(it.depotId) }.thenBy { it.depotId.toLong() })
+            }
             if (candidates.isEmpty()) {
                 throw IOException("Steam appinfo did not expose depot manifests for app=$STS2_APP_ID branch=$normalizedBranch")
             }
@@ -104,12 +152,18 @@ class Sts2SteamPayloadDownloader(private val context: Context) {
                         waitIfPaused = { control?.throwIfCancelled() },
                     )
                     control?.throwIfCancelled()
+                    if (manifest.depotId != candidate.depotId || manifest.manifestId != candidate.manifestId) {
+                        throw IOException("Steam returned a different depot/manifest than requested.")
+                    }
                     manifests += PreparedCandidate(candidate, depotKey, manifest)
                     val percent = 8 + ((index + 1) * 12 / candidates.size.coerceAtLeast(1))
                     emit(listener, Progress("resolve", percent, "Manifest ${candidate.depotId}: ${manifest.files.size} file(s)"))
                 } catch (error: Throwable) {
                     // Some shared depots may be unavailable or unrelated. Keep probing candidates.
                     rethrowIfCancelled(control, error)
+                    if (selection.isManifest) {
+                        throw IOException("Unable to load specified Steam manifest ${candidate.manifestId} for Windows depot ${candidate.depotId}. No other version was selected.", error)
+                    }
                 }
             }
         }
@@ -172,7 +226,8 @@ class Sts2SteamPayloadDownloader(private val context: Context) {
                     .put("app_id", prepared.candidate.appId.toLong())
                     .put("depot_id", prepared.candidate.depotId.toLong())
                     .put("manifest_id", prepared.candidate.manifestId.toString())
-                    .put("branch", normalizedBranch)
+                    .put("branch", selection.sourceBranch)
+                    .put("request_branch", normalizedBranch)
                     .put("file_count", prepared.manifest.regularFiles().count { includePayloadFile(it) })
                     .put("total_bytes", depotBytes))
             }
@@ -180,7 +235,9 @@ class Sts2SteamPayloadDownloader(private val context: Context) {
             val extras = JSONObject()
                 .put("steam", JSONObject()
                     .put("app_id", STS2_APP_ID.toLong())
-                    .put("branch", normalizedBranch)
+                    .put("branch", selection.sourceBranch)
+                    .put("request_branch", normalizedBranch)
+                    .put("selection_mode", if (selection.isManifest) "manifest" else "branch")
                     .put("concurrent_chunks", concurrentChunks)
                     .put("depots", depotsJson)
                     .put("downloaded_at_unix", System.currentTimeMillis() / 1000L)
@@ -188,7 +245,7 @@ class Sts2SteamPayloadDownloader(private val context: Context) {
                     .put("total_bytes", directorySize(staging)))
             val source = PayloadManager.SourceInfo(
                 "steam_depot",
-                "Steam App $STS2_APP_ID / $normalizedBranch",
+                if (selection.isManifest) "Steam App $STS2_APP_ID / Manifest ${selection.manifestId}" else "Steam App $STS2_APP_ID / $normalizedBranch",
                 directorySize(staging),
                 "",
                 extras,
@@ -197,6 +254,40 @@ class Sts2SteamPayloadDownloader(private val context: Context) {
                 emit(listener, Progress("install", 86 + ((percent.coerceIn(0, 100) * 14) / 100), "Installing: $stage"))
             }, control)
         }
+    }
+
+    fun listCurrentManifests(): List<ManifestOption> = runBlocking {
+        val appContext = context.applicationContext
+        val auth = SteamAuthStore.readAuthMaterial(appContext)
+            ?: throw IOException("Steam account is not logged in.")
+        val identity = SteamClientIdentity(appContext)
+        val client = SteamNetworkClientFactory.createDefaultClient()
+        val directory = SteamDirectoryClient(client)
+        identity.createSession(client).use { session ->
+            session.connectWithRefreshToken(directory.loadServers(), SteamAccountSession(
+                accountName = auth.accountName,
+                steamId = authSteamId(appContext),
+                refreshToken = auth.refreshToken,
+                machineName = identity.machineName,
+            ))
+            currentManifestOptions(parseAppInfo(session.requestAppProductInfo(STS2_APP_ID)))
+        }
+    }
+
+    internal fun currentManifestOptions(appInfo: KeyValue): List<ManifestOption> {
+        val depots = appInfo.child("depots") ?: return emptyList()
+        val depot = depots.child(WINDOWS_DEPOT_ID.toString()) ?: return emptyList()
+        val config = depot.child("config")
+        if (config?.child("oslist")?.asString() != "windows" || config.child("osarch")?.asString() != "64") {
+            throw IOException("Steam appinfo does not identify the expected Windows x64 depot.")
+        }
+        val branches = depots.child("branches")
+        return depot.child("manifests")?.children.orEmpty().mapNotNull { branch ->
+            val id = branch.child("gid")?.asManifestId()?.takeIf { it > 0uL } ?: return@mapNotNull null
+            ManifestOption(branch.name, id.toString(), branches?.child(branch.name)?.child("timeupdated")?.asLong(0L) ?: 0L)
+        }.sortedWith(compareBy<ManifestOption> {
+            when (it.branch) { "public" -> 0; "public-beta" -> 1; else -> 2 }
+        }.thenBy { it.branch })
     }
 
     private fun SteamDepotDirectoryDownloadProgress.toPayloadProgress(
@@ -465,6 +556,7 @@ class Sts2SteamPayloadDownloader(private val context: Context) {
     companion object {
         const val DEFAULT_BRANCH = "public"
         val STS2_APP_ID: UInt = 2868840u
+        private val WINDOWS_DEPOT_ID: UInt = 2868841u
         private const val DOWNLOAD_LAYOUT_VERSION = "steam-payload-v2"
         private const val DOWNLOAD_FINGERPRINT_LENGTH = 24
         private const val DOWNLOAD_PERCENT_START = 20
