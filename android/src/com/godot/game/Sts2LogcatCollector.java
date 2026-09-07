@@ -41,6 +41,17 @@ public final class Sts2LogcatCollector {
 	private static File activeLogsDir;
 	private static String activeLogLevel = ExtraSettingsRepository.LOG_LEVEL_INFO;
 	private static int activeGeneration;
+	private static OutputStream logOutput;
+	private static File outputFile;
+	private static long outputBytes;
+	private static boolean outputDirty;
+	private static java.util.concurrent.ScheduledFuture<?> flushTask;
+	private static final java.util.concurrent.ScheduledExecutorService FLUSH_EXECUTOR =
+		java.util.concurrent.Executors.newSingleThreadScheduledExecutor(runnable -> {
+			Thread thread = new Thread(runnable, "Sts2LogcatFlush");
+			thread.setDaemon(true);
+			return thread;
+		});
 
 	private Sts2LogcatCollector() {
 	}
@@ -97,6 +108,7 @@ public final class Sts2LogcatCollector {
 		File logFile = new File(logsDir, LOG_FILE_NAME);
 		List<String> command = buildCommand(mode, logLevel, usePidFilter);
 		try {
+			closeLogOutputLocked();
 			FileBrowserSupport.ensureDirectory(logsDir);
 			if (archivePreviousLog) {
 				archiveCurrentLogIfNeeded(logsDir, logFile);
@@ -112,14 +124,15 @@ public final class Sts2LogcatCollector {
 			activeLogLevel = logLevel;
 			int generation = ++activeGeneration;
 			long startedAt = SystemClock.uptimeMillis();
-			startPipeThread(startedProcess, logFile, minPriorityRank(logLevel), generation);
-			startWaiterThread(context, logsDir, logFile, startedProcess, mode, logLevel, startedAt, generation, usePidFilter);
+			Thread pipe = startPipeThread(startedProcess, logFile, minPriorityRank(logLevel), generation);
+			startWaiterThread(context, logsDir, logFile, startedProcess, pipe, mode, logLevel, startedAt, generation, usePidFilter);
 			Log.i(TAG, "Capturing Android logcat to " + logFile.getAbsolutePath() + " mode=" + describeMode(mode) + " logLevel=" + logLevel);
 		} catch (Exception exception) {
 			appendCollectorLine(logFile, 'E', "failed to start logcat: " + exception);
 			Log.w(TAG, "Unable to start Android logcat collector.", exception);
 			process = null;
 			activeLogsDir = null;
+			closeLogOutputLocked();
 		}
 	}
 
@@ -144,7 +157,7 @@ public final class Sts2LogcatCollector {
 		return command;
 	}
 
-	private static void startPipeThread(Process startedProcess, File logFile, int minPriority, int generation) {
+	private static Thread startPipeThread(Process startedProcess, File logFile, int minPriority, int generation) {
 		Thread thread = new Thread(() -> {
 			try (BufferedReader reader = new BufferedReader(new InputStreamReader(startedProcess.getInputStream(), StandardCharsets.UTF_8))) {
 				String line;
@@ -158,13 +171,14 @@ public final class Sts2LogcatCollector {
 					}
 				}
 			} catch (IOException exception) {
-				if (!hasExited(startedProcess)) {
+				if (isActiveCollector(startedProcess, generation) && !hasExited(startedProcess)) {
 					appendCollectorLine(logFile, 'W', "logcat diagnostic pipe failed: " + exception);
 				}
 			}
 		}, "Sts2LogcatCollectorPipe");
 		thread.setDaemon(true);
 		thread.start();
+		return thread;
 	}
 
 	private static String compactLogcatLine(String line, int minPriority) {
@@ -201,21 +215,23 @@ public final class Sts2LogcatCollector {
 		}
 	}
 
-	private static void startWaiterThread(Context context, File logsDir, File logFile, Process startedProcess, int mode, String logLevel, long startedAt, int generation, boolean usePidFilter) {
+	private static void startWaiterThread(Context context, File logsDir, File logFile, Process startedProcess, Thread pipe, int mode, String logLevel, long startedAt, int generation, boolean usePidFilter) {
 		Thread thread = new Thread(() -> {
 			int exitCode;
 			try {
 				exitCode = startedProcess.waitFor();
+				pipe.join(); // Drain the final process output before retiring its generation.
 			} catch (InterruptedException exception) {
 				Thread.currentThread().interrupt();
 				exitCode = Integer.MIN_VALUE;
 			}
 			long elapsed = SystemClock.uptimeMillis() - startedAt;
-			appendCollectorLine(logFile, 'I', "logcat exited code=" + exitCode + " elapsed_ms=" + elapsed + " mode=" + describeMode(mode));
 			synchronized (LOCK) {
 				if (process != startedProcess || activeGeneration != generation) {
 					return;
 				}
+				appendCollectorLine(logFile, 'I', "logcat exited code=" + exitCode + " elapsed_ms=" + elapsed + " mode=" + describeMode(mode));
+				closeLogOutputLocked();
 				process = null;
 				if (elapsed <= FAST_EXIT_RETRY_WINDOW_MS && usePidFilter) {
 					appendCollectorLine(logFile, 'W', "retrying without --pid filter");
@@ -274,16 +290,13 @@ public final class Sts2LogcatCollector {
 	}
 
 	private static void stopLocked() {
-		if (process == null) {
-			return;
-		}
 		activeGeneration++;
-		try {
-			process.destroy();
-		} catch (Exception ignored) {
+		if (process != null) {
+			try { process.destroy(); } catch (Exception ignored) { }
 		}
 		process = null;
 		activeLogsDir = null;
+		closeLogOutputLocked();
 	}
 
 	private static boolean isCollectorAliveLocked() {
@@ -339,14 +352,52 @@ public final class Sts2LogcatCollector {
 	}
 
 	private static void appendRawLocked(File logFile, String content) throws IOException {
-		File logsDir = logFile.getParentFile();
-		if (logsDir != null) {
-			archiveIfOversized(logsDir, logFile);
+		if (logOutput != null && !logFile.equals(outputFile)) closeLogOutputLocked();
+		if (logOutput != null && outputBytes >= MAX_LOG_BYTES) {
+			closeLogOutputLocked();
+			archiveIfOversized(logFile.getParentFile(), logFile);
 		}
-		try (OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(logFile, true))) {
-			outputStream.write(content.getBytes(StandardCharsets.UTF_8));
-			outputStream.flush();
+		if (logOutput == null) {
+			archiveIfOversized(logFile.getParentFile(), logFile);
+			logOutput = new BufferedOutputStream(new FileOutputStream(logFile, true), 16 * 1024);
+			outputFile = logFile;
+			outputBytes = logFile.length();
+			flushTask = FLUSH_EXECUTOR.scheduleWithFixedDelay(() -> {
+				synchronized (LOCK) {
+					try {
+						if (logOutput != null && outputDirty) {
+							logOutput.flush();
+							outputDirty = false;
+						}
+					} catch (IOException exception) {
+						closeLogOutputLocked();
+						Log.w(TAG, "Unable to flush logcat output", exception);
+					}
+				}
+			}, 250L, 250L, java.util.concurrent.TimeUnit.MILLISECONDS);
 		}
+		byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+		logOutput.write(bytes);
+		outputBytes += bytes.length;
+		outputDirty = true;
+		// Keep crash/error diagnostics immediate; ordinary lines share bounded batches.
+		if (content.startsWith("E ") || content.startsWith("F ")) {
+			logOutput.flush();
+			outputDirty = false;
+		}
+	}
+
+	private static void closeLogOutputLocked() {
+		if (flushTask != null) { flushTask.cancel(false); flushTask = null; }
+		if (logOutput != null) {
+			try { logOutput.close(); } catch (IOException exception) {
+				Log.w(TAG, "Unable to close logcat output", exception);
+			}
+		}
+		logOutput = null;
+		outputFile = null;
+		outputBytes = 0L;
+		outputDirty = false;
 	}
 
 	private static boolean isMainProcess(Context context) {

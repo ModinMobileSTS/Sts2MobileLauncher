@@ -691,6 +691,9 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 - 多版本兼容包的长期方向是 manifest 化、可安装、可诊断，并作为启动配置属性选择；不要把某一游戏版本的兼容 patch 直接写死到 Android shell，也不要恢复全局兼容包 fallback 选择。
 - 对当前 `v0.111.0` target 改动时务必用 `ReferenceFlavor=original-v0.111.0` 与 `STS2_ORIGINAL_V1110_*` 原版引用编译；对共享 `v0.110.x` / `v0.109.x` target 分别用历史 `original-v0.110.0` / `original-v0.109.0` flavor 和 v0.110.1 / v0.109.1 引用；其余 target 使用各自 original flavor。默认验证路径是 `port-mod/tools/build-compat-matrix.sh` 的所有 active target compile gate。
 - 新增兼容 target 时需要同时增加：`.env.example` 中的 original reference 配置说明或 `ReferenceFlavor` 映射、`port-mod/targets/active/<target_id>/target.json`、必要的 target adapter/capability 或条件编译、文档版本矩阵、至少一次 importer APK 构建验证。只有需要保留 schema 1 旧发布包对照时，才额外新增/维护 `compat/*` legacy 分支、`compat_manifest.*.json` 与 `tools/android/bundled-compat-packs.json` 条目。
+- 性能维护：Workshop 搜索列表用 RecyclerView 回收卡片；图片按字节限制为 4–16 MiB LRU，最多 3 个加载任务，同 URL/尺寸合并并按目标尺寸采样，离屏取消、回收后阻止迟到结果。安装索引/目录扫描只在后台刷新 generation 快照；前置检查和详情操作仍后台检查真实文件，不能用 UI 缓存替代安全判断。`SteamWorkshopLibrary.recordInstall` 的内容 hash 不得放回索引锁内。
+- MOD 搜索快照包含归一化搜索文本、manifest mtime、展示分组与保存顺序 rank；不要在每次输入时重新计算依赖告警、读取文件时间或扫描分组目录。拖拽必须同步内存顺序/分组并失效旧扫描；展示分组不是运行时加载顺序。
+- `AndroidSettingsBridge` 以不可变快照支持安全的 `JsonElement` 生命周期，metadata 检查间隔 250ms；`InvalidateCache` 必须绕过间隔及相同 metadata，恢复前台/热设置的现有失效入口不能删除。legacy worktree 注入需包含 `AndroidSettingsBridge.cs`。日志面板在后台按 256 KiB 分批 tail，保留 UTF-8 半行并隔离旧会话回调；logcat 复用 16 KiB writer、250ms flush，E/F、停止和轮转立即 flush，旧 generation 不得污染新日志。回归：`InGameLogTailerTest` / `Sts2LogcatCollectorTest`。
 
 ## 修改说明
 

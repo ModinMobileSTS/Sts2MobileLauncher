@@ -152,6 +152,7 @@ public final class ModsPage {
 	private JSONObject cachedSettings;
 	private Runnable pendingSearchRefresh;
 	private boolean dataLoaded;
+	private LoadedMods loadedSnapshot;
 	private String dragGhostGroupId;
 	private int dragGhostIndex = -1;
 	private boolean dragGhostForGroup;
@@ -717,6 +718,18 @@ public final class ModsPage {
 				String gameVersion = resolveCurrentGameVersion();
 				List<ExtraSettingsRepository.ModEntry> allMods = repository.listInstalledModManifests();
 				LoadedMods loaded = new LoadedMods(settings, notes, gameVersion, allMods);
+				loaded.userGroups.addAll(repository.listModGroups());
+				loaded.groupAssignments.putAll(repository.loadModGroupAssignments());
+				loaded.groupOrder.putAll(orderRanks(repository.loadModGroupOrder()));
+				Set<String> groupIds = new LinkedHashSet<>();
+				groupIds.add(MOD_GROUP_CORE);
+				groupIds.add(MOD_GROUP_CONTENT);
+				for (String group : loaded.userGroups) groupIds.add(normalizeGroupId(group));
+				Set<String> userGroups = new LinkedHashSet<>(loaded.userGroups);
+				for (ExtraSettingsRepository.ModEntry entry : allMods) {
+					groupIds.add(groupIdForEntry(entry, userGroups, loaded.groupAssignments));
+				}
+				for (String group : groupIds) loaded.modOrder.put(group, orderRanks(repository.loadModOrder(group)));
 				mainHandler.post(() -> applyLoadedMods(expectedGeneration, loaded));
 			} catch (Exception exception) {
 				mainHandler.post(() -> applyLoadFailure(expectedGeneration, exception));
@@ -729,12 +742,18 @@ public final class ModsPage {
 			return;
 		}
 		cachedSettings = loaded.settings;
+		loadedSnapshot = loaded;
 		modNotesById.clear();
 		modNotesById.putAll(loaded.notes);
 		currentGameVersion = loaded.gameVersion;
 		currentAllMods.clear();
 		currentAllMods.addAll(loaded.mods);
 		dataLoaded = true;
+		rebuildModIssues(currentAllMods);
+		Set<String> installedIds = new HashSet<>();
+		for (ExtraSettingsRepository.ModEntry entry : currentAllMods) installedIds.add(entry.modId);
+		selectedModIds.retainAll(installedIds);
+		expandedModIds.retainAll(installedIds);
 		rebuildFilteredList();
 	}
 
@@ -764,16 +783,9 @@ public final class ModsPage {
 		currentBuckets.clear();
 		listItems.clear();
 		try {
-			rebuildModIssues(currentAllMods);
 			List<ExtraSettingsRepository.ModEntry> filtered = filterMods(cachedSettings, currentAllMods);
 			sortMods(filtered);
 			currentFilteredMods.addAll(filtered);
-			Set<String> installedIds = new HashSet<>();
-			for (ExtraSettingsRepository.ModEntry entry : currentAllMods) {
-				installedIds.add(entry.modId);
-			}
-			selectedModIds.retainAll(installedIds);
-			expandedModIds.retainAll(installedIds);
 			if (currentAllMods.isEmpty()) {
 				listItems.add(ListItem.empty(R.string.status_no_mods));
 			} else if (filtered.isEmpty()) {
@@ -825,11 +837,6 @@ public final class ModsPage {
 		if (listItems.isEmpty()) {
 			listItems.add(ListItem.empty(R.string.mod_no_filter_results));
 		}
-		// Order-sensitive checks (dependency load order) must track drag reorder.
-		if (!currentAllMods.isEmpty()) {
-			rebuildModIssues(currentAllMods);
-			updateWarningBadge();
-		}
 		submitListPreservingScroll(new ArrayList<>(listItems));
 	}
 
@@ -878,9 +885,7 @@ public final class ModsPage {
 			if ("missing".equals(filter) && !missingFiles) {
 				continue;
 			}
-			String note = noteFor(entry.modId);
-			String haystack = (entry.displayName + " " + note + " " + entry.modId + " " + entry.pckName + " " + entry.version + " " + entry.authors + " " + entry.description + " " + entry.category + " " + entry.relativePath + " " + TextUtils.join(" ", entry.dependencyLabels)).toLowerCase(Locale.ROOT);
-			if (!query.isEmpty() && !haystack.contains(query)) {
+			if (!query.isEmpty() && !loadedSnapshot.searchText.get(entry).contains(query)) {
 				continue;
 			}
 			result.add(entry);
@@ -893,35 +898,36 @@ public final class ModsPage {
 			mods.sort(Comparator.comparing(this::displayNameFor, String::compareToIgnoreCase));
 			return;
 		}
-		mods.sort((first, second) -> Long.compare(second.manifestFile.lastModified(), first.manifestFile.lastModified()));
+		mods.sort((first, second) -> Long.compare(loadedSnapshot.modifiedAt.get(second), loadedSnapshot.modifiedAt.get(first)));
 	}
 
 	private void sortGroupsBySavedOrder(List<ModGroupBucket> buckets) {
-		List<String> order = repository.loadModGroupOrder();
+		Map<String, Integer> order = loadedSnapshot.groupOrder;
 		if (order.isEmpty()) {
 			return;
 		}
-		buckets.sort((first, second) -> Integer.compare(orderIndex(order, first.id), orderIndex(order, second.id)));
+		buckets.sort(Comparator.comparingInt(bucket -> order.getOrDefault(bucket.id, Integer.MAX_VALUE)));
 	}
 
 	private void sortBucketEntriesBySavedOrder(ModGroupBucket bucket) {
-		List<String> order = repository.loadModOrder(bucket.id);
+		Map<String, Integer> order = loadedSnapshot.modOrder.getOrDefault(bucket.id, Collections.emptyMap());
 		if (order.isEmpty()) {
 			return;
 		}
-		bucket.entries.sort((first, second) -> Integer.compare(orderIndex(order, first.modId), orderIndex(order, second.modId)));
+		bucket.entries.sort(Comparator.comparingInt(entry -> order.getOrDefault(entry.modId, Integer.MAX_VALUE)));
 	}
 
-	private int orderIndex(List<String> order, String value) {
-		int index = order.indexOf(value);
-		return index < 0 ? Integer.MAX_VALUE : index;
+	private static Map<String, Integer> orderRanks(List<String> order) {
+		Map<String, Integer> ranks = new HashMap<>();
+		for (int i = 0; i < order.size(); i++) ranks.putIfAbsent(order.get(i), i);
+		return ranks;
 	}
 
 	private List<ModGroupBucket> buildModGroups(List<ExtraSettingsRepository.ModEntry> mods) {
 		LinkedHashMap<String, ModGroupBucket> groups = new LinkedHashMap<>();
-		List<String> userGroups = repository.listModGroups();
+		List<String> userGroups = loadedSnapshot.userGroups;
 		Set<String> userGroupNames = new LinkedHashSet<>(userGroups);
-		Map<String, String> groupAssignments = repository.loadModGroupAssignments();
+		Map<String, String> groupAssignments = loadedSnapshot.groupAssignments;
 		putGroup(groups, MOD_GROUP_CORE, context.getString(R.string.mod_group_core), false);
 		putGroup(groups, MOD_GROUP_CONTENT, context.getString(R.string.mod_group_content), false);
 		for (String groupName : userGroups) {
@@ -1341,6 +1347,8 @@ public final class ModsPage {
 			int clamped = Math.max(0, Math.min(adjustedTargetIndex, targetOrder.size()));
 			targetOrder.add(clamped, entry.modId);
 			repository.saveModOrder(targetBucket.id, targetOrder);
+			scanGeneration.incrementAndGet();
+			loadedSnapshot.modOrder.put(targetBucket.id, orderRanks(targetOrder));
 			if (!sameGroup) {
 				if (sourceBucket != null) {
 					List<String> sourceOrder = new ArrayList<>();
@@ -1350,8 +1358,10 @@ public final class ModsPage {
 						}
 					}
 					repository.saveModOrder(sourceBucket.id, sourceOrder);
+					loadedSnapshot.modOrder.put(sourceBucket.id, orderRanks(sourceOrder));
 				}
 				repository.moveModToGroup(entry, targetBucket.id);
+				loadedSnapshot.groupAssignments.put(entry.modId, targetBucket.id);
 			}
 
 			// Optimistic local reorder: keep scroll and avoid full page rebuild.
@@ -1417,6 +1427,9 @@ public final class ModsPage {
 			order.add(bucket.id);
 		}
 		repository.saveModGroupOrder(order);
+		scanGeneration.incrementAndGet();
+		loadedSnapshot.groupOrder.clear();
+		loadedSnapshot.groupOrder.putAll(orderRanks(order));
 
 		// Reorder full currentBuckets to match saved order (including empty system groups).
 		Map<String, ModGroupBucket> byId = new LinkedHashMap<>();
@@ -3652,12 +3665,25 @@ public final class ModsPage {
 		final Map<String, String> notes;
 		final String gameVersion;
 		final List<ExtraSettingsRepository.ModEntry> mods;
+		final Map<ExtraSettingsRepository.ModEntry, String> searchText = new HashMap<>();
+		final Map<ExtraSettingsRepository.ModEntry, Long> modifiedAt = new HashMap<>();
+		final List<String> userGroups = new ArrayList<>();
+		final Map<String, String> groupAssignments = new HashMap<>();
+		final Map<String, Integer> groupOrder = new HashMap<>();
+		final Map<String, Map<String, Integer>> modOrder = new HashMap<>();
 
 		LoadedMods(JSONObject settings, Map<String, String> notes, String gameVersion, List<ExtraSettingsRepository.ModEntry> mods) {
 			this.settings = settings;
 			this.notes = notes == null ? Collections.emptyMap() : new HashMap<>(notes);
 			this.gameVersion = gameVersion == null ? "" : gameVersion;
 			this.mods = mods == null ? Collections.emptyList() : new ArrayList<>(mods);
+			for (ExtraSettingsRepository.ModEntry entry : this.mods) {
+				String note = this.notes.getOrDefault(entry.modId, "");
+				searchText.put(entry, (entry.displayName + " " + note + " " + entry.modId + " " + entry.pckName
+					+ " " + entry.version + " " + entry.authors + " " + entry.description + " " + entry.category
+					+ " " + entry.relativePath + " " + TextUtils.join(" ", entry.dependencyLabels)).toLowerCase(Locale.ROOT));
+				modifiedAt.put(entry, entry.manifestFile.lastModified());
+			}
 		}
 	}
 

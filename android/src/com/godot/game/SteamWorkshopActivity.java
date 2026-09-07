@@ -21,6 +21,7 @@ import android.os.SystemClock;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.text.format.Formatter;
+import android.util.LruCache;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -35,6 +36,8 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -50,6 +53,11 @@ import com.google.android.material.textfield.TextInputLayout;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.util.Collections;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.text.DateFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -64,6 +72,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import okhttp3.Call;
 import okhttp3.ConnectionPool;
 import okhttp3.OkHttpClient;
 import okhttp3.Protocol;
@@ -93,8 +102,8 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private FrameLayout screenHost;
 	private FrameLayout drawerScrim;
 	private LinearLayout drawer;
-	private ScrollView listScrollView;
-	private LinearLayout listContainer;
+	private RecyclerView searchList;
+	private WorkshopListAdapter searchAdapter;
 	private LinearLayout detailContainer;
 	private LinearLayout downloadsContainer;
 	private LinearLayout settingsContainer;
@@ -108,6 +117,16 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private final Map<String, List<DownloadProgressBinding>> downloadProgressBindings = new LinkedHashMap<>();
 	private final ConcurrentHashMap<String, SteamWorkshopDownloader.Progress> pendingProgressUpdates = new ConcurrentHashMap<>();
 	private final AtomicBoolean progressDrainPosted = new AtomicBoolean(false);
+	private final ExecutorService libraryExecutor = Executors.newSingleThreadExecutor(runnable -> {
+		Thread thread = new Thread(() -> {
+			Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
+			runnable.run();
+		}, "sts2-workshop-library");
+		return thread;
+	});
+	private final java.util.concurrent.atomic.AtomicInteger libraryGeneration = new java.util.concurrent.atomic.AtomicInteger();
+	private WorkshopLibrarySnapshot librarySnapshot = new WorkshopLibrarySnapshot();
+	private boolean libraryReady;
 	private int currentPage = 1;
 	private String currentQuery = "";
 	private SteamWorkshopCatalog.SearchResult lastSearchResult;
@@ -122,7 +141,6 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private boolean hasMoreResults = true;
 	private boolean autoUpdateCheckStarted;
 	private boolean libraryVisible;
-	private View listLoadMoreView;
 	private boolean downloadUiRefreshScheduled;
 	private long lastDownloadUiRefreshAtMs;
 	private boolean listDownloadUiStale;
@@ -151,8 +169,52 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	@Override
+	protected void onResume() {
+		super.onResume();
+		if (library != null) requestLibraryRefresh();
+	}
+
+	private void requestLibraryRefresh() {
+		if (destroyed) return;
+		int generation = libraryGeneration.incrementAndGet();
+		libraryExecutor.execute(() -> {
+			if (generation != libraryGeneration.get()) return;
+			try {
+				WorkshopLibrarySnapshot snapshot = new WorkshopLibrarySnapshot();
+				snapshot.entries = library.listEntries();
+				for (SteamWorkshopLibrary.Entry entry : snapshot.entries) {
+					if (generation != libraryGeneration.get() || destroyed) return;
+					snapshot.byId.putIfAbsent(entry.publishedFileId, entry);
+					snapshot.installed.put(entry.key(), findInstalledModsForWorkshop(entryToItem(entry), entry));
+				}
+				runOnUiThreadIfActive(() -> {
+					if (generation != libraryGeneration.get()) return;
+					librarySnapshot = snapshot;
+					libraryReady = true;
+					markDownloadUiStructureChanged();
+					refreshDownloadUi();
+					maybeAutoCheckTrackedUpdates();
+				});
+			} catch (Exception exception) {
+				runOnUiThreadIfActive(() -> { if (generation == libraryGeneration.get()) showError(exception); });
+			}
+		});
+	}
+
+	private static final class WorkshopLibrarySnapshot {
+		List<SteamWorkshopLibrary.Entry> entries = Collections.emptyList();
+		final Map<String, SteamWorkshopLibrary.Entry> byId = new LinkedHashMap<>();
+		final Map<String, List<ExtraSettingsRepository.ModEntry>> installed = new LinkedHashMap<>();
+		List<ExtraSettingsRepository.ModEntry> installedMods(SteamWorkshopLibrary.Entry entry) {
+			return entry == null ? Collections.emptyList() : installed.getOrDefault(entry.key(), Collections.emptyList());
+		}
+	}
+
+	@Override
 	protected void onDestroy() {
 		destroyed = true;
+		libraryGeneration.incrementAndGet();
+		libraryExecutor.shutdownNow();
 		mainHandler.removeCallbacksAndMessages(null);
 		if (imageLoader != null) {
 			imageLoader.shutdown();
@@ -206,20 +268,26 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		LinearLayout screen = ExtraSettingsUi.vertical(this);
 		screen.setBackgroundColor(ExtraSettingsUi.COLOR_BACKGROUND);
 		screen.addView(buildAppBar(false, R.string.workshop_title, () -> toggleDrawer(true), true));
-		listScrollView = contentScrollView();
-		listScrollView.setOnScrollChangeListener((v, scrollX, scrollY, oldScrollX, oldScrollY) -> maybeLoadMoreSearchResults());
-		LinearLayout content = contentRoot();
-		listScrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 		progressBar = new ProgressBar(this);
 		progressBar.setIndeterminate(true);
 		progressBar.setVisibility(View.GONE);
 		LinearLayout progressWrap = ExtraSettingsUi.horizontal(this);
 		progressWrap.setGravity(Gravity.CENTER);
 		progressWrap.addView(progressBar, new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 36), ExtraSettingsUi.dp(this, 36)));
-		content.addView(progressWrap, fullWidthTopMargin(8));
-		listContainer = ExtraSettingsUi.vertical(this);
-		content.addView(listContainer, fullWidthTopMargin(14));
-		screen.addView(listScrollView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+		screen.addView(progressWrap, fullWidthTopMargin(8));
+		searchList = new RecyclerView(this);
+		searchList.setLayoutManager(new LinearLayoutManager(this));
+		searchList.setItemAnimator(null);
+		searchList.setClipToPadding(false);
+		int padding = ExtraSettingsUi.pageHorizontalPadding(this);
+		searchList.setPadding(padding, ExtraSettingsUi.dp(this, 16), padding, ExtraSettingsUi.dp(this, 32));
+		SystemBarInsetsHelper.applySystemBarPadding(searchList, false, true, true, true);
+		searchAdapter = new WorkshopListAdapter();
+		searchList.setAdapter(searchAdapter);
+		searchList.addOnScrollListener(new RecyclerView.OnScrollListener() {
+			@Override public void onScrolled(RecyclerView view, int dx, int dy) { maybeLoadMoreSearchResults(); }
+		});
+		screen.addView(searchList, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 		return screen;
 	}
 
@@ -373,6 +441,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		if (screenHost == null) {
 			return;
 		}
+		libraryVisible = screen == SCREEN_DOWNLOADS;
 		for (int i = 0; i < screenHost.getChildCount(); i++) {
 			screenHost.getChildAt(i).setVisibility(i == screen ? View.VISIBLE : View.GONE);
 		}
@@ -637,19 +706,15 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}
 		showScreen(SCREEN_LIST);
 		libraryVisible = false;
+		requestLibraryRefresh();
 		currentQuery = query == null ? "" : query.trim();
 		currentPage = 1;
 		lastSearchResult = null;
 		loadingMoreResults = false;
 		hasMoreResults = true;
-		listLoadMoreView = null;
 		refreshFilterLabels();
-		if (listContainer != null) {
-			listContainer.removeAllViews();
-		}
-		if (listScrollView != null) {
-			listScrollView.post(() -> listScrollView.scrollTo(0, 0));
-		}
+		searchAdapter.replace(Collections.emptyList(), false);
+		searchList.scrollToPosition(0);
 		runOperation(
 			getString(R.string.workshop_status_searching),
 			() -> catalog.search(currentQuery, 1, WORKSHOP_PAGE_SIZE, currentSortOption, currentTimeWindow),
@@ -664,43 +729,27 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		hasMoreResults = hasMoreSearchResults(result.getItems().size(), result);
 		loadingMoreResults = false;
 		refreshFilterLabels();
-		listContainer.removeAllViews();
-		listLoadMoreView = null;
+		searchAdapter.replace(result.getItems(), true);
 		listDownloadUiStale = false;
-		if (result.getItems().isEmpty()) {
-			ExtraSettingsUi.addCardSpacing(listContainer, buildEmptyCard(R.string.workshop_no_results, R.string.workshop_no_results_hint, R.drawable.ic_search_24));
-			maybeAutoCheckTrackedUpdates();
-			return;
-		}
-		appendSearchRows(result.getItems());
 		maybeAutoCheckTrackedUpdates();
-		if (listScrollView != null) {
-			listScrollView.post(this::maybeLoadMoreSearchResults);
-		}
+		searchList.post(this::maybeLoadMoreSearchResults);
 	}
 
 	private void appendSearchRows(List<SteamWorkshopCatalog.Item> items) {
-		removeLoadMoreView();
-		for (SteamWorkshopCatalog.Item item : items) {
-			ExtraSettingsUi.addCardSpacing(listContainer, buildWorkshopItemRow(item));
-		}
-		updateLoadMoreView();
+		searchAdapter.setLoading(false);
+		searchAdapter.append(items);
 	}
 
 	private void maybeLoadMoreSearchResults() {
-		if (listScrollView == null || listContainer == null || libraryVisible || busy || loadingMoreResults || !hasMoreResults || lastSearchResult == null) {
+		if (searchList == null || libraryVisible || busy || loadingMoreResults || !hasMoreResults || lastSearchResult == null) {
 			return;
 		}
 		Object screen = screenHost == null ? null : screenHost.getTag();
 		if (!(screen instanceof Integer) || ((Integer) screen) != SCREEN_LIST) {
 			return;
 		}
-		View child = listScrollView.getChildAt(0);
-		if (child == null) {
-			return;
-		}
-		int remaining = child.getBottom() - (listScrollView.getScrollY() + listScrollView.getHeight());
-		if (remaining > ExtraSettingsUi.dp(this, 520)) {
+		LinearLayoutManager layout = (LinearLayoutManager) searchList.getLayoutManager();
+		if (layout == null || layout.findLastVisibleItemPosition() < searchAdapter.items.size() - 4) {
 			return;
 		}
 		loadMoreSearchResults();
@@ -773,20 +822,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void updateLoadMoreView() {
-		removeLoadMoreView();
-		if (!loadingMoreResults || listContainer == null) {
-			return;
-		}
-		listLoadMoreView = buildLoadMoreView();
-		ExtraSettingsUi.addCardSpacing(listContainer, listLoadMoreView);
+		if (searchAdapter != null) searchAdapter.setLoading(loadingMoreResults);
 	}
 
-	private void removeLoadMoreView() {
-		if (listLoadMoreView != null && listContainer != null) {
-			listContainer.removeView(listLoadMoreView);
-		}
-		listLoadMoreView = null;
-	}
 
 	private View buildLoadMoreView() {
 		LinearLayout row = ExtraSettingsUi.horizontal(this);
@@ -802,38 +840,122 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		return row;
 	}
 
-	private View buildWorkshopItemRow(SteamWorkshopCatalog.Item item) {
-		MaterialCardView card = ExtraSettingsUi.clickableCard(this);
-		card.setRadius(ExtraSettingsUi.dp(this, 16));
-		card.setStrokeWidth(0);
-		card.setCardBackgroundColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
-		LinearLayout row = ExtraSettingsUi.horizontal(this);
-		row.setGravity(Gravity.CENTER_VERTICAL);
-		row.setPadding(ExtraSettingsUi.dp(this, 12), ExtraSettingsUi.dp(this, 12), ExtraSettingsUi.dp(this, 10), ExtraSettingsUi.dp(this, 12));
-		card.addView(row, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-		ImageView thumb = imageView(80, 80, 12);
-		imageLoader.load(item.getPreviewUrl(), thumb);
-		row.addView(thumb);
-		LinearLayout texts = ExtraSettingsUi.vertical(this);
-		LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-		textParams.setMarginStart(ExtraSettingsUi.dp(this, 14));
-		row.addView(texts, textParams);
-		TextView title = ExtraSettingsUi.text(this, item.getTitle(), 16, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
-		title.setMaxLines(2);
-		title.setEllipsize(TextUtils.TruncateAt.END);
-		texts.addView(title);
-		texts.addView(ExtraSettingsUi.caption(this, byline(item)), fullWidthTopMargin(3));
-		TextView meta = ExtraSettingsUi.text(this, itemMetaLine(item), 12, ExtraSettingsUi.COLOR_PRIMARY, Typeface.NORMAL);
-		meta.setSingleLine(true);
-		meta.setEllipsize(TextUtils.TruncateAt.END);
-		texts.addView(meta, fullWidthTopMargin(6));
-		TextView description = ExtraSettingsUi.body(this, TextUtils.isEmpty(item.getDescription()) ? getString(R.string.workshop_no_description) : item.getDescription());
-		description.setMaxLines(2);
-		description.setEllipsize(TextUtils.TruncateAt.END);
-		texts.addView(description, fullWidthTopMargin(4));
-		row.addView(buildDownloadControl(item, false));
-		card.setOnClickListener(v -> showItemDetails(item));
-		return card;
+	private final class WorkshopListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+		private final List<SteamWorkshopCatalog.Item> items = new ArrayList<>();
+		private boolean loading;
+		private boolean showEmpty;
+
+		void replace(List<SteamWorkshopCatalog.Item> next, boolean showEmpty) {
+			items.clear();
+			items.addAll(next);
+			loading = false;
+			this.showEmpty = showEmpty;
+			notifyDataSetChanged();
+		}
+
+		void append(List<SteamWorkshopCatalog.Item> next) {
+			int start = items.size();
+			items.addAll(next);
+			if (!next.isEmpty()) notifyItemRangeInserted(start, next.size());
+		}
+
+		void setLoading(boolean value) {
+			if (loading == value) return;
+			loading = value;
+			if (value) notifyItemInserted(items.size()); else notifyItemRemoved(items.size());
+		}
+
+		void refreshItems() {
+			if (lastSearchResult != null && lastSearchResult.getItems().size() == items.size()) {
+				items.clear();
+				items.addAll(lastSearchResult.getItems());
+			}
+			notifyItemRangeChanged(0, items.size());
+		}
+
+		@Override public int getItemCount() { return items.size() + (loading || (showEmpty && items.isEmpty()) ? 1 : 0); }
+		@Override public int getItemViewType(int position) { return position < items.size() ? 0 : (loading ? 1 : 2); }
+		@Override public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int type) {
+			RecyclerView.ViewHolder holder = type == 0 ? new WorkshopItemHolder()
+				: new RecyclerView.ViewHolder(type == 1 ? buildLoadMoreView()
+					: buildEmptyCard(R.string.workshop_no_results, R.string.workshop_no_results_hint, R.drawable.ic_search_24)) {};
+			RecyclerView.LayoutParams params = new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			params.bottomMargin = ExtraSettingsUi.dp(SteamWorkshopActivity.this, 12);
+			holder.itemView.setLayoutParams(params);
+			return holder;
+		}
+		@Override public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
+			if (holder instanceof WorkshopItemHolder) ((WorkshopItemHolder) holder).bind(items.get(position));
+		}
+		@Override public void onViewAttachedToWindow(RecyclerView.ViewHolder holder) {
+			if (holder instanceof WorkshopItemHolder) ((WorkshopItemHolder) holder).refreshControl();
+		}
+		@Override public void onViewRecycled(RecyclerView.ViewHolder holder) {
+			if (holder instanceof WorkshopItemHolder) {
+				WorkshopItemHolder row = (WorkshopItemHolder) holder;
+				imageLoader.clear(row.thumb);
+				row.download.removeAllViews();
+				row.item = null;
+			}
+		}
+	}
+
+	private final class WorkshopItemHolder extends RecyclerView.ViewHolder {
+		final ImageView thumb;
+		final TextView title, author, meta, description;
+		final LinearLayout download;
+		SteamWorkshopCatalog.Item item;
+
+		WorkshopItemHolder() {
+			super(ExtraSettingsUi.clickableCard(SteamWorkshopActivity.this));
+			SteamWorkshopActivity context = SteamWorkshopActivity.this;
+			MaterialCardView card = (MaterialCardView) itemView;
+			card.setRadius(ExtraSettingsUi.dp(context, 16));
+			card.setStrokeWidth(0);
+			card.setCardBackgroundColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
+			LinearLayout row = ExtraSettingsUi.horizontal(context);
+			row.setGravity(Gravity.CENTER_VERTICAL);
+			row.setPadding(ExtraSettingsUi.dp(context, 12), ExtraSettingsUi.dp(context, 12), ExtraSettingsUi.dp(context, 10), ExtraSettingsUi.dp(context, 12));
+			card.addView(row, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+			thumb = imageView(80, 80, 12);
+			row.addView(thumb);
+			LinearLayout texts = ExtraSettingsUi.vertical(context);
+			LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+			textParams.setMarginStart(ExtraSettingsUi.dp(context, 14));
+			row.addView(texts, textParams);
+			title = ExtraSettingsUi.text(context, "", 16, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
+			title.setMaxLines(2);
+			title.setEllipsize(TextUtils.TruncateAt.END);
+			texts.addView(title);
+			author = ExtraSettingsUi.caption(context, "");
+			texts.addView(author, fullWidthTopMargin(3));
+			meta = ExtraSettingsUi.text(context, "", 12, ExtraSettingsUi.COLOR_PRIMARY, Typeface.NORMAL);
+			meta.setSingleLine(true);
+			meta.setEllipsize(TextUtils.TruncateAt.END);
+			texts.addView(meta, fullWidthTopMargin(6));
+			description = ExtraSettingsUi.body(context, "");
+			description.setMaxLines(2);
+			description.setEllipsize(TextUtils.TruncateAt.END);
+			texts.addView(description, fullWidthTopMargin(4));
+			download = ExtraSettingsUi.horizontal(context);
+			row.addView(download);
+			card.setOnClickListener(v -> { if (item != null) showItemDetails(item); });
+		}
+
+		void bind(SteamWorkshopCatalog.Item value) {
+			item = value;
+			imageLoader.load(value.getPreviewUrl(), thumb);
+			title.setText(value.getTitle());
+			author.setText(byline(value));
+			meta.setText(itemMetaLine(value));
+			description.setText(TextUtils.isEmpty(value.getDescription()) ? getString(R.string.workshop_no_description) : value.getDescription());
+			refreshControl();
+		}
+
+		void refreshControl() {
+			download.removeAllViews();
+			if (item != null) download.addView(buildDownloadControl(item, false));
+		}
 	}
 
 	private View buildSummaryCard(String summary) {
@@ -874,6 +996,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			return;
 		}
 		showScreen(SCREEN_DETAIL);
+		requestLibraryRefresh();
 		detailContainer.setTag(item);
 		lastDetailResult = null;
 		detailContainer.removeAllViews();
@@ -955,8 +1078,14 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		if (task != null && task.isActive()) {
 			return buildActiveDownloadControl(task, wide);
 		}
+		if (!libraryReady) {
+			ProgressBar loading = new ProgressBar(this);
+			loading.setContentDescription(getString(R.string.workshop_status_loading_detail));
+			loading.setLayoutParams(new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 48), ExtraSettingsUi.dp(this, 48)));
+			return loading;
+		}
 		SteamWorkshopLibrary.Entry entry = findLibraryEntry(item.getPublishedFileId());
-		boolean localInstalled = entry != null && !findInstalledModsForWorkshop(item, entry).isEmpty();
+		boolean localInstalled = !librarySnapshot.installedMods(entry).isEmpty();
 		boolean updateAvailable = entry != null && localInstalled && hasWorkshopUpdate(item, entry);
 		if (entry != null && localInstalled && !updateAvailable) {
 			MaterialButton details = wide
@@ -992,20 +1121,16 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private SteamWorkshopLibrary.Entry findLibraryEntry(String publishedFileId) {
-		if (TextUtils.isEmpty(publishedFileId)) {
-			return null;
-		}
-		for (SteamWorkshopLibrary.Entry entry : library.listEntries()) {
-			if (publishedFileId.equals(entry.publishedFileId)) {
-				return entry;
-			}
-		}
-		return null;
+		return librarySnapshot.byId.get(publishedFileId);
 	}
 
 	private void showInstalledWorkshopModDetails(SteamWorkshopCatalog.Item item, SteamWorkshopLibrary.Entry entry) {
 		SteamWorkshopLibrary.Entry resolvedEntry = entry == null ? findLibraryEntry(item.getPublishedFileId()) : entry;
-		List<ExtraSettingsRepository.ModEntry> installed = findInstalledModsForWorkshop(item, resolvedEntry);
+		runOperation(getString(R.string.workshop_status_loading_detail),
+			() -> findInstalledModsForWorkshop(item, resolvedEntry), installed -> showInstalledWorkshopModChoices(item, installed));
+	}
+
+	private void showInstalledWorkshopModChoices(SteamWorkshopCatalog.Item item, List<ExtraSettingsRepository.ModEntry> installed) {
 		if (installed.isEmpty()) {
 			showMessage(getString(R.string.workshop_installed_mod_missing));
 			return;
@@ -1048,8 +1173,13 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void showLocalModDetails(ExtraSettingsRepository.ModEntry entry) {
+		runOperation(getString(R.string.workshop_status_loading_detail), () -> isLocalModEnabled(entry),
+			enabled -> showLocalModDetails(entry, enabled));
+	}
+
+	private void showLocalModDetails(ExtraSettingsRepository.ModEntry entry, boolean enabled) {
 		StringBuilder message = new StringBuilder();
-		appendLine(message, getString(R.string.mod_detail_status), isLocalModEnabled(entry) ? getString(R.string.mod_enabled) : getString(R.string.mod_disabled));
+		appendLine(message, getString(R.string.mod_detail_status), enabled ? getString(R.string.mod_enabled) : getString(R.string.mod_disabled));
 		appendLine(message, "ID", entry.modId);
 		appendLine(message, getString(R.string.mod_detail_category), displayModCategory(entry));
 		appendLine(message, getString(R.string.mod_detail_version), entry.version);
@@ -1243,9 +1373,18 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private void showDownloads() {
 		showScreen(SCREEN_DOWNLOADS);
 		libraryVisible = true;
+		requestLibraryRefresh();
+		renderDownloads();
+	}
+
+	private void renderDownloads() {
 		downloadsContainer.removeAllViews();
-		List<SteamWorkshopLibrary.Entry> entries = library.listEntries();
+		List<SteamWorkshopLibrary.Entry> entries = librarySnapshot.entries;
 		addActiveDownloadsSection(downloadsContainer);
+		if (!libraryReady) {
+			downloadsContainer.addView(buildLoadingView(R.string.workshop_status_loading_detail));
+			return;
+		}
 		downloadsContainer.addView(buildDownloadedSectionHeader(entries), fullWidthTopMargin(18));
 		if (entries.isEmpty()) {
 			ExtraSettingsUi.addCardSpacing(downloadsContainer, buildEmptyCard(R.string.workshop_library_empty, R.string.workshop_library_empty_hint, R.drawable.ic_download_24));
@@ -1284,7 +1423,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void updateAllDownloaded() {
-		List<SteamWorkshopLibrary.Entry> updatable = updatableEntries(library.listEntries());
+		List<SteamWorkshopLibrary.Entry> updatable = updatableEntries(librarySnapshot.entries);
 		if (updatable.isEmpty()) {
 			return;
 		}
@@ -1370,7 +1509,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		texts.addView(ExtraSettingsUi.caption(this, getString(R.string.workshop_item_byline, entry.publishedFileId, formatDate(entry.installedRemoteUpdatedAtMs))), fullWidthTopMargin(4));
 		texts.addView(ExtraSettingsUi.caption(this, getString(R.string.workshop_branch_installed_label, emptyToDash(entry.workshopBranch), workshopBranchSourceLabel(entry.resolutionSource))), fullWidthTopMargin(2));
 		SteamWorkshopCatalog.Item item = entryToItem(entry);
-		List<ExtraSettingsRepository.ModEntry> installedMods = findInstalledModsForWorkshop(item, entry);
+		List<ExtraSettingsRepository.ModEntry> installedMods = librarySnapshot.installedMods(entry);
 		boolean localInstalled = !installedMods.isEmpty();
 		texts.addView(ExtraSettingsUi.body(this, localInstalled ? updateStatusLabel(entry) : getString(R.string.workshop_local_files_missing)), fullWidthTopMargin(6));
 		boolean updateAvailable = "available".equals(entry.updateStatus);
@@ -1447,7 +1586,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void showDeleteWorkshopRecordDialog(SteamWorkshopLibrary.Entry entry, SteamWorkshopCatalog.Item item, List<ExtraSettingsRepository.ModEntry> installedMods) {
-		List<ExtraSettingsRepository.ModEntry> currentInstalledMods = installedMods == null ? findInstalledModsForWorkshop(item, entry) : new ArrayList<>(installedMods);
+		List<ExtraSettingsRepository.ModEntry> currentInstalledMods = installedMods == null ? librarySnapshot.installedMods(entry) : new ArrayList<>(installedMods);
 		LinearLayout content = ExtraSettingsUi.vertical(this);
 		content.setPadding(0, ExtraSettingsUi.dp(this, 8), 0, 0);
 		content.addView(ExtraSettingsUi.body(this, getString(R.string.workshop_delete_record_message, entry.title)));
@@ -1461,16 +1600,15 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			.setView(content)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(R.string.delete, (dialog, which) -> {
-				try {
-					if (deleteLocal.isChecked()) {
-						repository.deleteWorkshopItemInstall(entry.installedRootPath, entry.publishedFileId, currentInstalledMods);
-					}
+				boolean deleteFiles = deleteLocal.isChecked();
+				runOperation(getString(R.string.workshop_delete_record_title), () -> {
+					if (deleteFiles) repository.deleteWorkshopItemInstall(entry.installedRootPath, entry.publishedFileId, currentInstalledMods);
 					library.removeEntry(entry.publishedFileId, entry.workshopBranch);
+					return null;
+				}, ignored -> {
 					showDownloads();
 					showMessage(getString(R.string.workshop_delete_record_done));
-				} catch (Exception exception) {
-					showError(exception);
-				}
+				});
 			})
 			.show();
 	}
@@ -1665,13 +1803,15 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			ensurePendingDownloadTask(item, getString(R.string.workshop_status_checking_prerequisites));
 			runOperation(
 				getString(R.string.workshop_status_checking_prerequisites),
-				() -> catalog.loadDetail(item),
-				detail -> {
-					List<SteamWorkshopCatalog.RequiredItem> missing = findMissingRequiredItems(detail.getRequiredItems());
-					if (missing.isEmpty()) {
-						downloadAndImport(detail.getItem(), false);
+				() -> {
+					SteamWorkshopCatalog.Detail detail = catalog.loadDetail(item);
+					return new WorkshopPrerequisites(detail.getItem(), findMissingRequiredItems(detail.getRequiredItems()));
+				},
+				result -> {
+					if (result.missing.isEmpty()) {
+						downloadAndImport(result.item, false);
 					} else {
-						showMissingPrerequisitesDialog(detail.getItem(), missing);
+						showMissingPrerequisitesDialog(result.item, result.missing);
 					}
 				},
 				exception -> {
@@ -1692,6 +1832,15 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			return;
 		}
 		enqueueDownload(item);
+	}
+
+	private static final class WorkshopPrerequisites {
+		final SteamWorkshopCatalog.Item item;
+		final List<SteamWorkshopCatalog.RequiredItem> missing;
+		WorkshopPrerequisites(SteamWorkshopCatalog.Item item, List<SteamWorkshopCatalog.RequiredItem> missing) {
+			this.item = item;
+			this.missing = missing;
+		}
 	}
 
 	private void downloadWorkshopUpdate(SteamWorkshopLibrary.Entry entry, SteamWorkshopCatalog.Item item) {
@@ -2236,17 +2385,15 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		Object screen = screenHost == null ? null : screenHost.getTag();
 		if (screen instanceof Integer) {
 			int value = (Integer) screen;
-			if (value == SCREEN_LIST && listContainer != null) {
+			if (value == SCREEN_LIST && searchAdapter != null) {
 				listDownloadUiStale = false;
-				if (lastSearchResult != null) {
-					showSearchResults(lastSearchResult);
-				}
+				searchAdapter.refreshItems();
 			} else if (value == SCREEN_DETAIL && detailContainer != null && detailContainer.getTag() instanceof SteamWorkshopCatalog.Item) {
 				if (lastDetailResult != null) {
 					showDetailResult(lastDetailResult);
 				}
 			} else if (value == SCREEN_DOWNLOADS && downloadsContainer != null) {
-				showDownloads();
+				renderDownloads();
 			}
 		}
 		refreshDownloadProgressBindings();
@@ -2270,13 +2417,14 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		View.OnAttachStateChangeListener listener = new View.OnAttachStateChangeListener() {
 			@Override
 			public void onViewAttachedToWindow(View view) {
+				List<DownloadProgressBinding> attached = downloadProgressBindings.computeIfAbsent(publishedFileId, key -> new ArrayList<>());
+				if (!attached.contains(binding)) attached.add(binding);
 				updateDownloadProgressBinding(binding, downloadTasks.get(publishedFileId));
 			}
 
 			@Override
 			public void onViewDetachedFromWindow(View view) {
 				unregisterDownloadProgressBinding(binding);
-				view.removeOnAttachStateChangeListener(this);
 			}
 		};
 		root.addOnAttachStateChangeListener(listener);
@@ -2441,6 +2589,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 				SteamWorkshopDownloadCleaner.deleteImportedDownloadDirectory(this, result.getOutputDir());
 				runOnUiThreadIfActive(() -> {
 					progressDialog.dismiss();
+					requestLibraryRefresh();
 					markWorkshopItemCurrent(result.getItem());
 					finishDownloadTask(result.getItem().getPublishedFileId());
 					showMessage(getString(R.string.workshop_import_done, importResult.importedName));
@@ -2462,23 +2611,19 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void checkTrackedUpdates(boolean showLibraryWhenDone) {
-		List<SteamWorkshopLibrary.Entry> entries = library.listEntries();
-		if (entries.isEmpty()) {
-			if (showLibraryWhenDone) {
-				showDownloads();
-			}
-			return;
-		}
 		runOperation(getString(R.string.workshop_status_checking_updates), () -> {
+			List<SteamWorkshopLibrary.Entry> entries = library.listEntries();
+			if (entries.isEmpty()) return null;
 			List<String> ids = new ArrayList<>();
 			for (SteamWorkshopLibrary.Entry entry : entries) {
 				ids.add(entry.publishedFileId);
 			}
 			return library.updateCheckResults(catalog.loadDetails(ids));
 		}, summary -> {
+			requestLibraryRefresh();
 			if (showLibraryWhenDone) {
 				showDownloads();
-				showMessage(getString(R.string.workshop_update_summary, summary.availableCount, summary.currentCount, summary.failedCount));
+				if (summary != null) showMessage(getString(R.string.workshop_update_summary, summary.availableCount, summary.currentCount, summary.failedCount));
 			}
 		}, this::showError, false);
 	}
@@ -2488,7 +2633,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			return;
 		}
 		long now = System.currentTimeMillis();
-		for (SteamWorkshopLibrary.Entry entry : library.listEntries()) {
+		for (SteamWorkshopLibrary.Entry entry : librarySnapshot.entries) {
 			if (entry.lastCheckedAtMs <= 0L || now - entry.lastCheckedAtMs >= AUTO_UPDATE_CHECK_INTERVAL_MS) {
 				autoUpdateCheckStarted = true;
 				checkTrackedUpdates(libraryVisible);
@@ -3331,7 +3476,23 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		private final OkHttpClient defaultClient;
 		private final OkHttpClient originalClient;
 		private final OkHttpClient directClient;
-		private final Map<String, Bitmap> memoryCache = new ConcurrentHashMap<>();
+		private static final int MAX_ACTIVE = 3;
+		private final LruCache<String, Bitmap> memoryCache = new LruCache<String, Bitmap>(
+			(int) Math.max(4L * 1024 * 1024, Math.min(16L * 1024 * 1024, Runtime.getRuntime().maxMemory() / 16))) {
+			@Override protected int sizeOf(String key, Bitmap bitmap) { return bitmap.getAllocationByteCount(); }
+		};
+		private final ExecutorService workers = Executors.newFixedThreadPool(MAX_ACTIVE, runnable -> {
+			Thread thread = new Thread(() -> {
+				Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
+				runnable.run();
+			}, "sts2-workshop-image");
+			return thread;
+		});
+		// Queue/targets/cache are main-thread owned. Only active jobs reach the executor.
+		private final Map<String, ImageJob> jobs = new LinkedHashMap<>();
+		private final ArrayDeque<ImageJob> pending = new ArrayDeque<>();
+		private int active;
+		private boolean closed;
 
 		WorkshopImageLoader(SteamWorkshopActivity activity) {
 			this.activity = activity;
@@ -3355,61 +3516,173 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 
 		void load(String url, ImageView target) {
 			String normalized = normalizeImageUrl(url);
-			target.setTag(normalized);
-			if (normalized.isEmpty()) {
-				target.setImageDrawable(MaterialSymbols.drawable(activity, R.drawable.ic_steam_24, ExtraSettingsUi.COLOR_MUTED, 28));
-				return;
-			}
-			Bitmap cached = memoryCache.get(normalized);
-			if (cached != null) {
-				target.setImageBitmap(cached);
-				return;
+			if (target.getTag() instanceof ImageBinding) {
+				ImageBinding previous = (ImageBinding) target.getTag();
+				if (previous.url.equals(normalized)) {
+					if (target.isAttachedToWindow() && !previous.loaded) enqueue(previous);
+					return;
+				}
+				clear(target);
 			}
 			target.setImageDrawable(MaterialSymbols.drawable(activity, R.drawable.ic_steam_24, ExtraSettingsUi.COLOR_MUTED, 28));
-			new Thread(() -> {
-				try {
-					Bitmap bitmap = fetchBitmap(normalized);
-					memoryCache.put(normalized, bitmap);
-					activity.runOnUiThreadIfActive(() -> {
-						if (normalized.equals(target.getTag())) {
-							target.setImageBitmap(bitmap);
-						}
-					});
-				} catch (Exception ignored) {
-				}
-			}, "sts2-workshop-image").start();
+			if (closed || normalized.isEmpty()) return;
+			ViewGroup.LayoutParams params = target.getLayoutParams();
+			int width = params != null && params.width > 0 ? params.width : ExtraSettingsUi.dp(activity, 160);
+			int height = params != null && params.height > 0 ? params.height : width;
+			ImageBinding binding = new ImageBinding(normalized, target, width, height);
+			target.setTag(binding);
+			target.addOnAttachStateChangeListener(binding);
+			if (target.isAttachedToWindow()) enqueue(binding);
 		}
 
-		private Bitmap fetchBitmap(String url) throws IOException {
+		void clear(ImageView target) {
+			if (target.getTag() instanceof ImageBinding) {
+				ImageBinding binding = (ImageBinding) target.getTag();
+				cancel(binding);
+				target.removeOnAttachStateChangeListener(binding);
+			}
+			target.setTag(null);
+			target.setImageDrawable(null);
+		}
+
+		private void enqueue(ImageBinding binding) {
+			if (closed || binding.loaded || binding.target.getTag() != binding) return;
+			Bitmap cached = memoryCache.get(binding.key);
+			if (cached != null) {
+				binding.loaded = true;
+				binding.target.setImageBitmap(cached);
+				return;
+			}
+			ImageJob job = jobs.get(binding.key);
+			if (job == null) {
+				job = new ImageJob(binding);
+				jobs.put(binding.key, job);
+				pending.add(job);
+			}
+			if (!job.targets.contains(binding)) job.targets.add(binding);
+			pump();
+		}
+
+		private void cancel(ImageBinding binding) {
+			ImageJob job = jobs.get(binding.key);
+			if (job == null) return;
+			job.targets.remove(binding);
+			if (!job.targets.isEmpty()) return;
+			jobs.remove(binding.key);
+			pending.remove(job);
+			job.cancelled = true;
+			Call call = job.call;
+			if (call != null) call.cancel();
+		}
+
+		private void pump() {
+			while (!closed && active < MAX_ACTIVE && !pending.isEmpty()) {
+				ImageJob job = pending.removeFirst();
+				active++;
+				workers.execute(() -> {
+					Bitmap bitmap = null;
+					try { bitmap = fetchBitmap(job); } catch (IOException ignored) {} finally {
+						Bitmap result = bitmap;
+						activity.mainHandler.post(() -> {
+							active--;
+							if (!closed && !job.cancelled) {
+								jobs.remove(job.key, job);
+								if (result != null) {
+									memoryCache.put(job.key, result);
+									for (ImageBinding binding : job.targets) {
+										if (binding.target.getTag() == binding && binding.target.isAttachedToWindow()) {
+											binding.loaded = true;
+											binding.target.setImageBitmap(result);
+										}
+									}
+								}
+							}
+							job.targets.clear();
+							pump();
+						});
+					}
+				});
+			}
+		}
+
+		private final class ImageBinding implements View.OnAttachStateChangeListener {
+			final String url, key;
+			final ImageView target;
+			final int width, height;
+			boolean loaded;
+			ImageBinding(String url, ImageView target, int width, int height) {
+				this.url = url;
+				this.key = url + "@" + width + "x" + height;
+				this.target = target;
+				this.width = width;
+				this.height = height;
+			}
+			@Override public void onViewAttachedToWindow(View view) { enqueue(this); }
+			@Override public void onViewDetachedFromWindow(View view) { cancel(this); }
+		}
+
+		private static final class ImageJob {
+			final String url, key;
+			final int width, height;
+			final List<ImageBinding> targets = new ArrayList<>();
+			volatile boolean cancelled;
+			volatile Call call;
+			ImageJob(ImageBinding binding) {
+				url = binding.url;
+				key = binding.key;
+				width = binding.width;
+				height = binding.height;
+			}
+		}
+
+		private Bitmap fetchBitmap(ImageJob job) throws IOException {
 			IOException lastError = null;
 			for (OkHttpClient client : new OkHttpClient[] { defaultClient, originalClient, directClient }) {
-				try {
-					return fetchBitmap(client, url);
-				} catch (IOException exception) {
-					lastError = exception;
-				}
+				if (job.cancelled) throw new IOException("Image request cancelled.");
+				try { return fetchBitmap(client, job); } catch (IOException exception) { lastError = exception; }
 			}
 			throw lastError == null ? new IOException("Image request failed.") : lastError;
 		}
 
-		private Bitmap fetchBitmap(OkHttpClient client, String url) throws IOException {
+		private Bitmap fetchBitmap(OkHttpClient client, ImageJob job) throws IOException {
 			Request request = new Request.Builder()
-				.url(url)
+				.url(job.url)
 				.header("User-Agent", "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 (KHTML, like Gecko) STS2Workshop/1.0 Mobile Safari/537.36")
 				.header("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
 				.header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
 				.header("Referer", "https://steamcommunity.com/")
 				.build();
-			try (Response response = client.newCall(request).execute()) {
-				if (!response.isSuccessful() || response.body() == null) {
-					throw new IOException("Image request failed: HTTP " + response.code());
+			Call call = client.newCall(request);
+			job.call = call;
+			if (job.cancelled) call.cancel();
+			File temporary = null;
+			try (Response response = call.execute()) {
+				if (!response.isSuccessful() || response.body() == null) throw new IOException("Image request failed: HTTP " + response.code());
+				// Spool compressed bytes instead of retaining a second full image in heap.
+				temporary = File.createTempFile("workshop-image-", ".tmp", activity.getCacheDir());
+				try (InputStream input = response.body().byteStream(); FileOutputStream output = new FileOutputStream(temporary)) {
+					byte[] buffer = new byte[16384];
+					int count;
+					while ((count = input.read(buffer)) != -1) {
+						if (job.cancelled) throw new IOException("Image request cancelled.");
+						output.write(buffer, 0, count);
+					}
 				}
-				byte[] bytes = response.body().bytes();
-				Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-				if (bitmap == null) {
-					throw new IOException("Unable to decode image.");
-				}
+				if (job.cancelled) throw new IOException("Image request cancelled.");
+				BitmapFactory.Options options = new BitmapFactory.Options();
+				options.inJustDecodeBounds = true;
+				BitmapFactory.decodeFile(temporary.getPath(), options);
+				if (options.outWidth <= 0 || options.outHeight <= 0) throw new IOException("Unable to decode image.");
+				options.inSampleSize = 1;
+				while (options.outWidth / options.inSampleSize > job.width * 2
+					|| options.outHeight / options.inSampleSize > job.height * 2) options.inSampleSize *= 2;
+				options.inJustDecodeBounds = false;
+				Bitmap bitmap = BitmapFactory.decodeFile(temporary.getPath(), options);
+				if (bitmap == null) throw new IOException("Unable to decode image.");
 				return bitmap;
+			} finally {
+				job.call = null;
+				if (temporary != null) temporary.delete();
 			}
 		}
 
@@ -3433,10 +3706,20 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}
 
 		void shutdown() {
+			closed = true;
+			for (ImageJob job : jobs.values()) {
+				job.cancelled = true;
+				job.targets.clear();
+				Call call = job.call;
+				if (call != null) call.cancel();
+			}
+			jobs.clear();
+			pending.clear();
+			workers.shutdownNow();
 			defaultClient.dispatcher().cancelAll();
 			originalClient.dispatcher().cancelAll();
 			directClient.dispatcher().cancelAll();
-			memoryCache.clear();
+			memoryCache.evictAll();
 		}
 	}
 }

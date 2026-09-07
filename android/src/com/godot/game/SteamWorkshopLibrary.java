@@ -40,14 +40,12 @@ public final class SteamWorkshopLibrary {
 		return entries;
 	}
 
-	public synchronized Entry recordInstall(SteamWorkshopCatalog.Item item, File installRoot, List<ExtraSettingsRepository.ModEntry> importedMods) throws Exception {
+	public Entry recordInstall(SteamWorkshopCatalog.Item item, File installRoot, List<ExtraSettingsRepository.ModEntry> importedMods) throws Exception {
 		return recordInstall(item, installRoot, importedMods, InstallContext.empty());
 	}
 
-	public synchronized Entry recordInstall(SteamWorkshopCatalog.Item item, File installRoot, List<ExtraSettingsRepository.ModEntry> importedMods, InstallContext installContext) throws Exception {
-		ensureRoot();
+	public Entry recordInstall(SteamWorkshopCatalog.Item item, File installRoot, List<ExtraSettingsRepository.ModEntry> importedMods, InstallContext installContext) throws Exception {
 		InstallContext safeContext = installContext == null ? InstallContext.empty() : installContext;
-		List<Entry> entries = normalizeEntries(readEntries());
 		List<String> modIds = new ArrayList<>();
 		if (importedMods != null) {
 			for (ExtraSettingsRepository.ModEntry mod : importedMods) {
@@ -87,14 +85,19 @@ public final class SteamWorkshopLibrary {
 			safeContext.matchedBranchMax,
 			safeContext.fallbackReason
 		);
-		Map<String, Entry> byId = new LinkedHashMap<>();
-		for (Entry entry : entries) {
-			if (!shouldDropSupersededEntry(entry, updated)) {
-				byId.put(entry.key(), entry);
+		// Hashing the payload must never hold the index lock. Re-read after hashing
+		// so concurrent update checks/deletions are preserved when committing.
+		synchronized (this) {
+			List<Entry> entries = normalizeEntries(readEntries());
+			Map<String, Entry> byId = new LinkedHashMap<>();
+			for (Entry entry : entries) {
+				if (!shouldDropSupersededEntry(entry, updated)) {
+					byId.put(entry.key(), entry);
+				}
 			}
+			byId.put(updated.key(), updated);
+			writeEntries(new ArrayList<>(byId.values()));
 		}
-		byId.put(updated.key(), updated);
-		writeEntries(new ArrayList<>(byId.values()));
 		return updated;
 	}
 

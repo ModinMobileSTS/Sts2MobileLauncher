@@ -225,6 +225,7 @@ public final class InGameOverlayController {
 
 	public void detach() {
 		logTailer.stop();
+		logTailer.setListener(null);
 		if (devToolsClient != null) {
 			devToolsClient.close();
 			devToolsClient = null;
@@ -2749,11 +2750,29 @@ public final class InGameOverlayController {
 		private final List<String> lines = new ArrayList<>();
 
 		void submit(List<String> nextLines) {
-			lines.clear();
-			if (nextLines != null) {
-				lines.addAll(nextLines);
+			List<String> next = nextLines == null ? java.util.Collections.emptyList() : nextLines;
+			int removed = lines.size();
+			if (!next.isEmpty()) {
+				for (int i = 0; i < lines.size(); i++) {
+					// The tailer retains each decoded String until it leaves its bounded buffer.
+					// Identity distinguishes repeated, textually identical log messages.
+					if (lines.get(i) == next.get(0)) { removed = i; break; }
+				}
 			}
-			notifyDataSetChanged();
+			int retained = lines.size() - removed;
+			boolean compatible = retained <= next.size();
+			for (int i = 0; compatible && i < retained; i++) {
+				compatible = lines.get(removed + i) == next.get(i);
+			}
+			if (!compatible) { removed = lines.size(); retained = 0; }
+			if (removed > 0) {
+				lines.subList(0, removed).clear();
+				notifyItemRangeRemoved(0, removed);
+			}
+			if (next.size() > retained) {
+				lines.addAll(next.subList(retained, next.size()));
+				notifyItemRangeInserted(retained, next.size() - retained);
+			}
 		}
 
 		@Override
