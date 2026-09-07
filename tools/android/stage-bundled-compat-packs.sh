@@ -100,6 +100,9 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/LanMultiplayerPatches.cs" \
     "STS2AndroidPortCompat/Patches/ExtendedMultiplayerRoomPatches.cs" \
     "STS2AndroidPortCompat/Patches/MobileTooltipPatches.cs" \
+    "STS2AndroidPortCompat/Patches/IntentAnimationPatches.cs" \
+    "STS2AndroidPortCompat/Patches/TouchInputPatches.cs" \
+    "STS2AndroidPortCompat/Patches/AndroidInputCompatPatches.cs" \
     "STS2AndroidPortCompat/Patches/MobileReactionButtonPatches.cs" \
     "STS2AndroidPortCompat/Patches/MobileReactionSurfaceTracker.cs" \
     "STS2AndroidPortCompat/Patches/MobileReactionPointerState.cs" \
