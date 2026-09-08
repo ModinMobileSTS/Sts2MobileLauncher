@@ -1067,7 +1067,7 @@ public final class Sts2SteamCloudClient implements AutoCloseable {
         if (!isBlank(cachedAddress)) {
             candidates.add(
                 new PreparedServerRecord(
-                    ServerRecord.createWebSocketServer(cachedAddress),
+                    parseWebSocketServerRecord(cachedAddress),
                     "Cached websocket CM fallback"
                 )
             );
@@ -1077,7 +1077,7 @@ public final class Sts2SteamCloudClient implements AutoCloseable {
         if (!isBlank(defaultAddress)) {
             candidates.add(
                 new PreparedServerRecord(
-                    ServerRecord.createWebSocketServer(defaultAddress),
+                    parseWebSocketServerRecord(defaultAddress),
                     "JavaSteam default websocket CM"
                 )
             );
@@ -1112,6 +1112,21 @@ public final class Sts2SteamCloudClient implements AutoCloseable {
         return null;
     }
 
+    private static ServerRecord parseWebSocketServerRecord(String address) throws IOException {
+        // JavaSteam 1.6.0's string factory mistakes IPv6 segments for the port.
+        try {
+            URI endpoint = URI.create("wss://" + address);
+            if (endpoint.getHost() == null || endpoint.getRawUserInfo() != null
+                || !address.equals(endpoint.getRawAuthority())) {
+                throw new IllegalArgumentException("Expected a CM host and optional port");
+            }
+            int port = endpoint.getPort() == -1 ? 443 : endpoint.getPort();
+            return ServerRecord.createServer(endpoint.getHost(), port, ProtocolTypes.WEB_SOCKET);
+        } catch (IllegalArgumentException error) {
+            throw new IOException("Invalid Steam websocket CM endpoint", error);
+        }
+    }
+
     private PreparedServerRecord materializeWebSocketServerRecord(PreparedServerRecord candidate) throws IOException {
         ServerRecord serverRecord = candidate.serverRecord;
         if (serverRecord == null || serverRecord.getEndpoint() == null) {
@@ -1133,7 +1148,7 @@ public final class Sts2SteamCloudClient implements AutoCloseable {
             String literalAddress = sanitizeSingleLine(resolvedAddress.getHostAddress());
             if (!isBlank(literalAddress)) {
                 return new PreparedServerRecord(
-                    ServerRecord.createWebSocketServer(formatHostPort(literalAddress, port)),
+                    ServerRecord.createServer(literalAddress, port, ProtocolTypes.WEB_SOCKET),
                     candidate.candidateSourceDescription + " (pre-resolved " + host + " -> " + literalAddress + ")"
                 );
             }
@@ -1155,7 +1170,7 @@ public final class Sts2SteamCloudClient implements AutoCloseable {
 
         Log.i(TAG, "Pre-resolved Steam websocket CM hostname " + host + " -> " + preferredAddress + '.');
         return new PreparedServerRecord(
-            ServerRecord.createWebSocketServer(formatHostPort(preferredAddress, port)),
+            ServerRecord.createServer(preferredAddress, port, ProtocolTypes.WEB_SOCKET),
             candidate.candidateSourceDescription + " (pre-resolved " + host + " -> " + preferredAddress + ")"
         );
     }
