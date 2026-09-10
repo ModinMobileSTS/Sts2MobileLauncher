@@ -53,6 +53,7 @@ cp local.properties.example local.properties
 | `android.importer.dist` | `dist/sts2-re-importer.apk` | 导入版稳定副本。 |
 | `android.direct.dist` | `dist/sts2-re-direct.apk` | 直装版稳定副本。 |
 | `android.release_keystore_*` | debug keystore 兼容默认值 | 本地签名 fallback；更建议把密码类值放到 `.env` 或 CI secrets。 |
+| `runtime.mono_memory_stats_fix` | `0` | `1` 启用严格 SHA 限定的 Ekyso ARM64 Mono 内存总量查询实验修复；只改 staged 副本。环境变量 `MONO_MEMORY_STATS_FIX` 优先，仅允许 `0` / `1`。恢复 `0` 后重新打包会同步原始参考库，不改堆上限；范围与回滚见 [构建文档](building-and-packaging.md#41-实验性-mono-内存总量修复默认关闭)。 |
 | `compat.default_reference_flavor` | `original-v0.111.0` | 当前 v0.111.0 public-beta fallback 的默认 compile gate；旧 v0.110.x / v0.109.x flavor 仍可显式选择。 |
 | `compat.pack_build_mode` | `matrix` | `matrix` 使用 `port-mod/targets/active/*/target.json` 从单 checkout 构建 schema 2 family 包；`legacy` 使用多分支/worktree 构建 schema 1 包，仅用于回退诊断。 |
 | `compat.bundled_packs_config` | `tools/android/bundled-compat-packs.json` | 内置兼容包列表。 |

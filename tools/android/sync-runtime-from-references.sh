@@ -15,6 +15,14 @@ FMOD_PLUGIN_AAR="$(sts2_config_path STS2_FMOD_PLUGIN_AAR runtime.fmod_plugin_aar
 FMOD_SHIM_SRC="$ROOT/tools/android/fmod-shim/org/fmod/FMOD.java"
 LOCAL_JAVAC="${JAVA_HOME:-}/bin/javac"
 ANDROID_JAR="${ANDROID_HOME:-}/platforms/android-35/android.jar"
+MONO_MEMORY_STATS_FIX="$(sts2_config_value MONO_MEMORY_STATS_FIX runtime.mono_memory_stats_fix 0)"
+
+# Keep the original runtime as the default. Unknown values must not silently
+# produce an APK that was expected to contain the experimental repair.
+case "$MONO_MEMORY_STATS_FIX" in
+  0|1) ;;
+  *) echo "MONO_MEMORY_STATS_FIX / runtime.mono_memory_stats_fix must be 0 or 1" >&2; exit 1 ;;
+esac
 
 sts2_require_value "$ANDROID_SRC" "runtime.android_reference_root / STS2_ANDROID_RUNTIME_REFERENCE_ROOT"
 sts2_require_value "$CRYPTO_JAR" "runtime.crypto_native_jar / STS2_CRYPTO_NATIVE_JAR"
@@ -34,6 +42,15 @@ mkdir -p "$ANDROID_DST/libs" "$ANDROID_DST/assets" "$ANDROID_DST/gradle/wrapper"
 rsync -a --delete "$ANDROID_SRC/libs/" "$ANDROID_DST/libs/"
 rsync -a --delete "$ANDROID_SRC/assets/dotnet_bcl/" "$ANDROID_DST/assets/dotnet_bcl/"
 cp -f "$ANDROID_SRC/gradle/wrapper/gradle-wrapper.jar" "$ANDROID_DST/gradle/wrapper/gradle-wrapper.jar"
+# Only patch staged copies, never the reference libraries. A normal sync with
+# MONO_MEMORY_STATS_FIX=0 therefore restores the original runtime.
+if [[ "$MONO_MEMORY_STATS_FIX" == 1 ]]; then
+  for variant in debug release; do
+    python3 "$ROOT/tools/android/patch-mono-memory-stats.py" \
+      "$ANDROID_SRC/libs/$variant/arm64-v8a/libmonosgen-2.0.so" \
+      "$ANDROID_DST/libs/$variant/arm64-v8a/libmonosgen-2.0.so"
+  done
+fi
 cp -f "$CRYPTO_JAR" "$ANDROID_DST/libs/debug/libSystem.Security.Cryptography.Native.Android.jar"
 cp -f "$CRYPTO_JAR" "$ANDROID_DST/libs/release/libSystem.Security.Cryptography.Native.Android.jar"
 # Use the release FMOD Android plugin even for monoDebug APKs. The plugin

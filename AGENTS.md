@@ -504,6 +504,8 @@ tools/android/sync-runtime-from-references.sh
 
 同步内容包括：Godot template AAR/native libs、`.NET/Godot` BCL/runtime DLL、crypto native jar、FMOD AAR（带 FMOD Java shim patch，补齐 URI 文件描述符、耳机插拔与音频设备枚举回调）、Gradle wrapper jar。FMOD patch 必须替换编译生成的全部 `FMOD*.class`，并在写回后校验 AAR 内 `libs/fmod.jar` 的 class 内容；目标 jar 或任一 class 缺失时构建应 fail closed，不能静默保留未 patch 的 AAR。
 
+实验性 Mono 内存总量修复由 `MONO_MEMORY_STATS_FIX` / `runtime.mono_memory_stats_fix` 控制，默认 `0`。用户明确选择最小二进制实验修复后才用 `1`：`tools/android/patch-mono-memory-stats.py` 只接受已锁定 SHA 的 Ekyso ARM64 9.0.7.0 原库及其修复副本，将 `0x1f2444` 的总量查询从 `_SC_AVPHYS_PAGES` 改为 `_SC_PHYS_PAGES`；完整前后 SHA 与命令见 `doc/build/building-and-packaging.md`。只改 `android/libs/{debug,release}/arm64-v8a/` staged 副本，不能覆盖参考输入；关闭后完整打包恢复原库，修复器也支持分离输出的 `--restore`。这不是 Mono 源码重建，不含 `MemAvailable`、堆上限调整或 MOD 特判；保留原库现有 ABI/Harmony 改动，未知 SHA 必须拒绝。ELF build ID 不变，诊断以 SHA 为准。回归 `python3 tools/android/test-mono-memory-stats.py /path/to/original/libmonosgen-2.0.so`；指令模拟不能替代真机游戏/GC 验证。交付实验包时同时保留同签名回滚 APK，不要求卸载或清数据。
+
 ### 9.3 导入版 APK
 
 导入版不内置游戏 zip，用户安装后在附加设置中选择本地 `SlayTheSpire2.zip`。

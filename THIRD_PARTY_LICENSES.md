@@ -34,6 +34,8 @@
 | .NET / Godot Mono runtime 与 crypto native jar | 通过 `.env` / `tools/android/sync-runtime-from-references.sh` 同步到 `android/assets/dotnet_bcl/` 等 gitignored 路径。 | .NET / Godot / 上游组件各自许可证；发布包前审计实际打入 APK 的文件。 |
 | Android compatibility pack zips | 构建时生成到 `android/assets/compat_packs/*.zip`，APK 打包阶段作为 assets 安装源。 | 生成产物不再由 git 跟踪；从 `port-mod` 分支源码重新构建。 |
 
+实验性 `MONO_MEMORY_STATS_FIX=1` 使用 `tools/android/patch-mono-memory-stats.py` 对现有 Ekyso 定制 ARM64 `libmonosgen-2.0.so` 的总量查询做单指令修改，不提交或另行下载该二进制。实现依据 [.NET 9.0.7 Mono 内存查询源码](https://github.com/dotnet/runtime/blob/v9.0.7/src/mono/mono/utils/memfuncs.c)（MIT）及当前库的只读指令分析；定制库来源为 [Ekyso/StS2-Launcher](https://github.com/Ekyso/StS2-Launcher)。未获得匹配定制库的完整源码/构建配置，不能宣称为源码可复现构建；发布前仍需审计实际二进制及其上游 notices。前后 SHA、实验范围及恢复方式见 [构建说明](doc/build/building-and-packaging.md#41-实验性-mono-内存总量修复默认关闭)。本地一次性指令验证使用 Unicorn 2.1.4（<https://github.com/unicorn-engine/unicorn>，GPL-2.0），仅在 ignored 验证环境使用，不随 APK 或仓库分发；正式修复脚本与安全回归只依赖 Python 标准库。
+
 ## 主要 Gradle / JVM 依赖
 
 | 依赖 | 用途 | 上游许可证 |

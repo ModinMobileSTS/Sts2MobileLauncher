@@ -100,6 +100,43 @@ tools/android/sync-runtime-from-references.sh
 
 这些产物位于 `android/assets/dotnet_bcl/`、`android/libs/` 等 gitignored 路径，不手工维护。长期源码化状态和剩余阻塞见 [`source-dependencies.md`](source-dependencies.md)。
 
+### 4.1 实验性 Mono 内存总量修复（默认关闭）
+
+部分 MOD（例如 Combat Solver）使用 `GC.GetGCMemoryInfo()` 计算内存条。当前 Ekyso 定制 Mono 9.0.7.0 的 `mono_determine_physical_ram_size()` 最终以空闲页计算总量，可能把启动时空闲内存误报为 GC 可用总量。匹配该定制运行库的完整源码/构建配置尚未获得，因此这里不是源码重建，而是经明确授权的最小二进制实验修复。
+
+`MONO_MEMORY_STATS_FIX=1`（或 `local.properties` 的 `runtime.mono_memory_stats_fix=1`）让同步脚本调用 `tools/android/patch-mono-memory-stats.py`，只修改 debug/release **staged 副本**中 ARM64 文件偏移 `0x1f2444` 的一条指令：`mov w0,#99` → `mov w0,#98`，即 `_SC_AVPHYS_PAGES` → `_SC_PHYS_PAGES`。实际仅改变一个字节，不改变 ELF 布局、导出符号、原有 Harmony 访问检查改动、独立空闲量查询或显式堆上限。
+
+| 状态 | `libmonosgen-2.0.so` SHA-256 |
+| --- | --- |
+| 原始 Ekyso ARM64 库 | `ccf7112d0affea2be160a43ec561e0e939b9331cf4e2dfa652035c4edeb5e482` |
+| 总量查询实验修复 | `a4e4372f5b3cc8a117f0155672d52644301db5cbe8df44e1c57dfe0f2050d64c` |
+
+修复器校验完整输入 SHA、原指令和完整输出 SHA；未知/损坏的库直接拒绝，不能按“版本相似”套用偏移。写入采用同目录临时文件替换，禁止原地修改输入、符号链接输入/输出或与输入同 inode 的输出。参考目录应始终保存原库。ELF build ID 未修改，诊断必须使用文件 SHA 区分两者。
+
+```bash
+# 回滚/对照版：原始参考库，不启用实验修复。
+MONO_MEMORY_STATS_FIX=0 \
+  IMPORTER_DIST_APK=dist/sts2-re-importer-mono-memory-rollback.apk \
+  tools/package/build_importer_apk.sh
+
+# 实验版：只修总量查询；与回滚版使用相同包名、版本及本机签名配置。
+MONO_MEMORY_STATS_FIX=1 \
+  IMPORTER_DIST_APK=dist/sts2-re-importer-mono-memory-test.apk \
+  tools/package/build_importer_apk.sh
+
+# 修复/拒绝未知库/逐字节还原回归：输入必须为本机原始库。
+python3 tools/android/test-mono-memory-stats.py /path/to/original/libmonosgen-2.0.so
+
+# 单独恢复一个已修复的副本，输出仍必须与输入分离。
+python3 tools/android/patch-mono-memory-stats.py repaired.so restored.so --restore
+```
+
+关闭开关并重新执行完整打包脚本即可从未修改的参考目录恢复原库；仅裸跑 Gradle 不会重新同步 runtime。设备回滚时先退出游戏，再覆盖安装同签名回滚 APK（`adb install -r ...`），不需要卸载、清数据或重新导入游戏。先保留存档备份；若签名不匹配，不要通过卸载强行解决。
+
+**验证边界：**安全回归覆盖真实本地原库的可逆性和拒绝路径；本次受控 ARM64 指令模拟验证了总量、GC 负载计算、16 KiB 页大小、显式堆限制及已有零值回退。它不等于 Android 启动、托管 GC 循环或 Combat Solver 实战验证。真机测试应对照同一启动配置/战斗，记录模组版本、内存条、`MEMORY_MONITOR_DISPLAY` / `GC_LATENCY`、崩溃日志与系统内存信息，并检查结束搜索/切后台再恢复。
+
+此版**不包含 `MemAvailable` 改进**：空闲量仍来自 Android 的 `freeram + bufferram`，GC 指标也不等于实时整机内存或可继续分配额度。内存条仍可能偏保守；修复不保证速度提升或避免 OOM。不得为了让条变绿而提高堆上限、添加 `largeHeap`、关闭 GC 或伪造 MOD 统计。正式的完整修复仍需匹配源码及原有补丁后重建验证。
+
 ## 5. 构建当前 compat fallback
 
 ```bash

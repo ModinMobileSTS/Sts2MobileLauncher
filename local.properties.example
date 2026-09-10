@@ -19,6 +19,11 @@ android.release_keystore_file=${HOME}/.android/debug.keystore
 android.release_keystore_password=android
 android.release_keystore_alias=androiddebugkey
 
+# Experimental, SHA-pinned Mono total-memory query repair (0=original, 1=fixed).
+# Does not rebuild Mono or change available-memory queries/heap limits.
+# Environment override: MONO_MEMORY_STATS_FIX=1. Keep the reference libs original.
+runtime.mono_memory_stats_fix=0
+
 # Compatibility build defaults. v0.111.0 is the current public-beta compile gate;
 # the shared v0.110.x and v0.109.x flavors remain available for explicit older-target builds.
 compat.default_reference_flavor=original-v0.111.0

@@ -77,6 +77,8 @@ The creation of this project relies heavily on the explorations of the open-sour
   Provides Java 8+ library API compatibility (including `java.time`) for Android 7.x devices.
 - **[Godot Engine / Godot.NET.Sdk](https://github.com/godotengine/godot)**
   Provides the engine and Android template. The test-only Godot.NET.Sdk 4.5.1 harness also exercises native resource preparation and shader lifecycle behavior using synthetic scenes, without commercial game data or additional APK dependencies.
+- **[.NET / Mono](https://github.com/dotnet/runtime) / [Ekyso StS2-Launcher](https://github.com/Ekyso/StS2-Launcher)**
+  The existing custom Android Mono runtime is retained. An **opt-in experimental memory-total repair** changes one SHA-pinned ARM64 instruction, without changing heap limits or the MOD itself. It is not a source rebuild or a complete Android memory-accounting fix; normal builds remain unchanged. See [scope, test builds and rollback](doc/build/building-and-packaging.md#41-实验性-mono-内存总量修复默认关闭).
 
 *(For detailed third-party open-source licenses, including test-only Kotlin Test/JUnit, [Robolectric](https://github.com/robolectric/robolectric) (launcher data-safety regressions), and OkHttp MockWebServer dependencies that are not packaged into the APK, please see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md))*
 
