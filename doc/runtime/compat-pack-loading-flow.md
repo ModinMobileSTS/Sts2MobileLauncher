@@ -238,7 +238,7 @@ STS2Mobile.ModEntry
    缩放事件订阅随场景节点 `TreeExiting` 立即解除、重新进树恢复，重复 Ready 不叠加，避免旧房间、事件布局和主菜单被静态事件长期持有。资源释放仍保留 disposal guard，不新增强制 GC 或提前 Dispose；事件初始化也不新增吞异常或“假成功”兜底。
    `AndroidParticlePreprocessPatches` 只在背景初始化后处理已知瀑布巨人/欧罗巴斯背景中的标准持续环境粒子：preprocess 超过两个寿命周期时缩为一个完整周期加原相位余数，不改 amount/material/lifetime/speed。爆发型、一次性、拖尾、sub-emitter、未知材质和本来不超过两周期的粒子不改；因此欧罗巴斯长寿命星点和爆发型特效并不因这个补丁被截短。这是减少首次背景预模拟负担的有限修正，不代表已确认具体闪退或卡死的根因。合成边界回归：`port-mod/tools/test-resource-safety.sh`。
 
-   兼容层的通用/主菜单资源、学习缓存/实战补全资源与 VFX 预热通过 `AndroidResourcePreloader` 共用一个在途请求，使用 Godot 后台加载而非主线程同步读取；不额外开启子资源并行，避免放大 VFX 共享资源竞争。Godot 主线程逐帧查看状态，只有完成时才 Get 并写入原有 cache；失败请求消费后上报到现有预加载日志，不用同步加载掩盖失败。实例化、挂树、Shader 实际绘制预热仍在主线程，预加载范围、缓存保护和所有默认开关不变。立即就绪/缓存命中的批次也按约 2ms 或最多 8 项让出下一帧；单个 native 操作不可抢占，因此不是硬实时帧预算。该策略优先保持预热期间响应，串行逐帧等待可能延长总预热时间；不能消除持续 GPU 满载，也不自动开启更重的全量预热。
+   兼容层的通用/主菜单资源、学习缓存/实战补全资源与 VFX 启动预热已恢复为引入后台加载之前的同步路径：在 Godot 主线程调用 `ResourceLoader.Load`，通用资源和 warm cache 每处理 8 项让出一帧，VFX 每项加载、实例化和释放后让帧；开启实际播放预热时仍等待既定渲染帧数。保留原有 `Reuse` / `Ignore` 缓存语义、预加载范围、缓存保护和全部设置，不再通过共用的 `_loading` 标志等待后台请求。单个同步加载仍可能暂时阻塞主线程，分批让帧不是硬实时保证。此回退只改变启动预热，不撤销下面原版 `AssetLoadingSession` 的异步加载及其协作帧预算，也不撤销 Shader 节点处理优化。
 
    三项运行时优化默认随 full compat 生效，不新增设置或改变画质：
 
@@ -248,7 +248,7 @@ STS2Mobile.ModEntry
 
    下述原生回归还覆盖租约迟到、超额完整创建、空闲上限、材质隔离/复用、房间退出、外部移除、MOD 生命周期 opt-out、同帧重复调度、错误后完成，以及字号继承/幂等/恢复。可选环境变量 `STS2_FRAME_REFERENCE_DLLS` 接受分号分隔的本机原版 `sts2.dll` 路径，以 Cecil 只读验证各目标的出队 IL、VFX 工厂及播放/复位字段；不加载或执行游戏类型，不携带商业 DLL。
 
-   原生回归 `port-mod/tests/FramePreparation.Tests` 使用 Godot 4.5.1 .NET 与实际打包 Harmony，只构造合成场景/损坏资源。覆盖后台准备的完整结果、主线程继续推进、单请求约束、完成前不得 Get、失败请求平衡和后续恢复，以及 Shader 父 `_Ready`、重入树、释放、材质隔离和开关切换。准备好官方 .NET 版 Godot 路径 `GODOT_BIN`，在仓库根加载 `.env` 后运行：
+   原生回归 `port-mod/tests/FramePreparation.Tests` 使用 Godot 4.5.1 .NET 与实际打包 Harmony，只构造合成场景/损坏资源。覆盖 Shader 父 `_Ready`、重入树、释放、材质隔离和开关切换，以及前述 VFX 池、运行时资源队列错误恢复和字体缩放；旧启动后台加载器的单请求/取回测试已随该加载器删除。准备好官方 .NET 版 Godot 路径 `GODOT_BIN`，在仓库根加载 `.env` 后运行：
 
    ```bash
    "$DOTNET_BIN" build port-mod/tests/FramePreparation.Tests -p:HarmonyReferenceDir="$PWD/android/assets/dotnet_bcl"
