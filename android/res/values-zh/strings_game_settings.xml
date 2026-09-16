@@ -338,6 +338,11 @@
     <string name="mobile_two_finger_inspect_hint">默认开启。开启后，屏幕上放下第二根手指会触发卡牌查看 / 右键预览行为。如果你的设备上它会导致触控异常，可以关闭。</string>
     <string name="volume_up_soft_keyboard_switch">按音量上键打开软键盘</string>
     <string name="volume_up_soft_keyboard_hint">默认关闭。开启后，在游戏内按下音量上键会调出系统软键盘，方便操作控制台或使用键盘快捷键。</string>
+    <string name="floating_mouse_switch">鼠标左右键悬浮按钮</string>
+    <string name="floating_mouse_hint">默认关闭，可拖动位置。点一次切到右键，点击游戏画面一次后恢复左键；未点击画面前再点按钮则锁定右键，再点一次解锁。仅游戏内显示，无需系统悬浮窗权限。</string>
+    <string name="floating_mouse_left">左键 · 点击进入单次右键</string>
+    <string name="floating_mouse_right_once">单次右键 · 再点一次锁定</string>
+    <string name="floating_mouse_right_locked">右键已锁定 · 点击恢复左键</string>
     <string name="section_log">日志</string>
     <string name="section_log_subtitle">配置运行日志详细程度，并查看已生成的日志。</string>
     <string name="log_level">日志等级</string>

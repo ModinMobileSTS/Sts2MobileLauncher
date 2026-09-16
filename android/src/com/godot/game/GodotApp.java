@@ -84,6 +84,7 @@ public class GodotApp extends GodotActivity {
 	private android.view.OrientationEventListener orientationEventListener;
 	private InGameOverlayController inGameOverlayController;
 	private final HighRefreshRateController highRefreshRateController = new HighRefreshRateController();
+	private FloatingMouseInputController floatingMouseInputController;
 
 	static {
 		Log.i(TAG, "DIAG GodotApp static init begin versionCode=" + BuildConfig.VERSION_CODE + " versionName=" + BuildConfig.VERSION_NAME + " flavor=" + BuildConfig.FLAVOR);
@@ -171,6 +172,7 @@ public class GodotApp extends GodotActivity {
 		logGodotAppLaunchSnapshot("onCreate_after_super");
 		requestHighRefreshRate("onCreate_after_super");
 		scheduleInGameOverlayAttach("onCreate_after_super");
+		floatingMouseInputController = new FloatingMouseInputController(this);
 		Log.i(TAG, "DIAG GodotApp.onCreate end windowFocused=" + currentWindowFocused);
 	}
 
@@ -698,6 +700,9 @@ public class GodotApp extends GodotActivity {
 		} else {
 			scheduleInGameOverlayAttach("onResume");
 		}
+		if (floatingMouseInputController != null) {
+			floatingMouseInputController.onResume();
+		}
 	}
 
 	@Override
@@ -706,6 +711,9 @@ public class GodotApp extends GodotActivity {
 		currentResumed = false;
 		currentWindowFocused = false;
 		highRefreshRateController.onPaused(this);
+		if (floatingMouseInputController != null) {
+			floatingMouseInputController.onPause();
+		}
 		super.onPause();
 	}
 
@@ -894,6 +902,9 @@ public class GodotApp extends GodotActivity {
 		if (hasFocus) {
 			requestHighRefreshRate("onWindowFocusChanged");
 		}
+		if (floatingMouseInputController != null) {
+			floatingMouseInputController.onWindowFocusChanged(hasFocus);
+		}
 	}
 
 	@Override
@@ -902,13 +913,16 @@ public class GodotApp extends GodotActivity {
 			try {
 				inGameOverlayController.detach();
 			} catch (Exception exception) {
-				Log.w(TAG, "Unable to detach in-game overlay", exception);
 			}
 			inGameOverlayController = null;
 		}
 		try {
 			FMOD.close();
 		} catch (Throwable ignored) {
+		}
+		if (floatingMouseInputController != null) {
+			floatingMouseInputController.detach();
+			floatingMouseInputController = null;
 		}
 		disableOrientationEventListener();
 		currentResumed = false;
@@ -928,6 +942,11 @@ public class GodotApp extends GodotActivity {
 		runOnUiThread(updateWindowAppearance);
 		scheduleInGameOverlayAttach("onGodotMainLoopStarted");
 		requestHighRefreshRate("onGodotMainLoopStarted");
+		runOnUiThread(() -> {
+			if (floatingMouseInputController != null) {
+				floatingMouseInputController.onGodotMainLoopStarted();
+			}
+		});
 	}
 
 	public static void applySelectedScreenOrientationFromGame() {

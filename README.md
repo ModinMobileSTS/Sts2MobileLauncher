@@ -65,6 +65,7 @@ The creation of this project relies heavily on the explorations of the open-sour
   Provided underlying concepts for stripping the Godot/Mono runtime, Android compatibility patch load orders, and design references for some build scripts.
 - **[SlayTheAmethystModded](https://github.com/ModinMobileSTS/SlayTheAmethystModded)**
   An unofficial mobile launcher for STS1. The reverse-engineered integration and source code for `steam-protocol`, `steam-content` (SteamPipe game downloads), and Steam Cloud saves in this project are primarily ported/adapted from it.
+  The default-off **Settings → Controls → Floating mouse button** also follows its draggable circular mouse-button design, with independently implemented input handling and artwork. Tap once to arm one right-click; tap again before touching the game to lock right-click mode; tap again to unlock. See [runtime controls](doc/runtime/compat-pack-loading-flow.md).
 - **[WorkshopAndroidDownloader](https://github.com/Apricityx/WorkshopAndroidDownloader)**
   Android Steam Workshop downloader reference used for the launcher Workshop browsing, download, and update-tracking flow.
 - **[Spire Supply Station / 尖塔补给站](https://workshop.apricityx.top), by apricityx**

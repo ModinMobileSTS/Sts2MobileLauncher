@@ -637,6 +637,7 @@ public final class SettingsPage {
 			});
 		});
 		addSwitchRow(content, R.drawable.ic_gesture_24, R.string.mobile_two_finger_inspect_switch, R.string.mobile_two_finger_inspect_hint, settings.optBoolean("mobile_two_finger_inspect", true), checked -> repository.saveSetting(root -> root.put("mobile_two_finger_inspect", checked)));
+		addSwitchRow(content, R.drawable.ic_touch_app_24, R.string.floating_mouse_switch, R.string.floating_mouse_hint, settings.optBoolean(ExtraSettingsRepository.KEY_FLOATING_MOUSE_ENABLED, false), checked -> repository.saveSetting(root -> root.put(ExtraSettingsRepository.KEY_FLOATING_MOUSE_ENABLED, checked)));
 		addSwitchRow(content, R.drawable.ic_keyboard_24, R.string.volume_up_soft_keyboard_switch, R.string.volume_up_soft_keyboard_hint, settings.optBoolean("android_volume_up_soft_keyboard", false), checked -> repository.saveSetting(root -> root.put("android_volume_up_soft_keyboard", checked)));
 		return card;
 	}

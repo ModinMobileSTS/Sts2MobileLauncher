@@ -47,6 +47,7 @@ public final class ExtraSettingsRepository {
 	public static final String KEY_HIGH_REFRESH_RATE_ENABLED = "android_high_refresh_rate_enabled";
 	public static final String KEY_SCREEN_ROTATION_MODE = "android_screen_rotation_mode";
 	public static final String KEY_IN_GAME_OVERLAY_ENABLED = "android_in_game_overlay_enabled";
+	public static final String KEY_FLOATING_MOUSE_ENABLED = "android_floating_mouse_enabled";
 	public static final String KEY_DEV_TOOLS_ENABLED = "android_dev_tools_enabled";
 	public static final String KEY_DEV_INSPECTOR_WRITABLE = "android_dev_inspector_writable";
 	public static final String LOG_LEVEL_OFF = "off";
@@ -199,6 +200,7 @@ public final class ExtraSettingsRepository {
 		settings.put("max_multiplayer_enabled", true);
 		settings.put("quick_sl_enabled", true);
 		settings.put(KEY_IN_GAME_OVERLAY_ENABLED, false);
+		settings.put(KEY_FLOATING_MOUSE_ENABLED, false);
 		settings.put(KEY_DEV_TOOLS_ENABLED, false);
 		settings.put(KEY_DEV_INSPECTOR_WRITABLE, false);
 		settings.put("mod_settings", JSONObject.NULL);
@@ -265,6 +267,7 @@ public final class ExtraSettingsRepository {
 		changed |= putIfMissing(settings, "max_multiplayer_enabled", true);
 		changed |= putIfMissing(settings, "quick_sl_enabled", true);
 		changed |= putIfMissing(settings, KEY_IN_GAME_OVERLAY_ENABLED, false);
+		changed |= putIfMissing(settings, KEY_FLOATING_MOUSE_ENABLED, false);
 		changed |= putIfMissing(settings, KEY_DEV_TOOLS_ENABLED, false);
 		changed |= putIfMissing(settings, KEY_DEV_INSPECTOR_WRITABLE, false);
 		return changed;

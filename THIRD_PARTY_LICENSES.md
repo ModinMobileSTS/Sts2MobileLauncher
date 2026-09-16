@@ -16,7 +16,7 @@
 
 | 名称 | URL | 本仓库用途 | 上游许可/注意事项 |
 | --- | --- | --- | --- |
-| SlayTheAmethystModded | <https://github.com/ModinMobileSTS/SlayTheAmethystModded> | Steam 登录、SteamPipe 下载、Steam Cloud 相关实现与设计参考；`android/steam-protocol/`、`android/steam-content/` 的协议/下载代码从该项目思路与源码改编。 | 顶层许可未检测到标准 SPDX；上游包含 `NOTICE` 与第三方许可证摘要。保留署名，发布前确认改编源码授权。 |
+| SlayTheAmethystModded | <https://github.com/ModinMobileSTS/SlayTheAmethystModded> | Steam 登录、SteamPipe 下载、Steam Cloud 相关实现与设计参考；`android/steam-protocol/`、`android/steam-content/` 的协议/下载代码从该项目思路与源码改编。默认关闭的鼠标悬浮按钮参考其圆形、拖动、闲置淡出及左右键指示设计；本仓库三态输入逻辑和 Canvas 图标独立实现，未复制该按钮源码或图标资源。 | 顶层许可未检测到标准 SPDX；上游包含 `NOTICE` 与第三方许可证摘要。保留署名，发布前确认改编源码授权。 |
 | WorkshopAndroidDownloader | <https://github.com/Apricityx/WorkshopAndroidDownloader> | Android Steam Workshop 浏览、下载、UGC manifest/chunk 下载与已下载条目更新记录流程参考；本仓库新增的 Workshop 页面、`SteamPublishedFileClient` 与 `android/steam-content/.../workshop/` 相关实现参考/裁剪自该项目。 | 顶层许可未检测到标准 SPDX。保留署名，发布前确认改编源码授权。 |
 | 尖塔补给站 / Spire Supply Station（apricityx） | <https://workshop.apricityx.top> | 默认关闭的第三方匿名 Workshop 下载源；原生 HTTP 客户端参考公开下载协议获取 descriptor / CDN token，再复用已有下载器。不打包站点页面、油猴脚本或浏览器扩展。 | API 可公开访问不等于授予站点代码再分发许可或第三方接入授权。正式发布前应与维护者确认调用许可及频率限制；遵守站点用户协议、Steam 条款和 MOD 作者许可，保留署名，不绕过限流或内容下架。 |
 | StS2-Launcher_Mod_Manager | <https://github.com/iunius612/StS2-Launcher_Mod_Manager> | Android launcher/runtime、Godot/Mono publish 目录、兼容补丁加载顺序与构建脚本的参考来源；`.env` 可指向本地准备的 runtime/template 产物。 | MIT License。运行时二进制产物不提交到本仓库，随本地配置同步/构建。 |

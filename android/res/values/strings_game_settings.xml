@@ -338,6 +338,11 @@
     <string name="mobile_two_finger_inspect_hint">Enabled by default. When on, placing a second finger on screen triggers card inspect / alternate preview behavior. Turn this off if it causes touch issues on your device.</string>
     <string name="volume_up_soft_keyboard_switch">Use volume up to open soft keyboard</string>
     <string name="volume_up_soft_keyboard_hint">Disabled by default. When enabled, pressing the volume up key in-game opens the system soft keyboard so you can use the console or keyboard shortcuts more easily.</string>
+    <string name="floating_mouse_switch">Floating mouse button</string>
+    <string name="floating_mouse_hint">Off by default. Drag to reposition. Tap once for a single right-click; tap again before touching the game to lock right-click mode. Tap once more to unlock. In-game only; no system overlay permission needed.</string>
+    <string name="floating_mouse_left">Left button · Tap for one right-click</string>
+    <string name="floating_mouse_right_once">One right-click · Tap again to lock</string>
+    <string name="floating_mouse_right_locked">Right button locked · Tap to return to left button</string>
     <string name="section_log">Logs</string>
     <string name="section_log_subtitle">Configure runtime log detail and inspect generated logs.</string>
     <string name="log_level">Log level</string>
