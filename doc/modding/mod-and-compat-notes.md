@@ -56,6 +56,10 @@ MOD 卡片默认折叠，只显示左侧拖拽手柄、名称、版本/作者和
 
 别名安全边界：manifest 的 `id` / `mod_id` / `modId` / `ID` 与 `pck_name` 的受支持拼写只能提供文件基名，不能含目录分隔符、控制字符、Windows 路径特殊字符或单独的 `.` / `..`；不改变合法 Unicode、点号、连字符名称。导入在别名生成和冲突确认前拒绝不安全名称；启动器清单扫描及 full compat 别名扫描不跟随符号链接，Java 与 full compat 的文件别名创建/删除再次校验同目录约束。该规则只限制导入与别名文件操作，不把普通 C# MOD 变成沙箱代码。运行时回归入口为 `port-mod/tests/ModManifestAlias.Tests`。
 
+### 3.1 三星 ROM 下拉菜单字体 fallback
+
+`AndroidFontCoveragePatches` 在原版本地化初始化后，用 `FontManager` 当前语言字体为现有控件及后续新增节点设置显式 fallback。Godot 的 `PopupMenu` 是独立 `Window`，不属于其 `OptionButton` 的普通 `Control` 子树；因此补丁也单独包装 PopupMenu 的 `font` / `font_separator` 主题字体，并在处理 `OptionButton` 时覆盖其 `GetPopup()` 下拉菜单。保留各自基底字体和已有 fallback，不复制游戏字体到 overlay；新增节点仍只走 `SceneTree.NodeAdded` 单节点处理，不在热 `Node.AddChild` 路径递归扫描。
+
 ## 4. Steam 创意工坊导入与更新记录
 
 `SteamWorkshopActivity` 不单独保存 Workshop 账号。MOD 页“创意工坊”按钮会打开塔2创意工坊页面；未登录 Steam 时通过 Steam Community 公开 Workshop 页面匿名展示公开条目，已登录时优先复用 Steam 中心的加密 refresh token 和 SteamID64 走 Steam CM 查询，缺少 SteamID64 时会验证 refresh token 补齐，失败时回落到公开浏览。页面使用列表、详情、已下载、设置四屏结构；侧栏支持热门、最新发布、最近更新、最多订阅排序，以及本周、30 天、3 个月、6 个月、一年、全部时间筛选，侧栏内容可滚动，并显示 Steam 中心登录账号/SteamID64 或匿名状态。列表预览图、详情截图、描述和前置 MOD 均从真实 Steam 公开页面/API 读取；列表靠近底部时自动加载下一页并追加条目，截图优先取详情页原图链接，图片请求会在兼容访问、原始域名和强制兼容访问之间重试，兼容访问也覆盖常见 Steam 图片媒体域。页面支持搜索、通过已知 Workshop ID/URL 直接打开条目、打开 Steam 网页、后台下载并导入条目、查看“下载中 / 已下载”列表、从已下载页 AppBar 手动检查更新，以及设置下载导入分组、创意工坊兼容访问和 UGC 分块并发数；搜索框粘贴纯数字 ID 或 Workshop URL 时也会直接进入应用内详情。创意工坊设置页提供“下载分支”：默认 `auto`，自动优先使用 Steam 下载 payload 时记录的 `source.steam.branch`，其次使用当前启动配置兼容包 manifest target 上的 `steam_branch`，两者都没有时才在下载前询问；也可固定为 `public`、`public-beta`、自定义分支或“每次询问”。下载器通过 `PublishedFile.GetItemInfo#1` 读取 author snapshots；若该接口没有返回 snapshots，则继续用 `PublishedFile.GetChangeHistory#1` 从 saved snapshot 历史中提取 branch min/max 与 manifest。固定分支或 `auto` 已能推断分支时会直接进入后台下载，manifest/depot/request code 在下载任务内部解析，避免一键队列被 UI 级分支解析串行阻塞；设置为“每次询问”或自动无法推断时才弹出分支/manifest 候选 Dialog；候选项展示 branch、manifest、depot、snapshot 时间、branch min/max、解析来源和 fallback 原因；当 Steam 只暴露默认 manifest 而没有分支快照时，Dialog/自动解析会额外派生目标分支的“按分支请求默认 manifest”候选，不把它标成已确认的分支快照；若 CM snapshot、change history 和默认 manifest 都不可用，则保留 WebAPI `hcontent_file` / `file_url` fallback 候选。
