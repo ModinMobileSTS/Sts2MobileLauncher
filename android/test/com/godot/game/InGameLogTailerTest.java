@@ -24,7 +24,7 @@ import static org.junit.Assert.*;
 import static org.robolectric.Shadows.shadowOf;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(manifest = Config.NONE, sdk = 35, shadows = InGameLogTailerTest.InodeLinux.class)
+@Config(manifest = Config.NONE, sdk = 35, shadows = AndroidLinuxTestShadow.class)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class InGameLogTailerTest {
 	private InGameLogTailer tailer;
@@ -33,7 +33,7 @@ public class InGameLogTailerTest {
 
 	@Before public void setup() throws Exception {
 		file = File.createTempFile("tail-", ".log", RuntimeEnvironment.getApplication().getCacheDir());
-		InodeLinux.inode = 1L;
+		AndroidLinuxTestShadow.inode = 1L;
 		visible = new ArrayList<>();
 		tailer = new InGameLogTailer();
 		tailer.setListener((lines, reset) -> {
@@ -94,7 +94,7 @@ public class InGameLogTailerTest {
 		File replacement = File.createTempFile("rotate-", ".log", file.getParentFile());
 		Files.write(replacement.toPath(), ("I other\nW next\nW drop\n").toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
 		Files.move(replacement.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
-		InodeLinux.inode++;
+		AndroidLinuxTestShadow.inode++;
 		tick();
 		assertEquals(List.of("W next"), visible);
 		Files.write(file.toPath(), ("W old\n").toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -123,14 +123,4 @@ public class InGameLogTailerTest {
 		shadowOf(Looper.getMainLooper()).idle();
 	}
 
-	// Robolectric 4.15 returns inode=0 for every fstat. Supply the missing OS
-	// identity transition while exercising real files and the public tailer API.
-	@org.robolectric.annotation.Implements(className = "libcore.io.Linux", isInAndroidSdk = false)
-	public static class InodeLinux extends org.robolectric.shadows.ShadowLinux {
-		static volatile long inode;
-		@org.robolectric.annotation.Implementation
-		@Override protected android.system.StructStat fstat(java.io.FileDescriptor descriptor) {
-			return new android.system.StructStat(1, inode, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-		}
-	}
 }

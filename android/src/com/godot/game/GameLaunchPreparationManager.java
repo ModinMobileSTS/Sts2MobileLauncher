@@ -54,7 +54,7 @@ public final class GameLaunchPreparationManager {
 	public void prepareForLaunch() throws Exception {
 		long startedAt = System.currentTimeMillis();
 		Log.i(TAG, "DIAG prepareForLaunch begin versionCode=" + BuildConfig.VERSION_CODE + " versionName=" + BuildConfig.VERSION_NAME + " flavor=" + BuildConfig.FLAVOR + " filesDir=" + context.getFilesDir().getAbsolutePath() + " thread=" + Thread.currentThread().getName());
-		AndroidTempDirectory.configure(context, TAG);
+		AndroidRuntimeEnvironment.configure(context, TAG);
 		Sts2LogcatCollector.startNewLaunchForSelectedProfile(context);
 		logLaunchStateSnapshot("after_logcat_start");
 		logStepBegin("normalize_saved_language");

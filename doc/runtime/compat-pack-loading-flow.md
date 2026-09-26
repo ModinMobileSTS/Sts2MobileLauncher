@@ -118,9 +118,11 @@ Steam Cloud 与 WebDAV 的非强制同步使用逐文件的共同基线：仅本
 
 ## 6. Launch preparation
 
+原生目录环境先由 `Sts2Application.onCreate()` 调用 `AndroidRuntimeEnvironment.configure()` 初始化，早于 Godot/Mono。它将 `HOME=<files>` 并创建/写探测 `<files>/.config/`，让当前 Mono 的 `ApplicationData` 使用私有目录；`TMPDIR` / `TMP` / `TEMP` 与 Java `java.io.tmpdir` 仍为 `<files>/tmp/`。HOME/temp 成功状态独立，同一进程串行、幂等配置，失败部分允许后续入口重试；不在 Mono 缓存已建立后按 profile 改写 HOME。
+
 `GameLaunchPreparationManager.prepareForLaunch()` 顺序：
 
-1. 配置 Android 私有 temp 目录，避免 Harmony/MonoMod 使用不可写 `/tmp`。
+1. 补齐 Android 私有 HOME/temp 环境，避免普通 MOD 使用 `/data/.config`、Harmony/MonoMod 使用不可写 `/tmp`。
 2. 规范化 Android locale 到游戏支持的语言 key，避免厂商 locale 字符串污染 `settings.save`。
 3. 刷新内置 compat packs（如果开关启用）。
 4. 输出当前 selected compat pack 的诊断日志：pack id、target、source zip sha、build branch/commit/dirty、notes。

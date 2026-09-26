@@ -287,10 +287,14 @@ s2_re/
 <files>/launcher/selected_compat_pack.json  # 当前启动配置解析出的兼容包诊断记录
 <files>/default/<account>/settings.save     # 全局存档/设置目录，默认 account=1
 <files>/mods/                              # 全局普通用户 MOD 目录
+<files>/.config/                           # HOME=<files> 下的应用级 MOD 自有配置/日志，不自动按 profile 隔离
+<files>/tmp/                               # native TMPDIR/TMP/TEMP 与 Java java.io.tmpdir
 <files>/.godot/mono/publish/arm64/          # Godot/Mono publish 目录
 <files>/port_compat.pck                    # 启动前 staging 的当前兼容包 overlay
 <files>/logs/                              # legacy/global 日志 fallback 与统一应用内 logcat：sts2.log
 ```
+
+原生目录环境由 `AndroidRuntimeEnvironment.configure()` 在 `Sts2Application.onCreate()` 中、Godot/Mono 之前初始化；启动准备与 `GodotApp.onCreate()` 保留同一入口兜底。`HOME` 固定为应用私有 `<files>`，先创建并写探测 `.config`，HOME/temp 初始化独立且串行幂等，失败部分可重试，不能让 HOME 失败阻断既有 Harmony temp。当前打包的 Mono `ApplicationData` 使用 `HOME/.config`，不读取 `XDG_CONFIG_HOME`，且缓存环境与特殊目录；不得仅改 Java system property、等用户 MOD `.cctor` 失败后才改 HOME，或按 profile 在同一进程反复切换 HOME。这是通用启动环境兼容，不修改 Colorless Run 等普通 MOD DLL；MOD 自有 `.config` 数据应用级共享，不自动进入隔离存档/快照/云同步。回归：`AndroidRuntimeEnvironmentTest`（非法继承 HOME、已有文件阻挡 `.config` 时保留 temp/文件并可重试）。
 
 ## 8. 兼容包 / port-mod submodule
 

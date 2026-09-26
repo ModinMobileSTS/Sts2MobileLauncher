@@ -123,7 +123,7 @@ public class GodotApp extends GodotActivity {
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		Log.i(TAG, "DIAG GodotApp.onCreate begin savedInstanceState=" + (savedInstanceState != null) + " intent=" + describeIntent(getIntent()));
-		AndroidTempDirectory.configure(this, TAG);
+		AndroidRuntimeEnvironment.configure(this, TAG);
 		Sts2LogcatCollector.startForSelectedProfile(this);
 		gameDir = new LaunchProfileManager(this).getSelectedGameDir();
 		logGodotAppLaunchSnapshot("onCreate_after_logcat_start");

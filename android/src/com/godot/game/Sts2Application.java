@@ -17,7 +17,7 @@ public class Sts2Application extends Application {
 	@Override
 	public void onCreate() {
 		super.onCreate();
-		AndroidTempDirectory.configure(this, "Sts2Application");
+		AndroidRuntimeEnvironment.configure(this, "Sts2Application");
 		Sts2LogcatCollector.start(this);
 
 		CaocConfig.Builder.create()

@@ -118,6 +118,8 @@ android/steam-content/                        # SteamPipe depot manifest/chunk �
 <files>/launcher/selected_compat_pack.json  # 当前启动配置解析出的兼容包诊断记录
 <files>/default/1/settings.save             # 全局存档/设置根，profile 选择 global 时使用
 <files>/mods/                              # 全局普通用户 MOD 根，profile 选择 global 时使用
+<files>/.config/                           # 原生 HOME=<files> 下的应用级共享 MOD 配置/日志，不自动按 profile 隔离
+<files>/tmp/                               # 原生 TMPDIR/TMP/TEMP 与 Java java.io.tmpdir
 <files>/.godot/mono/publish/arm64/          # Mono publish 目录
 <files>/port_compat.pck                    # 启动前 staging 的 overlay
 <files>/logs/                              # legacy/global 日志 fallback 与统一应用内 logcat：sts2.log

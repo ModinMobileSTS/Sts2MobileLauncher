@@ -40,6 +40,19 @@ mod_manifest.json
 
 并添加 `android_generated_manifest_alias=true`，必要时删除重复的 `mod_manifest.json`。
 
+### 2.1 原生用户目录与 MOD 自有配置
+
+启动器在 `Sts2Application.onCreate()`、Godot/Mono 启动之前，通过 `AndroidRuntimeEnvironment` 将原生进程环境变量 `HOME` 设为应用私有 `<files>`，先创建并写探测 `<files>/.config/`；现有 `TMPDIR` / `TMP` / `TEMP` 继续指向 `<files>/tmp/`。HOME 与 temp 分别初始化，HOME 失败不会阻止 temp 配置，后续启动准备或 Godot Activity 入口可重试未完成的部分。成功配置在同一进程内复用，不跟随启动配置切换。
+
+当前打包的 Mono 用 `HOME/.config` 解析 `Environment.SpecialFolder.ApplicationData`，不读取 `XDG_CONFIG_HOME`。因此直接使用这一标准 .NET API 的普通 MOD 不再向 Android 系统用户目录 `/data/.config` 写入；例如 Colorless Run 0.9.0 的配置与日志分别位于：
+
+```text
+<files>/.config/SlayTheSpire2/ColorlessRun.json
+<files>/.config/SlayTheSpire2/logs/mod_log.txt
+```
+
+这是启动器的通用运行环境兼容，不修改 MOD DLL，也不需要扩大存储权限。该目录为应用级共享 MOD 数据，不自动继承 `save_mode=isolated`，不改变原版游戏存档的 profile 路径，也不自动纳入存档快照/云同步。Mono 会缓存环境与特殊目录；MOD 静态构造失败的旧进程必须退出并重新启动，不能仅返回设置页后在同一进程重试。这一措施只解决标准用户目录问题，不保证某个 MOD 的其他 API、资源或玩法已经兼容 Android。
+
 ## 3. MOD 管理界面与导入冲突处理
 
 `ModsPage` 采用紧凑 Material 3 顶栏：顶部为 MOD 总开关和药丸搜索框，导入、分组、创意工坊、排序、筛选、MOD 方案入口统一放在可横向滚动的 Chip 操作组中。NexusMods 商店 Activity 仍保留在工程内，但主 MOD 页入口暂时隐藏。
