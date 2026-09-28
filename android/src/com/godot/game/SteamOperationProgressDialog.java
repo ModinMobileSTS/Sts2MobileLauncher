@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
+import android.view.Window;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -11,6 +12,9 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AlertDialog;
+import androidx.lifecycle.Lifecycle;
+import androidx.lifecycle.LifecycleEventObserver;
+import androidx.lifecycle.LifecycleOwner;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
@@ -20,6 +24,13 @@ final class SteamOperationProgressDialog {
 	private final TextView percentView;
 	private final View progressFill;
 	private final FrameLayout progressTrack;
+	private final LifecycleOwner lifecycleOwner;
+	private final LifecycleEventObserver lifecycleObserver = (source, event) -> {
+		if (event == Lifecycle.Event.ON_DESTROY) {
+			dismiss();
+		}
+	};
+	private boolean closed;
 
 	SteamOperationProgressDialog(Context context, CharSequence title, CharSequence initialMessage) {
 		LinearLayout content = ExtraSettingsUi.vertical(context);
@@ -78,13 +89,27 @@ final class SteamOperationProgressDialog {
 			.create();
 		dialog.setCancelable(false);
 		dialog.setCanceledOnTouchOutside(false);
+		lifecycleOwner = context instanceof LifecycleOwner ? (LifecycleOwner) context : null;
 	}
 
 	void show() {
+		if (closed) {
+			return;
+		}
+		if (lifecycleOwner != null && lifecycleOwner.getLifecycle().getCurrentState() == Lifecycle.State.DESTROYED) {
+			closed = true;
+			return;
+		}
 		dialog.show();
+		if (lifecycleOwner != null) {
+			lifecycleOwner.getLifecycle().addObserver(lifecycleObserver);
+		}
 	}
 
 	void setProgress(int percent, String message) {
+		if (closed) {
+			return;
+		}
 		messageView.setText(message == null ? "" : message);
 		if (percent < 0) {
 			percentView.setText(R.string.steam_em_dash);
@@ -97,13 +122,24 @@ final class SteamOperationProgressDialog {
 	}
 
 	void dismiss() {
-		if (dialog.isShowing()) {
+		if (closed) {
+			return;
+		}
+		closed = true;
+		if (lifecycleOwner != null) {
+			lifecycleOwner.getLifecycle().removeObserver(lifecycleObserver);
+		}
+		Window window = dialog.getWindow();
+		if (dialog.isShowing() && window != null && window.getDecorView().isAttachedToWindow()) {
 			dialog.dismiss();
 		}
 	}
 
 	private void updateFill(float fraction) {
 		progressTrack.post(() -> {
+			if (closed) {
+				return;
+			}
 			int width = Math.max(0, progressTrack.getWidth() - progressTrack.getPaddingLeft() - progressTrack.getPaddingRight());
 			int fillWidth = Math.round(width * Math.max(0f, Math.min(1f, fraction)));
 			FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) progressFill.getLayoutParams();

@@ -1790,17 +1790,17 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		new Thread(() -> {
 			List<String> results = new ArrayList<>();
 			try {
-				runOnUiThread(() -> progressDialog.setProgress(0, getString(R.string.status_busy_create_local_save_snapshot)));
+				runOnUiThreadIfActive(() -> progressDialog.setProgress(0, getString(R.string.status_busy_create_local_save_snapshot)));
 				new LocalSaveSnapshotManager(this).createAutomaticSnapshot("clean-exit");
 				if (shouldPushSteam) {
-					String result = new Sts2SteamCloudSyncManager(this).pushLocalChanges(false, (percent, message) -> runOnUiThread(() -> progressDialog.setProgress(percent, message)));
+					String result = new Sts2SteamCloudSyncManager(this).pushLocalChanges(false, (percent, message) -> runOnUiThreadIfActive(() -> progressDialog.setProgress(percent, message)));
 					results.add(result);
 				}
 				if (shouldPushWebDav) {
-					String result = new WebDavSyncManager(this).pushLocalChanges(false, (percent, message) -> runOnUiThread(() -> progressDialog.setProgress(percent, message)));
+					String result = new WebDavSyncManager(this).pushLocalChanges(false, (percent, message) -> runOnUiThreadIfActive(() -> progressDialog.setProgress(percent, message)));
 					results.add(result);
 				}
-				runOnUiThread(() -> {
+				runOnUiThreadIfActive(() -> {
 					busy = false;
 					progressDialog.dismiss();
 					if (!results.isEmpty()) {
@@ -1808,13 +1808,21 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 					}
 				});
 			} catch (Exception exception) {
-				runOnUiThread(() -> {
+				runOnUiThreadIfActive(() -> {
 					busy = false;
 					progressDialog.dismiss();
 					showError(exception);
 				});
 			}
 		}, "sts2-clean-exit-save-maintenance").start();
+	}
+
+	private void runOnUiThreadIfActive(Runnable action) {
+		runOnUiThread(() -> {
+			if (!isFinishing() && !isDestroyed()) {
+				action.run();
+			}
+		});
 	}
 
 	private void runSteamCloudOperationWithDialog(String busyMessage, boolean refreshAfterSuccess, SteamCloudOperation operation) {
