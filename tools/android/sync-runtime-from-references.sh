@@ -12,6 +12,7 @@ ANDROID_SRC="$(sts2_config_path STS2_ANDROID_RUNTIME_REFERENCE_ROOT runtime.andr
 ANDROID_DST="$ROOT/android"
 CRYPTO_JAR="$(sts2_config_path STS2_CRYPTO_NATIVE_JAR runtime.crypto_native_jar "${STS2_CRYPTO_NATIVE_JAR:-}")"
 FMOD_PLUGIN_AAR="$(sts2_config_path STS2_FMOD_PLUGIN_AAR runtime.fmod_plugin_aar "${STS2_FMOD_PLUGIN_AAR:-}")"
+FMOD_ANDROID_LIBS_DIR="$(sts2_config_path STS2_FMOD_ANDROID_LIBS_DIR runtime.fmod_android_libs_dir "${STS2_FMOD_ANDROID_LIBS_DIR:-$(dirname "$FMOD_PLUGIN_AAR")/arm64}")"
 FMOD_SHIM_SRC="$ROOT/tools/android/fmod-shim/org/fmod/FMOD.java"
 LOCAL_JAVAC="${JAVA_HOME:-}/bin/javac"
 ANDROID_JAR="${ANDROID_HOME:-}/platforms/android-35/android.jar"
@@ -34,12 +35,38 @@ sts2_require_dir "$ANDROID_SRC/assets/dotnet_bcl" "reference dotnet_bcl director
 sts2_require_file "$ANDROID_SRC/gradle/wrapper/gradle-wrapper.jar" "reference Gradle wrapper jar"
 sts2_require_file "$CRYPTO_JAR" "crypto native jar"
 sts2_require_file "$FMOD_PLUGIN_AAR" "FMOD plugin AAR"
+sts2_require_dir "$FMOD_ANDROID_LIBS_DIR" "FMOD 2.03.06 Android arm64 libraries"
 sts2_require_file "$FMOD_SHIM_SRC" "FMOD shim source"
 sts2_require_executable "$LOCAL_JAVAC" "javac"
 sts2_require_file "$ANDROID_JAR" "Android platform jar"
+# The PC game uses FMOD 2.03.06. Pin the matching engine and Godot bridge as
+# one unit: silently mixing the old 2.02 Android bridge with 2.03 libraries
+# can prevent FMOD from initializing even when the bank format is supported.
+declare -A FMOD_20306_SHA256=(
+  [libfmod.so]=39b30fa72de6b9abbed0336bc8c40dc00976af9ba3804d84e3ebd49f5a7fc2d6
+  [libfmodstudio.so]=3b832388b360f29f543652cfa786cd9dde00d1e1960678c999253f7fddfed9f8
+  [libGodotFmod.android.template_release.arm64.so]=4e5c2529134ed8424a2958e2ed3825a0383ec9b33ffb853778eddd0174ea68fc
+)
+for name in libfmod.so libfmodstudio.so libGodotFmod.android.template_release.arm64.so; do
+  sts2_require_file "$FMOD_ANDROID_LIBS_DIR/$name" "FMOD 2.03.06 $name"
+  actual_sha256="$(sha256sum "$FMOD_ANDROID_LIBS_DIR/$name")"
+  actual_sha256="${actual_sha256%% *}"
+  if [[ "$actual_sha256" != "${FMOD_20306_SHA256[$name]}" ]]; then
+    echo "Unsupported FMOD Android $name ($actual_sha256); expected the matched 2.03.06 runtime" >&2
+    exit 1
+  fi
+done
 
 mkdir -p "$ANDROID_DST/libs" "$ANDROID_DST/assets" "$ANDROID_DST/gradle/wrapper"
 rsync -a --delete "$ANDROID_SRC/libs/" "$ANDROID_DST/libs/"
+for variant in debug release; do
+  for name in libfmod.so libfmodstudio.so libGodotFmod.android.template_release.arm64.so; do
+    cp -f "$FMOD_ANDROID_LIBS_DIR/$name" "$ANDROID_DST/libs/$variant/arm64-v8a/$name"
+  done
+  # Both Godot Android build types use the release bridge and release FMOD.
+  # The reference's unused debug bridge requires unbundled libfmodL libraries.
+  rm -f "$ANDROID_DST/libs/$variant/arm64-v8a/libGodotFmod.android.template_debug.arm64.so"
+done
 rsync -a --delete "$ANDROID_SRC/assets/dotnet_bcl/" "$ANDROID_DST/assets/dotnet_bcl/"
 cp -f "$ANDROID_SRC/gradle/wrapper/gradle-wrapper.jar" "$ANDROID_DST/gradle/wrapper/gradle-wrapper.jar"
 # Only patch staged copies, never the reference libraries. A normal sync with
@@ -137,5 +164,6 @@ PYEOF
 
 patch_fmod_aar "$ANDROID_DST/libs/debug/fmod-release.aar"
 patch_fmod_aar "$ANDROID_DST/libs/release/fmod-release.aar"
+printf 'Staged FMOD 2.03.06 Android runtime from %s\n' "$FMOD_ANDROID_LIBS_DIR"
 
 printf 'Synced runtime artifacts from %s to %s\n' "$ANDROID_SRC" "$ANDROID_DST"

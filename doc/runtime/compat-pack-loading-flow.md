@@ -278,8 +278,9 @@ STS2Mobile.ModEntry
 
 ### Android 音频路由与后台静音
 
-- **耳机路由**：Java FMOD shim 接收有线耳机广播和 Android 音频设备增删回调。输出变化同时发送设备枚举更新与 AAudio 重连通知，包含 USB、经典蓝牙和 BLE；只改枚举列表不能代替重连。输出仍由 Android 默认媒体路由选择，不强制扬声器或通话 SCO。当前 native 使用的旧 `getAudioDevices(int)` 同样过滤 remote-submix 虚拟设备。
-- **后台静音**：full compat 的 `AndroidAudioLifecyclePatches` 在游戏场景 Ready 后接管原版后台静音节点，遵守游戏内 `PrefsSave.MuteInBackground`。失焦/暂停时立即将 FMOD 与 Godot 音量设为零，并提交一次 `FmodServer.update()`，不再等 1 秒 Tween。FMOD Studio 音量修改会先进入命令队列，[必须调用 update 才会提交执行](https://www.fmod.com/docs/2.02/api/studio-guide.html#studio-system-processing)。恢复前台且应用/窗口均有焦点后，恢复当前 `SettingsSave.VolumeMaster`；用户原本设为零仍保持零。这里保证后台无声，不改变曲目播放进度，也不重建渲染窗口。offline bootstrap 与旧 full 包没有此修复。
+- **Bank 版本**：APK 中的 Android FMOD 核心/Studio/Godot 原生桥一起与 PC 版 2.03.06 对齐；打包从本机 FMOD Android 插件来源校验三件套 SHA 后替换旧 2.02 参考库。原版与 MOD bank 能否加载仍取决于实际文件/平台内容；不能仅凭格式头或成功打包断言 MOD 音频已在真机恢复。构建配置见 [构建说明](../build/building-and-packaging.md#4-同步大型-runtime)。
+- **耳机路由**：Java FMOD shim 同时支持当前 native 的 `getDevices(int)` / 设备名/类型和旧接口 `getAudioDevices(int)`，统一过滤 remote-submix。接收有线耳机广播和 Android 音频设备增删回调；输出变化同时发送设备枚举更新与 AAudio 重连通知，包含 USB、经典蓝牙和 BLE。输出仍由 Android 默认媒体路由选择，不强制扬声器或通话 SCO。
+- **后台静音**：full compat 的 `AndroidAudioLifecyclePatches` 在游戏场景 Ready 后接管原版后台静音节点，遵守游戏内 `PrefsSave.MuteInBackground`。失焦/暂停时立即将 FMOD 与 Godot 音量设为零，并提交一次 `FmodServer.update()`，不再等 1 秒 Tween。FMOD Studio 音量修改会先进入命令队列，[必须调用 update 才会提交执行](https://www.fmod.com/docs/2.03/api/studio-guide.html#studio-system-processing)。恢复前台且应用/窗口均有焦点后，恢复当前 `SettingsSave.VolumeMaster`；用户原本设为零仍保持零。这里保证后台无声，不改变曲目播放进度，也不重建渲染窗口。offline bootstrap 与旧 full 包没有此修复。
 - **部分设备无声**：设置 → 系统中的“声音兼容模式”在下次启动前禁用 FMOD AAudio 与低延迟输出，使用旧式输出路径；修改后需重启游戏，代价是可能增加延迟。旧版本的开关没有接到当前启动链路，不能据此判断设备已经测试过兼容路径。此模式不是所有无声问题的通用修复，缺失 bank、原生初始化失败等仍需日志区分。
 - **验证**：停帧与命令提交回归使用不含商业代码的 `port-mod/tests/AndroidAudioLifecycle.Tests`，以 `HarmonyReferenceDir` 指向 `android/assets/dotnet_bcl` 运行。真机仍需检查播放中插拔 3.5mm/USB 耳机、蓝牙连接/断开、Home/锁屏/回前台，以及无声设备开启兼容模式后的冷启动。记录设备/Android 版本、耳机类型、full compat target，以及 `FMOD`、`AAudio`、`AudioTrack` 和 `Android background audio` 日志。没有真机验证不能宣称具体 ROM 已修复。
 

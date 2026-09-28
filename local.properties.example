@@ -23,6 +23,9 @@ android.release_keystore_alias=androiddebugkey
 # Does not rebuild Mono or change available-memory queries/heap limits.
 # Environment override: MONO_MEMORY_STATS_FIX=1. Keep the reference libs original.
 runtime.mono_memory_stats_fix=0
+# Optional directory containing the matching FMOD 2.03.06 Android arm64 engine + Godot bridge.
+# Defaults to arm64/ beside STS2_FMOD_PLUGIN_AAR; env override: STS2_FMOD_ANDROID_LIBS_DIR.
+# runtime.fmod_android_libs_dir=/path/to/fmod/android/arm64
 
 # Compatibility build defaults. v0.111.0 is the current public-beta compile gate;
 # the shared v0.110.x and v0.109.x flavors remain available for explicit older-target builds.

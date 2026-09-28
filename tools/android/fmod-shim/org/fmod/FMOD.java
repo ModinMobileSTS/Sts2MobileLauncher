@@ -20,11 +20,9 @@ import java.util.HashSet;
 /**
  * Compatibility shim for FMOD Android native libraries.
  *
- * The FMOD native runtime bundled with the launcher manager expects
- * org.fmod.FMOD.getAudioDevices(int), while the fmod.jar shipped by the Godot
- * FMOD plugin exposes newer getDevices/getDeviceName/getDeviceType helpers
- * instead. Shipping this source class makes the Java side match the native
- * libfmod.so ABI used by the Android runtime payload.
+ * The 2.03.06 native runtime uses getDevices/getDeviceName/getDeviceType;
+ * older runtime builds used getAudioDevices(int). Both APIs remain available
+ * so the Java side stays compatible with either native interface.
  */
 public class FMOD {
     private static final String TAG = "FMOD";
@@ -225,7 +223,7 @@ public class FMOD {
         return ids;
     }
 
-    /** Compatibility API used by the older FMOD runtime bundled with the launcher. */
+    /** Legacy device enumeration API; kept for older native FMOD builds. */
     public static AudioDeviceInfo[] getAudioDevices(int flags) {
         if (gContext == null || Build.VERSION.SDK_INT < 23) {
             return new AudioDeviceInfo[0];
@@ -235,7 +233,6 @@ public class FMOD {
             if (audioManager == null) {
                 return new AudioDeviceInfo[0];
             }
-            // The bundled native library uses this older API, not getDevices().
             return filterDevices(audioManager.getDevices(flags));
         } catch (Throwable throwable) {
             Log.w(TAG, "getAudioDevices failed", throwable);

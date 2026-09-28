@@ -135,6 +135,7 @@ Run the following script to extract large runtime artifacts (Godot templates, FM
 ```bash
 tools/android/sync-runtime-from-references.sh
 ```
+The Android FMOD engine and Godot bridge must match the PC game's 2.03.06 release. Place the matched arm64 native libraries beside the AAR in `arm64/`, or set `STS2_FMOD_ANDROID_LIBS_DIR` in `.env`. Sync rejects older or mixed binaries instead of repackaging the old reference runtime. See [`doc/build/building-and-packaging.md`](doc/build/building-and-packaging.md).
 
 ### 5. Compile Compatibility Packs (Compat Packs)
 Compile and stage all bundled compatibility artifacts into APK assets:

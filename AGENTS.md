@@ -91,7 +91,7 @@ cp local.properties.example local.properties
 
 - `JAVA_HOME`、`ANDROID_HOME`/`ANDROID_SDK_ROOT`、`DOTNET_BIN`。
 - `STS2_ANDROID_RUNTIME_REFERENCE_ROOT`：参考 Android template/runtime，包含 `libs/`、`assets/dotnet_bcl/`、Gradle wrapper jar。
-- `STS2_FMOD_PLUGIN_AAR`、`STS2_CRYPTO_NATIVE_JAR`。
+- `STS2_FMOD_PLUGIN_AAR`、可选 `STS2_FMOD_ANDROID_LIBS_DIR`（默认从 AAR 旁的 `arm64/` 读取经 SHA 校验的 FMOD 2.03.06 native 三件套）、`STS2_CRYPTO_NATIVE_JAR`。
 - `STS2_ORIGINAL_V103_REFERENCE_DIR` / `STS2_ORIGINAL_V1061_REFERENCE_DIR` / `STS2_ORIGINAL_V1070_REFERENCE_DIR` / `STS2_ORIGINAL_V1071_REFERENCE_DIR` / `STS2_ORIGINAL_V1080_REFERENCE_DIR` / `STS2_ORIGINAL_V1090_REFERENCE_DIR` / `STS2_ORIGINAL_V1100_REFERENCE_DIR` / `STS2_ORIGINAL_V1110_REFERENCE_DIR`（或对应 `*_ROOT`）：original compile gate 引用目录，需包含 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll`；`V1090` / `V1100` 是共享旧 target 保留的历史变量名，分别指向 v0.109.1 / v0.110.1；`V1110` 对应当前独立 v0.111.0 public-beta target。
 - `RELEASE_KEYSTORE_*`、可选 `STS2_PAYLOAD_ZIP`、可选 `STS2_EXTERNAL_PROJECTS_ROOT`。
 
@@ -442,7 +442,8 @@ REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
 
 #### Android 音频约束
 
-- `tools/android/fmod-shim/org/fmod/FMOD.java` 是 native FMOD 的 JNI 合约：旧 `getAudioDevices(int)` 与新 `getDevices(int)` 必须一致过滤 remote-submix（type 25）；不得只修新 API，因为当前 native 调用旧 API。USB/蓝牙/有线输出增删都要同时通知 `SetOutputEnumerationChanged` 与 `OutputAAudioHeadphonesChanged`，两者不是同一个 native 状态；输入通知失败不得挡住输出通知。保留 Android 默认媒体路由，不强制扬声器、不启用通话 SCO。BLE/助听设备也应禁用低延迟路径。GodotApp 与 Godot plugin 的重复 `FMOD.init` 保持幂等，close 后旧 callback 不得影响新会话。
+- APK 中的 FMOD core、Studio 与 Godot 原生桥必须作为 2.03.06 配套单元同步，不能只替换两个 FMOD 库或把参考 Android runtime 自带的 2.02 库留在最终 APK；同步前要求三件套 SHA 命中，debug/release 均使用配套 release 桥，移除依赖未打包 `libfmodL` 的旧 debug 桥。PC v0.107.1/v0.111.0 原版 `fmod.dll`/`fmodstudio.dll` 为 2.03.06；不能用 APK 静态校验代替 MOD bank 真机播放验证。
+- `tools/android/fmod-shim/org/fmod/FMOD.java` 是 native FMOD 的 JNI 合约：当前 2.03.06 使用 `getDevices(int)` / 设备名/类型；旧 `getAudioDevices(int)` 仍保留兼容，两者必须一致过滤 remote-submix（type 25）。USB/蓝牙/有线输出增删都要同时通知 `SetOutputEnumerationChanged` 与 `OutputAAudioHeadphonesChanged`，两者不是同一个 native 状态；输入通知失败不得挡住输出通知。保留 Android 默认媒体路由，不强制扬声器、不启用通话 SCO。BLE/助听设备也应禁用低延迟路径。GodotApp 与 Godot plugin 的重复 `FMOD.init` 保持幂等，close 后旧 callback 不得影响新会话。
 - `audio_compatibility_mode` 由 `GodotApp.onCreate()` 在 native FMOD 初始化前从当前 profile 的 settings 读取并写入 shim；开启后 `supportsAAudio()` / `supportsLowLatency()` 返回 false，让 FMOD 走旧式输出路径，需重启游戏。不能只保留开关或只依赖旧参考工程的 FmodManager.gd；它不是当前 payload 的资源。该设置不控制后台静音。
 - full compat 的 `AndroidAudioLifecyclePatches` 独立注册，在 `NGame._Ready` 后才解析并 patch 原版 `NMuteInBackgroundHandler` 自己声明的 `_Notification`，不得提前 patch 继承的 Godot `_Ready/_Process`。按原版 `PrefsSave.MuteInBackground` 立即设置 FMOD/Godot 音量并调用 `FmodServer.update()` 提交 Studio 命令，不依赖停帧后无法完成的 Tween 或 deferred callback；只有 application resumed、application focused、window focused 都满足才恢复最新 `SettingsSave.VolumeMaster`。不得改写用户音量、恢复成固定音量、手动派发 GodotLib 焦点或触发 viewport 重建。offline bootstrap 不包含该 full compat patch。
 - 合成回归：`port-mod/tests/AndroidAudioLifecycle.Tests`（用 `HarmonyReferenceDir` 指向打包的 `android/assets/dotnet_bcl`）；覆盖无渲染帧、FMOD 命令未提交、通知乱序、关闭静音偏好、用户零音量和非 Android 隔离。legacy 注入列表必须包含 `AndroidAudioLifecyclePatches.cs`。
@@ -487,7 +488,7 @@ REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
 - 默认 build type：`release`（脚本执行 `assembleMonoRelease`）
 - ABI：`arm64-v8a`
 - applicationId：`com.megacrit.sts2re`
-- versionName/versionCode：`v0.1.9` / `111`
+- versionName/versionCode：`v0.1.10` / `112`
 - 默认测试签名：由 `.env` 的 `RELEASE_KEYSTORE_*` 或 `local.properties` 的 `android.release_keystore_*` 提供；示例使用 `${HOME}/.android/debug.keystore`。
 
 注意：`release` build type 当前仍保留 `debuggable true`，便于 sideload 后使用 `run-as` 验证；正式发布前必须重新审视签名、debuggable、混淆、资源优化、FileProvider 暴露范围。
@@ -512,7 +513,7 @@ source tools/android/env-from-s2.sh
 tools/android/sync-runtime-from-references.sh
 ```
 
-同步内容包括：Godot template AAR/native libs、`.NET/Godot` BCL/runtime DLL、crypto native jar、FMOD AAR（带 FMOD Java shim patch，补齐 URI 文件描述符、耳机插拔与音频设备枚举回调）、Gradle wrapper jar。FMOD patch 必须替换编译生成的全部 `FMOD*.class`，并在写回后校验 AAR 内 `libs/fmod.jar` 的 class 内容；目标 jar 或任一 class 缺失时构建应 fail closed，不能静默保留未 patch 的 AAR。
+同步内容包括：Godot template AAR/native libs、`.NET/Godot` BCL/runtime DLL、crypto native jar、FMOD AAR 与从 AAR 旁 `arm64/`（或 `STS2_FMOD_ANDROID_LIBS_DIR` / `runtime.fmod_android_libs_dir`）读取的 2.03.06 FMOD core/Studio/Godot bridge。FMOD 原生三件套同步前按已知 SHA 拒绝旧 2.02 或混搭库，并替换 debug/release staged 原生库；不提交这些第三方二进制。Java shim 同时提供当前 `getDevices` 和旧 `getAudioDevices`，替换编译生成的全部 `FMOD*.class` 并在写回后校验 AAR 内 `libs/fmod.jar` 的 class 内容；目标 jar 或任一 class 缺失时构建应 fail closed，不能静默保留未 patch 的 AAR。
 
 实验性 Mono 内存总量修复由 `MONO_MEMORY_STATS_FIX` / `runtime.mono_memory_stats_fix` 控制，默认 `0`。用户明确选择最小二进制实验修复后才用 `1`：`tools/android/patch-mono-memory-stats.py` 只接受已锁定 SHA 的 Ekyso ARM64 9.0.7.0 原库及其修复副本，将 `0x1f2444` 的总量查询从 `_SC_AVPHYS_PAGES` 改为 `_SC_PHYS_PAGES`；完整前后 SHA 与命令见 `doc/build/building-and-packaging.md`。只改 `android/libs/{debug,release}/arm64-v8a/` staged 副本，不能覆盖参考输入；关闭后完整打包恢复原库，修复器也支持分离输出的 `--restore`。这不是 Mono 源码重建，不含 `MemAvailable`、堆上限调整或 MOD 特判；保留原库现有 ABI/Harmony 改动，未知 SHA 必须拒绝。ELF build ID 不变，诊断以 SHA 为准。回归 `python3 tools/android/test-mono-memory-stats.py /path/to/original/libmonosgen-2.0.so`；指令模拟不能替代真机游戏/GC 验证。交付实验包时同时保留同签名回滚 APK，不要求卸载或清数据。
 

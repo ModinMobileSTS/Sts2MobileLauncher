@@ -16,8 +16,9 @@ Important variables in `.env`:
 - `DOTNET_BIN` — .NET SDK executable used for `STS2Mobile.dll`.
 - `STS2_ANDROID_RUNTIME_REFERENCE_ROOT` — reference Android template directory
   containing `libs/`, `assets/dotnet_bcl/`, and `gradle/wrapper/gradle-wrapper.jar`.
-- `STS2_FMOD_PLUGIN_AAR`, `STS2_CRYPTO_NATIVE_JAR` — runtime artifacts copied
-  by `sync-runtime-from-references.sh`.
+- `STS2_FMOD_PLUGIN_AAR` — FMOD Android AAR; its sibling `arm64/` must contain the
+  matched 2.03.06 FMOD engine and Godot bridge, or set `STS2_FMOD_ANDROID_LIBS_DIR`.
+- `STS2_CRYPTO_NATIVE_JAR` — crypto wrapper copied from the local reference.
 - `STS2_ORIGINAL_V103_REFERENCE_DIR`, `STS2_ORIGINAL_V1061_REFERENCE_DIR`, `STS2_ORIGINAL_V1070_REFERENCE_DIR`, `STS2_ORIGINAL_V1071_REFERENCE_DIR`, `STS2_ORIGINAL_V1080_REFERENCE_DIR`, `STS2_ORIGINAL_V1090_REFERENCE_DIR`, `STS2_ORIGINAL_V1100_REFERENCE_DIR`, and `STS2_ORIGINAL_V1110_REFERENCE_DIR`
   (or their `*_ROOT` shortcuts) — original PC compile-gate DLL directories. The
   historical `V1090` name identifies the shared v0.109.x target and should point

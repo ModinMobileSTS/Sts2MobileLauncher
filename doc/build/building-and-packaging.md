@@ -43,6 +43,8 @@ ANDROID_HOME=/path/to/android-sdk
 DOTNET_BIN=/path/to/dotnet
 STS2_ANDROID_RUNTIME_REFERENCE_ROOT=/path/to/reference/android-template
 STS2_FMOD_PLUGIN_AAR=/path/to/fmod-release.aar
+# 可选：AAR 与对应 2.03.06 Android arm64 原生库未放在同一目录时指定。
+# STS2_FMOD_ANDROID_LIBS_DIR=/path/to/fmod/android/arm64
 STS2_CRYPTO_NATIVE_JAR=/path/to/libSystem.Security.Cryptography.Native.Android.jar
 STS2_ORIGINAL_V103_REFERENCE_DIR=/path/to/v0.103.x/bin/Debug
 STS2_ORIGINAL_V1061_REFERENCE_DIR=/path/to/v0.106.1/bin/Debug
@@ -80,7 +82,7 @@ STS2_ORIGINAL_V1110_REFERENCE_DIR=/path/to/v0.111.0/bin/Debug
 - 默认 build type：`release`，脚本执行 `assembleMonoRelease`
 - ABI：`arm64-v8a`
 - applicationId：`com.megacrit.sts2re`
-- versionName/versionCode：`v0.1.9` / `111`
+- versionName/versionCode：`v0.1.10` / `112`
 
 `release` build type 当前保留 `debuggable true`，便于本地 sideload 和 `run-as` 验证。package 脚本默认使用 `RELEASE_KEYSTORE_*` 或 `local.properties` 中的签名配置；本地测试可使用 Android debug keystore，正式发布前必须重新配置签名和安全策略。
 
@@ -95,7 +97,8 @@ tools/android/sync-runtime-from-references.sh
 - Godot Android template AAR/native libs
 - `.NET/Godot` BCL/runtime DLL
 - crypto native jar
-- FMOD AAR，并应用 `tools/android/fmod-shim/` 中的 Java shim；该 shim 补齐旧 native runtime 的 URI 文件描述符与设备枚举 ABI，统一过滤 remote-submix，并在有线、USB、蓝牙输出变化时分别通知设备枚举与 AAudio 输出重连。`audio_compatibility_mode` 在 native 初始化前决定是否禁用 AAudio/低延迟路径，重复 plugin 初始化不会清除此选择。同步脚本替换全部生成的 `FMOD*.class` 并校验 AAR 内 `libs/fmod.jar`，缺少目标 jar 或 class 时直接终止构建
+- FMOD 2.03.06 Android 三件套：`libfmod.so`、`libfmodstudio.so`、`libGodotFmod.android.template_release.arm64.so`。默认从 `STS2_FMOD_PLUGIN_AAR` 同级的 `arm64/` 读取，也可通过 `STS2_FMOD_ANDROID_LIBS_DIR` / `runtime.fmod_android_libs_dir` 指定；同步前核对已知 2.03.06 SHA，拒绝旧 2.02 和混用版本，然后覆盖参考 runtime 中 debug/release 两套 staged native 文件并移除未使用、依赖未打包 `libfmodL` 的 debug 桥。不能只升级两个 FMOD 引擎库而保留旧 Godot 桥。
+- FMOD AAR，并应用 `tools/android/fmod-shim/` 中的 Java shim；当前 2.03.06 native 使用 `getDevices`/设备名/类型 JNI 接口，仍保留旧 `getAudioDevices(int)` 接口。两条路径统一过滤 remote-submix，耳机/USB/蓝牙输出变化分别通知设备枚举与 AAudio 重连。`audio_compatibility_mode` 在 native 初始化前决定是否禁用 AAudio/低延迟路径；同步脚本替换全部生成的 `FMOD*.class` 并校验 AAR 内 `libs/fmod.jar`，缺少目标 jar 或 class 时直接终止构建。
 - Gradle wrapper jar
 
 这些产物位于 `android/assets/dotnet_bcl/`、`android/libs/` 等 gitignored 路径，不手工维护。长期源码化状态和剩余阻塞见 [`source-dependencies.md`](source-dependencies.md)。

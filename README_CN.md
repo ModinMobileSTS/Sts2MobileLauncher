@@ -120,6 +120,7 @@ cp local.properties.example local.properties
 ```bash
 tools/android/sync-runtime-from-references.sh
 ```
+Android FMOD 引擎与 Godot 原生桥需与 PC 本体的 2.03.06 配套：AAR 同级的 `arm64/` 应包含对应库；若路径不同，可在 `.env` 指定 `STS2_FMOD_ANDROID_LIBS_DIR`。脚本会拒绝旧版或混搭库，不会再次把旧参考库打进 APK。详见 [`doc/build/building-and-packaging.md`](doc/build/building-and-packaging.md)。
 
 ### 5. 编译兼容包 (Compat Packs)
 将 full compatibility family 包和通用 offline bootstrap 一并构建并放入 Assets：
