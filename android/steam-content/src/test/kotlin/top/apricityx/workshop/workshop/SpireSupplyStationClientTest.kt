@@ -40,12 +40,12 @@ class SpireSupplyStationClientTest {
             requests += request
             when {
                 request.url.encodedPath.endsWith("/descriptor") ->
-                    response(request, fixture.descriptor())
+                    response(request, fixture.descriptor(origin = "http://cdn.example"))
                 request.url.encodedPath.endsWith("/cdn/token") -> {
                     tokenCalls++
                     response(
                         request,
-                        """{"origin":"https://cdn.example","query":"token=credential-$tokenCalls&expiration_time=4102444800"}""",
+                        """{"origin":"http://cdn.example","query":"token=credential-$tokenCalls&expiration_time=4102444800"}""",
                     )
                 }
                 request.url.encodedPath.contains("/manifest/") -> {
@@ -88,6 +88,30 @@ class SpireSupplyStationClientTest {
         assertTrue(
             requests.all { it.header("Authorization") == null && it.header("Cookie") == null }
         )
+        assertTrue(requests.filter { it.url.host == "cdn.example" }.all { it.url.isHttps })
+    }
+
+    @Test
+    fun rejectsTokenForAnotherCdnHost() = runBlocking {
+        val fixture = Fixture()
+        val requests = mutableListOf<Request>()
+        val client = client { request ->
+            requests += request
+            when {
+                request.url.encodedPath.endsWith("/descriptor") ->
+                    response(request, fixture.descriptor(origin = "http://cdn.example"))
+                request.url.encodedPath.endsWith("/cdn/token") ->
+                    response(request, """{"origin":"http://other.example","query":"token=wrong-host"}""")
+                request.url.encodedPath.contains("/manifest/") -> response(request, "denied", 403)
+                else -> error("Wrong-host token must not download any content")
+            }
+        }
+        withOutput { output ->
+            val events = engine(client).download(request(output)).toList()
+            assertTrue(events.last() is DownloadEvent.Failed)
+            assertFalse(File(output, "Fixture.json").exists())
+        }
+        assertTrue(requests.none { it.url.host == "other.example" })
     }
 
     @Test
@@ -258,12 +282,12 @@ class SpireSupplyStationClientTest {
             manifest = zip(bytes.toByteArray())
         }
 
-        fun descriptor(publishedFileId: String = "7", manifestId: String = "42") =
+        fun descriptor(publishedFileId: String = "7", manifestId: String = "42", origin: String = "https://cdn.example") =
             """{
             "mode":"UGC","appId":2868840,"publishedFileId":"$publishedFileId","title":"fixture",
             "fileName":"fixture.zip","fileSizeBytes":${content.size},"contentVersion":"fixture-v1",
             "manifestId":"$manifestId","depotId":2868840,"requestCode":"18446744073709551614",
-            "endpoints":[{"origin":"https://cdn.example","query":null}],"depotKeyBase64":"$keyBase64",
+            "endpoints":[{"origin":"$origin","query":null}],"depotKeyBase64":"$keyBase64",
             "expiresAt":"2100-01-01T00:00:00Z"} """
 
         private fun encrypt(clear: ByteArray): ByteArray {

@@ -47,7 +47,7 @@ class SpireSupplyStationClient(private val client: OkHttpClient) {
         private var current = original
         private val refreshLock = Mutex()
         private val tokens = SteamCdnAuthTokenCache()
-        private val transport = SteamCdnTransport(client)
+        private val transport = SteamCdnTransport(client, followSslRedirects = false)
         private val endpoints = original.endpoints.associateBy { checkedOrigin(it.origin).host }
         val item: ResolvedWorkshopItem
 
@@ -284,18 +284,19 @@ class SpireSupplyStationClient(private val client: OkHttpClient) {
         }
 
     private fun checkedOrigin(value: String): HttpUrl =
-        value.toHttpUrl().also {
+        value.toHttpUrl().let { origin ->
             require(
-                it.isHttps &&
-                    it.port == 443 &&
-                    it.username.isEmpty() &&
-                    it.password.isEmpty() &&
-                    it.encodedPath == "/" &&
-                    it.query == null &&
-                    it.fragment == null
+                origin.port == (if (origin.isHttps) 443 else 80) &&
+                    origin.username.isEmpty() &&
+                    origin.password.isEmpty() &&
+                    origin.encodedPath == "/" &&
+                    origin.query == null &&
+                    origin.fragment == null
             ) {
                 "Invalid supply station CDN origin"
             }
+            // The station can advertise HTTP origins; authorization and content still use TLS.
+            if (origin.isHttps) origin else origin.newBuilder().scheme("https").port(443).build()
         }
 
     private fun toServer(origin: String): CdnServer {

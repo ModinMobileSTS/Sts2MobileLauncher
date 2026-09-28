@@ -35,6 +35,7 @@ internal data class SteamCdnRequestRoute(
 
 internal class SteamCdnTransport(
     client: OkHttpClient,
+    followSslRedirects: Boolean = true,
 ) {
     // SteamPipe can return HTTP-only regional endpoints which redirect to another
     // content host. Keep the caller's timeout policy, but follow Steam CDN redirects
@@ -42,7 +43,7 @@ internal class SteamCdnTransport(
     // content URLs; Steam Community/API compatibility routing is not applied here.
     private val client = client.newBuilder()
         .followRedirects(true)
-        .followSslRedirects(true)
+        .followSslRedirects(followSslRedirects)
         .build()
 
     fun buildServerPool(

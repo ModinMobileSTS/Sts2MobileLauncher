@@ -93,6 +93,7 @@ MOD 卡片默认折叠，只显示左侧拖拽手柄、名称、版本/作者和
 - 浏览、截图、前置 MOD 检查和常规更新检查仍沿用现有 Steam 公开元数据路径，此开关不是浏览目录换源。前置列表读取失败时，只有站点模式提供明确的“检查未完成”提示，用户确认后可只下载当前条目；不能把检查失败解释为无依赖。
 - Steam 下载的 401/403、`NoLicense`、`AccessDenied` 等授权错误会提示可在设置中开启该功能；普通网络或本地文件权限错误不添加该引导。站点自身授权失败不误报为用户需要登录 Steam。
 - CDN token、depot key、request code 与签名 URL 不写入安装 metadata 或下载日志；授权刷新时校验内容身份，不能在同一任务混用不同 manifest。站点及 CDN 的 TLS 校验保持开启。服务不保证所有条目可匿名下载；使用和分发仍需遵守 Steam、站点及 MOD 作者许可。
+- 站点下载描述或 CDN token 回应可能把 CDN origin 标为 `http://`；启动器仅把它当作同主机端点标识，校验主机/端口/路径后仍经 HTTPS 443 请求 manifest/chunk，站点专用 CDN transport 不跟随 HTTPS→HTTP 降级重定向。HTTPS 证书无效或主机不支持 TLS 时会尝试其他合法端点，不改用明文；普通 Steam 源的重定向策略不变。
 
 回归入口：`tools/android/gradle-with-s2-env.sh :steam-content:test`，覆盖关闭时不访问站点、开启时不访问 Steam CM、加密下载及凭证刷新、错误条目/内容变更拒绝、授权错误识别。
 
