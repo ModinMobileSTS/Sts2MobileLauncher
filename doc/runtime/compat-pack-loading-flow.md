@@ -142,7 +142,7 @@ Steam Cloud 与 WebDAV 的非强制同步使用逐文件的共同基线：仅本
 
 `GodotApp` 仍保留 fallback：如果不是从设置页 prepared 启动，会自己调用同一准备流程；该 fallback 同样尊重兼容包开关，关闭时不会补回 `STS2Mobile.dll`。游戏通过 Android 兼容层的退出回设置路径触发 `GodotApp.restartToSettingsFromGame()` 时，会写入 `<files>/launcher/expected_clean_game_exit.json`；下次设置页启动时会创建一份本地 `clean-exit` 存档快照，如 Steam Cloud 或 WebDAV 模式为完整自动，还会尝试上传当前 launch profile account root 的本地变化。
 
-设置页因方向或其他配置变化重建时，旧实例的进度弹窗会随其销毁而关闭，已开始的 `clean-exit` 快照和云上传继续完成；旧实例不会再弹出完成/失败提示，新实例也不会重复消费同一退出标记。
+设置页因方向或其他配置变化重建时，旧实例的进度弹窗在 Activity 销毁时调用 `Dialog.dismiss()` 关闭，即使 DecorView 已不再报告为 attached 也不能跳过关闭，否则可能留下 `WindowLeaked`；已开始的 `clean-exit` 快照和云上传继续完成。旧实例不会再弹出完成/失败提示，新实例也不会重复消费同一退出标记。
 
 ## 7. Godot 启动与 runtime 入口
 

@@ -4,7 +4,6 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
-import android.view.Window;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -129,8 +128,7 @@ final class SteamOperationProgressDialog {
 		if (lifecycleOwner != null) {
 			lifecycleOwner.getLifecycle().removeObserver(lifecycleObserver);
 		}
-		Window window = dialog.getWindow();
-		if (dialog.isShowing() && window != null && window.getDecorView().isAttachedToWindow()) {
+		if (dialog.isShowing()) {
 			dialog.dismiss();
 		}
 	}
