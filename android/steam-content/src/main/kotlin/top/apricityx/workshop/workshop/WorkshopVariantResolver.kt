@@ -96,7 +96,7 @@ class WorkshopVariantResolver(
             itemInfoResult.exceptionOrNull()?.message?.trim().orEmpty(),
             changeHistoryResult.exceptionOrNull()?.message?.trim().orEmpty(),
         ).filter(String::isNotBlank).joinToString("; ")
-        if (webApiDetails.hcontentFile != null && webApiDetails.hcontentFile > 0) {
+        if (webApiDetails.hcontentFile != null && webApiDetails.hcontentFile > 0uL) {
             val fallbackReason = when {
                 cmFailure.isNotBlank() -> "cm_get_item_info_failed: $cmFailure"
                 itemInfo == null -> "cm_get_item_info_unavailable"
@@ -105,7 +105,7 @@ class WorkshopVariantResolver(
             }
             val candidate = WorkshopVariantCandidate(
                 branch = "public",
-                manifestId = webApiDetails.hcontentFile.toULong(),
+                manifestId = webApiDetails.hcontentFile,
                 depotId = depotId,
                 title = title,
                 source = SOURCE_WEBAPI_HCONTENT_FILE,

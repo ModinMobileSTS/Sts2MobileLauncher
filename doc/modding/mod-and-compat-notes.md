@@ -87,6 +87,7 @@ MOD 卡片默认折叠，只显示左侧拖拽手柄、名称、版本/作者和
 
 - 页面忙于前置检查等操作时，新下载点击明确提示稍后重试，不先生成没有 worker 的转圈任务；已经开始的下载仍可通过原停止按钮取消。
 - 一键下载前置只合并队列，不清空已有等待项；保留已有请求的相对顺序、分支/manifest 与更新身份，新前置放在对应待下载条目前。相同 item 的另一显式分支等待当前安装结束，不因 item ID 相同而丢弃。
+- author snapshot、saved history 与 WebAPI 的 manifest ID 全程按无符号 64 位保存，包括最高位为 1 的值；零值、null 或缺字段不产生 manifest 候选，候选优先级不变。
 
 创意工坊下载实现参考 `Apricityx/WorkshopAndroidDownloader`：公开 `file_url` 走直链下载，UGC manifest 路径走 SteamPipe CDN chunk 下载；当用户在分支候选中选择 author snapshot 或默认 manifest fallback 时，下载器使用该候选的 manifest，并把对应 branch 传给 `ContentServerDirectory.GetManifestRequestCode#1`；未登录时下载器会尝试匿名 Steam 会话和公开 CDN 回退，部分公开 MOD 可直接下载，受限/需拥有权限的条目仍可能要求登录。后台下载线程使用低优先级，直链和 UGC 路径都会合并进度事件；UGC 分块下载默认并发 2，设置页可调 1-8。默认开启的“创意工坊兼容访问”会把 `steamcommunity.com`、常见 Steam 图片媒体域和 `api.steampowered.com` 请求转到参考项目同款 `steamcommunity.rmbgame.net` / `steamstore.rmbgame.net` 路径，并保留逻辑 Host；UGC manifest/chunk 下载沿用参考项目的 SteamPipe CDN 处理，允许 Steam 内容目录返回的 HTTP-only CDN endpoint，并跟随这些区域内容节点返回的 HTTP(S) 301/302 等跳转。共享 CDN transport 必须先走 Steam 指定 proxy 再回退 origin；Workshop 下载调用方采用连接/读取/写入/整次请求 `25/75/75/120s` 的折中超时，共享 transport 不得用本体下载策略覆盖它；depot token 只用于 SteamPipe 内容节点及其重定向目标，不进入 Community/API 的 rmbgame 兼容访问；Android network security 继续允许 Steam 内容目录动态返回的明文 endpoint。关闭后只使用原始 Steam 域名和普通 SteamPipe CDN 行为。当前 UI 只把成功下载出的文件作为普通用户 MOD 导入，不恢复游戏进程内的桌面 Steam Workshop 枚举。
 

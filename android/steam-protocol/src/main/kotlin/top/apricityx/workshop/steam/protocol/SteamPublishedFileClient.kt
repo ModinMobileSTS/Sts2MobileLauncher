@@ -162,7 +162,7 @@ class SteamPublishedFileClient(
                 manifestId = item.manifestId.toULong(),
                 revision = item.revision.number,
                 authorSnapshots = item.authorSnapshotsList.mapNotNull { snapshot ->
-                    snapshot.manifestId.takeIf { it > 0L }?.toULong()?.let { manifestId ->
+                    snapshot.manifestId.toULong().takeIf { it > 0uL }?.let { manifestId ->
                         SteamPublishedFileAuthorSnapshot(
                             timestampEpochSeconds = snapshot.timestamp.toLong(),
                             gameBranchMin = snapshot.gameBranchMin,
@@ -215,7 +215,7 @@ class SteamPublishedFileClient(
     private fun toPublishedFileChangeLog(
         change: CPublishedFile_GetChangeHistory_Response.ChangeLog,
     ): SteamPublishedFileChangeLog? =
-        change.manifestId.takeIf { it > 0L }?.toULong()?.let { manifestId ->
+        change.manifestId.toULong().takeIf { it > 0uL }?.let { manifestId ->
             SteamPublishedFileChangeLog(
                 timestampEpochSeconds = change.timestamp.toLong(),
                 savedSnapshot = change.savedSnapshot,

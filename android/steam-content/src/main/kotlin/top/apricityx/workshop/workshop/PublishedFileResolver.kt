@@ -63,8 +63,8 @@ class PublishedFileResolver(
             )
         }
 
-        if (details.hcontentFile != null && details.hcontentFile > 0) {
-            val manifestId = details.hcontentFile.toULong()
+        if (details.hcontentFile != null && details.hcontentFile > 0uL) {
+            val manifestId = details.hcontentFile
             val depotId = details.depotId(appId)
             val resolution = WorkshopItemResolution(
                 requestedBranch = requestedBranch,
@@ -196,7 +196,7 @@ data class PublishedFileWebApiDetails(
     val fileUrl: String?,
     val fileSize: Long?,
     val fileType: Int,
-    val hcontentFile: Long?,
+    val hcontentFile: ULong?,
     val consumerAppId: Long?,
     val rawJson: String,
 ) {
@@ -231,7 +231,7 @@ private data class PublishedFileDetailsDto(
     @SerialName("file_type")
     val fileType: Int? = null,
     @SerialName("hcontent_file")
-    val hcontentFile: Long? = null,
+    val hcontentFile: ULong? = null,
     @SerialName("consumer_app_id")
     val consumerAppId: Long? = null,
 )
