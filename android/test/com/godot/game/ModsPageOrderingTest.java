@@ -2,7 +2,11 @@ package com.godot.game;
 
 import android.content.Context;
 import android.view.ContextThemeWrapper;
+import android.view.View;
 import android.widget.EditText;
+
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import org.json.JSONObject;
 import org.junit.Before;
@@ -140,6 +144,94 @@ public class ModsPageOrderingTest {
 		assertSavedOrder("Other", "U", "V", "W", "A");
 		showAll();
 		assertEquals(Arrays.asList("X", "Y", "B", "Z", "U", "V", "W", "A"), displayedIds());
+	}
+
+	@Test public void dropBeforeMiddleHeaderKeepsGlobalOrdinalAcrossRecycledPrefix() throws Exception {
+		RecyclerView recycler = loadTwentyScrolledGroups();
+		View header = recycler.findViewHolderForAdapterPosition(11).itemView;
+		int index = (Integer) call(page, "resolveGroupDropIndex", new Class<?>[]{float.class},
+			header.getTop() + header.getHeight() / 2f - 1);
+		assertEquals(11, index);
+		call(page, "showDragGhost", new Class<?>[]{String.class, int.class, boolean.class}, null, index, true);
+		assertGhostBetween("G10", "G11");
+		call(page, "clearDragGhost", new Class<?>[]{boolean.class}, true);
+		call(page, "reorderGroup", new Class<?>[]{nested("ModGroupBucket"), int.class}, bucket("G13"), index);
+
+		List<String> expected = Arrays.asList("G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9",
+			"G10", "G13", "G11", "G12", "G14", "G15", "G16", "G17", "G18", "G19");
+		assertEquals(expected, new ExtraSettingsRepository(context).loadModGroupOrder());
+		assertEquals(expected, displayedGroupsAndGhost());
+	}
+
+	@Test public void dropAfterMiddleHeaderAdjustsSourceWithinGlobalOrder() throws Exception {
+		RecyclerView recycler = loadTwentyScrolledGroups();
+		View header = recycler.findViewHolderForAdapterPosition(12).itemView;
+		int index = (Integer) call(page, "resolveGroupDropIndex", new Class<?>[]{float.class},
+			header.getTop() + header.getHeight() / 2f + 1);
+		assertEquals(13, index);
+		call(page, "showDragGhost", new Class<?>[]{String.class, int.class, boolean.class}, null, index, true);
+		assertGhostBetween("G12", "G13");
+		call(page, "clearDragGhost", new Class<?>[]{boolean.class}, true);
+		call(page, "reorderGroup", new Class<?>[]{nested("ModGroupBucket"), int.class}, bucket("G10"), index);
+
+		List<String> expected = Arrays.asList("G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9",
+			"G11", "G12", "G10", "G13", "G14", "G15", "G16", "G17", "G18", "G19");
+		assertEquals(expected, new ExtraSettingsRepository(context).loadModGroupOrder());
+		assertEquals(expected, displayedGroupsAndGhost());
+	}
+
+	private RecyclerView loadTwentyScrolledGroups() throws Exception {
+		List<String> groups = new ArrayList<>();
+		List<ExtraSettingsRepository.ModEntry> mods = new ArrayList<>();
+		for (int i = 0; i < 20; i++) {
+			String group = "G" + i;
+			groups.add(group);
+			ExtraSettingsRepository.ModEntry entry = mods("M" + i).get(0);
+			mods.add(entry);
+			repository.moveModToGroup(entry, group);
+		}
+		repository.saveModGroupOrder(groups);
+		ModsPageOrderingTest.<Set<String>>field(page, "collapsedGroupIds").addAll(groups);
+		load(mods);
+		RecyclerView recycler = new RecyclerView(context);
+		LinearLayoutManager layoutManager = new LinearLayoutManager(context);
+		recycler.setLayoutManager(layoutManager);
+		recycler.setItemAnimator(null);
+		recycler.setAdapter(ModsPageOrderingTest.<RecyclerView.Adapter<?>>field(page, "adapter"));
+		setField(page, "recyclerView", recycler);
+		layoutRecycler(recycler);
+		layoutManager.scrollToPositionWithOffset(10, 0);
+		layoutRecycler(recycler);
+		for (int i = 0; i < 10; i++) assertNull("Prefix header must be recycled: " + i, recycler.findViewHolderForAdapterPosition(i));
+		assertNotNull(recycler.findViewHolderForAdapterPosition(11));
+		assertNotNull(recycler.findViewHolderForAdapterPosition(12));
+		return recycler;
+	}
+
+	private void layoutRecycler(RecyclerView recycler) {
+		int width = ExtraSettingsUi.dp(context, 480);
+		int height = ExtraSettingsUi.dp(context, 240);
+		recycler.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+			View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+		recycler.layout(0, 0, width, height);
+	}
+
+	private void assertGhostBetween(String before, String after) throws Exception {
+		List<String> displayed = displayedGroupsAndGhost();
+		int ghost = displayed.indexOf("ghost");
+		assertTrue("Group drag must have a ghost between its neighbors", ghost > 0 && ghost < displayed.size() - 1);
+		assertEquals(before, displayed.get(ghost - 1));
+		assertEquals(after, displayed.get(ghost + 1));
+	}
+
+	private List<String> displayedGroupsAndGhost() throws Exception {
+		List<String> groups = new ArrayList<>();
+		Object adapter = field(page, "adapter");
+		for (Object item : ModsPageOrderingTest.<List<?>>field(adapter, "items")) {
+			if (field(item, "bucket") != null) groups.add(field(item, "groupId"));
+			else if (ModsPageOrderingTest.<Boolean>field(item, "groupGhost")) groups.add("ghost");
+		}
+		return groups;
 	}
 
 	private void loadFiveMods(String filter) throws Exception {

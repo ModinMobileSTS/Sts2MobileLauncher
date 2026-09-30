@@ -1165,27 +1165,24 @@ public final class ModsPage {
 
 	private int resolveGroupDropIndex(float y) {
 		int groupCount = 0;
-		for (ListItem item : listItems) {
-			if (item.type == TYPE_GROUP) {
-				groupCount++;
-			}
-		}
 		int index = 0;
 		for (int i = 0; i < listItems.size(); i++) {
 			ListItem item = listItems.get(i);
 			if (item.type != TYPE_GROUP) {
 				continue;
 			}
+			int ordinal = groupCount++;
 			RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(i);
 			if (holder == null) {
 				continue;
 			}
 			View child = holder.itemView;
-			if (y > child.getTop() + child.getHeight() / 2f) {
-				index++;
+			if (y <= child.getTop() + child.getHeight() / 2f) {
+				return ordinal;
 			}
+			index = ordinal + 1;
 		}
-		return Math.max(0, Math.min(index, groupCount));
+		return index;
 	}
 
 	private int indexOfModInBucket(String groupId, String modId) {
