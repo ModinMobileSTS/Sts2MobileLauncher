@@ -180,6 +180,125 @@ public class ModsPageOrderingTest {
 		assertEquals(expected, displayedGroupsAndGhost());
 	}
 
+	@Test public void adjacentLibraryEndpointsDoNotSelectInterleavedContentScanEntries() throws Exception {
+		List<ExtraSettingsRepository.ModEntry> mods = mods("C1", "L1", "C2", "L2");
+		repository.moveModToGroup(entries.get("L1"), "core");
+		repository.moveModToGroup(entries.get("L2"), "core");
+		load(mods);
+		assertEquals(Arrays.asList("L1", "L2", "C1", "C2"), displayedIds());
+
+		select("L1", "L2");
+		selectRange();
+
+		assertSelected("L1", "L2");
+	}
+
+	@Test public void manualRankRangeAddsTheDisplayedInteriorRatherThanScanInterior() throws Exception {
+		List<ExtraSettingsRepository.ModEntry> mods = mods("A", "C", "B", "D");
+		repository.saveModOrder("content", Arrays.asList("A", "B", "C", "D"));
+		load(mods);
+		assertEquals(Arrays.asList("A", "B", "C", "D"), displayedIds());
+
+		select("A", "C");
+		selectRange();
+
+		assertSelected("A", "B", "C");
+	}
+
+	@Test public void filteredRankRangeKeepsEarlierExplicitSelectionWithoutAddingHiddenInterior() throws Exception {
+		List<ExtraSettingsRepository.ModEntry> mods = mods("C", "A", "Hidden", "B", "D");
+		repository.saveModOrder("content", Arrays.asList("A", "Hidden", "B", "C", "D"));
+		load(mods);
+		select("D");
+		enableOnly("A", "B", "C");
+		setField(page, "filter", "enabled");
+		rebuild();
+		assertEquals(Arrays.asList("A", "B", "C"), displayedIds());
+
+		select("A", "C");
+		selectRange();
+
+		assertSelected("D", "A", "B", "C");
+	}
+
+	@Test public void searchRangeUsesManualRanksAmongMatchingRowsOnly() throws Exception {
+		List<ExtraSettingsRepository.ModEntry> mods = mods("KeepC", "KeepA", "Hidden", "KeepB");
+		repository.saveModOrder("content", Arrays.asList("KeepA", "Hidden", "KeepB", "KeepC"));
+		load(mods);
+		search.setText("Keep");
+		rebuild();
+		assertEquals(Arrays.asList("KeepA", "KeepB", "KeepC"), displayedIds());
+
+		select("KeepA", "KeepC");
+		selectRange();
+
+		assertSelected("KeepA", "KeepB", "KeepC");
+	}
+
+	@Test public void rangeAcrossCollapsedGroupRetainsExplicitSelectionButDoesNotAddHiddenRows() throws Exception {
+		loadWithMiddleGroup();
+		select("H1");
+		collapseMiddleGroup();
+		assertEquals(Arrays.asList("L1", "L2", "C1", "C2"), displayedIds());
+
+		select("L2", "C1");
+		selectRange();
+
+		assertSelected("H1", "L2", "C1");
+	}
+
+	@Test public void collapsedSelectedEntryCannotBecomeAVisualRangeEndpoint() throws Exception {
+		loadWithMiddleGroup();
+		select("H1");
+		collapseMiddleGroup();
+
+		select("C2");
+		selectRange();
+
+		assertSelected("H1", "C2");
+	}
+
+	@Test public void dragRebuildAndOrdinaryRebuildShareCollapsedRangeSemantics() throws Exception {
+		loadWithMiddleGroup();
+		collapseMiddleGroup();
+		move("C2", "content", "content", 0);
+		assertEquals(Arrays.asList("L1", "L2", "C2", "C1"), displayedIds());
+
+		select("L2", "C2");
+		selectRange();
+		assertSelected("L2", "C2");
+		select("L2", "C2");
+		rebuild();
+		select("L2", "C2");
+		selectRange();
+		assertSelected("L2", "C2");
+	}
+
+	private void loadWithMiddleGroup() throws Exception {
+		List<ExtraSettingsRepository.ModEntry> mods = mods("L1", "L2", "H1", "H2", "C1", "C2");
+		for (String id : Arrays.asList("L1", "L2")) repository.moveModToGroup(entries.get(id), "core");
+		for (String id : Arrays.asList("H1", "H2")) repository.moveModToGroup(entries.get(id), "Middle");
+		repository.saveModGroupOrder(Arrays.asList("core", "Middle", "content"));
+		load(mods);
+	}
+
+	private void collapseMiddleGroup() throws Exception {
+		ModsPageOrderingTest.<Set<String>>field(page, "collapsedGroupIds").add("Middle");
+		rebuild();
+	}
+
+	private void select(String... ids) throws Exception {
+		for (String id : ids) call(page, "toggleSelected", new Class<?>[]{String.class}, id);
+	}
+
+	private void selectRange() throws Exception {
+		call(page, "selectRangeBetweenSelected", new Class<?>[0]);
+	}
+
+	private void assertSelected(String... ids) throws Exception {
+		assertEquals(new LinkedHashSet<>(Arrays.asList(ids)), field(page, "selectedModIds"));
+	}
+
 	private RecyclerView loadTwentyScrolledGroups() throws Exception {
 		List<String> groups = new ArrayList<>();
 		List<ExtraSettingsRepository.ModEntry> mods = new ArrayList<>();

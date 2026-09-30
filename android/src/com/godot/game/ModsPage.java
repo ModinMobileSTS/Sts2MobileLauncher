@@ -126,7 +126,6 @@ public final class ModsPage {
 	private final Set<String> expandedModIds = new HashSet<>();
 	private final Set<String> fullDescriptionModIds = new HashSet<>();
 	private final Set<String> collapsedGroupIds = new HashSet<>();
-	private final List<ExtraSettingsRepository.ModEntry> currentFilteredMods = new ArrayList<>();
 	private final List<ExtraSettingsRepository.ModEntry> currentAllMods = new ArrayList<>();
 	private final List<ModGroupBucket> currentBuckets = new ArrayList<>();
 	private final List<ListItem> listItems = new ArrayList<>();
@@ -763,7 +762,6 @@ public final class ModsPage {
 		}
 		dataLoaded = false;
 		currentAllMods.clear();
-		currentFilteredMods.clear();
 		currentBuckets.clear();
 		listItems.clear();
 		listItems.add(ListItem.error(exception));
@@ -779,13 +777,11 @@ public final class ModsPage {
 			return;
 		}
 		clearDragGhost(false);
-		currentFilteredMods.clear();
 		currentBuckets.clear();
 		listItems.clear();
 		try {
 			List<ExtraSettingsRepository.ModEntry> filtered = filterMods(cachedSettings, currentAllMods);
 			sortMods(filtered);
-			currentFilteredMods.addAll(filtered);
 			if (currentAllMods.isEmpty()) {
 				listItems.add(ListItem.empty(R.string.status_no_mods));
 			} else if (filtered.isEmpty()) {
@@ -818,7 +814,6 @@ public final class ModsPage {
 	private void rebuildListItemsFromBuckets() {
 		clearDragGhost(false);
 		listItems.clear();
-		currentFilteredMods.clear();
 		for (ModGroupBucket bucket : currentBuckets) {
 			if (bucket.entries.isEmpty() && !bucket.userCreated) {
 				continue;
@@ -828,10 +823,7 @@ public final class ModsPage {
 			if (!collapsed) {
 				for (ExtraSettingsRepository.ModEntry entry : bucket.entries) {
 					listItems.add(ListItem.mod(bucket.id, entry));
-					currentFilteredMods.add(entry);
 				}
-			} else {
-				currentFilteredMods.addAll(bucket.entries);
 			}
 		}
 		if (listItems.isEmpty()) {
@@ -1608,8 +1600,10 @@ public final class ModsPage {
 	}
 
 	private void selectAllVisibleMods() {
-		for (ExtraSettingsRepository.ModEntry entry : currentFilteredMods) {
-			selectedModIds.add(entry.modId);
+		for (ModGroupBucket bucket : currentBuckets) {
+			for (ExtraSettingsRepository.ModEntry entry : bucket.entries) {
+				selectedModIds.add(entry.modId);
+			}
 		}
 		notifySelectionModeChanged();
 		updateSelectionActionsPanel();
@@ -1617,11 +1611,13 @@ public final class ModsPage {
 
 	private void invertVisibleSelection() {
 		boolean wasEmpty = selectedModIds.isEmpty();
-		for (ExtraSettingsRepository.ModEntry entry : currentFilteredMods) {
-			if (selectedModIds.contains(entry.modId)) {
-				selectedModIds.remove(entry.modId);
-			} else {
-				selectedModIds.add(entry.modId);
+		for (ModGroupBucket bucket : currentBuckets) {
+			for (ExtraSettingsRepository.ModEntry entry : bucket.entries) {
+				if (selectedModIds.contains(entry.modId)) {
+					selectedModIds.remove(entry.modId);
+				} else {
+					selectedModIds.add(entry.modId);
+				}
 			}
 		}
 		if (wasEmpty != selectedModIds.isEmpty()) {
@@ -1638,8 +1634,10 @@ public final class ModsPage {
 	private void selectRangeBetweenSelected() {
 		int first = -1;
 		int last = -1;
-		for (int i = 0; i < currentFilteredMods.size(); i++) {
-			if (selectedModIds.contains(currentFilteredMods.get(i).modId)) {
+		// Headers, ghosts and collapsed contents are not endpoints of a visual range.
+		for (int i = 0; i < listItems.size(); i++) {
+			ListItem item = listItems.get(i);
+			if (item.type == TYPE_MOD && selectedModIds.contains(item.entry.modId)) {
 				if (first < 0) {
 					first = i;
 				}
@@ -1651,7 +1649,10 @@ public final class ModsPage {
 			return;
 		}
 		for (int i = first; i <= last; i++) {
-			selectedModIds.add(currentFilteredMods.get(i).modId);
+			ListItem item = listItems.get(i);
+			if (item.type == TYPE_MOD) {
+				selectedModIds.add(item.entry.modId);
+			}
 		}
 		notifySelectionOnly();
 		updateSelectionActionsPanel();
