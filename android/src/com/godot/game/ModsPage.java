@@ -1322,50 +1322,67 @@ public final class ModsPage {
 	}
 
 	private void moveModToGroup(ExtraSettingsRepository.ModEntry entry, ModGroupBucket sourceBucket, ModGroupBucket targetBucket, int targetIndex) {
-		if (entry == null || targetBucket == null) {
+		if (entry == null || sourceBucket == null || targetBucket == null
+			|| targetIndex < 0 || targetIndex > targetBucket.entries.size()) {
 			return;
 		}
 		try {
-			boolean sameGroup = sourceBucket != null && sourceBucket.id.equals(targetBucket.id);
+			boolean sameGroup = sourceBucket.id.equals(targetBucket.id);
+			int sourceIndex = -1;
+			List<String> visibleTargetOrder = new ArrayList<>();
+			for (int i = 0; i < targetBucket.entries.size(); i++) {
+				ExtraSettingsRepository.ModEntry mod = targetBucket.entries.get(i);
+				if (mod.modId.equals(entry.modId)) {
+					sourceIndex = i;
+				} else {
+					visibleTargetOrder.add(mod.modId);
+				}
+			}
 			int adjustedTargetIndex = targetIndex;
 			if (sameGroup) {
-				for (int i = 0; i < targetBucket.entries.size(); i++) {
-					if (targetBucket.entries.get(i).modId.equals(entry.modId)) {
-						if (i < adjustedTargetIndex) {
-							adjustedTargetIndex--;
-						}
-						break;
-					}
+				if (sourceIndex < 0) {
+					return;
+				}
+				if (sourceIndex < adjustedTargetIndex) {
+					adjustedTargetIndex--;
+				}
+				if (adjustedTargetIndex == sourceIndex) {
+					return;
 				}
 			}
-			List<String> targetOrder = new ArrayList<>();
-			for (ExtraSettingsRepository.ModEntry mod : targetBucket.entries) {
-				if (!mod.modId.equals(entry.modId)) {
-					targetOrder.add(mod.modId);
-				}
+			List<String> targetOrder = fullModOrderForGroup(targetBucket);
+			List<String> sourceOrder = sameGroup ? targetOrder : fullModOrderForGroup(sourceBucket);
+			if (!sourceOrder.remove(entry.modId)) {
+				return;
 			}
-			int clamped = Math.max(0, Math.min(adjustedTargetIndex, targetOrder.size()));
-			targetOrder.add(clamped, entry.modId);
+			// Merge the visible drop gap into the complete order using its nearest visible neighbor.
+			// Hidden entries retain their order, including any prefix/suffix outside that gap.
+			int insertionIndex = targetOrder.size();
+			if (adjustedTargetIndex < visibleTargetOrder.size()) {
+				insertionIndex = targetOrder.indexOf(visibleTargetOrder.get(adjustedTargetIndex));
+				if (insertionIndex < 0) {
+					return;
+				}
+			} else if (!visibleTargetOrder.isEmpty()) {
+				int previousIndex = targetOrder.indexOf(visibleTargetOrder.get(visibleTargetOrder.size() - 1));
+				if (previousIndex < 0) {
+					return;
+				}
+				insertionIndex = previousIndex + 1;
+			}
+			targetOrder.add(insertionIndex, entry.modId);
 			repository.saveModOrder(targetBucket.id, targetOrder);
 			scanGeneration.incrementAndGet();
 			loadedSnapshot.modOrder.put(targetBucket.id, orderRanks(targetOrder));
 			if (!sameGroup) {
-				if (sourceBucket != null) {
-					List<String> sourceOrder = new ArrayList<>();
-					for (ExtraSettingsRepository.ModEntry mod : sourceBucket.entries) {
-						if (!mod.modId.equals(entry.modId)) {
-							sourceOrder.add(mod.modId);
-						}
-					}
-					repository.saveModOrder(sourceBucket.id, sourceOrder);
-					loadedSnapshot.modOrder.put(sourceBucket.id, orderRanks(sourceOrder));
-				}
+				repository.saveModOrder(sourceBucket.id, sourceOrder);
+				loadedSnapshot.modOrder.put(sourceBucket.id, orderRanks(sourceOrder));
 				repository.moveModToGroup(entry, targetBucket.id);
 				loadedSnapshot.groupAssignments.put(entry.modId, targetBucket.id);
 			}
 
 			// Optimistic local reorder: keep scroll and avoid full page rebuild.
-			applyLocalModMove(entry, sourceBucket, targetBucket, clamped);
+			applyLocalModMove(entry, sourceBucket, targetBucket, adjustedTargetIndex);
 			rebuildListItemsFromBuckets();
 			if (!sameGroup) {
 				actions.showMessage(context.getString(R.string.status_move_mod_group_done, targetBucket.label));
@@ -1374,6 +1391,23 @@ public final class ModsPage {
 			actions.showError(exception);
 			refreshList();
 		}
+	}
+
+	private List<String> fullModOrderForGroup(ModGroupBucket bucket) {
+		ModGroupBucket fullBucket = new ModGroupBucket(bucket.id, bucket.label, bucket.userCreated);
+		Set<String> userGroups = new HashSet<>(loadedSnapshot.userGroups);
+		for (ExtraSettingsRepository.ModEntry mod : currentAllMods) {
+			if (bucket.id.equals(groupIdForEntry(mod, userGroups, loadedSnapshot.groupAssignments))) {
+				fullBucket.entries.add(mod);
+			}
+		}
+		sortMods(fullBucket.entries);
+		sortBucketEntriesBySavedOrder(fullBucket);
+		List<String> order = new ArrayList<>(fullBucket.entries.size());
+		for (ExtraSettingsRepository.ModEntry mod : fullBucket.entries) {
+			order.add(mod.modId);
+		}
+		return order;
 	}
 
 	private void applyLocalModMove(ExtraSettingsRepository.ModEntry entry, ModGroupBucket sourceBucket, ModGroupBucket targetBucket, int targetIndex) {
