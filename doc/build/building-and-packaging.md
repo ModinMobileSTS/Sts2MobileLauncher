@@ -373,6 +373,7 @@ tools/package/build_android_body_zip.sh \
 - 临时工程会从 `.tscn` / `.tres` 引用合成缺失的 `.uid` sidecar，确保重导出的 `.godot/uid_cache.bin` 继续匹配原场景里的 `uid://...` 引用，避免 Android 首帧资源绑定崩溃。
 - Spine `.atlas` / `.skel` 导入产物是平台无关资源；若 headless Linux export 环境没有 Spine editor importer，脚本会从源工程 `.godot/imported` 注入 `.spatlas` / `.spskel` 与对应 `.atlas.import` / `.skel.import` remap 到最终 PCK，并在缺失时失败，避免主菜单、地图节点或战斗场景黑屏。
 - 产物仍满足 `validate_payload_zip.py` 与当前 launcher 导入格式，可在导入版 APK 中当普通 payload zip 导入；输入 PC zip 若包含单一顶层目录（例如 `Slay the Spire 2/...`），脚本会自动识别并在输出 zip 中展平。
+- ZIP 校验、依赖读取和重打包共用归一化名称到原始 `ZipInfo` 的索引；反斜杠条目及单顶层目录包仍读取真实条目，不按归一化字符串重新查找原 ZIP。归一化后重名会明确失败，避免校验与重打包选中不同内容。回归：`python3 tools/package/test_payload_zip.py`（仅合成资源）。
 - 源工程 patch 同时禁用旧 `SentryInit` 与 v0.110.0 起使用的 C# `SentryBootstrap` autoload，并移除桌面 Sentry GDExtension；managed dependency keep-list 从原版 `sts2.deps.json` 推导，因此后续版本的 `Sentry.Godot.dll` 会和原版 `sts2.dll` 一起保留。
 
 常用本地示例：

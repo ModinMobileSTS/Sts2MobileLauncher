@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
 
+from validate_payload_zip import REQUIRED, detect_prefix, index_zip_entries
+
 MAGIC = 0x43504447  # "GDPC"
 PACK_REL_FILEBASE = 0x02
 PCK_HEADER_FORMAT = "<IIIIIIQQ16I"
@@ -36,13 +38,6 @@ SENTRY_AUTOLOAD_BINARY_REPLACEMENTS = (
 )
 SENTRY_AUTOLOAD_NAMES = ("SentryInit", "SentryBootstrap")
 
-REQUIRED_ZIP_ENTRIES = {
-    "release_info.json",
-    "SlayTheSpire2.pck",
-    "data_sts2_windows_x86_64/sts2.dll",
-    "data_sts2_windows_x86_64/sts2.deps.json",
-    "data_sts2_windows_x86_64/sts2.runtimeconfig.json",
-}
 
 ALWAYS_KEEP_DATA_BASENAMES = {
     "sts2.dll",
@@ -421,47 +416,24 @@ def pck_stats(path: Path) -> dict:
 
 
 
-def normalize_zip_name(name: str) -> str:
-    normalized = name.replace("\\", "/").strip()
-    while normalized.startswith("/"):
-        normalized = normalized[1:]
-    return normalized
 
 
-def detect_pc_zip_prefix(zf: zipfile.ZipFile) -> str:
-    names = {normalize_zip_name(info.filename) for info in zf.infolist() if not info.is_dir()}
-
-    def has_required(prefix: str) -> bool:
-        return all(prefix + required in names for required in REQUIRED_ZIP_ENTRIES)
-
-    if has_required(""):
-        return ""
-
-    candidates: set[str] = set()
-    for name in names:
-        for required in REQUIRED_ZIP_ENTRIES:
-            suffix = "/" + required
-            if name.endswith(suffix):
-                candidates.add(name[: -len(required)])
-            elif name == required:
-                candidates.add("")
-    for prefix in sorted(candidates, key=lambda value: (value.count("/"), len(value))):
-        if prefix and not prefix.endswith("/"):
-            prefix += "/"
-        if has_required(prefix):
-            return prefix
-
-    missing = sorted(REQUIRED_ZIP_ENTRIES - names)
-    raise BuildError(f"PC zip is missing required entries: {missing}")
+def detect_pc_zip_prefix(entries: dict[str, zipfile.ZipInfo]) -> str:
+    prefix = detect_prefix(entries)
+    if prefix is None:
+        missing = sorted(REQUIRED - entries.keys())
+        raise BuildError(f"PC zip is missing required entries: {missing}")
+    return prefix
 
 def validate_pc_zip(path: Path) -> dict:
     if not path.is_file():
         raise BuildError(f"Missing PC zip: {path}")
     with zipfile.ZipFile(path) as zf:
-        prefix = detect_pc_zip_prefix(zf)
-        release_info = json.loads(zf.read(prefix + "release_info.json").decode("utf-8"))
-        sts2_dll = zf.read(prefix + "data_sts2_windows_x86_64/sts2.dll")
-        with zf.open(prefix + "SlayTheSpire2.pck") as fp:
+        entries = index_zip_entries(zf)
+        prefix = detect_pc_zip_prefix(entries)
+        release_info = json.loads(zf.read(entries[prefix + "release_info.json"]).decode("utf-8"))
+        sts2_dll = zf.read(entries[prefix + "data_sts2_windows_x86_64/sts2.dll"])
+        with zf.open(entries[prefix + "SlayTheSpire2.pck"]) as fp:
             if fp.read(4) != b"GDPC":
                 raise BuildError("Original PC zip contains an invalid SlayTheSpire2.pck")
     return {
@@ -479,8 +451,9 @@ def load_keep_data_basenames(pc_zip: Path) -> set[str]:
     keep = set(ALWAYS_KEEP_DATA_BASENAMES)
     try:
         with zipfile.ZipFile(pc_zip) as zf:
-            prefix = detect_pc_zip_prefix(zf)
-            deps = json.loads(zf.read(prefix + "data_sts2_windows_x86_64/sts2.deps.json").decode("utf-8"))
+            entries = index_zip_entries(zf)
+            prefix = detect_pc_zip_prefix(entries)
+            deps = json.loads(zf.read(entries[prefix + "data_sts2_windows_x86_64/sts2.deps.json"]).decode("utf-8"))
         for target in deps.get("targets", {}).values():
             for library_name, metadata in target.items():
                 if library_name.startswith("runtimepack.Microsoft.NETCore.App.Runtime") or library_name.startswith("GodotSharp/"):
@@ -870,7 +843,8 @@ def package_zip(pc_zip: Path, pck: Path, out_zip: Path, manifest: dict, keep_dat
     written: list[str] = []
     total_uncompressed = 0
     with zipfile.ZipFile(pc_zip, "r") as zin, zipfile.ZipFile(temp_zip, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=ZIP_COMPRESSION_LEVEL) as zout:
-        source_prefix = detect_pc_zip_prefix(zin)
+        entries = index_zip_entries(zin)
+        source_prefix = detect_pc_zip_prefix(entries)
         pck_info = zipfile.ZipInfo("SlayTheSpire2.pck", date_time=time.localtime()[:6])
         pck_info.compress_type = zipfile.ZIP_DEFLATED
         with pck.open("rb") as fp:
@@ -878,10 +852,7 @@ def package_zip(pc_zip: Path, pck: Path, out_zip: Path, manifest: dict, keep_dat
         written.append("SlayTheSpire2.pck")
         total_uncompressed += pck.stat().st_size
 
-        for info in zin.infolist():
-            name = normalize_zip_name(info.filename)
-            if info.is_dir():
-                continue
+        for name, info in entries.items():
             if source_prefix:
                 if not name.startswith(source_prefix):
                     continue

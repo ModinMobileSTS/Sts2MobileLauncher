@@ -24,16 +24,27 @@ def normalize_zip_name(name: str) -> str:
     return normalized
 
 
-def detect_prefix(zf: zipfile.ZipFile) -> str | None:
-    names = {normalize_zip_name(info.filename) for info in zf.infolist() if not info.is_dir()}
+def index_zip_entries(zf: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
+    entries: dict[str, zipfile.ZipInfo] = {}
+    for info in zf.infolist():
+        if info.is_dir():
+            continue
+        name = normalize_zip_name(info.filename)
+        if name in entries:
+            raise ValueError(f"Multiple ZIP entries normalize to {name!r}")
+        entries[name] = info
+    return entries
+
+
+def detect_prefix(entries: dict[str, zipfile.ZipInfo]) -> str | None:
 
     def has_required(prefix: str) -> bool:
-        return all(prefix + required in names for required in REQUIRED)
+        return all(prefix + required in entries for required in REQUIRED)
 
     if has_required(""):
         return ""
     candidates: set[str] = set()
-    for name in names:
+    for name in entries:
         for required in REQUIRED:
             suffix = "/" + required
             if name.endswith(suffix):
@@ -55,21 +66,21 @@ def main() -> int:
         print(f"Missing zip: {path}", file=sys.stderr)
         return 1
     with zipfile.ZipFile(path) as zf:
-        prefix = detect_prefix(zf)
+        entries = index_zip_entries(zf)
+        prefix = detect_prefix(entries)
         if prefix is None:
-            names = {normalize_zip_name(info.filename) for info in zf.infolist() if not info.is_dir()}
-            missing = sorted(REQUIRED - names)
+            missing = sorted(REQUIRED - entries.keys())
             print("Missing required entries:", file=sys.stderr)
             for item in missing:
                 print(f"  - {item}", file=sys.stderr)
             return 1
-        with zf.open(prefix + "SlayTheSpire2.pck") as fp:
+        with zf.open(entries[prefix + "SlayTheSpire2.pck"]) as fp:
             magic = fp.read(4)
             if magic != b"GDPC":
                 print(f"Invalid PCK magic: {magic!r}", file=sys.stderr)
                 return 1
-        release_info = json.loads(zf.read(prefix + "release_info.json").decode("utf-8"))
-        sts2_dll_bytes = zf.read(prefix + "data_sts2_windows_x86_64/sts2.dll")
+        release_info = json.loads(zf.read(entries[prefix + "release_info.json"]).decode("utf-8"))
+        sts2_dll_bytes = zf.read(entries[prefix + "data_sts2_windows_x86_64/sts2.dll"])
         sts2_dll_sha256 = hashlib.sha256(sts2_dll_bytes).hexdigest()
         sts2_dll_size = len(sts2_dll_bytes)
     sha256 = hashlib.sha256()
