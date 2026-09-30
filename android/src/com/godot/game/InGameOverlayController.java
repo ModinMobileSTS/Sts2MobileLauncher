@@ -137,6 +137,7 @@ public final class InGameOverlayController {
 	private boolean logShowingGodot = true;
 	private boolean logAutoStickToBottom = true;
 	private boolean logFiltersVisible = false;
+	private String logFilterText = "";
 	private boolean panelOpen;
 	private boolean sessionHidden;
 	private final List<String> inspectorStack = new ArrayList<>();
@@ -909,7 +910,11 @@ public final class InGameOverlayController {
 		logFilterInput.setMinHeight(dp(MIN_TOUCH_TARGET_DP));
 		logFilterInput.setPadding(dp(12), 0, dp(12), 0);
 		logFilterInput.setBackground(roundedBackground(COLOR_TAB, dp(14)));
-		logFilterInput.addTextChangedListener(new SimpleTextWatcher(s -> logTailer.setTextFilter(s, false)));
+		logFilterInput.setText(logFilterText);
+		logFilterInput.addTextChangedListener(new SimpleTextWatcher(s -> {
+			logFilterText = s;
+			logTailer.setTextFilter(s, false);
+		}));
 		LinearLayout.LayoutParams filterLp = new LinearLayout.LayoutParams(
 			ViewGroup.LayoutParams.MATCH_PARENT, dp(MIN_TOUCH_TARGET_DP));
 		filterLp.topMargin = dp(8);

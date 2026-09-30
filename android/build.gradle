@@ -291,6 +291,10 @@ android {
         release.jniLibs.srcDirs = ['libs/release']
     }
 
+    testOptions {
+        unitTests.includeAndroidResources = true
+    }
+
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
             output.outputFileName = "sts2-re.apk"
