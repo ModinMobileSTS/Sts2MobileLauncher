@@ -68,7 +68,7 @@ internal class SteamAuthTestFixture : AutoCloseable {
     fun begin(account: String = "pending-account"): SteamAuthTransactionHandle {
         binder.begin(account, "synthetic-password")
         drain()
-        assertEquals(SteamAuthForegroundService.Stage.WAITING_CODE, binder.getSnapshot().stage)
+        assertEquals(binder.getSnapshot().message, SteamAuthForegroundService.Stage.WAITING_CODE, binder.getSnapshot().stage)
         val handle = SteamAuthStore.readPendingAuthTransaction(service)
         assertNotNull(handle)
         return handle!!
@@ -122,7 +122,7 @@ internal class SteamAuthTestFixture : AutoCloseable {
                 "Authentication.GetPasswordRSAPublicKey#1" ->
                     CAuthentication_GetPasswordRSAPublicKey_Response.newBuilder()
                         .setPublickeyMod(publicKey.modulus.toString(16))
-                        .setPublickeyExp(publicKey.publicExponent.toString(16))
+                        .setPublickeyExp(publicKey.publicExponent.toString(16).padStart(6, '0'))
                         .setTimestamp(1L)
                         .build()
                 "Authentication.BeginAuthSessionViaCredentials#1" -> {

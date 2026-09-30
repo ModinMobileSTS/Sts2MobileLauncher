@@ -60,7 +60,8 @@ class SteamAuthTerminalActivityTest {
     @After fun tearDown() {
         disconnect()
         fixture.close()
-        controller.destroy()
+        // onCreate was deliberately not run; detach the window without destroying an uncreated FragmentManager.
+        activity.windowManager.removeViewImmediate(activity.window.decorView)
         SteamAuthStore.clear(RuntimeEnvironment.getApplication())
     }
 

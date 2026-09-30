@@ -47,7 +47,8 @@ public class CompatLaunchReadinessTest {
 		JSONObject release = new JSONObject().put("version", "fixture-version");
 		put(new File(game, "SlayTheSpire2.pck"), "GDPCsynthetic-game");
 		put(new File(game, "release_info.json"), release.toString());
-		put(new File(game, ".payload_manifest.json"), new JSONObject().put("release_info", release).toString());
+		put(new File(game, ".payload_manifest.json"), new JSONObject()
+			.put("identity", new JSONObject().put("release_info", release)).toString());
 		put(new File(game, "data_sts2_windows_x86_64/sts2.dll"), "synthetic-game-assembly");
 		put(new File(game, "data_sts2_windows_x86_64/sts2.deps.json"), "{}");
 		put(new File(game, "data_sts2_windows_x86_64/sts2.runtimeconfig.json"), "{}");
