@@ -12,6 +12,7 @@ changelog 主要用于记录 agent 修改过程、验证流水和本地接力信
 - [`build/local-configuration.md`](build/local-configuration.md)：`.env` / `local.properties` 本地配置、路径迁移和 CI 配置建议。
 - [`runtime/compat-pack-loading-flow.md`](runtime/compat-pack-loading-flow.md)：Android 兼容包、`STS2Mobile.dll`、`port_compat.pck` 与普通 MOD 的详细加载流程。
 - [`modding/mod-and-compat-notes.md`](modding/mod-and-compat-notes.md)：普通用户 MOD 管理、兼容补丁开发、分支/compile gate 注意事项。
+- [`modding/offline-mod-validation.md`](modding/offline-mod-validation.md)：开发机离线 MOD 验证流程、合成回归、Cecil 静态检查、真实 Loadout 工厂 smoke 与 Godot/Android 验证边界。
 - [`plan/`](plan/)：长期设计计划或已落地方案的维护 checklist；一次性 agent 调查上下文、review/scout 记录不要放入这里，应放入 ignored 的 `.agent/`。
 
 ## 维护规则
