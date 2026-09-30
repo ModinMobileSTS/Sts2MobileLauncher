@@ -78,6 +78,14 @@ if [[ "$MONO_MEMORY_STATS_FIX" == 1 ]]; then
       "$ANDROID_DST/libs/$variant/arm64-v8a/libmonosgen-2.0.so"
   done
 fi
+# This Mono already bypasses native access checks. The old MonoMod helper's
+# Mono 6 layout write corrupts a Mono 9 assembly pointer; retain only its cache.
+# Both staged native variants must match the audited runtime before publishing.
+python3 "$ROOT/tools/android/patch-monomod-corlib.py" \
+  "$ANDROID_SRC/assets/dotnet_bcl/MonoMod.Utils.dll" \
+  "$ANDROID_DST/assets/dotnet_bcl/MonoMod.Utils.dll" \
+  --mono "$ANDROID_DST/libs/debug/arm64-v8a/libmonosgen-2.0.so" \
+  --mono "$ANDROID_DST/libs/release/arm64-v8a/libmonosgen-2.0.so"
 cp -f "$CRYPTO_JAR" "$ANDROID_DST/libs/debug/libSystem.Security.Cryptography.Native.Android.jar"
 cp -f "$CRYPTO_JAR" "$ANDROID_DST/libs/release/libSystem.Security.Cryptography.Native.Android.jar"
 # Use the release FMOD Android plugin even for monoDebug APKs. The plugin

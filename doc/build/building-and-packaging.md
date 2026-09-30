@@ -140,6 +140,39 @@ python3 tools/android/patch-mono-memory-stats.py repaired.so restored.so --resto
 
 此版**不包含 `MemAvailable` 改进**：空闲量仍来自 Android 的 `freeram + bufferram`，GC 指标也不等于实时整机内存或可继续分配额度。内存条仍可能偏保守；修复不保证速度提升或避免 OOM。不得为了让条变绿而提高堆上限、添加 `largeHeap`、关闭 GC 或伪造 MOD 统计。正式的完整修复仍需匹配源码及原有补丁后重建验证。
 
+### 4.2 MonoMod 原生布局安全修复（默认启用）
+
+当前 [Ekyso/Harmony 的 MonoMod helper](https://github.com/Ekyso/Harmony/blob/main/LocalMonoMod/src/MonoMod.Utils/Extensions.cs) 中，`SetMonoCorlibInternal(Assembly, bool)` 仍按旧 Mono 布局计算 `corlib_internal` 字节。已核对的 Android ARM64 Mono 9.0.7 中，该计算落在 `MonoAssembly + 0x7b`，属于 `ignores_access_checks_assembly_names` 指针内部，不是标志位。普通 Harmony/Cecil 动态补丁生成会经过该路径；这是真实的内存破坏风险，但不能单凭它认定某次玩家闪退或 Godot `StringName` 告警的直接原因。
+
+`sync-runtime-from-references.sh` 默认调用 `patch-monomod-corlib.py`，只替换 staged `MonoMod.Utils.dll` 的这一个方法体：
+
+- 保留 Mono runtime gate、参数检查和 `ReflectionHelper.AssemblyCache` 的锁、弱引用及 hashed/full/short 三种名称注册；保留异常时释放锁。
+- 删除私有原生字段探查、旧偏移计算及原生字节写入，不换成另一个猜测偏移，也不增加运行时 Harmony 自补丁。公共方法签名和其余程序集内容保持不变。
+- 配套 Ekyso Mono 的字段/方法访问检查入口已经直接允许访问，因此不再需要这个原生标志写入。构建必须核对 **debug/release 两套**原生库完整 SHA；只接受 §4.1 列出的原库或仅内存总量指令修复的副本，其他 Mono 必须重新审计，不能直接复用该策略。
+- 托管输入/输出也锁定完整 SHA；未知、损坏或混搭输入终止打包。只原子发布到独立 staged 文件，不修改参考库，不提交二进制。DLL 的 assembly identity/MVID 不变，诊断必须看 SHA。
+
+| `MonoMod.Utils.dll` | SHA-256 |
+| --- | --- |
+| 原始参考库 | `e085299936748e22cb8575c5522780fc22e8253d5e483d270473b0a69538b593` |
+| 移除旧原生写入 | `0557563916172c0517314d669aaf1d996fb69af1710b2b9c99a481f28235b4f0` |
+
+`GameLaunchPreparationManager` 在 BCL 缓存命中返回前比较 APK 与 publish 中的 `MonoMod.Utils.dll` 内容；即使 APK `versionCode`、兼容包、长度和时间戳没有体现更新，也会校验临时副本后原子替换旧 DLL。内容相同则不重写。此步骤不受兼容包开关控制；同签名覆盖安装不需要清数据或重新导入 MOD。
+
+```bash
+# 使用未修改的本地参考输入，验证 SHA gate、单方法修改边界和输入保护。
+python3 tools/android/test-monomod-corlib.py \
+  /path/to/reference/assets/dotnet_bcl/MonoMod.Utils.dll \
+  /path/to/reference/libs/release/arm64-v8a/libmonosgen-2.0.so
+
+# 同步后执行真实 staged DLL；不使用商业游戏程序集。
+LD_PRELOAD=libgcc_s.so.1 "$DOTNET_BIN" run \
+  --project tools/android/tests/MonoModCorlib.Tests -c Release
+tools/android/gradle-with-s2-env.sh testMonoReleaseUnitTest \
+  --tests com.godot.game.CompatLaunchReadinessTest
+```
+
+验证边界：托管 harness 强制 helper 的 Mono 分支，在受控原生缓冲区验证 true/false/重复调用不改字节、缓存及异常释放锁，并在宿主运行时执行真实 Cecil 私有成员/跨生成程序集调用和 Harmony patch/unpatch。它不是 Android Mono 或玩家 MOD 组合的真机验证。`LD_PRELOAD` 仅为 Linux Harmony 验证环境要求，不打入 APK。本修复与默认关闭的内存总量实验独立，不修改 native Mono、GC/堆上限、Godot `StringName`、游戏 DLL 或用户 MOD。
+
 ## 5. 构建当前 compat fallback
 
 ```bash

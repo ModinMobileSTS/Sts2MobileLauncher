@@ -414,7 +414,7 @@ REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
 
 正常启动前，Java shell 会：
 
-1. 复制 APK `dotnet_bcl` runtime 到 `<files>/.godot/mono/publish/arm64/`。
+1. 复制 APK `dotnet_bcl` runtime 到 `<files>/.godot/mono/publish/arm64/`。`MonoMod.Utils.dll` 必须在 BCL 缓存命中返回前按 APK 实际内容校验并原子刷新，不能只看 versionCode/compat stamp/长度/mtime；同版本覆盖安装也必须清除旧原生布局写入，兼容包关闭时同样执行。内容相同不重写。
 2. 兼容包开关开启时按当前启动配置的 `compat_pack_id` / `compat_target_id` 复制 `STS2Mobile.dll` 到 publish 目录；selected compat DLL 的复用判断必须比较实际文件内容，不能只依赖长度和 mtime，因为 schema 2 不同 target 的 DLL 可能同尺寸且 publish 副本时间更新；复制后还要校验目标内容与当前 variant 一致。关闭兼容包开关时删除该 dll，且 `GodotApp` fallback 不会再从 selected pack 或 APK asset 强制补回。
 3. 兼容包开关开启时复制当前启动配置兼容包/target 的 `port_compat.pck` 到 `<files>/port_compat.pck`；关闭时删除 `<files>/port_compat.pck`。无选择时使用 `android/assets/port_compat.pck` fallback（正常 launcher 启动会先阻止缺包场景）。
 4. 复制当前 launch profile payload 目录 `<files>/payloads/<payload_id>/game/data_*/*` 到 publish 目录，但保护 BCL/System/GodotSharp 等 runtime DLL 不被 payload 覆盖；profile/payload 切换时会清理旧游戏 assembly 残留。
@@ -517,6 +517,8 @@ tools/android/sync-runtime-from-references.sh
 同步内容包括：Godot template AAR/native libs、`.NET/Godot` BCL/runtime DLL、crypto native jar、FMOD AAR 与从 AAR 旁 `arm64/`（或 `STS2_FMOD_ANDROID_LIBS_DIR` / `runtime.fmod_android_libs_dir`）读取的 2.03.06 FMOD core/Studio/Godot bridge。FMOD 原生三件套同步前按已知 SHA 拒绝旧 2.02 或混搭库，并替换 debug/release staged 原生库；不提交这些第三方二进制。Java shim 同时提供当前 `getDevices` 和旧 `getAudioDevices`，替换编译生成的全部 `FMOD*.class` 并在写回后校验 AAR 内 `libs/fmod.jar` 的 class 内容；目标 jar 或任一 class 缺失时构建应 fail closed，不能静默保留未 patch 的 AAR。
 
 实验性 Mono 内存总量修复由 `MONO_MEMORY_STATS_FIX` / `runtime.mono_memory_stats_fix` 控制，默认 `0`。用户明确选择最小二进制实验修复后才用 `1`：`tools/android/patch-mono-memory-stats.py` 只接受已锁定 SHA 的 Ekyso ARM64 9.0.7.0 原库及其修复副本，将 `0x1f2444` 的总量查询从 `_SC_AVPHYS_PAGES` 改为 `_SC_PHYS_PAGES`；完整前后 SHA 与命令见 `doc/build/building-and-packaging.md`。只改 `android/libs/{debug,release}/arm64-v8a/` staged 副本，不能覆盖参考输入；关闭后完整打包恢复原库，修复器也支持分离输出的 `--restore`。这不是 Mono 源码重建，不含 `MemAvailable`、堆上限调整或 MOD 特判；保留原库现有 ABI/Harmony 改动，未知 SHA 必须拒绝。ELF build ID 不变，诊断以 SHA 为准。回归 `python3 tools/android/test-mono-memory-stats.py /path/to/original/libmonosgen-2.0.so`；指令模拟不能替代真机游戏/GC 验证。交付实验包时同时保留同签名回滚 APK，不要求卸载或清数据。
+
+MonoMod 原生布局修复默认启用：`sync-runtime-from-references.sh` 调用 `tools/android/patch-monomod-corlib.py`，只更换已锁定 SHA 的 `MonoMod.Utils.dll` 中 `SetMonoCorlibInternal` 方法体，保留 runtime/null gate 和 `ReflectionHelper.AssemblyCache` 三种名称/弱引用/锁语义，删除旧 Mono 私有字段探查和整个错位原生写入。已核对 ARM64 Mono 9 的 `+0x7b` 属于 `ignores_access_checks_assembly_names` 指针，而非旧 `corlib_internal`。当前 Ekyso 原生字段/方法访问检查已经直接允许访问；构建必须核对 debug/release 原生库 SHA，只接受上述原库/内存总量实验副本，未知组合 fail closed，不能猜新偏移或在启动时自 patch MonoMod。参考输入不可变，程序集 identity/MVID 不变，诊断以 SHA 为准；不修改 native Mono、游戏 DLL/MOD、Godot StringName 或 GC。回归：`tools/android/test-monomod-corlib.py`、`tools/android/tests/MonoModCorlib.Tests`、`CompatLaunchReadinessTest`；宿主受控内存/Cecil/Harmony 验证不能替代 Android MOD 真机测试。详见 `doc/build/building-and-packaging.md` §4.2。
 
 ### 9.3 导入版 APK
 

@@ -564,6 +564,7 @@ public final class GameLaunchPreparationManager {
 			copiedNames.add(name);
 		}
 		syncCompatEntryDll(destDir, stageCompatEntry, selectedCompatDll);
+		syncMonoModUtils(destDir);
 		String compatStamp = compatPackManager.buildSelectedCompatStamp();
 		SharedPreferences preferences = context.getSharedPreferences(ASSEMBLY_SETUP_PREFERENCES_NAME, Context.MODE_PRIVATE);
 		int previousVersion = preferences.getInt(KEY_ASSEMBLY_SETUP_VERSION_CODE, -1);
@@ -577,7 +578,7 @@ public final class GameLaunchPreparationManager {
 		}
 
 		for (String name : bclFiles) {
-			if ("STS2Mobile.dll".equals(name)) {
+			if ("STS2Mobile.dll".equals(name) || "MonoMod.Utils.dll".equals(name)) {
 				continue;
 			}
 			try (InputStream inputStream = assets.open("dotnet_bcl/" + name)) {
@@ -589,6 +590,42 @@ public final class GameLaunchPreparationManager {
 			.putString(KEY_ASSEMBLY_SETUP_COMPAT_STAMP, compatStamp)
 			.apply();
 		Log.i(TAG, "DIAG copyBclAssemblies copied_bcl_assets protected_count=" + copiedNames.size() + " dest=" + describeFile(destDir));
+	}
+
+	private void syncMonoModUtils(File destDir) throws IOException {
+		// A same-version sideload can retain the unsafe old helper in publish.
+		// Compare bytes before the BCL cache hit, including when compat is disabled.
+		String assetName = "dotnet_bcl/MonoMod.Utils.dll";
+		File dest = new File(destDir, "MonoMod.Utils.dll");
+		if (assetHasSameContent(assetName, dest)) {
+			return;
+		}
+		File temp = File.createTempFile("MonoMod.Utils.", ".tmp", destDir);
+		try {
+			try (InputStream input = assets.open(assetName)) {
+				copyStreamToFile(input, temp);
+			}
+			if (!assetHasSameContent(assetName, temp)) {
+				throw new IOException("Prepared MonoMod assembly does not match APK asset");
+			}
+			// Android rename replaces atomically; keep the previous DLL if it fails.
+			if (!temp.renameTo(dest)) {
+				throw new IOException("Unable to publish repaired MonoMod assembly: " + dest);
+			}
+			Log.i(TAG, "Refreshed MonoMod.Utils.dll from APK content");
+		} finally {
+			temp.delete();
+		}
+	}
+
+	private boolean assetHasSameContent(String assetName, File file) throws IOException {
+		if (!file.isFile()) {
+			return false;
+		}
+		try (InputStream asset = assets.open(assetName);
+			 InputStream existing = new BufferedInputStream(new FileInputStream(file))) {
+			return streamsHaveSameContent(asset, existing);
+		}
 	}
 
 	private void syncCompatEntryDll(File destDir, boolean compatEnabled, File selectedCompatDll) throws IOException {
@@ -819,23 +856,27 @@ public final class GameLaunchPreparationManager {
 		if (first.length() != second.length()) {
 			return false;
 		}
-		byte[] firstBuffer = new byte[FILE_COMPARE_BUFFER_SIZE];
-		byte[] secondBuffer = new byte[FILE_COMPARE_BUFFER_SIZE];
 		try (InputStream firstStream = new BufferedInputStream(new FileInputStream(first));
 			 InputStream secondStream = new BufferedInputStream(new FileInputStream(second))) {
-			while (true) {
-				int firstRead = readComparisonChunk(firstStream, firstBuffer);
-				int secondRead = readComparisonChunk(secondStream, secondBuffer);
-				if (firstRead != secondRead) {
+			return streamsHaveSameContent(firstStream, secondStream);
+		}
+	}
+
+	private boolean streamsHaveSameContent(InputStream firstStream, InputStream secondStream) throws IOException {
+		byte[] firstBuffer = new byte[FILE_COMPARE_BUFFER_SIZE];
+		byte[] secondBuffer = new byte[FILE_COMPARE_BUFFER_SIZE];
+		while (true) {
+			int firstRead = readComparisonChunk(firstStream, firstBuffer);
+			int secondRead = readComparisonChunk(secondStream, secondBuffer);
+			if (firstRead != secondRead) {
+				return false;
+			}
+			if (firstRead < 0) {
+				return true;
+			}
+			for (int index = 0; index < firstRead; index++) {
+				if (firstBuffer[index] != secondBuffer[index]) {
 					return false;
-				}
-				if (firstRead < 0) {
-					return true;
-				}
-				for (int index = 0; index < firstRead; index++) {
-					if (firstBuffer[index] != secondBuffer[index]) {
-						return false;
-					}
 				}
 			}
 		}

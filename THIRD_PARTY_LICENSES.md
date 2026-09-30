@@ -36,6 +36,8 @@
 
 实验性 `MONO_MEMORY_STATS_FIX=1` 使用 `tools/android/patch-mono-memory-stats.py` 对现有 Ekyso 定制 ARM64 `libmonosgen-2.0.so` 的总量查询做单指令修改，不提交或另行下载该二进制。实现依据 [.NET 9.0.7 Mono 内存查询源码](https://github.com/dotnet/runtime/blob/v9.0.7/src/mono/mono/utils/memfuncs.c)（MIT）及当前库的只读指令分析；定制库来源为 [Ekyso/StS2-Launcher](https://github.com/Ekyso/StS2-Launcher)。未获得匹配定制库的完整源码/构建配置，不能宣称为源码可复现构建；发布前仍需审计实际二进制及其上游 notices。前后 SHA、实验范围及恢复方式见 [构建说明](doc/build/building-and-packaging.md#41-实验性-mono-内存总量修复默认关闭)。本地一次性指令验证使用 Unicorn 2.1.4（<https://github.com/unicorn-engine/unicorn>，GPL-2.0），仅在 ignored 验证环境使用，不随 APK 或仓库分发；正式修复脚本与安全回归只依赖 Python 标准库。
 
+默认启用的 `tools/android/patch-monomod-corlib.py` 依据 [Ekyso/Harmony 的 MonoMod `Extensions.SetMonoCorlibInternal`](https://github.com/Ekyso/Harmony/blob/main/LocalMonoMod/src/MonoMod.Utils/Extensions.cs)（MIT）及当前已核对的托管 IL / 原生访问检查入口，只移除 staged `MonoMod.Utils.dll` 中旧 Mono 布局的原生写入，保留程序集解析缓存。不提交第三方 DLL，不重建或修改 native Mono，也不新增 APK 依赖；脚本只依赖 Python 标准库，托管回归复用本机现有 Harmony/MonoMod/Cecil。发布前仍须保留这些既有组件的 notices 并审计实际输出，不能将此修复宣称为上游完整源码重建。输入/输出 SHA、配套原生库限制及测试边界见 [构建说明](doc/build/building-and-packaging.md#42-monomod-原生布局安全修复默认启用)。
+
 ## 主要 Gradle / JVM 依赖
 
 | 依赖 | 用途 | 上游许可证 |

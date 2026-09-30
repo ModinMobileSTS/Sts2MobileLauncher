@@ -123,6 +123,37 @@ public class CompatLaunchReadinessTest {
 		assertEquals("already-prepared-game", text(new File(stagedDll.getParentFile(), "sts2.dll")));
 	}
 
+	@Test public void sameVersionPreparationRepairsRuntimeWithoutReplacingOtherCachedBcl() throws Exception {
+		byte[] packaged;
+		try (java.io.InputStream input = context.getAssets().open("dotnet_bcl/MonoMod.Utils.dll")) {
+			packaged = input.readAllBytes();
+		}
+		File runtime = new File(stagedDll.getParentFile(), "MonoMod.Utils.dll");
+		File godotSharp = new File(stagedDll.getParentFile(), "GodotSharp.dll");
+		put(godotSharp, "cached-bcl-preserve");
+		GameLaunchPreparationManager preparation = new GameLaunchPreparationManager(context);
+		for (boolean enabled : new boolean[] {true, false}) {
+			settings.saveSetting(json -> json.put(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, enabled));
+			context.getSharedPreferences("sts2_assembly_setup", Context.MODE_PRIVATE).edit()
+				.putInt("last_version_code", BuildConfig.VERSION_CODE)
+				.putString("compat_stamp", packs.buildSelectedCompatStamp()).commit();
+			byte[] stale = packaged.clone();
+			stale[stale.length / 2] ^= 1;
+			Files.write(runtime.toPath(), stale);
+			assertTrue(runtime.setLastModified(System.currentTimeMillis() + 60000));
+			preparation.prepareAssembliesAndOverlay();
+			assertArrayEquals(packaged, Files.readAllBytes(runtime.toPath()));
+			assertEquals("cached-bcl-preserve", text(godotSharp));
+			assertTrue(runtime.setLastModified(123456789000L));
+			long unchangedTime = runtime.lastModified();
+			preparation.prepareAssembliesAndOverlay();
+			assertEquals("Identical runtime must not be rewritten on each launch", unchangedTime, runtime.lastModified());
+		}
+		Files.delete(runtime.toPath());
+		preparation.prepareAssembliesAndOverlay();
+		assertArrayEquals(packaged, Files.readAllBytes(runtime.toPath()));
+	}
+
 	private File pack(String id, String name) throws Exception {
 		File directory = new File(context.getFilesDir(), "compat-packs/" + id);
 		JSONObject manifest = new JSONObject().put("schema", 1).put("pack_id", id)
