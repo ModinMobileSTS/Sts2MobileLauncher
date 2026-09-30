@@ -158,6 +158,7 @@
     <string name="workshop_delete_record_local_files">Also delete matching local MOD files (%1$d)</string>
     <string name="workshop_delete_record_done">Workshop download record deleted.</string>
     <string name="workshop_import_busy">Importing a Workshop MOD. Finish the current import first.</string>
+    <string name="workshop_operation_busy">Another Workshop operation is in progress. Wait for it to finish, then try downloading again.</string>
     <string name="workshop_importing_status">Importing…</string>
     <string name="workshop_download_background_started">Downloading in background: %1$s</string>
     <string name="workshop_download_cancelled">Workshop download stopped.</string>

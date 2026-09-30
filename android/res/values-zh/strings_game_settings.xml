@@ -158,6 +158,7 @@
     <string name="workshop_delete_record_local_files">同时删除匹配到的本地 MOD 文件（%1$d 个）</string>
     <string name="workshop_delete_record_done">已删除创意工坊下载记录。</string>
     <string name="workshop_import_busy">正在导入创意工坊 MOD，请先完成当前导入。</string>
+    <string name="workshop_operation_busy">正在执行其他创意工坊操作，请等待完成后再重试下载。</string>
     <string name="workshop_importing_status">正在导入…</string>
     <string name="workshop_download_background_started">已在后台下载：%1$s</string>
     <string name="workshop_download_cancelled">已停止创意工坊下载。</string>

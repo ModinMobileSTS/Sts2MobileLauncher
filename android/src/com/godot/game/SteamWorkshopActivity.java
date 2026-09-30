@@ -1800,6 +1800,10 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			return;
 		}
 		if (checkPrerequisites) {
+			if (busy) {
+				showMessage(getString(R.string.workshop_operation_busy));
+				return;
+			}
 			ensurePendingDownloadTask(item, getString(R.string.workshop_status_checking_prerequisites));
 			runOperation(
 				getString(R.string.workshop_status_checking_prerequisites),
