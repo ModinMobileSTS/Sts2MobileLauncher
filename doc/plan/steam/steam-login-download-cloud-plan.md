@@ -516,6 +516,8 @@ IDLE
 7. 成功返回 token 时以 transaction id compare-and-commit：同一次持久化提交写入账号/SteamID/refresh token/新 guard data 并删除 pending handle。若用户已取消或开始了新 generation，旧轮询结果必须作为 superseded 丢弃。
 8. 用户取消、默认 4 分钟 deadline 到期、handle 损坏或明确 fatal failure 会停止通知/网络并清理对应 pending handle；transport 短暂失败应优先进入 reconnect/backoff，不立刻清事务。取消 pending 登录不等于退出已登录账号。
 
+Service 为等待验证码等无网络轮询阶段独立安排原 handle 的 deadline，并绑定任务、事务 ID 与 generation；恢复服务不延长四分钟期限。即使过期 handle 已被其它读取删除，取消/到期仍能清理活动任务；成功 token 与完成事务 ID 在同次 CAS 提交，已成功提交的事务不被迟到取消覆盖，也不清除既有账号。
+
 ### 8.3 设备身份
 
 参考：

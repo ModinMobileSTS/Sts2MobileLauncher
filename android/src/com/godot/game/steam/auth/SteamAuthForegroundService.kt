@@ -120,6 +120,8 @@ class SteamAuthForegroundService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val revision = AtomicLong(0L)
     private val generation = AtomicLong(0L)
+    private val deadlineLock = Any()
+    private var deadlineTask: Runnable? = null
     private lateinit var worker: ScheduledExecutorService
     private lateinit var manager: SteamAuthTransactionManager
 
@@ -182,6 +184,7 @@ class SteamAuthForegroundService : Service() {
 
     override fun onDestroy() {
         generation.incrementAndGet()
+        cancelDeadline()
         listeners.clear()
         if (::manager.isInitialized) {
             manager.close()
@@ -216,6 +219,7 @@ class SteamAuthForegroundService : Service() {
 
         ensureForeground()
         val operationGeneration = generation.incrementAndGet()
+        cancelDeadline()
         // Invalidate the old generation synchronously. A poll already returning on the worker can
         // no longer atomically commit after this point.
         SteamAuthStore.clearPendingAuthTransaction(this)
@@ -272,6 +276,7 @@ class SteamAuthForegroundService : Service() {
             handle = pending,
             message = getString(R.string.steam_status_auth_resuming),
         )
+        scheduleDeadline(operationGeneration, pending)
         worker.execute { resumeAndContinue(operationGeneration, pending.transactionId, 0) }
     }
 
@@ -366,6 +371,7 @@ class SteamAuthForegroundService : Service() {
                 schedulePoll(operationGeneration, handle.transactionId, 0L)
             }
         }
+        scheduleDeadline(operationGeneration, handle)
     }
 
     private fun submitCodeFromBinder(
@@ -566,6 +572,41 @@ class SteamAuthForegroundService : Service() {
         )
     }
 
+    private fun scheduleDeadline(operationGeneration: Long, handle: SteamAuthTransactionHandle) {
+        synchronized(deadlineLock) {
+            if (!isCurrent(operationGeneration)) {
+                return
+            }
+            deadlineTask?.let(mainHandler::removeCallbacks)
+            val task = object : Runnable {
+                override fun run() {
+                    synchronized(deadlineLock) {
+                        if (deadlineTask !== this) {
+                            return
+                        }
+                        deadlineTask = null
+                    }
+                    if (
+                        isCurrent(operationGeneration) && snapshot.isActive &&
+                        snapshot.transactionId == handle.transactionId
+                    ) {
+                        finishExpired(handle.transactionId, operationGeneration)
+                    }
+                }
+            }
+            deadlineTask = task
+            // This runs on the main looper, independently of polling or a pending network call.
+            mainHandler.postDelayed(task, handle.remainingLifetimeMillis())
+        }
+    }
+
+    private fun cancelDeadline() {
+        synchronized(deadlineLock) {
+            deadlineTask?.let(mainHandler::removeCallbacks)
+            deadlineTask = null
+        }
+    }
+
     private fun publishCodeRequired(
         handle: SteamAuthTransactionHandle,
         type: SteamGuardChallengeType,
@@ -592,11 +633,18 @@ class SteamAuthForegroundService : Service() {
     }
 
     private fun finishExpired(transactionId: String, operationGeneration: Long? = null) {
-        if (!claimTerminalGeneration(operationGeneration)) {
+        val expectedGeneration = operationGeneration ?: generation.get()
+        if (!isCurrent(expectedGeneration)) {
+            return
+        }
+        if (!SteamAuthStore.cancelPendingAuthTransaction(this, transactionId)) {
+            // A successful token CAS must still be published as SUCCESS, not EXPIRED.
+            return
+        }
+        if (!claimTerminalGeneration(expectedGeneration)) {
             return
         }
         val terminalGeneration = generation.get()
-        SteamAuthStore.clearPendingAuthTransaction(this, transactionId)
         manager.close()
         publish(
             stage = Stage.EXPIRED,
@@ -645,17 +693,25 @@ class SteamAuthForegroundService : Service() {
     private fun cancelAuthentication(expectedTransactionId: String? = null) {
         val expected = expectedTransactionId?.trim()?.takeIf(String::isNotEmpty)
         val persisted = SteamAuthStore.readPendingAuthTransaction(this)
-        if (expected != null && persisted != null && persisted.transactionId != expected) {
+        val current = snapshot
+        if (
+            expected != null &&
+            ((persisted != null && persisted.transactionId != expected) ||
+                (current.isActive && current.transactionId != expected))
+        ) {
             // A delayed notification action from an older generation must not cancel the new one.
             return
         }
         val targetTransactionId = expected
-            ?: snapshot.transactionId
+            ?: current.transactionId
             ?: persisted?.transactionId
         if (targetTransactionId != null) {
             // This lock/CAS is the cancellation linearization point. If success committed first,
             // let the worker publish SUCCESS instead of reporting a misleading cancellation.
-            if (!SteamAuthStore.clearPendingAuthTransaction(this, targetTransactionId)) {
+            if (!SteamAuthStore.cancelPendingAuthTransaction(this, targetTransactionId)) {
+                if (!current.isActive) {
+                    stopForegroundAndSelf(generation.get())
+                }
                 return
             }
         } else {
@@ -731,6 +787,9 @@ class SteamAuthForegroundService : Service() {
             previousCodeRejected = previousCodeRejected,
         )
         snapshot = next
+        if (!next.isActive) {
+            cancelDeadline()
+        }
         if (foregroundStarted && next.isActive) {
             updateForegroundNotification(next)
         }

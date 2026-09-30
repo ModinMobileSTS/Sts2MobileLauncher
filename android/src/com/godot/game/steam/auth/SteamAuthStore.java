@@ -25,6 +25,7 @@ public final class SteamAuthStore {
 	private static final String KEY_LAST_PUSH_AT_MS = "last_push_at_ms";
 	private static final String KEY_LAST_ERROR = "last_error";
 	private static final String KEY_PENDING_AUTH_TRANSACTION = "pending_auth_transaction";
+	private static final String KEY_COMPLETED_AUTH_TRANSACTION = "completed_auth_transaction";
 	private static final Object PENDING_AUTH_LOCK = new Object();
 
 	private SteamAuthStore() {
@@ -74,7 +75,8 @@ public final class SteamAuthStore {
 					refreshToken,
 					guardData,
 					steamId64
-				).remove(KEY_PENDING_AUTH_TRANSACTION).commit();
+				).putString(KEY_COMPLETED_AUTH_TRANSACTION, current.getTransactionId())
+					.remove(KEY_PENDING_AUTH_TRANSACTION).commit();
 			});
 			return Boolean.TRUE.equals(committed);
 		}
@@ -142,6 +144,28 @@ public final class SteamAuthStore {
 				return prefs.edit().remove(KEY_PENDING_AUTH_TRANSACTION).commit();
 			});
 			return Boolean.TRUE.equals(cleared);
+		}
+	}
+
+	/**
+	 * Claims cancellation even when expiry or an earlier reader already removed the handle. Only a
+	 * successful token commit for this exact transaction, or a newer pending transaction, wins over
+	 * cancellation. The completion identity is stored in the same commit as the tokens.
+	 */
+	public static boolean cancelPendingAuthTransaction(Context context, String transactionId) {
+		synchronized (PENDING_AUTH_LOCK) {
+			Boolean cancelled = readSafely(context, prefs -> {
+				String expected = trim(transactionId);
+				if (expected.equals(prefs.getString(KEY_COMPLETED_AUTH_TRANSACTION, ""))) {
+					return false;
+				}
+				SteamAuthTransactionHandle current = parsePendingTransaction(prefs, true, true);
+				if (current != null && !current.getTransactionId().equals(expected)) {
+					return false;
+				}
+				return prefs.edit().remove(KEY_PENDING_AUTH_TRANSACTION).commit();
+			});
+			return Boolean.TRUE.equals(cancelled);
 		}
 	}
 
