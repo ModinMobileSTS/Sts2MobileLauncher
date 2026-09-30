@@ -518,6 +518,8 @@ IDLE
 
 Service 为等待验证码等无网络轮询阶段独立安排原 handle 的 deadline，并绑定任务、事务 ID 与 generation；恢复服务不延长四分钟期限。即使过期 handle 已被其它读取删除，取消/到期仍能清理活动任务；成功 token 与完成事务 ID 在同次 CAS 提交，已成功提交的事务不被迟到取消覆盖，也不清除既有账号。
 
+Activity 按 LocalBinder 实例身份与 revision 的组合去重终态：同一 Service 重绑不重复提示，新 Service 即使 revision 相同，也必须重新显示结果并刷新账号。
+
 ### 8.3 设备身份
 
 参考：

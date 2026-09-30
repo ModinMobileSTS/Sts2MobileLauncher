@@ -143,6 +143,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 	private AlertDialog steamAuthDialog;
 	private String steamAuthDialogKey = "";
 	private String suppressedConfirmationTransactionId = "";
+	private IBinder lastHandledAuthTerminalBinder;
 	private long lastHandledAuthTerminalRevision = -1L;
 
 	private final SteamAuthForegroundService.Listener steamAuthListener = snapshot ->
@@ -1595,9 +1596,10 @@ public class SteamAccountActivity extends AppCompatActivity {
 		pendingAuthUsername = null;
 		pendingAuthPassword = null;
 		updateAuthActionButtons();
-		if (lastHandledAuthTerminalRevision == snapshot.getRevision()) {
+		if (lastHandledAuthTerminalBinder == steamAuthBinder && lastHandledAuthTerminalRevision == snapshot.getRevision()) {
 			return;
 		}
+		lastHandledAuthTerminalBinder = steamAuthBinder;
 		lastHandledAuthTerminalRevision = snapshot.getRevision();
 		if (
 			snapshot.getStage() == SteamAuthForegroundService.Stage.SUCCESS ||
