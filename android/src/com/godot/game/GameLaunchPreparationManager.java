@@ -405,6 +405,7 @@ public final class GameLaunchPreparationManager {
 			Log.i(TAG, "DIAG prepareAssembliesAndOverlay skipped_non_mono");
 			return;
 		}
+		new CompatPackManager(context).requireSelectedPackReady();
 		stageSelectedCompatOverlay();
 		File destDir = new File(context.getFilesDir(), ".godot/mono/publish/arm64");
 		File srcDir = findAssembliesDir();
@@ -542,8 +543,7 @@ public final class GameLaunchPreparationManager {
 		String requestedPackId = manager.getSelectedPackIdIgnoringEnabled();
 		if (requestedPackId != null && !requestedPackId.trim().isEmpty()) {
 			deleteFileIfExists(dest);
-			Log.w(TAG, "Selected compatibility overlay is missing; refusing asset fallback for requested pack=" + requestedPackId);
-			return;
+			throw new IOException("Selected compatibility overlay is missing: " + requestedPackId);
 		}
 		extractAssetIfChanged("port_compat.pck", dest);
 		logPreparedFile("compat overlay", "asset_fallback", null, dest);
@@ -608,8 +608,7 @@ public final class GameLaunchPreparationManager {
 		String requestedPackId = new CompatPackManager(context).getSelectedPackIdIgnoringEnabled();
 		if (requestedPackId != null && !requestedPackId.trim().isEmpty()) {
 			deleteFileIfExists(dest);
-			Log.w(TAG, "Selected compatibility DLL is missing; refusing asset fallback for requested pack=" + requestedPackId);
-			return;
+			throw new IOException("Selected compatibility DLL is missing: " + requestedPackId);
 		}
 		try (InputStream inputStream = assets.open("dotnet_bcl/STS2Mobile.dll")) {
 			// STS2Mobile.dll is small compared with the BCL/runtime set.  Refresh it

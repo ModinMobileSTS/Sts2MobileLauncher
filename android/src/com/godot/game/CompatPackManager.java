@@ -92,6 +92,20 @@ public final class CompatPackManager {
 		}
 	}
 
+	void requireSelectedPackReady() throws IOException {
+		if (!isCompatPackEnabled()) {
+			return;
+		}
+		String requestedPackId = getSelectedPackIdIgnoringEnabled();
+		if (TextUtils.isEmpty(requestedPackId)) {
+			return;
+		}
+		CompatPack pack = getSelectedPackIgnoringEnabled();
+		if (pack == null || !pack.ready) {
+			throw new IOException(context.getString(R.string.launch_profile_compat_missing_format, requestedPackId));
+		}
+	}
+
 	public String getSelectedPackId() {
 		if (!isCompatPackEnabled()) {
 			return "";

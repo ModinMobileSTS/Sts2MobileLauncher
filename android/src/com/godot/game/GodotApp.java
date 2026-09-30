@@ -531,11 +531,18 @@ public class GodotApp extends GodotActivity {
 	}
 
 	private void ensureLaunchPreparedBeforeGodot(boolean launchPrepared) {
+		CompatPackManager compatPackManager = new CompatPackManager(this);
+		try {
+			compatPackManager.requireSelectedPackReady();
+		} catch (IOException exception) {
+			throw new IllegalStateException("Cannot start Godot with an incomplete compatibility pack.", exception);
+		}
 		File publishDir = new File(getFilesDir(), ".godot/mono/publish/arm64");
 		File entryDll = new File(publishDir, "STS2Mobile.dll");
 		File gameDll = new File(publishDir, "sts2.dll");
-		boolean compatEnabled = new CompatPackManager(this).isCompatPackEnabled();
-		boolean needsPrepare = !launchPrepared || (compatEnabled && !entryDll.isFile()) || !gameDll.isFile();
+		File overlay = new File(getFilesDir(), "port_compat.pck");
+		boolean compatEnabled = compatPackManager.isCompatPackEnabled();
+		boolean needsPrepare = !launchPrepared || (compatEnabled && (!entryDll.isFile() || !overlay.isFile())) || !gameDll.isFile();
 		Log.e(TAG, "DIAG_FORCE GodotApp.ensureLaunchPrepared before launch_prepared=" + launchPrepared + " compat_enabled=" + compatEnabled + " needs_prepare=" + needsPrepare + " entry=" + describeFile(entryDll) + " game_dll=" + describeFile(gameDll));
 		if (needsPrepare) {
 			prepareLaunchFallback();
@@ -550,6 +557,7 @@ public class GodotApp extends GodotActivity {
 			Log.e(TAG, "DIAG_FORCE Launch preparation complete via Activity pre-super fallback.");
 		} catch (Exception exception) {
 			Log.e(TAG, "DIAG_FORCE Failed to prepare launch before Godot startup.", exception);
+			throw new IllegalStateException("Cannot start Godot before launch preparation succeeds.", exception);
 		}
 	}
 

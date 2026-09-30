@@ -350,7 +350,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				return;
 			}
 			CompatPackManager.CompatPack selectedCompatPack = compatPackManager.getSelectedPack();
-			if (selectedCompatPack == null) {
+			if (selectedCompatPack == null || !selectedCompatPack.ready) {
 				if (!bundledCompatPackBootstrapFinished) {
 					pendingCompatRecommendationLaunch = true;
 					showMessage(getString(R.string.status_checking_compat_recommendation));
