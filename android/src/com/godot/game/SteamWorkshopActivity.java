@@ -1427,18 +1427,13 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		if (updatable.isEmpty()) {
 			return;
 		}
-		Set<String> queuedIds = new LinkedHashSet<>();
-		for (PendingDownload queued : pendingDownloadQueue) {
-			if (queued != null && queued.item != null) {
-				queuedIds.add(queued.item.getPublishedFileId());
-			}
-		}
 		int added = 0;
 		for (SteamWorkshopLibrary.Entry entry : updatable) {
-			if (isDownloading(entry.publishedFileId) || !queuedIds.add(entry.publishedFileId)) {
+			PendingDownload request = new PendingDownload(entryToItem(entry), fixedWorkshopUpdateBranchOption(entry), true);
+			if (isDownloadRequested(request)) {
 				continue;
 			}
-			pendingDownloadQueue.add(new PendingDownload(entryToItem(entry), fixedWorkshopUpdateBranchOption(entry), true));
+			pendingDownloadQueue.add(request);
 			added++;
 		}
 		if (added == 0) {
@@ -1883,13 +1878,39 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void enqueueDownload(SteamWorkshopCatalog.Item item, SteamWorkshopDownloader.BranchOption selectedOption, boolean updateExisting) {
-		for (PendingDownload queued : pendingDownloadQueue) {
-			if (queued != null && queued.item != null && queued.item.getPublishedFileId().equals(item.getPublishedFileId())) {
-				return;
+		PendingDownload request = pendingDownload(item, selectedOption, updateExisting);
+		if (isDownloadRequested(request)) {
+			return;
+		}
+		pendingDownloadQueue.add(request);
+		pumpDownloadQueue();
+	}
+
+	private PendingDownload pendingDownload(SteamWorkshopCatalog.Item item, SteamWorkshopDownloader.BranchOption selectedOption, boolean updateExisting) {
+		if (selectedOption == null) {
+			String branch = SteamWorkshopPreferences.isSupplyStationEnabled(this)
+				? SpireSupplyStationClient.BRANCH : resolvePreferredWorkshopDownloadBranch();
+			if (!TextUtils.isEmpty(branch)) {
+				selectedOption = fixedWorkshopBranchOption(branch);
 			}
 		}
-		pendingDownloadQueue.add(new PendingDownload(item, selectedOption, updateExisting));
-		pumpDownloadQueue();
+		return new PendingDownload(item, selectedOption, updateExisting);
+	}
+
+	private int queuedDownloadIndex(PendingDownload request) {
+		for (int index = 0; index < pendingDownloadQueue.size(); index++) {
+			PendingDownload queued = pendingDownloadQueue.get(index);
+			if (queued != null && request.matches(queued.item, queued.selectedOption)) {
+				return index;
+			}
+		}
+		return -1;
+	}
+
+	private boolean isDownloadRequested(PendingDownload request) {
+		DownloadTask active = downloadTasks.get(request.item.getPublishedFileId());
+		return queuedDownloadIndex(request) >= 0
+			|| (active != null && active.isActive() && active.downloadStarted && request.matches(active.item, active.selectedOption));
 	}
 
 	private SteamWorkshopDownloader.BranchOption fixedWorkshopBranchOption(String branch) {
@@ -2046,6 +2067,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 
 	private void startDownloadAndImport(SteamWorkshopCatalog.Item item, SteamWorkshopDownloader.BranchOption selectedOption, boolean updateExisting) {
 		DownloadTask task = ensurePendingDownloadTask(item, getString(R.string.workshop_status_downloading));
+		task.selectedOption = selectedOption;
 		task.markDownloading(getString(R.string.workshop_status_downloading));
 		updateDownloadProgressBindings(task.publishedFileId);
 		showMessage(getString(R.string.workshop_download_background_started, item.getTitle()));
@@ -2229,15 +2251,17 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void queueRequiredDownloads(List<SteamWorkshopCatalog.RequiredItem> missing, SteamWorkshopCatalog.Item item) {
-		pendingDownloadQueue.clear();
-		Set<String> queuedIds = new LinkedHashSet<>();
+		PendingDownload current = pendingDownload(item, null, false);
+		int currentIndex = queuedDownloadIndex(current);
+		int insertionIndex = currentIndex < 0 ? pendingDownloadQueue.size() : currentIndex;
 		for (SteamWorkshopCatalog.RequiredItem required : missing) {
-			if (queuedIds.add(required.getPublishedFileId())) {
-				pendingDownloadQueue.add(new PendingDownload(required.toItem(), null));
+			PendingDownload prerequisite = pendingDownload(required.toItem(), null, false);
+			if (!prerequisite.matches(current.item, current.selectedOption) && !isDownloadRequested(prerequisite)) {
+				pendingDownloadQueue.add(insertionIndex++, prerequisite);
 			}
 		}
-		if (queuedIds.add(item.getPublishedFileId())) {
-			pendingDownloadQueue.add(new PendingDownload(item, null));
+		if (!isDownloadRequested(current)) {
+			pendingDownloadQueue.add(current);
 		}
 		showMessage(getString(R.string.workshop_download_queue_started, pendingDownloadQueue.size()));
 		startNextQueuedDownload();
@@ -2248,15 +2272,24 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void pumpDownloadQueue() {
-		while (!pendingDownloadQueue.isEmpty() && activeDownloadCount() < MAX_CONCURRENT_DOWNLOADS && !branchDialogActive) {
-			PendingDownload next = pendingDownloadQueue.remove(0);
+		int index = 0;
+		while (index < pendingDownloadQueue.size() && activeDownloadCount() < MAX_CONCURRENT_DOWNLOADS && !branchDialogActive) {
+			PendingDownload next = pendingDownloadQueue.get(index);
 			if (next == null || next.item == null) {
+				pendingDownloadQueue.remove(index);
 				continue;
 			}
 			DownloadTask existing = downloadTasks.get(next.item.getPublishedFileId());
 			if (existing != null && existing.isActive() && existing.downloadStarted) {
+				if (next.matches(existing.item, existing.selectedOption)) {
+					pendingDownloadQueue.remove(index);
+				} else {
+					// One visible task per item: retain a different branch until this one finishes importing.
+					index++;
+				}
 				continue;
 			}
+			pendingDownloadQueue.remove(index);
 			if (SteamWorkshopPreferences.isSupplyStationEnabled(this)) {
 				boolean sameSourceUpdate = next.updateExisting && next.selectedOption != null
 					&& SpireSupplyStationClient.BRANCH.equals(next.selectedOption.getBranch());
@@ -2294,10 +2327,6 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		return count;
 	}
 
-	private boolean isDownloading(String publishedFileId) {
-		DownloadTask task = downloadTasks.get(publishedFileId);
-		return task != null && task.isActive() && task.downloadStarted;
-	}
 
 	private void cancelDownload(String publishedFileId) {
 		DownloadTask task = downloadTasks.get(publishedFileId);
@@ -3296,6 +3325,23 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			this.selectedOption = selectedOption;
 			this.updateExisting = updateExisting;
 		}
+
+		boolean matches(SteamWorkshopCatalog.Item otherItem, SteamWorkshopDownloader.BranchOption otherOption) {
+			if (otherItem == null || item.getAppId() != otherItem.getAppId()
+				|| !item.getPublishedFileId().equals(otherItem.getPublishedFileId())) {
+				return false;
+			}
+			// An unselected request can reuse an existing choice, never replace it.
+			if (selectedOption == null) {
+				return true;
+			}
+			if (otherOption == null) {
+				return false;
+			}
+			return selectedOption.getBranch().equals(otherOption.getBranch())
+				&& (TextUtils.isEmpty(selectedOption.getManifestId()) || selectedOption.getManifestId().equals(otherOption.getManifestId()))
+				&& (TextUtils.isEmpty(selectedOption.getDepotId()) || selectedOption.getDepotId().equals(otherOption.getDepotId()));
+		}
 	}
 
 	private static final class PendingImport {
@@ -3314,6 +3360,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		final SteamWorkshopCatalog.Item item;
 		final String publishedFileId;
 		final SteamWorkshopDownloader.CancellationToken cancellationToken = new SteamWorkshopDownloader.CancellationToken();
+		SteamWorkshopDownloader.BranchOption selectedOption;
 		int percent;
 		String message = "";
 		long downloadedBytes;
