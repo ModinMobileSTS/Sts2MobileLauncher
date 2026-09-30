@@ -4,8 +4,8 @@ build/
 !doc/build/**
 
 # Local coding agent state/docs, private changelog, and historical backups
-/.agent/
-/.agent/**
+.agent/
+.omp/
 .pi/
 
 # Agent-only changelog and retired historical docs are kept under .agent/
@@ -65,3 +65,6 @@ android/assets/payload/
 # .NET build outputs
 **/bin/
 **/obj/
+
+# Python bytecode caches
+__pycache__/
