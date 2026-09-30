@@ -116,7 +116,7 @@ public final class SteamWorkshopLibrary {
 				continue;
 			}
 			long remoteUpdatedAtMs = Math.max(0L, detail.getTimeUpdatedEpochSeconds() * 1000L);
-			boolean updateAvailable = remoteUpdatedAtMs > Math.max(entry.installedRemoteUpdatedAtMs, entry.installedAtMs);
+			boolean updateAvailable = entry.hasRemoteUpdate(remoteUpdatedAtMs);
 			if (updateAvailable) {
 				available++;
 			} else {
@@ -459,6 +459,11 @@ public final class SteamWorkshopLibrary {
 
 		String key() {
 			return entryKey(publishedFileId, workshopBranch);
+		}
+
+		boolean hasRemoteUpdate(long remoteUpdatedAtMs) {
+			// Local installation time is not comparable with Steam's content timestamps.
+			return installedRemoteUpdatedAtMs > 0L && remoteUpdatedAtMs > installedRemoteUpdatedAtMs;
 		}
 
 		Entry withRemoteDetail(SteamWorkshopCatalog.Item item, long checkedAtMs, long remoteUpdatedAtMs, String status, String error) {

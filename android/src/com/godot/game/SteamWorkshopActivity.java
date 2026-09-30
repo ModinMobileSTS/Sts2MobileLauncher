@@ -1237,8 +1237,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		if (remoteUpdatedAtMs <= 0L && entry.remoteUpdatedAtMs > 0L) {
 			remoteUpdatedAtMs = entry.remoteUpdatedAtMs;
 		}
-		long installedRemoteAtMs = Math.max(entry.installedRemoteUpdatedAtMs, entry.installedAtMs);
-		return remoteUpdatedAtMs > installedRemoteAtMs;
+		return entry.hasRemoteUpdate(remoteUpdatedAtMs);
 	}
 
 	private View buildActiveDownloadControl(DownloadTask task, boolean wide) {
