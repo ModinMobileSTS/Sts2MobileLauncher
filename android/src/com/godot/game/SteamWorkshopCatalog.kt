@@ -119,6 +119,36 @@ class SteamWorkshopCatalog(private val context: android.content.Context) {
         }
     }
 
+    fun loadSubscriptions(page: Int, pageSize: Int): SearchResult = runBlocking {
+        val appContext = context.applicationContext
+        val auth = SteamAuthStore.readAuthMaterial(appContext)
+            ?: throw IOException(context.getString(R.string.workshop_subscriptions_login_required))
+        val steamId = authSteamIdOrNull(appContext)?.takeIf { it > 0L }
+            ?: SteamLoginCoordinator.verifyRefreshToken(appContext).trim().toLongOrNull()?.takeIf { it > 0L }
+            ?: throw IOException(context.getString(R.string.workshop_subscriptions_login_required))
+        val currentAuth = SteamAuthStore.readAuthMaterial(appContext)
+        if (currentAuth == null || currentAuth.accountName != auth.accountName || currentAuth.refreshToken != auth.refreshToken) {
+            throw IOException(context.getString(R.string.workshop_subscriptions_account_changed))
+        }
+        val identity = SteamClientIdentity(appContext)
+        val client = SteamNetworkClientFactory.createDefaultClient()
+        val publishedFileClient = SteamPublishedFileClient(
+            directoryClient = SteamDirectoryClient(client),
+            sessionFactory = { identity.createSession(client) },
+        )
+        publishedFileClient.querySubscriptions(
+            account = SteamAccountSession(
+                accountName = auth.accountName,
+                steamId = steamId,
+                refreshToken = auth.refreshToken,
+                machineName = identity.machineName,
+            ),
+            appId = SteamWorkshopPreferences.DEFAULT_APP_ID.toUInt(),
+            page = page,
+            pageSize = pageSize,
+        ).toSearchResult(page.coerceAtLeast(1))
+    }
+
     fun runDiagnostics(query: String, page: Int, pageSize: Int): JSONObject {
         val diagnostics = JSONObject()
         diagnostics.put("query", query)

@@ -180,6 +180,12 @@
     <string name="workshop_branch_installed_label">分支：%1$s · 来源：%2$s</string>
     <string name="workshop_drawer_view_section">浏览</string>
     <string name="workshop_all_mods">全部 MOD</string>
+    <string name="workshop_subscribed_mods">已订阅 MOD</string>
+    <string name="workshop_status_loading_subscriptions">正在加载已订阅 MOD…</string>
+    <string name="workshop_no_subscriptions">暂无已订阅 MOD</string>
+    <string name="workshop_no_subscriptions_hint">当前 Steam 账号尚未订阅杀戮尖塔 2 创意工坊 MOD。</string>
+    <string name="workshop_subscriptions_login_required">请先在 Steam 中心登录账号，再查看已订阅 MOD。</string>
+    <string name="workshop_subscriptions_account_changed">Steam 账号已变更，请重新打开已订阅 MOD 刷新列表。</string>
     <string name="workshop_drawer_sort_section">排序</string>
     <string name="workshop_sort_title">排序方式</string>
     <string name="workshop_sort_popular">热门</string>

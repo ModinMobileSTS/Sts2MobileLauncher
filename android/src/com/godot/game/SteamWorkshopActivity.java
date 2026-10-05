@@ -103,6 +103,8 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private FrameLayout drawerScrim;
 	private LinearLayout drawer;
 	private RecyclerView searchList;
+	private TextView workshopListTitle;
+	private MaterialButton workshopListSearchButton;
 	private WorkshopListAdapter searchAdapter;
 	private LinearLayout detailContainer;
 	private LinearLayout downloadsContainer;
@@ -133,6 +135,9 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	private SteamWorkshopCatalog.Detail lastDetailResult;
 	private SteamWorkshopCatalog.SortOption currentSortOption = SteamWorkshopCatalog.SortOption.MOST_POPULAR;
 	private SteamWorkshopCatalog.TimeWindow currentTimeWindow = SteamWorkshopCatalog.TimeWindow.ONE_WEEK;
+	private boolean showingSubscriptions;
+	private int listGeneration;
+	private String observedSteamAccountKey = "";
 	private final ArrayList<PendingDownload> pendingDownloadQueue = new ArrayList<>();
 	private final ArrayDeque<PendingImport> pendingImportQueue = new ArrayDeque<>();
 	private boolean busy;
@@ -160,6 +165,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		SteamWorkshopDownloadCleaner.maybeRunDailyCleanup(this);
 		imageLoader = new WorkshopImageLoader(this);
 		setContentView(buildContent());
+		observedSteamAccountKey = steamAccountKey();
 		refreshSteamStatus();
 		refreshSettingsSummary();
 		refreshFilterLabels();
@@ -171,6 +177,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	@Override
 	protected void onResume() {
 		super.onResume();
+		refreshSteamAccount();
 		if (library != null) requestLibraryRefresh();
 	}
 
@@ -213,6 +220,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	@Override
 	protected void onDestroy() {
 		destroyed = true;
+		listGeneration++;
 		libraryGeneration.incrementAndGet();
 		libraryExecutor.shutdownNow();
 		mainHandler.removeCallbacksAndMessages(null);
@@ -349,6 +357,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			search.setContentDescription(getString(R.string.workshop_search));
 			search.setOnClickListener(v -> showSearchDialog());
 			row.addView(search);
+			workshopListSearchButton = search;
 		}
 
 		TextView title = ExtraSettingsUi.text(this, getString(titleRes), 18, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
@@ -357,6 +366,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
 		titleParams.setMarginStart(ExtraSettingsUi.dp(this, 8));
 		row.addView(title, titleParams);
+		if (!backMode) workshopListTitle = title;
 
 		if (!backMode) {
 			MaterialButton steam = ExtraSettingsUi.iconButton(this, R.drawable.ic_steam_24);
@@ -455,6 +465,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void toggleDrawer(boolean open) {
+		if (open) refreshSteamAccount();
 		if (drawer == null || drawerScrim == null) {
 			return;
 		}
@@ -498,33 +509,68 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		rebuildDrawerContent();
 	}
 
+	private String steamAccountKey() {
+		SteamAuthStore.AuthSnapshot auth = SteamAuthStore.readSnapshot(this);
+		return auth.refreshTokenConfigured && !TextUtils.isEmpty(auth.accountName)
+			? auth.accountName + ":" + auth.lastAuthAtMs : "";
+	}
+
+	private void refreshSteamAccount() {
+		String accountKey = steamAccountKey();
+		if (!accountKey.equals(observedSteamAccountKey)) {
+			observedSteamAccountKey = accountKey;
+			if (showingSubscriptions) {
+				listGeneration++;
+				showingSubscriptions = false;
+				lastSearchResult = null;
+				loadingMoreResults = false;
+				hasMoreResults = false;
+				searchAdapter.replace(Collections.emptyList(), false);
+				showScreen(SCREEN_LIST);
+				if (!busy) searchWorkshop("", 1);
+			}
+		}
+		refreshSteamStatus();
+		refreshFilterLabels();
+	}
+
 	private void rebuildDrawerContent() {
 		if (drawerContent == null) {
 			return;
 		}
+		if (workshopListTitle != null) workshopListTitle.setText(showingSubscriptions ? R.string.workshop_subscribed_mods : R.string.workshop_title);
+		if (workshopListSearchButton != null) workshopListSearchButton.setVisibility(showingSubscriptions ? View.GONE : View.VISIBLE);
 		drawerContent.removeAllViews();
 		int screen = screenHost != null && screenHost.getTag() instanceof Integer ? (Integer) screenHost.getTag() : SCREEN_LIST;
 		addDrawerSection(drawerContent, R.string.workshop_drawer_view_section);
-		drawerContent.addView(drawerItem(R.drawable.ic_steam_24, R.string.workshop_all_mods, screen == SCREEN_LIST, () -> {
+		drawerContent.addView(drawerItem(R.drawable.ic_steam_24, R.string.workshop_all_mods, screen == SCREEN_LIST && !showingSubscriptions, () -> {
 			toggleDrawer(false);
 			searchWorkshop(currentQuery, 1);
 		}));
+		if (!TextUtils.isEmpty(steamAccountKey())) {
+			drawerContent.addView(drawerItem(R.drawable.ic_steam_24, R.string.workshop_subscribed_mods, screen == SCREEN_LIST && showingSubscriptions, () -> {
+				toggleDrawer(false);
+				loadWorkshopList("", true);
+			}));
+		}
 		drawerContent.addView(drawerItem(R.drawable.ic_download_24, R.string.workshop_downloads_title, screen == SCREEN_DOWNLOADS, () -> {
 			toggleDrawer(false);
 			showDownloads();
 		}));
-		addDrawerSection(drawerContent, R.string.workshop_drawer_sort_section);
-		drawerContent.addView(drawerSortOption(SteamWorkshopCatalog.SortOption.MOST_POPULAR, R.drawable.ic_sort_24));
-		drawerContent.addView(drawerSortOption(SteamWorkshopCatalog.SortOption.MOST_RECENT, R.drawable.ic_sort_24));
-		drawerContent.addView(drawerSortOption(SteamWorkshopCatalog.SortOption.LAST_UPDATED, R.drawable.ic_sync_24));
-		drawerContent.addView(drawerSortOption(SteamWorkshopCatalog.SortOption.MOST_SUBSCRIBED, R.drawable.ic_steam_24));
-		addDrawerSection(drawerContent, R.string.workshop_drawer_time_section);
-		drawerContent.addView(drawerTimeOption(SteamWorkshopCatalog.TimeWindow.ONE_WEEK, R.drawable.ic_sync_24));
-		drawerContent.addView(drawerTimeOption(SteamWorkshopCatalog.TimeWindow.THIRTY_DAYS, R.drawable.ic_sync_24));
-		drawerContent.addView(drawerTimeOption(SteamWorkshopCatalog.TimeWindow.THREE_MONTHS, R.drawable.ic_sync_24));
-		drawerContent.addView(drawerTimeOption(SteamWorkshopCatalog.TimeWindow.SIX_MONTHS, R.drawable.ic_sync_24));
-		drawerContent.addView(drawerTimeOption(SteamWorkshopCatalog.TimeWindow.ONE_YEAR, R.drawable.ic_sync_24));
-		drawerContent.addView(drawerTimeOption(SteamWorkshopCatalog.TimeWindow.ALL_TIME, R.drawable.ic_sync_24));
+		if (!showingSubscriptions) {
+			addDrawerSection(drawerContent, R.string.workshop_drawer_sort_section);
+			drawerContent.addView(drawerSortOption(SteamWorkshopCatalog.SortOption.MOST_POPULAR, R.drawable.ic_sort_24));
+			drawerContent.addView(drawerSortOption(SteamWorkshopCatalog.SortOption.MOST_RECENT, R.drawable.ic_sort_24));
+			drawerContent.addView(drawerSortOption(SteamWorkshopCatalog.SortOption.LAST_UPDATED, R.drawable.ic_sync_24));
+			drawerContent.addView(drawerSortOption(SteamWorkshopCatalog.SortOption.MOST_SUBSCRIBED, R.drawable.ic_steam_24));
+			addDrawerSection(drawerContent, R.string.workshop_drawer_time_section);
+			drawerContent.addView(drawerTimeOption(SteamWorkshopCatalog.TimeWindow.ONE_WEEK, R.drawable.ic_sync_24));
+			drawerContent.addView(drawerTimeOption(SteamWorkshopCatalog.TimeWindow.THIRTY_DAYS, R.drawable.ic_sync_24));
+			drawerContent.addView(drawerTimeOption(SteamWorkshopCatalog.TimeWindow.THREE_MONTHS, R.drawable.ic_sync_24));
+			drawerContent.addView(drawerTimeOption(SteamWorkshopCatalog.TimeWindow.SIX_MONTHS, R.drawable.ic_sync_24));
+			drawerContent.addView(drawerTimeOption(SteamWorkshopCatalog.TimeWindow.ONE_YEAR, R.drawable.ic_sync_24));
+			drawerContent.addView(drawerTimeOption(SteamWorkshopCatalog.TimeWindow.ALL_TIME, R.drawable.ic_sync_24));
+		}
 		addDrawerSection(drawerContent, R.string.workshop_settings_title);
 		drawerContent.addView(drawerItem(R.drawable.ic_settings_24, R.string.workshop_settings_title, screen == SCREEN_SETTINGS, () -> {
 			toggleDrawer(false);
@@ -701,25 +747,54 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void searchWorkshop(String query, int page) {
-		if (busy) {
+		loadWorkshopList(query, false);
+	}
+
+	private void loadWorkshopList(String query, boolean subscriptions) {
+		if (busy) return;
+		final String accountKey = subscriptions ? steamAccountKey() : "";
+		if (subscriptions && TextUtils.isEmpty(accountKey)) {
+			refreshSteamAccount();
+			showMessage(getString(R.string.workshop_subscriptions_login_required));
 			return;
 		}
+		final int generation = ++listGeneration;
+		final String requestedQuery = query == null ? "" : query.trim();
+		final SteamWorkshopCatalog.SortOption sortOption = currentSortOption;
+		final SteamWorkshopCatalog.TimeWindow timeWindow = currentTimeWindow;
+		showingSubscriptions = subscriptions;
+		observedSteamAccountKey = steamAccountKey();
+		currentQuery = requestedQuery;
 		showScreen(SCREEN_LIST);
-		libraryVisible = false;
 		requestLibraryRefresh();
-		currentQuery = query == null ? "" : query.trim();
 		currentPage = 1;
 		lastSearchResult = null;
 		loadingMoreResults = false;
 		hasMoreResults = true;
-		refreshFilterLabels();
 		searchAdapter.replace(Collections.emptyList(), false);
 		searchList.scrollToPosition(0);
 		runOperation(
-			getString(R.string.workshop_status_searching),
-			() -> catalog.search(currentQuery, 1, WORKSHOP_PAGE_SIZE, currentSortOption, currentTimeWindow),
-			this::showSearchResults
+			getString(subscriptions ? R.string.workshop_status_loading_subscriptions : R.string.workshop_status_searching),
+			() -> subscriptions ? catalog.loadSubscriptions(1, WORKSHOP_PAGE_SIZE)
+				: catalog.search(requestedQuery, 1, WORKSHOP_PAGE_SIZE, sortOption, timeWindow),
+			result -> {
+				if (isCurrentListRequest(generation, accountKey)) showSearchResults(result);
+				else if (!showingSubscriptions && lastSearchResult == null) searchWorkshop("", 1);
+			},
+			exception -> {
+				if (isCurrentListRequest(generation, accountKey)) showError(exception);
+				else if (!showingSubscriptions && lastSearchResult == null) searchWorkshop("", 1);
+			}
 		);
+	}
+
+	private boolean isCurrentListRequest(int generation, String accountKey) {
+		if (generation != listGeneration) return false;
+		if (showingSubscriptions && !accountKey.equals(steamAccountKey())) {
+			refreshSteamAccount();
+			return false;
+		}
+		return true;
 	}
 
 	private void showSearchResults(SteamWorkshopCatalog.SearchResult result) {
@@ -765,13 +840,19 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		final String query = currentQuery;
 		final SteamWorkshopCatalog.SortOption sortOption = currentSortOption;
 		final SteamWorkshopCatalog.TimeWindow timeWindow = currentTimeWindow;
+		final int generation = listGeneration;
+		final boolean subscriptions = showingSubscriptions;
+		final String accountKey = subscriptions ? steamAccountKey() : "";
 		new Thread(() -> {
 			try {
-				SteamWorkshopCatalog.SearchResult result = catalog.search(query, pageToLoad, WORKSHOP_PAGE_SIZE, sortOption, timeWindow);
-				runOnUiThreadIfActive(() -> appendLoadedSearchResults(query, sortOption, timeWindow, result));
+				SteamWorkshopCatalog.SearchResult result = subscriptions ? catalog.loadSubscriptions(pageToLoad, WORKSHOP_PAGE_SIZE)
+					: catalog.search(query, pageToLoad, WORKSHOP_PAGE_SIZE, sortOption, timeWindow);
+				runOnUiThreadIfActive(() -> {
+					if (isCurrentListRequest(generation, accountKey)) appendLoadedSearchResults(query, sortOption, timeWindow, result);
+				});
 			} catch (Exception exception) {
 				runOnUiThreadIfActive(() -> {
-					if (query.equals(currentQuery) && sortOption == currentSortOption && timeWindow == currentTimeWindow) {
+					if (isCurrentListRequest(generation, accountKey)) {
 						loadingMoreResults = false;
 						updateLoadMoreView();
 						String message = exception == null || exception.getMessage() == null ? String.valueOf(exception) : exception.getMessage();
@@ -808,6 +889,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		hasMoreResults = !added.isEmpty() && hasMoreSearchResults(merged.size(), result);
 		appendSearchRows(added);
 		maybeAutoCheckTrackedUpdates();
+		searchList.post(this::maybeLoadMoreSearchResults);
 	}
 
 	private boolean hasMoreSearchResults(int loadedCount, SteamWorkshopCatalog.SearchResult latestPage) {
@@ -818,6 +900,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		if (total > 0 && loadedCount >= total) {
 			return false;
 		}
+		if (showingSubscriptions) return (long) latestPage.getPage() * WORKSHOP_PAGE_SIZE < total;
 		return latestPage.getItems().size() >= WORKSHOP_PAGE_SIZE;
 	}
 
@@ -874,10 +957,11 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}
 
 		@Override public int getItemCount() { return items.size() + (loading || (showEmpty && items.isEmpty()) ? 1 : 0); }
-		@Override public int getItemViewType(int position) { return position < items.size() ? 0 : (loading ? 1 : 2); }
+		@Override public int getItemViewType(int position) { return position < items.size() ? 0 : (loading ? 1 : (showingSubscriptions ? 3 : 2)); }
 		@Override public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int type) {
 			RecyclerView.ViewHolder holder = type == 0 ? new WorkshopItemHolder()
 				: new RecyclerView.ViewHolder(type == 1 ? buildLoadMoreView()
+					: type == 3 ? buildEmptyCard(R.string.workshop_no_subscriptions, R.string.workshop_no_subscriptions_hint, R.drawable.ic_steam_24)
 					: buildEmptyCard(R.string.workshop_no_results, R.string.workshop_no_results_hint, R.drawable.ic_search_24)) {};
 			RecyclerView.LayoutParams params = new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
 			params.bottomMargin = ExtraSettingsUi.dp(SteamWorkshopActivity.this, 12);

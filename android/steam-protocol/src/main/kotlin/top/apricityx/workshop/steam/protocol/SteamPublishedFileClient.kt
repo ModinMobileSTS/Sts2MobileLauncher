@@ -2,6 +2,8 @@ package top.apricityx.workshop.steam.protocol
 
 import top.apricityx.workshop.steam.proto.CPublishedFile_GetChangeHistory_Request
 import top.apricityx.workshop.steam.proto.CPublishedFile_GetChangeHistory_Response
+import top.apricityx.workshop.steam.proto.CPublishedFile_GetUserFiles_Request
+import top.apricityx.workshop.steam.proto.CPublishedFile_GetUserFiles_Response
 import top.apricityx.workshop.steam.proto.CPublishedFile_GetItemInfo_Request
 import top.apricityx.workshop.steam.proto.CPublishedFile_GetItemInfo_Response
 import top.apricityx.workshop.steam.proto.CPublishedFile_QueryFiles_Request
@@ -99,6 +101,38 @@ class SteamPublishedFileClient(
                     else -> SteamProtocolException("Failed to query Steam published files", error)
                 }
             }
+        }
+    }
+
+    suspend fun querySubscriptions(
+        account: SteamAccountSession,
+        appId: UInt,
+        page: Int,
+        pageSize: Int,
+        language: Int = STEAM_LANGUAGE_SIMPLIFIED_CHINESE,
+    ): SteamPublishedFileQueryResult {
+        val cmServers = directoryClient.loadServers()
+        return sessionFactory().use { session ->
+            session.connectWithRefreshToken(cmServers, account)
+            val response = session.callServiceMethod(
+                methodName = "PublishedFile.GetUserFiles#1",
+                request = CPublishedFile_GetUserFiles_Request.newBuilder()
+                    .setSteamid(account.steamId)
+                    .setAppid(appId.toInt())
+                    .setType("mysubscriptions")
+                    .setPage(page.coerceAtLeast(1))
+                    .setNumperpage(pageSize.coerceIn(1, 50))
+                    .setSortmethod("subscriptiondate")
+                    .setLanguage(language)
+                    .setReturnShortDescription(true)
+                    .setStripDescriptionBbcode(true)
+                    .build(),
+                parser = CPublishedFile_GetUserFiles_Response.parser(),
+            )
+            SteamPublishedFileQueryResult(
+                total = response.total,
+                items = response.publishedfiledetailsList.mapNotNull(::toPublishedFileItem),
+            )
         }
     }
 

@@ -180,6 +180,12 @@
     <string name="workshop_branch_installed_label">Branch: %1$s · source: %2$s</string>
     <string name="workshop_drawer_view_section">Browse</string>
     <string name="workshop_all_mods">All MODs</string>
+    <string name="workshop_subscribed_mods">Subscribed MODs</string>
+    <string name="workshop_status_loading_subscriptions">Loading subscribed MODs…</string>
+    <string name="workshop_no_subscriptions">No subscribed MODs</string>
+    <string name="workshop_no_subscriptions_hint">This Steam account has not subscribed to any Slay the Spire 2 Workshop MODs.</string>
+    <string name="workshop_subscriptions_login_required">Log in through the Steam center to view your subscribed MODs.</string>
+    <string name="workshop_subscriptions_account_changed">The Steam account changed. Open subscribed MODs again to refresh the list.</string>
     <string name="workshop_drawer_sort_section">Sort</string>
     <string name="workshop_sort_title">Sort by</string>
     <string name="workshop_sort_popular">Popular</string>
