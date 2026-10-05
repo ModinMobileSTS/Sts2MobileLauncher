@@ -21,6 +21,7 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
@@ -99,6 +100,15 @@
         <activity
             android:name=".NexusModsStoreActivity"
             android:label="@string/nexus_mod_store_title"
+            android:theme="@style/Theme.Sts2ExtraSettings"
+            android:exported="false"
+            android:screenOrientation="unspecified"
+            android:windowSoftInputMode="adjustResize"
+            android:resizeableActivity="true" />
+
+        <activity
+            android:name=".WorkshopImageViewerActivity"
+            android:label="@string/workshop_image_viewer_title"
             android:theme="@style/Theme.Sts2ExtraSettings"
             android:exported="false"
             android:screenOrientation="unspecified"

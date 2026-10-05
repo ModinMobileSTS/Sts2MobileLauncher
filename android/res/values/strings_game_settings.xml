@@ -32,6 +32,15 @@
     <string name="import_mod">Import MOD</string>
     <string name="workshop_open">Workshop</string>
     <string name="workshop_title">Steam Workshop</string>
+    <string name="workshop_image_viewer_title">Workshop image</string>
+    <string name="workshop_image_viewer_actions">Image actions</string>
+    <string name="workshop_image_viewer_save">Save image</string>
+    <string name="workshop_image_viewer_share">Share image</string>
+    <string name="workshop_image_viewer_saved">Image saved to Pictures/STS2 Workshop.</string>
+    <string name="workshop_image_viewer_save_failed">Could not save the image.</string>
+    <string name="workshop_image_viewer_save_permission">Storage permission is required to save this image.</string>
+    <string name="workshop_image_viewer_share_failed">Could not prepare the image for sharing.</string>
+    <string name="workshop_image_viewer_load_failed">Could not load this image.</string>
     <string name="workshop_subtitle">Browse Slay the Spire 2 Workshop, download MODs, and track update state.</string>
     <string name="workshop_steam_title">Steam login</string>
     <string name="workshop_steam_subtitle">Public browsing works anonymously; saved Steam login is reused for authenticated downloads and restricted items.</string>

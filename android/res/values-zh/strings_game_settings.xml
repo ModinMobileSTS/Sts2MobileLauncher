@@ -32,6 +32,15 @@
     <string name="import_mod">导入 MOD</string>
     <string name="workshop_open">创意工坊</string>
     <string name="workshop_title">Steam 创意工坊</string>
+    <string name="workshop_image_viewer_title">创意工坊图片</string>
+    <string name="workshop_image_viewer_actions">图片操作</string>
+    <string name="workshop_image_viewer_save">保存图片</string>
+    <string name="workshop_image_viewer_share">分享图片</string>
+    <string name="workshop_image_viewer_saved">图片已保存到 Pictures/STS2 Workshop。</string>
+    <string name="workshop_image_viewer_save_failed">图片保存失败。</string>
+    <string name="workshop_image_viewer_save_permission">保存图片需要存储权限。</string>
+    <string name="workshop_image_viewer_share_failed">无法准备要分享的图片。</string>
+    <string name="workshop_image_viewer_load_failed">图片加载失败。</string>
     <string name="workshop_subtitle">浏览塔2创意工坊，下载 MOD，并记录更新状态。</string>
     <string name="workshop_steam_title">Steam 登录</string>
     <string name="workshop_steam_subtitle">公开列表可匿名浏览；已保存的 Steam 登录会用于带鉴权的下载和受限条目。</string>

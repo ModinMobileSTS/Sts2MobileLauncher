@@ -1103,6 +1103,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		hero.setGravity(Gravity.TOP);
 		ImageView preview = imageView(96, 96, 16);
 		imageLoader.load(item.getPreviewUrl(), preview);
+		preview.setOnClickListener(v -> showImageViewer(item.getPreviewUrl()));
 		hero.addView(preview);
 		LinearLayout texts = ExtraSettingsUi.vertical(this);
 		LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
@@ -1369,7 +1370,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 150), ExtraSettingsUi.dp(this, 88));
 			params.setMarginEnd(ExtraSettingsUi.dp(this, 10));
 			row.addView(image, params);
-			image.setOnClickListener(v -> openUrl(url));
+			image.setOnClickListener(v -> showImageViewer(url));
 		}
 		return scroll;
 	}
@@ -3206,6 +3207,14 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 
 	private void openUrl(String url) {
 		startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+	}
+
+	private void showImageViewer(String url) {
+		String normalized = url == null ? "" : url.trim();
+		if (normalized.isEmpty()) {
+			return;
+		}
+		startActivity(WorkshopImageViewerActivity.createIntent(this, normalized));
 	}
 
 	private String itemUrl(SteamWorkshopCatalog.Item item) {
