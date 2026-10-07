@@ -44,7 +44,10 @@ public final class ExtraSettingsRepository {
 	public static final String KEY_ANDROID_COMPAT_PACK_ENABLED = "android_compat_pack_enabled";
 	public static final String KEY_LOG_LEVEL = "log_level";
 	public static final String KEY_PERFORMANCE_OVERLAY_ENABLED = "android_performance_overlay_enabled";
-	public static final String KEY_HIGH_REFRESH_RATE_ENABLED = "android_high_refresh_rate_enabled";
+	public static final String KEY_DISPLAY_REFRESH_RATE_MODE = "android_display_refresh_rate_mode";
+	public static final String DISPLAY_REFRESH_RATE_HIGH = "high";
+	public static final String DISPLAY_REFRESH_RATE_60HZ = "60hz";
+	public static final String DISPLAY_REFRESH_RATE_SYSTEM = "system";
 	public static final String KEY_SCREEN_ROTATION_MODE = "android_screen_rotation_mode";
 	public static final String KEY_IN_GAME_OVERLAY_ENABLED = "android_in_game_overlay_enabled";
 	public static final String KEY_FLOATING_MOUSE_ENABLED = "android_floating_mouse_enabled";
@@ -62,6 +65,7 @@ public final class ExtraSettingsRepository {
 	public static final String TOOLTIP_MODE_LONG_PRESS = "long_press";
 	public static final String TOOLTIP_MODE_HIDDEN = "hidden";
 
+	private static final String LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED = "android_high_refresh_rate_enabled";
 	private static final String MOD_SOURCE_MODS_DIRECTORY = "mods_directory";
 	private static final String MOD_GROUP_MARKER_FILE_NAME = ".sts2_mod_group";
 	private static final String MOD_GROUP_CORE_NAME = "core";
@@ -188,7 +192,7 @@ public final class ExtraSettingsRepository {
 		settings.put("audio_compatibility_mode", false);
 		settings.put(KEY_LOG_LEVEL, getStoredLogLevel());
 		settings.put(KEY_PERFORMANCE_OVERLAY_ENABLED, isStoredPerformanceOverlayEnabled());
-		settings.put(KEY_HIGH_REFRESH_RATE_ENABLED, isStoredHighRefreshRateEnabled());
+		settings.put(KEY_DISPLAY_REFRESH_RATE_MODE, getStoredDisplayRefreshRateMode());
 		settings.put("android_volume_up_soft_keyboard", false);
 		settings.put("android_flip_screen_180", false);
 		settings.put(KEY_SCREEN_ROTATION_MODE, SCREEN_ROTATION_USER_LANDSCAPE);
@@ -254,8 +258,7 @@ public final class ExtraSettingsRepository {
 		changed |= normalizeExistingLogLevel(settings);
 		changed |= putIfMissing(settings, KEY_PERFORMANCE_OVERLAY_ENABLED, isStoredPerformanceOverlayEnabled());
 		changed |= syncExistingPerformanceOverlaySetting(settings);
-		changed |= putIfMissing(settings, KEY_HIGH_REFRESH_RATE_ENABLED, isStoredHighRefreshRateEnabled());
-		changed |= syncExistingHighRefreshRateSetting(settings);
+		changed |= syncExistingDisplayRefreshRateSetting(settings);
 		changed |= putIfMissing(settings, "android_volume_up_soft_keyboard", false);
 		changed |= putIfMissing(settings, "android_flip_screen_180", false);
 		changed |= ensureScreenRotationMode(settings);
@@ -407,29 +410,65 @@ public final class ExtraSettingsRepository {
 		saveSetting(settings -> settings.put(KEY_PERFORMANCE_OVERLAY_ENABLED, enabled));
 	}
 
-	public boolean isHighRefreshRateEnabled(JSONObject settings) {
-		if (settings != null && settings.has(KEY_HIGH_REFRESH_RATE_ENABLED)) {
-			boolean enabled = settings.optBoolean(KEY_HIGH_REFRESH_RATE_ENABLED, true);
-			ExtraSettingsPreferences.setHighRefreshRateEnabled(context, enabled);
-			return enabled;
+	public String getDisplayRefreshRateMode(JSONObject settings) {
+		if (settings != null) {
+			if (settings.has(KEY_DISPLAY_REFRESH_RATE_MODE)) {
+				String normalized = normalizeDisplayRefreshRateMode(settings.optString(KEY_DISPLAY_REFRESH_RATE_MODE, null));
+				ExtraSettingsPreferences.setDisplayRefreshRateMode(context, normalized);
+				try {
+					settings.put(KEY_DISPLAY_REFRESH_RATE_MODE, normalized);
+					settings.remove(LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED);
+				} catch (JSONException ignored) {
+				}
+				return normalized;
+			}
+			if (settings.has(LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED)) {
+				String migrated = settings.optBoolean(LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED, true)
+					? DISPLAY_REFRESH_RATE_HIGH
+					: DISPLAY_REFRESH_RATE_SYSTEM;
+				ExtraSettingsPreferences.setDisplayRefreshRateMode(context, migrated);
+				try {
+					settings.put(KEY_DISPLAY_REFRESH_RATE_MODE, migrated);
+					settings.remove(LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED);
+				} catch (JSONException ignored) {
+				}
+				return migrated;
+			}
 		}
-		return isStoredHighRefreshRateEnabled();
+		return getStoredDisplayRefreshRateMode();
 	}
 
-	public boolean isHighRefreshRateEnabledForLaunch() {
-		boolean enabled = isStoredHighRefreshRateEnabled();
+	public String getDisplayRefreshRateModeForLaunch() {
+		String mode = getStoredDisplayRefreshRateMode();
 		try {
-			JSONObject settings = loadSettingsJson();
-			enabled = settings.optBoolean(KEY_HIGH_REFRESH_RATE_ENABLED, enabled);
+			mode = getDisplayRefreshRateMode(loadSettingsJson());
 		} catch (Exception ignored) {
 		}
-		ExtraSettingsPreferences.setHighRefreshRateEnabled(context, enabled);
-		return enabled;
+		mode = normalizeDisplayRefreshRateMode(mode);
+		ExtraSettingsPreferences.setDisplayRefreshRateMode(context, mode);
+		return mode;
 	}
 
-	public void saveHighRefreshRateEnabled(boolean enabled) throws Exception {
-		ExtraSettingsPreferences.setHighRefreshRateEnabled(context, enabled);
-		saveSetting(settings -> settings.put(KEY_HIGH_REFRESH_RATE_ENABLED, enabled));
+	public void saveDisplayRefreshRateMode(String value) throws Exception {
+		String normalized = normalizeDisplayRefreshRateMode(value);
+		saveSetting(settings -> {
+			settings.put(KEY_DISPLAY_REFRESH_RATE_MODE, normalized);
+			settings.remove(LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED);
+		});
+		ExtraSettingsPreferences.setDisplayRefreshRateMode(context, normalized);
+	}
+
+	public static String normalizeDisplayRefreshRateMode(String value) {
+		if (DISPLAY_REFRESH_RATE_HIGH.equals(value)) {
+			return DISPLAY_REFRESH_RATE_HIGH;
+		}
+		if (DISPLAY_REFRESH_RATE_60HZ.equals(value)) {
+			return DISPLAY_REFRESH_RATE_60HZ;
+		}
+		if (DISPLAY_REFRESH_RATE_SYSTEM.equals(value)) {
+			return DISPLAY_REFRESH_RATE_SYSTEM;
+		}
+		return DISPLAY_REFRESH_RATE_HIGH;
 	}
 
 	public static String normalizeLogLevel(String value) {
@@ -468,8 +507,8 @@ public final class ExtraSettingsRepository {
 		return ExtraSettingsPreferences.isPerformanceOverlayEnabled(context);
 	}
 
-	private boolean isStoredHighRefreshRateEnabled() {
-		return ExtraSettingsPreferences.isHighRefreshRateEnabled(context);
+	private String getStoredDisplayRefreshRateMode() {
+		return normalizeDisplayRefreshRateMode(ExtraSettingsPreferences.getDisplayRefreshRateMode(context));
 	}
 
 	private boolean syncExistingPerformanceOverlaySetting(JSONObject settings) throws JSONException {
@@ -482,14 +521,33 @@ public final class ExtraSettingsRepository {
 		return true;
 	}
 
-	private boolean syncExistingHighRefreshRateSetting(JSONObject settings) throws JSONException {
-		boolean enabled = settings.optBoolean(KEY_HIGH_REFRESH_RATE_ENABLED, isStoredHighRefreshRateEnabled());
-		ExtraSettingsPreferences.setHighRefreshRateEnabled(context, enabled);
-		if (settings.has(KEY_HIGH_REFRESH_RATE_ENABLED)) {
-			return false;
+	private boolean syncExistingDisplayRefreshRateSetting(JSONObject settings) throws JSONException {
+		String normalized;
+		boolean changed = false;
+		if (settings.has(KEY_DISPLAY_REFRESH_RATE_MODE)) {
+			String raw = settings.optString(KEY_DISPLAY_REFRESH_RATE_MODE, null);
+			normalized = normalizeDisplayRefreshRateMode(raw);
+			if (!normalized.equals(raw)) {
+				settings.put(KEY_DISPLAY_REFRESH_RATE_MODE, normalized);
+				changed = true;
+			}
+		} else if (settings.has(LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED)) {
+			normalized = settings.optBoolean(LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED, true)
+				? DISPLAY_REFRESH_RATE_HIGH
+				: DISPLAY_REFRESH_RATE_SYSTEM;
+			settings.put(KEY_DISPLAY_REFRESH_RATE_MODE, normalized);
+			changed = true;
+		} else {
+			normalized = getStoredDisplayRefreshRateMode();
+			settings.put(KEY_DISPLAY_REFRESH_RATE_MODE, normalized);
+			changed = true;
 		}
-		settings.put(KEY_HIGH_REFRESH_RATE_ENABLED, enabled);
-		return true;
+		if (settings.has(LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED)) {
+			settings.remove(LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED);
+			changed = true;
+		}
+		ExtraSettingsPreferences.setDisplayRefreshRateMode(context, normalized);
+		return changed;
 	}
 
 	public void applyFirstRunDefaults() throws Exception {

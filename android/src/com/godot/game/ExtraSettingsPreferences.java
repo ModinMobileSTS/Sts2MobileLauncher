@@ -14,7 +14,8 @@ public final class ExtraSettingsPreferences {
 	private static final String KEY_LAUNCHER_STARTUP_BEHAVIOR = "launcher_startup_behavior";
 	private static final String KEY_LOG_LEVEL = "log_level";
 	private static final String KEY_PERFORMANCE_OVERLAY_ENABLED = "android_performance_overlay_enabled";
-	private static final String KEY_HIGH_REFRESH_RATE_ENABLED = "android_high_refresh_rate_enabled";
+	private static final String KEY_DISPLAY_REFRESH_RATE_MODE = "android_display_refresh_rate_mode";
+	private static final String LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED = "android_high_refresh_rate_enabled";
 
 	private ExtraSettingsPreferences() {
 	}
@@ -75,12 +76,51 @@ public final class ExtraSettingsPreferences {
 		getPreferences(context).edit().putBoolean(KEY_PERFORMANCE_OVERLAY_ENABLED, enabled).apply();
 	}
 
-	public static boolean isHighRefreshRateEnabled(Context context) {
-		return getPreferences(context).getBoolean(KEY_HIGH_REFRESH_RATE_ENABLED, true);
+	public static String getDisplayRefreshRateMode(Context context) {
+		SharedPreferences preferences = getPreferences(context);
+		boolean hasMode = preferences.contains(KEY_DISPLAY_REFRESH_RATE_MODE);
+		if (hasMode) {
+			String rawMode;
+			try {
+				rawMode = preferences.getString(KEY_DISPLAY_REFRESH_RATE_MODE, null);
+			} catch (ClassCastException ignored) {
+				rawMode = null;
+			}
+			String normalized = ExtraSettingsRepository.normalizeDisplayRefreshRateMode(rawMode);
+			if (!normalized.equals(rawMode) || preferences.contains(LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED)) {
+				preferences.edit()
+					.putString(KEY_DISPLAY_REFRESH_RATE_MODE, normalized)
+					.remove(LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED)
+					.apply();
+			}
+			return normalized;
+		}
+
+		if (preferences.contains(LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED)) {
+			boolean enabled;
+			try {
+				enabled = preferences.getBoolean(LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED, true);
+			} catch (ClassCastException ignored) {
+				enabled = true;
+			}
+			String migrated = enabled
+				? ExtraSettingsRepository.DISPLAY_REFRESH_RATE_HIGH
+				: ExtraSettingsRepository.DISPLAY_REFRESH_RATE_SYSTEM;
+			preferences.edit()
+				.putString(KEY_DISPLAY_REFRESH_RATE_MODE, migrated)
+				.remove(LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED)
+				.apply();
+			return migrated;
+		}
+		return ExtraSettingsRepository.DISPLAY_REFRESH_RATE_HIGH;
 	}
 
-	public static void setHighRefreshRateEnabled(Context context, boolean enabled) {
-		getPreferences(context).edit().putBoolean(KEY_HIGH_REFRESH_RATE_ENABLED, enabled).apply();
+	public static void setDisplayRefreshRateMode(Context context, String mode) {
+		String normalized = ExtraSettingsRepository.normalizeDisplayRefreshRateMode(mode);
+		getPreferences(context).edit()
+			.putString(KEY_DISPLAY_REFRESH_RATE_MODE, normalized)
+			.remove(LEGACY_KEY_HIGH_REFRESH_RATE_ENABLED)
+			.apply();
 	}
 
 	private static SharedPreferences getPreferences(Context context) {

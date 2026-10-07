@@ -177,19 +177,23 @@ tools/package/build_importer_apk.sh
 ```
 Upon successful build, the APK will be output to `dist/sts2-re-importer.apk`.
 
-Android high-refresh support is part of the normal APK: the app declares the
-Android game category so OEM game/GPU scheduling can recognize `GodotApp`, then
-requests the highest compatible refresh rate only while the game is resumed,
-focused, and backed by a valid render `Surface`. Requests are coalesced per
-Activity lifecycle and cancelled when the game pauses or its `Surface` is
-destroyed. For each valid Surface epoch, Android 12+ issues one
-`Surface.setFrameRate(..., CHANGE_FRAME_RATE_ALWAYS)` vote together with the
-matching exact `Window` display mode when Android exposes one; devices that
-only expose an alternative refresh rate use a refresh-rate-only Window request
-with the exact mode ID cleared. A bounded delayed verification follows, and the
-path does not use `SurfaceControl`. This behavior can be
-disabled from Extra Settings → System below Preload. A disabled-by-default
-performance overlay can also be enabled from Extra Settings → System.
+Android display refresh rate is selectable in Extra Settings → System below
+Preload: **High refresh (default)** requests the highest compatible rate,
+**Request 60Hz** requests an exposed same-size 60Hz mode (including 59.94Hz), and
+**Follow system** clears the app's Window preference and Surface frame-rate vote.
+If Android exposes no compatible 60Hz target, the app clears its previous request
+and leaves the display to the system; it does not substitute 50/90/120Hz or claim
+that the display is locked. These choices do not change the game's FPS cap or VSync.
+
+Requests require a resumed, focused Activity and a valid render `Surface`, and
+are cancelled on pause, focus loss, or Surface destruction. Android 12+ uses
+`Surface.setFrameRate(..., CHANGE_FRAME_RATE_ALWAYS)` with an exact Window mode
+when available, or a refresh-rate-only preference with the mode ID cleared.
+Unchanged requests do not re-vote on the same Surface; mode changes update or
+clear the vote. Delayed verification checks the actual mode and Hz, without
+`SurfaceControl`. The profile setting is `android_display_refresh_rate_mode`
+(`high` / `60hz` / `system`); old high-refresh booleans migrate to `high` or
+`system`. A disabled-by-default performance overlay is also available here.
 
 The fullscreen render-resolution preset is applied by the full compatibility
 pack at game startup and can also be switched immediately from the in-game

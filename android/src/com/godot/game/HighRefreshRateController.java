@@ -21,12 +21,21 @@ import org.godotengine.godot.GodotRenderView;
 final class HighRefreshRateController {
 	private static final String TAG = "Sts2Re";
 	private static final float MIN_TARGET_HZ = 61.0f;
+	private static final float TARGET_60_HZ = 60.0f;
+	private static final float REFRESH_RATE_TOLERANCE_HZ = 0.5f;
 	private static final long[] RETRY_DELAYS_MS = {100L, 500L, 1500L};
 	private static final long VERIFY_DELAY_MS = 1200L;
+
+	enum RefreshRateMode {
+		HIGH,
+		HZ60,
+		SYSTEM
+	}
 
 	private final Handler mainHandler = new Handler(Looper.getMainLooper());
 	private Activity activity;
 	private Godot godot;
+	private RefreshRateMode requestedMode = RefreshRateMode.SYSTEM;
 	private boolean enabled;
 	private boolean resumed;
 	private boolean focused;
@@ -42,6 +51,7 @@ final class HighRefreshRateController {
 	private int appliedGeneration = -1;
 	private Surface lastAppliedSurface;
 	private int lastAppliedSurfaceEpoch = -1;
+	private RefreshRateMode lastAppliedRequestMode;
 	private int lastAppliedModeId;
 	private float lastAppliedRefreshRate;
 	private int lastAppliedBufferWidth;
@@ -90,29 +100,27 @@ final class HighRefreshRateController {
 	HighRefreshRateController() {
 	}
 
-	void request(Activity activity, Godot godot, String reason) {
+	void request(Activity activity, Godot godot, RefreshRateMode mode, String reason) {
+		RefreshRateMode requestedMode = mode == null ? RefreshRateMode.SYSTEM : mode;
 		runOnUiThread(activity, () -> {
 			if (destroyed) {
 				return;
 			}
 			this.activity = activity;
 			this.godot = godot;
+			this.requestedMode = requestedMode;
+			if (requestedMode == RefreshRateMode.SYSTEM) {
+				boolean wasEnabled = enabled;
+				enabled = false;
+				invalidatePendingWork();
+				String resetPath = resetPlatformRequest(activity);
+				detachSurfaceCallback();
+				clearLastAppliedSurface();
+				Log.i(TAG, diagnostic("system", reason, "reset=" + resetPath + "; wasEnabled=" + wasEnabled));
+				return;
+			}
 			enabled = true;
 			startGeneration(reason);
-		});
-	}
-
-	void disable(Activity activity, String reason) {
-		runOnUiThread(activity, () -> {
-			boolean wasEnabled = enabled;
-			enabled = false;
-			invalidatePendingWork();
-			String resetPath = resetPlatformRequest(activity);
-			detachSurfaceCallback();
-			clearLastAppliedSurface();
-			if (wasEnabled) {
-				Log.i(TAG, diagnostic("disabled", reason, "reset=" + resetPath));
-			}
 		});
 	}
 
@@ -221,6 +229,23 @@ final class HighRefreshRateController {
 				return;
 			}
 
+			ModeChoice choice = chooseMode(activity, requestedMode);
+			if (!choice.supported) {
+				// A mode can become unavailable after a previous request (for example when
+				// an external display mode policy changes). Clear every old vote instead of
+				// leaving the previous HIGH/HZ60 request active.
+				appliedGeneration = expectedGeneration;
+				cancelPendingRetry();
+				String resetPath = resetPlatformRequest(activity);
+				clearLastAppliedSurface();
+				Log.i(TAG, diagnostic("unsupported", reason,
+					"requested=" + requestedMode
+						+ "; displayHz=" + choice.currentRefreshRate
+						+ "; fallback=system"
+						+ "; reset=" + resetPath));
+				return;
+			}
+
 			View renderRoot = getRenderView(godot);
 			if (renderRoot == null) {
 				renderRoot = window.getDecorView();
@@ -243,12 +268,6 @@ final class HighRefreshRateController {
 				return;
 			}
 
-			ModeChoice choice = chooseBestMode(activity);
-			if (choice.refreshRate < MIN_TARGET_HZ) {
-				Log.i(TAG, diagnostic("unsupported", reason, "displayHz=" + choice.currentRefreshRate));
-				return;
-			}
-
 			// Mark the generation before issuing either platform request. Both calls can
 			// synchronously provoke window/surface callbacks on vendor Android builds;
 			// those callbacks must never cause a second request in this generation.
@@ -261,7 +280,8 @@ final class HighRefreshRateController {
 			if (expectedGeneration != generation || !surface.isValid()) {
 				cancelPendingRetry();
 				Log.i(TAG, diagnostic("surface_transition", reason,
-					"targetMode=" + choice.modeId
+					"requested=" + requestedMode
+						+ "; targetMode=" + choice.modeId
 						+ "; targetHz=" + choice.refreshRate
 						+ "; window=" + windowRequest.path
 						+ "; surface=" + surfacePath));
@@ -269,6 +289,7 @@ final class HighRefreshRateController {
 			}
 			lastAppliedSurface = surface;
 			lastAppliedSurfaceEpoch = surfaceEpoch;
+			lastAppliedRequestMode = choice.requestMode;
 			lastAppliedModeId = choice.modeId;
 			lastAppliedRefreshRate = choice.refreshRate;
 			recordAppliedBufferSize(holder);
@@ -276,6 +297,7 @@ final class HighRefreshRateController {
 			scheduleVerification(expectedGeneration, reason, choice);
 			Log.i(TAG, diagnostic("applied", reason,
 				"attempt=" + attempt
+					+ "; requested=" + requestedMode
 					+ "; mode=" + choice.modeId
 					+ "; hz=" + choice.refreshRate
 					+ "; selection=" + choice.selectionPath
@@ -334,11 +356,16 @@ final class HighRefreshRateController {
 				? 0
 				: params.preferredDisplayModeId;
 			float preferredRefreshRate = params == null ? 0.0f : params.preferredRefreshRate;
-			boolean modeMatched = choice.modeId <= 0 || observed.modeId == choice.modeId;
-			boolean refreshMatched = observed.modeRefreshRate >= choice.refreshRate - 0.5f
-				|| observed.displayRefreshRate >= choice.refreshRate - 0.5f;
-			Log.i(TAG, diagnostic(refreshMatched ? "verified" : "verification_mismatch", reason,
-				"targetMode=" + choice.modeId
+			boolean modeMatched = isModeMatched(choice.modeId, observed.modeId);
+			boolean refreshMatched = isRefreshRateMatched(
+				choice.requestMode,
+				choice.refreshRate,
+				observed.modeRefreshRate,
+				observed.displayRefreshRate);
+			boolean verified = modeMatched && refreshMatched;
+			Log.i(TAG, diagnostic(verified ? "verified" : "verification_mismatch", reason,
+				"requested=" + choice.requestMode
+					+ "; targetMode=" + choice.modeId
 					+ "; targetHz=" + choice.refreshRate
 					+ "; selection=" + choice.selectionPath
 					+ "; observedMode=" + observed.modeId
@@ -439,6 +466,7 @@ final class HighRefreshRateController {
 	private void clearLastAppliedSurface() {
 		lastAppliedSurface = null;
 		lastAppliedSurfaceEpoch = -1;
+		lastAppliedRequestMode = null;
 		lastAppliedModeId = 0;
 		lastAppliedRefreshRate = 0.0f;
 		lastAppliedBufferWidth = 0;
@@ -448,13 +476,15 @@ final class HighRefreshRateController {
 	private boolean wasAppliedToCurrentSurface(Surface surface, ModeChoice choice) {
 		return lastAppliedSurface == surface
 			&& lastAppliedSurfaceEpoch == surfaceEpoch
+			&& lastAppliedRequestMode == choice.requestMode
 			&& lastAppliedModeId == choice.modeId
 			&& Math.abs(lastAppliedRefreshRate - choice.refreshRate) <= 0.01f
 			&& isCurrentBufferSizeAlreadyApplied();
 	}
 
 	private boolean wasAppliedToCurrentHolderSurface() {
-		if (targetSurfaceHolder == null || lastAppliedSurfaceEpoch != surfaceEpoch) {
+		if (targetSurfaceHolder == null || lastAppliedSurfaceEpoch != surfaceEpoch
+			|| lastAppliedRequestMode != requestedMode) {
 			return false;
 		}
 		try {
@@ -467,6 +497,7 @@ final class HighRefreshRateController {
 			return false;
 		}
 	}
+
 
 	private void recordAppliedBufferSize(SurfaceHolder holder) {
 		try {
@@ -507,31 +538,40 @@ final class HighRefreshRateController {
 		}
 	}
 
-	private static ModeChoice chooseBestMode(Activity activity) {
+	private static ModeChoice chooseMode(Activity activity, RefreshRateMode requestMode) {
+		RefreshRateMode effectiveMode = requestMode == null ? RefreshRateMode.SYSTEM : requestMode;
 		Display display = getActivityDisplay(activity);
-		if (display == null) {
-			return new ModeChoice(0, 0.0f, 0, 0);
+		if (display == null || effectiveMode == RefreshRateMode.SYSTEM) {
+			return ModeChoice.unsupported(effectiveMode, 0.0f);
 		}
 
 		Display.Mode current = Build.VERSION.SDK_INT >= 23 ? display.getMode() : null;
-		Display.Mode[] modes = Build.VERSION.SDK_INT >= 23 ? display.getSupportedModes() : new Display.Mode[0];
+		Display.Mode[] supportedModes = Build.VERSION.SDK_INT >= 23 ? display.getSupportedModes() : null;
+		Display.Mode[] modes = supportedModes == null ? new Display.Mode[0] : supportedModes;
 		int currentWidth = current == null ? 0 : current.getPhysicalWidth();
 		int currentHeight = current == null ? 0 : current.getPhysicalHeight();
 		int currentModeId = current == null ? 0 : current.getModeId();
 		float currentModeRefreshRate = current == null ? display.getRefreshRate() : current.getRefreshRate();
+		float currentRefreshRate = display.getRefreshRate();
+
+		if (effectiveMode == RefreshRateMode.HZ60) {
+			return choose60HzMode(
+				current,
+				modes,
+				currentWidth,
+				currentHeight,
+				currentModeId,
+				currentModeRefreshRate,
+				currentRefreshRate);
+		}
+
 		int bestModeId = current == null ? 0 : current.getModeId();
 		float bestRefreshRate = currentModeRefreshRate;
 		int bestWidth = currentWidth;
 		int bestHeight = currentHeight;
-		float bestAlternativeRefreshRate = bestRefreshRate;
-
+		float bestAlternativeRefreshRate = 0.0f;
 		for (Display.Mode mode : modes) {
-			if (mode == null) {
-				continue;
-			}
-			boolean sameSize = currentWidth <= 0 || currentHeight <= 0
-				|| (mode.getPhysicalWidth() == currentWidth && mode.getPhysicalHeight() == currentHeight);
-			if (!sameSize) {
+			if (mode == null || !isSamePhysicalSize(mode, currentWidth, currentHeight)) {
 				continue;
 			}
 			float refreshRate = mode.getRefreshRate();
@@ -546,15 +586,169 @@ final class HighRefreshRateController {
 				highestAlternativeRefreshRate(mode));
 		}
 		boolean useRefreshRateOnly = bestAlternativeRefreshRate > bestRefreshRate + 0.01f;
+		float targetRefreshRate = useRefreshRateOnly ? bestAlternativeRefreshRate : bestRefreshRate;
+		boolean supported = targetRefreshRate >= MIN_TARGET_HZ;
 		return new ModeChoice(
+			effectiveMode,
+			supported,
 			useRefreshRateOnly ? 0 : bestModeId,
-			useRefreshRateOnly ? bestAlternativeRefreshRate : bestRefreshRate,
+			targetRefreshRate,
 			bestWidth,
 			bestHeight,
-			display.getRefreshRate(),
+			currentRefreshRate,
 			currentModeId,
 			currentModeRefreshRate,
 			useRefreshRateOnly ? "alternative-refresh-rate" : "exact-mode");
+	}
+
+	private static ModeChoice choose60HzMode(
+		Display.Mode current,
+		Display.Mode[] modes,
+		int currentWidth,
+		int currentHeight,
+		int currentModeId,
+		float currentModeRefreshRate,
+		float currentRefreshRate
+	) {
+		Display.Mode bestExactMode = null;
+		float bestExactRefreshRate = 0.0f;
+		float bestExactDistance = Float.MAX_VALUE;
+		float bestAlternativeRefreshRate = 0.0f;
+		float bestAlternativeDistance = Float.MAX_VALUE;
+
+		if (current != null && isWithinRefreshRate(current.getRefreshRate(), TARGET_60_HZ)) {
+			bestExactMode = current;
+			bestExactRefreshRate = current.getRefreshRate();
+			bestExactDistance = Math.abs(bestExactRefreshRate - TARGET_60_HZ);
+		}
+		for (Display.Mode mode : modes) {
+			if (mode == null || !isSamePhysicalSize(mode, currentWidth, currentHeight)) {
+				continue;
+			}
+			float refreshRate = mode.getRefreshRate();
+			if (isWithinRefreshRate(refreshRate, TARGET_60_HZ)) {
+				float distance = Math.abs(refreshRate - TARGET_60_HZ);
+				if (bestExactMode == null || distance < bestExactDistance) {
+					bestExactMode = mode;
+					bestExactRefreshRate = refreshRate;
+					bestExactDistance = distance;
+				}
+			}
+			float alternativeRefreshRate = closestAlternativeRefreshRate(mode, TARGET_60_HZ);
+			if (alternativeRefreshRate > 0.0f) {
+				float distance = Math.abs(alternativeRefreshRate - TARGET_60_HZ);
+				if (distance < bestAlternativeDistance) {
+					bestAlternativeRefreshRate = alternativeRefreshRate;
+					bestAlternativeDistance = distance;
+				}
+			}
+		}
+
+		if (bestExactMode != null) {
+			return new ModeChoice(
+				RefreshRateMode.HZ60,
+				true,
+				bestExactMode.getModeId(),
+				bestExactRefreshRate,
+				bestExactMode.getPhysicalWidth(),
+				bestExactMode.getPhysicalHeight(),
+				currentRefreshRate,
+				currentModeId,
+				currentModeRefreshRate,
+				"exact-60hz-mode");
+		}
+		if (bestAlternativeRefreshRate > 0.0f) {
+			return new ModeChoice(
+				RefreshRateMode.HZ60,
+				true,
+				0,
+				bestAlternativeRefreshRate,
+				currentWidth,
+				currentHeight,
+				currentRefreshRate,
+				currentModeId,
+				currentModeRefreshRate,
+				"alternative-60hz-refresh-rate");
+		}
+
+		// On pre-M devices there is no Display.Mode API. A currently reported 60 Hz
+		// display is the only capability we can safely request in that case.
+		if (modes.length == 0 && isWithinRefreshRate(currentRefreshRate, TARGET_60_HZ)) {
+			return new ModeChoice(
+				RefreshRateMode.HZ60,
+				true,
+				0,
+				currentRefreshRate,
+				currentWidth,
+				currentHeight,
+				currentRefreshRate,
+				currentModeId,
+				currentModeRefreshRate,
+				"current-display-60hz");
+		}
+		return ModeChoice.unsupported(RefreshRateMode.HZ60, currentRefreshRate);
+	}
+
+	private static boolean isSamePhysicalSize(Display.Mode mode, int width, int height) {
+		return width <= 0 || height <= 0
+			|| (mode.getPhysicalWidth() == width && mode.getPhysicalHeight() == height);
+	}
+
+	private static boolean isWithinRefreshRate(float value, float target) {
+		return value > 0.0f && Math.abs(value - target) <= REFRESH_RATE_TOLERANCE_HZ;
+	}
+
+	private static boolean isModeMatched(int targetModeId, int observedModeId) {
+		return targetModeId <= 0 || observedModeId == targetModeId;
+	}
+
+	private static boolean isRefreshRateMatched(
+		RefreshRateMode requestMode,
+		float target,
+		float observedModeRefreshRate,
+		float observedDisplayRefreshRate
+	) {
+		// Display.getRefreshRate() reflects an alternative rate selected within a
+		// mode. Treat a positive display value as authoritative; only old/API-limited
+		// displays that report no value fall back to the mode nominal rate.
+		float observedRefreshRate = observedDisplayRefreshRate > 0.0f
+			? observedDisplayRefreshRate
+			: observedModeRefreshRate;
+		if (requestMode == RefreshRateMode.HZ60) {
+			return isWithinRefreshRate(observedRefreshRate, target);
+		}
+		return observedRefreshRate >= target - REFRESH_RATE_TOLERANCE_HZ;
+	}
+
+	private static float closestAlternativeRefreshRate(Display.Mode mode, float target) {
+		if (mode == null || Build.VERSION.SDK_INT < 31) {
+			return 0.0f;
+		}
+		try {
+			return closestAlternativeRefreshRate(mode.getAlternativeRefreshRates(), target);
+		} catch (Throwable throwable) {
+			Log.w(TAG, "Unable to inspect alternative display refresh rates for mode=" + mode.getModeId(), throwable);
+			return 0.0f;
+		}
+	}
+
+	private static float closestAlternativeRefreshRate(float[] alternatives, float target) {
+		float bestRefreshRate = 0.0f;
+		float bestDistance = Float.MAX_VALUE;
+		if (alternatives == null) {
+			return bestRefreshRate;
+		}
+		for (float alternativeRefreshRate : alternatives) {
+			if (!isWithinRefreshRate(alternativeRefreshRate, target)) {
+				continue;
+			}
+			float distance = Math.abs(alternativeRefreshRate - target);
+			if (distance < bestDistance) {
+				bestRefreshRate = alternativeRefreshRate;
+				bestDistance = distance;
+			}
+		}
+		return bestRefreshRate;
 	}
 
 	private static float highestAlternativeRefreshRate(Display.Mode mode) {
@@ -669,8 +863,15 @@ final class HighRefreshRateController {
 					surface = holder == null ? null : holder.getSurface();
 				}
 				if (surface != null && surface.isValid()) {
-					surface.clearFrameRate();
-					surfacePath = "surface-cleared";
+					if (Build.VERSION.SDK_INT >= 34) {
+						surface.clearFrameRate();
+						surfacePath = "surface-cleared-api34";
+					} else {
+						// clearFrameRate() was added in API 34. API 30-33 use the
+						// documented zero-rate vote to release the Surface preference.
+						surface.setFrameRate(0.0f, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
+						surfacePath = "surface-cleared-api30";
+					}
 				}
 			} catch (Throwable throwable) {
 				surfacePath = "surface-clear-failed";
@@ -749,6 +950,8 @@ final class HighRefreshRateController {
 	}
 
 	private static final class ModeChoice {
+		final RefreshRateMode requestMode;
+		final boolean supported;
 		final int modeId;
 		final float refreshRate;
 		final int width;
@@ -758,11 +961,23 @@ final class HighRefreshRateController {
 		final float currentModeRefreshRate;
 		final String selectionPath;
 
-		ModeChoice(int modeId, float refreshRate, int width, int height) {
-			this(modeId, refreshRate, width, height, 0.0f, 0, 0.0f, "unavailable");
+		static ModeChoice unsupported(RefreshRateMode requestMode, float currentRefreshRate) {
+			return new ModeChoice(
+				requestMode,
+				false,
+				0,
+				0.0f,
+				0,
+				0,
+				currentRefreshRate,
+				0,
+				currentRefreshRate,
+				"unsupported");
 		}
 
 		ModeChoice(
+			RefreshRateMode requestMode,
+			boolean supported,
 			int modeId,
 			float refreshRate,
 			int width,
@@ -772,6 +987,8 @@ final class HighRefreshRateController {
 			float currentModeRefreshRate,
 			String selectionPath
 		) {
+			this.requestMode = requestMode;
+			this.supported = supported;
 			this.modeId = modeId;
 			this.refreshRate = refreshRate;
 			this.width = width;

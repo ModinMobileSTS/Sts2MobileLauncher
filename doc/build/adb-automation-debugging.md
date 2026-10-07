@@ -71,12 +71,14 @@ tools/debug/sts2-adb-debug.sh --timeout 160 workshop-diagnostics \
 
 GitHub Issue #31 的日志在前后台/焦点切换后出现了根 viewport render target 创建失败，触屏与蓝牙鼠标同时表现为无响应。回归时应使用无普通 MOD 的启动配置，分别覆盖下列初始设置组合；进入游戏后还必须通过游戏内设置即时往返切换分辨率，不能只测试冷启动：
 
-| run id | `fullscreen_render_size` | `android_high_refresh_rate_enabled` |
+| run id | `fullscreen_render_size` | `android_display_refresh_rate_mode` |
 | --- | --- | --- |
-| `issue31-native-60` | `0x0` | `false` |
-| `issue31-native-high` | `0x0` | `true` |
-| `issue31-1280-60` | `1280x720` | `false` |
-| `issue31-1280-high` | `1280x720` | `true` |
+| `issue31-native-60` | `0x0` | `60hz` |
+| `issue31-native-high` | `0x0` | `high` |
+| `issue31-native-system` | `0x0` | `system` |
+| `issue31-1280-60` | `1280x720` | `60hz` |
+| `issue31-1280-high` | `1280x720` | `high` |
+| `issue31-1280-system` | `1280x720` | `system` |
 
 以风险最高的自定义渲染分辨率 + 高刷新组合为例，终端 A 启动 90 秒采集：
 
@@ -84,7 +86,7 @@ GitHub Issue #31 的日志在前后台/焦点切换后出现了根 viewport rend
 tools/debug/sts2-adb-debug.sh --run-id issue31-1280-high launch \
   --mods-enabled false \
   --aspect-ratio auto \
-  --settings-json '{"fullscreen_render_size":{"X":1280,"Y":720},"android_high_refresh_rate_enabled":true}' \
+  --settings-json '{"fullscreen_render_size":{"X":1280,"Y":720},"android_display_refresh_rate_mode":"high"}' \
   --clear-logcat \
   --collect-logcat \
   --logcat-duration 90 \
@@ -104,13 +106,14 @@ for _ in $(seq 1 20); do
 done
 ```
 
-其他三组只需改变 run id、`fullscreen_render_size` 的 `X/Y` 与高刷新布尔值。若测试设备是超宽屏，再额外记录一次 native attachment 与请求 `1280x720` 的结果；例如 native `2400x1080` 时 effective target 应为 `1600x720`。每组至少验证：
+其他五组只需改变 run id、`fullscreen_render_size` 的 `X/Y` 与刷新率模式，例如用 `--settings-json '{"android_display_refresh_rate_mode":"60hz"}'` 选择 60Hz。游戏内设置还需实际往返切换高刷 → 60Hz → 跟随系统，确认 Window/Surface 请求更新或撤销且触控不漂移。若测试设备是超宽屏，再额外记录一次 native attachment 与请求 `1280x720` 的结果；例如 native `2400x1080` 时 effective target 应为 `1600x720`。每组至少验证：
 
 - 触屏、蓝牙/有线鼠标在每次游戏内分辨率切换和每次恢复后都可点击；同一按钮/卡牌的命中区域不漂移，游戏动画/音频不停滞。
 - `godot.log` / `logcat-live.txt` 中不出现 `texture_allocs_cache`、`Could not create render target`、`duplicate FocusOut` 或 `HighRefresh{state=apply_failed`。
 - 任何 `HighRefresh{state=applied...}` 都同时记录 `resumed=true` 与 `focused=true`；`onPause`、`onDestroy` 和 `surfaceDestroyed` 会记录 cancelled，不应有旧 generation 在取消后继续 apply。
-- Android 12+ 的同一个 `surfaceEpoch` 最多出现一次 `surface=surface-always`；同 Surface 后续 generation 应显示 `surface-existing-vote`。有显式高刷 mode 时，同轮 `window` 应为 `exact-mode-set` 或 `exact-mode-already-set`；仅有 alternative refresh rate 时则应为 `refresh-rate-only-set` 或 `refresh-rate-only-already-set`，且 `preferredMode=0`。约 1.2 秒后应出现 `HighRefresh{state=verified}`；`verification_mismatch` 表示系统/OEM 没有落实目标 mode/Hz，需要保留完整 logcat 与 `dumpsys display` 继续排查。
-- 游戏内分辨率切换不得触发 Android Surface 重建或新的 surface epoch；高刷开关开启时，切换前后实际 mode/Hz 应继续保持已验证状态，不得因 RT 尺寸变化退回 60 Hz。
+- Android 12+ 的同一有效 Surface、未变的刷新率模式只投票一次；后续 generation 应显示 `surface-existing-vote`，三挡切换允许更新 vote。同尺寸精确 mode 使用 `exact-mode-set` 或 `exact-mode-already-set`；alternative-only 使用 `refresh-rate-only-*` 且 `preferredMode=0`。约 1.2 秒后读取实际 mode/Hz；显式 mode 不符或 60Hz 下仍是 90/120Hz 不得报告 verified。`verification_mismatch` 需保留完整 logcat 与 `dumpsys display` 继续排查，不代表系统必定采纳。
+- `system` 应记录撤销旧 Surface vote 且 Window 的 mode ID/Hz 都清零。没有兼容 60Hz 目标时应输出 unsupported/fallback=system，不能替代请求 50/90/120Hz；60Hz 设备本身也可能没有可用 high target。这里测的是显示请求，不是游戏 FPS/VSync。
+- 游戏内分辨率切换不得触发 Android Surface 重建或新的 surface epoch；high/60hz 模式的已验证目标不应仅因 RT 尺寸变化失效。
 - 同一画面比例、UI scale 和 `global_scale` 下，各分辨率的 `[Display] ContentScale` `owner` / `logicalContent` / `mode=CanvasItems` / `aspect` 必须相同，不得出现 `CustomRender` 或 `mode=Viewport`。`[Display] RenderTarget` 应立即记录新 `request` / `effective`，而 `surface` 尺寸保持不变。
 - 切回 `0x0` 后 `[Display] RenderTarget` 必须显示 `custom=False`、`effective=native`、`serverScale=(1, 1)`（格式可随 Godot 向量打印略有差异），即同时恢复 native RT 尺寸和原始 canvas transform。
 - 非零 target 的 effective 尺寸必须保持 native attachment 宽高比，并以 Expand 语义覆盖请求矩形；超过限制时 `clamped=True`。自定义目标长边上限为 `max(4096, native 长边)`。

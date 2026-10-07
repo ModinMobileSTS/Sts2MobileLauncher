@@ -1000,8 +1000,13 @@
     <string name="in_game_overlay_inspector_writable_required">Enable Inspector write mode first.</string>
     <string name="in_game_overlay_devtools_host_unavailable">Inspector is unavailable in this game session. Start the game with a current full compatibility pack, then try again.</string>
     <string name="in_game_overlay_devtools_request_timeout">The game bridge is busy and did not answer. Wait a moment and try again.</string>
-    <string name="high_refresh_rate_switch">Request high refresh rate</string>
-    <string name="high_refresh_rate_hint">Enabled by default. On game launch, Android requests the highest refresh mode available for the current display and render surface. Actual FPS still follows the in-game FPS cap. Disable if it causes heat, battery drain or device instability.</string>
+    <string name="display_refresh_rate_title">Display refresh rate</string>
+    <string name="display_refresh_rate_high">High refresh rate (default)</string>
+    <string name="display_refresh_rate_60hz">Request 60 Hz</string>
+    <string name="display_refresh_rate_system">Follow system</string>
+    <string name="display_refresh_rate_high_desc">Request the highest compatible rate at the current size. Actual FPS still follows the in-game cap.</string>
+    <string name="display_refresh_rate_60hz_desc">Request a supported rate near 60 Hz only. If unavailable, leave the choice to Android rather than relabel another rate as 60 Hz. The system may not honor the request.</string>
+    <string name="display_refresh_rate_system_desc">Clear this app’s window and render-surface refresh-rate preferences and let Android decide.</string>
     <string name="preload_hint">Master switch only. Tap the arrow for detailed preload management.</string>
     <string name="preload_advanced_title">Preload details</string>
     <string name="preload_advanced_subtitle">Choose which startup and runtime caches are warmed up.</string>

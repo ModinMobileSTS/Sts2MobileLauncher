@@ -74,6 +74,11 @@ public final class SettingsPage {
 	private static final String[] RENDERER_VALUES = new String[] { RendererPreference.RENDERER_OPENGL_ES3, RendererPreference.RENDERER_VULKAN };
 	private static final String[] LOG_LEVEL_VALUES = new String[] { ExtraSettingsRepository.LOG_LEVEL_OFF, ExtraSettingsRepository.LOG_LEVEL_INFO, ExtraSettingsRepository.LOG_LEVEL_DEBUG, ExtraSettingsRepository.LOG_LEVEL_VERY_DEBUG };
 	private static final String[] LAUNCHER_STARTUP_VALUES = new String[] { ExtraSettingsPreferences.LAUNCHER_STARTUP_SETTINGS, ExtraSettingsPreferences.LAUNCHER_STARTUP_GAME };
+	private static final String[] DISPLAY_REFRESH_RATE_VALUES = new String[] {
+		ExtraSettingsRepository.DISPLAY_REFRESH_RATE_HIGH,
+		ExtraSettingsRepository.DISPLAY_REFRESH_RATE_60HZ,
+		ExtraSettingsRepository.DISPLAY_REFRESH_RATE_SYSTEM
+	};
 	private static final String[] VFX_PRELOAD_VALUES = new String[] { "off", "hot", "full" };
 	private static final String[] VFX_TREE_SCOPE_VALUES = new String[] { "safe", "all" };
 	private static final int[] VFX_TREE_FRAME_OPTIONS = new int[] { 1, 3, 6, 12 };
@@ -649,6 +654,7 @@ public final class SettingsPage {
 		addSpinnerRow(content, R.drawable.ic_rocket_launch_24, R.string.launcher_startup_behavior_title, buildLauncherStartupBehaviorLabels(), findStringIndex(LAUNCHER_STARTUP_VALUES, ExtraSettingsPreferences.getLauncherStartupBehavior(context)), position -> ExtraSettingsPreferences.setLauncherStartupBehavior(context, LAUNCHER_STARTUP_VALUES[position]));
 		addSwitchRow(content, R.drawable.ic_speed_24, R.string.performance_overlay_switch, R.string.performance_overlay_hint, repository.isPerformanceOverlayEnabled(settings), checked -> repository.savePerformanceOverlayEnabled(checked));
 		addSwitchDetailsRow(content, R.drawable.ic_bolt_24, R.string.preload_switch, R.string.preload_hint, settings.optBoolean("preload_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_enabled", checked)), this::showPreloadAdvancedBottomSheet);
+		addSpinnerRow(content, R.drawable.ic_high_quality_24, R.string.display_refresh_rate_title, buildDisplayRefreshRateLabels(), findStringIndex(DISPLAY_REFRESH_RATE_VALUES, repository.getDisplayRefreshRateMode(settings)), position -> repository.saveDisplayRefreshRateMode(DISPLAY_REFRESH_RATE_VALUES[position]));
 		addSwitchRow(content, R.drawable.ic_ms_tune_24, R.string.in_game_overlay_switch, R.string.in_game_overlay_hint, settings.optBoolean(ExtraSettingsRepository.KEY_IN_GAME_OVERLAY_ENABLED, false), checked -> repository.saveSetting(root -> root.put(ExtraSettingsRepository.KEY_IN_GAME_OVERLAY_ENABLED, checked)));
 		addSwitchRow(content, R.drawable.ic_ms_build_24, R.string.dev_tools_switch, R.string.dev_tools_hint, settings.optBoolean(ExtraSettingsRepository.KEY_DEV_TOOLS_ENABLED, false), checked -> {
 			if (checked) {
@@ -667,7 +673,6 @@ public final class SettingsPage {
 			}
 		});
 		addSwitchRow(content, R.drawable.ic_ms_edit_24, R.string.dev_inspector_writable_switch, R.string.dev_inspector_writable_hint, settings.optBoolean(ExtraSettingsRepository.KEY_DEV_INSPECTOR_WRITABLE, false), checked -> repository.saveSetting(root -> root.put(ExtraSettingsRepository.KEY_DEV_INSPECTOR_WRITABLE, checked)));
-		addSwitchRow(content, R.drawable.ic_high_quality_24, R.string.high_refresh_rate_switch, R.string.high_refresh_rate_hint, repository.isHighRefreshRateEnabled(settings), checked -> repository.saveHighRefreshRateEnabled(checked));
 		addSwitchRow(content, R.drawable.ic_extension_24, R.string.android_compat_pack_enabled_switch, R.string.android_compat_pack_enabled_hint, settings.optBoolean(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, true), checked -> repository.saveSetting(root -> root.put(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, checked)));
 		addSwitchRow(content, R.drawable.ic_groups_24, R.string.lan_multiplayer_enabled_switch, R.string.lan_multiplayer_enabled_help, settings.optBoolean("lan_multiplayer_enabled", true), checked -> repository.saveSetting(root -> root.put("lan_multiplayer_enabled", checked)));
 		MaterialButton clearTextureCache = ExtraSettingsUi.outlineButton(context, R.string.clear_texture_cache, R.drawable.ic_layers_24);
@@ -768,6 +773,13 @@ public final class SettingsPage {
 			return Arrays.asList(
 				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_launcher_settings_desc), R.drawable.ic_settings_24),
 				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_launcher_game_desc), R.drawable.ic_rocket_launch_24)
+			);
+		}
+		if (labelRes == R.string.display_refresh_rate_title && labels.size() >= 3) {
+			return Arrays.asList(
+				new ChoiceOption(labels.get(0), context.getString(R.string.display_refresh_rate_high_desc), R.drawable.ic_speed_24),
+				new ChoiceOption(labels.get(1), context.getString(R.string.display_refresh_rate_60hz_desc), R.drawable.ic_high_quality_24),
+				new ChoiceOption(labels.get(2), context.getString(R.string.display_refresh_rate_system_desc), R.drawable.ic_sync_24)
 			);
 		}
 		if (labelRes == R.string.log_level && labels.size() >= 4) {
@@ -1478,6 +1490,14 @@ public final class SettingsPage {
 		return Arrays.asList(
 			context.getString(R.string.launcher_startup_behavior_settings_option),
 			context.getString(R.string.launcher_startup_behavior_game_option)
+		);
+	}
+
+	private List<String> buildDisplayRefreshRateLabels() {
+		return Arrays.asList(
+			context.getString(R.string.display_refresh_rate_high),
+			context.getString(R.string.display_refresh_rate_60hz),
+			context.getString(R.string.display_refresh_rate_system)
 		);
 	}
 
