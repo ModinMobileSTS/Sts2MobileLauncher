@@ -15,11 +15,17 @@ import android.text.InputType;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.TextWatcher;
+import android.text.TextPaint;
 import android.text.format.Formatter;
 import android.text.style.BackgroundColorSpan;
 import android.text.style.ForegroundColorSpan;
+import android.text.Layout;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.Menu;
+import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
+import android.view.ViewTreeObserver;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.PathInterpolator;
@@ -45,6 +51,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
+import com.godot.game.loganalysis.LogAnalysisActivity;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
@@ -77,10 +84,11 @@ public class LogFileViewerActivity extends AppCompatActivity {
 	private static final int MENU_WRAP = 2;
 	private static final int MENU_MORE = 3;
 	private static final int MENU_SELECT_ALL = 4;
-	private static final int MENU_COPY = 5;
-	private static final int MENU_SHARE = 6;
-	private static final int MENU_EXPORT = 7;
-	private static final int MENU_LOCATION = 8;
+	private static final int MENU_ANALYZE = 5;
+	private static final float BASE_TEXT_SP = 16f;
+	private static final float WIDTH_BASE_SP = 10f;
+	private static final String STATE_FONT = "log.font";
+	private static final String STATE_WRAP = "log.wrap";
 	private static final long MAX_PREVIEW_BYTES = 512L * 1024L;
 	private static final int COLOR_SURFACE = 0xFF171A22;
 	private static final int COLOR_ON_SURFACE = 0xFFF0F0F8;
@@ -134,7 +142,20 @@ public class LogFileViewerActivity extends AppCompatActivity {
 	private String sourceLabel;
 	private long lastModified;
 	private long fileSize;
-	private int unwrappedWidth;
+	private float maxLineWidthAtBase;
+	private int numberWidth;
+	private final TextPaint measurementPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+	private final int[] touchLocation = new int[2];
+	private float textSizeSp = BASE_TEXT_SP;
+	private float pendingTextSizeSp = BASE_TEXT_SP;
+	private ScaleGestureDetector scaleDetector;
+	private boolean consumingPinch;
+	private boolean resizingText;
+	private boolean fontFramePending;
+	private PinchAnchor pinchAnchor;
+	private boolean awaitingRangeEnd;
+	private boolean logGesture;
+	private static final Object TYPOGRAPHY_PAYLOAD = new Object();
 	private boolean wrapText = true;
 	private boolean previewReady;
 	private String searchQuery = "";
@@ -145,6 +166,11 @@ public class LogFileViewerActivity extends AppCompatActivity {
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		if (savedInstanceState != null) {
+			textSizeSp = Math.max(10f, Math.min(30f, savedInstanceState.getFloat(STATE_FONT, BASE_TEXT_SP)));
+			wrapText = savedInstanceState.getBoolean(STATE_WRAP, true);
+		}
+		pendingTextSizeSp = textSizeSp;
 		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
 		SystemBarInsetsHelper.enableEdgeToEdge(this);
 		setContentView(R.layout.activity_log_file_viewer);
@@ -159,13 +185,20 @@ public class LogFileViewerActivity extends AppCompatActivity {
 		recyclerView.setLayoutManager(layoutManager);
 		recyclerView.setAdapter(adapter);
 		recyclerView.setItemAnimator(null);
-		contentContainer.addOnLayoutChangeListener((v, l, t, r, b, oldL, oldT, oldR, oldB) -> {
+		configurePinch();
+		horizontalScroll.addOnLayoutChangeListener((v, l, t, r, b, oldL, oldT, oldR, oldB) -> {
 			if (r - l != oldR - oldL) {
 				updateWrapWidth();
 			}
 		});
 		jumpBottomButton.setImageDrawable(MaterialSymbols.drawable(this, "vertical_align_bottom", COLOR_ON_PRIMARY, 24));
-		jumpBottomButton.setOnClickListener(v -> scrollToBottom(true));
+		jumpBottomButton.setOnClickListener(v -> {
+			if (rangeStart >= 0) {
+				expandSelectedRange();
+			} else {
+				scrollToBottom(true);
+			}
+		});
 		getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
 			@Override
 			public void handleOnBackPressed() {
@@ -204,6 +237,198 @@ public class LogFileViewerActivity extends AppCompatActivity {
 				runOnUiThread(() -> showLoadError(exception));
 			}
 		}).start();
+	}
+
+	@Override
+	protected void onSaveInstanceState(Bundle outState) {
+		outState.putFloat(STATE_FONT, pendingTextSizeSp);
+		outState.putBoolean(STATE_WRAP, wrapText);
+		super.onSaveInstanceState(outState);
+	}
+
+	private TextPaint textPaint(float sizeSp) {
+		measurementPaint.setTypeface(Typeface.MONOSPACE);
+		measurementPaint.setTextSize(sizeSp * getResources().getDisplayMetrics().scaledDensity);
+		return measurementPaint;
+	}
+
+	private void applyHolderTypography(LineHolder holder) {
+		holder.number.setTextSize(textSizeSp - 1f);
+		LinearLayout.LayoutParams numberParams = (LinearLayout.LayoutParams) holder.number.getLayoutParams();
+		if (numberParams.width != numberWidth) {
+			numberParams.width = numberWidth;
+			holder.number.setLayoutParams(numberParams);
+		}
+		holder.text.setTextSize(textSizeSp);
+		// The canvas owns horizontal scrolling, so TextView must keep a finite layout.
+		holder.text.setSingleLine(false);
+		holder.text.setHorizontallyScrolling(false);
+		holder.text.setMaxLines(wrapText ? Integer.MAX_VALUE : 1);
+	}
+
+	private void configurePinch() {
+		scaleDetector = new ScaleGestureDetector(this, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+			@Override
+			public boolean onScaleBegin(ScaleGestureDetector detector) {
+				pinchAnchor = capturePinchAnchor(detector.getFocusX(), detector.getFocusY());
+				return true;
+			}
+
+			@Override
+			public boolean onScale(ScaleGestureDetector detector) {
+				float factor = detector.getScaleFactor();
+				if (Float.isNaN(factor) || Float.isInfinite(factor)) {
+					return false;
+				}
+				pendingTextSizeSp = Math.max(10f, Math.min(30f, pendingTextSizeSp * factor));
+				if (pinchAnchor != null) {
+					horizontalScroll.getLocationInWindow(touchLocation);
+					pinchAnchor.focusX = detector.getFocusX() - touchLocation[0];
+					pinchAnchor.focusY = detector.getFocusY() - touchLocation[1];
+				}
+				scheduleFontFrame();
+				return true;
+			}
+		});
+		scaleDetector.setQuickScaleEnabled(false);
+		scaleDetector.setStylusScaleEnabled(false);
+	}
+
+	@Override
+	public boolean dispatchTouchEvent(MotionEvent event) {
+		if (scaleDetector == null) {
+			return super.dispatchTouchEvent(event);
+		}
+		int action = event.getActionMasked();
+		if (action == MotionEvent.ACTION_DOWN) {
+			// Recover after focus loss even if the previous stream never sent its UP.
+			consumingPinch = false;
+			horizontalScroll.getParent().requestDisallowInterceptTouchEvent(false);
+			horizontalScroll.getLocationInWindow(touchLocation);
+			logGesture = event.getX() >= touchLocation[0] && event.getX() < touchLocation[0] + horizontalScroll.getWidth()
+					&& event.getY() >= touchLocation[1] && event.getY() < touchLocation[1] + horizontalScroll.getHeight();
+		}
+		if (!logGesture) {
+			return super.dispatchTouchEvent(event);
+		}
+		if (event.getPointerCount() >= 2 && !consumingPinch) {
+			consumingPinch = true;
+			recyclerView.stopScroll();
+			horizontalScroll.fling(0);
+			MotionEvent cancel = MotionEvent.obtain(event);
+			cancel.setAction(MotionEvent.ACTION_CANCEL);
+			super.dispatchTouchEvent(cancel);
+			cancel.recycle();
+			horizontalScroll.getParent().requestDisallowInterceptTouchEvent(true);
+		}
+		scaleDetector.onTouchEvent(event);
+		if (!consumingPinch) {
+			return super.dispatchTouchEvent(event);
+		}
+		// Consume the complete stream, including the remaining single finger's UP.
+		if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+			consumingPinch = false;
+			logGesture = false;
+			horizontalScroll.getParent().requestDisallowInterceptTouchEvent(false);
+		}
+		return true;
+	}
+
+	private PinchAnchor capturePinchAnchor(float focusX, float focusY) {
+		recyclerView.getLocationInWindow(touchLocation);
+		View row = recyclerView.findChildViewUnder(focusX - touchLocation[0], focusY - touchLocation[1]);
+		if (row == null) {
+			return null;
+		}
+		LineHolder holder = (LineHolder) recyclerView.getChildViewHolder(row);
+		int position = holder.getBindingAdapterPosition();
+		Layout layout = holder.text.getLayout();
+		if (position == RecyclerView.NO_POSITION || layout == null) {
+			return null;
+		}
+		holder.text.getLocationInWindow(touchLocation);
+		int y = Math.round(focusY - touchLocation[1] - holder.text.getTotalPaddingTop());
+		int visualLine = layout.getLineForVertical(Math.max(0, y));
+		float x = focusX - touchLocation[0] - holder.text.getTotalPaddingLeft();
+		int offset = layout.getOffsetForHorizontal(visualLine, Math.max(0f, x));
+		float withinLine = Math.max(0f, Math.min(1f, (y - layout.getLineTop(visualLine))
+				/ (float) Math.max(1, layout.getLineBottom(visualLine) - layout.getLineTop(visualLine))));
+		horizontalScroll.getLocationInWindow(touchLocation);
+		return new PinchAnchor(position, offset, withinLine,
+				focusX - touchLocation[0], focusY - touchLocation[1]);
+	}
+
+	private void scheduleFontFrame() {
+		if (fontFramePending) {
+			return;
+		}
+		fontFramePending = true;
+		recyclerView.postOnAnimation(() -> {
+			fontFramePending = false;
+			if (isFinishing() || isDestroyed() || Math.abs(textSizeSp - pendingTextSizeSp) < 0.01f) {
+				return;
+			}
+			resizingText = true;
+			textSizeSp = pendingTextSizeSp;
+			updateWrapWidth();
+			adapter.notifyItemRangeChanged(0, adapter.getItemCount(), TYPOGRAPHY_PAYLOAD);
+			if (pinchAnchor != null) {
+				// Keep the anchor holder in the laid-out set even when a tall row shrinks.
+				layoutManager.setStackFromEnd(false);
+				layoutManager.scrollToPositionWithOffset(pinchAnchor.position,
+						Math.round(pinchAnchor.focusY) - recyclerView.getPaddingTop());
+			}
+			recyclerView.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+				@Override
+				public boolean onPreDraw() {
+					recyclerView.getViewTreeObserver().removeOnPreDrawListener(this);
+					restorePinchAnchor();
+					resizingText = false;
+					return true;
+				}
+			});
+		});
+	}
+
+	private void restorePinchAnchor() {
+		if (pinchAnchor == null) {
+			return;
+		}
+		RecyclerView.ViewHolder found = recyclerView.findViewHolderForAdapterPosition(pinchAnchor.position);
+		if (!(found instanceof LineHolder)) {
+			return;
+		}
+		LineHolder holder = (LineHolder) found;
+		Layout layout = holder.text.getLayout();
+		if (layout == null) {
+			return;
+		}
+		int offset = Math.min(pinchAnchor.offset, holder.text.length());
+		int visualLine = layout.getLineForOffset(offset);
+		float charY = holder.text.getTop() + holder.text.getTotalPaddingTop() + layout.getLineTop(visualLine)
+				+ pinchAnchor.withinLine * (layout.getLineBottom(visualLine) - layout.getLineTop(visualLine));
+		// Scroll synchronously before drawing, not a second layout on the next frame.
+		recyclerView.scrollBy(0, Math.round(holder.itemView.getTop() + charY - pinchAnchor.focusY));
+		if (!wrapText) {
+			int charX = holder.text.getLeft() + holder.text.getTotalPaddingLeft() + Math.round(layout.getPrimaryHorizontal(offset));
+			horizontalScroll.scrollTo(Math.max(0, Math.round(charX - pinchAnchor.focusX)), 0);
+		}
+	}
+
+	private static final class PinchAnchor {
+		final int position;
+		final int offset;
+		final float withinLine;
+		float focusX;
+		float focusY;
+
+		PinchAnchor(int position, int offset, float withinLine, float focusX, float focusY) {
+			this.position = position;
+			this.offset = offset;
+			this.withinLine = withinLine;
+			this.focusX = focusX;
+			this.focusY = focusY;
+		}
 	}
 
 	private void bindViews() {
@@ -263,23 +488,26 @@ public class LogFileViewerActivity extends AppCompatActivity {
 
 	private void updateToolbar() {
 		boolean selecting = rangeStart >= 0;
-        toolbar.setBackgroundColor(selecting ? COLOR_PRIMARY : COLOR_SURFACE);
-        toolbar.setTitleTextColor(selecting ? COLOR_ON_PRIMARY : COLOR_ON_SURFACE);
-        toolbar.setNavigationIcon(MaterialSymbols.drawable(this, selecting ? "close" : "arrow_back", selecting ? COLOR_ON_PRIMARY : COLOR_ON_SURFACE, 24));
+		toolbar.setBackgroundTintList(null);
+		toolbar.setBackgroundColor(selecting ? COLOR_PRIMARY_CONTAINER : COLOR_SURFACE);
+		toolbar.setTitleTextColor(Color.WHITE);
+		toolbar.setNavigationIcon(MaterialSymbols.drawable(this, selecting ? "close" : "arrow_back", Color.WHITE, 24));
 		toolbar.getMenu().clear();
 		if (selecting) {
 			int end = rangeEnd < 0 ? rangeStart : rangeEnd;
 			toolbar.setTitle(getString(R.string.log_file_viewer_range_selected,
 					lines.get(Math.min(rangeStart, end)).number, lines.get(Math.max(rangeStart, end)).number));
 			toolbar.setSubtitle(null);
-            addToolbarItem(MENU_SELECT_ALL, R.string.log_file_viewer_select_all_lines, "select_all", COLOR_ON_PRIMARY);
+			addToolbarItem(MENU_SELECT_ALL, R.string.log_file_viewer_select_all_lines, "select_all", Color.WHITE);
 		} else {
 			toolbar.setTitle(displayName);
 			toolbar.setSubtitle(sourceLabel + " · " + Formatter.formatFileSize(this, fileSize) + " · " + formatDate(lastModified));
-			addToolbarItem(MENU_SEARCH, R.string.log_file_viewer_search, "search", COLOR_ON_SURFACE);
-			addToolbarItem(MENU_WRAP, R.string.log_file_viewer_wrap_text, "wrap_text", wrapText ? COLOR_PRIMARY : COLOR_ON_SURFACE);
-			addToolbarItem(MENU_MORE, R.string.log_file_viewer_more, "more_vert", COLOR_ON_SURFACE);
+			addToolbarItem(MENU_WRAP, R.string.log_file_viewer_wrap_text, "wrap_text", wrapText ? COLOR_PRIMARY : Color.WHITE);
 		}
+		addToolbarItem(MENU_SEARCH, R.string.log_file_viewer_search, "search", Color.WHITE);
+		addToolbarItem(MENU_MORE, R.string.log_file_viewer_more, "more_vert", Color.WHITE);
+		jumpBottomButton.setImageDrawable(MaterialSymbols.drawable(this, selecting ? "unfold_more" : "vertical_align_bottom", COLOR_ON_PRIMARY, 24));
+		jumpBottomButton.setContentDescription(getString(selecting ? R.string.log_detail_expand_context : R.string.log_file_viewer_jump_bottom));
         if (selecting) {
             detailActionBar.setVisibility(View.GONE);
             if (rangeActionBar.getVisibility() != View.VISIBLE) {
@@ -290,10 +518,9 @@ public class LogFileViewerActivity extends AppCompatActivity {
             rangeActionBar.animate().cancel();
             rangeActionBar.setVisibility(View.GONE);
         }
-        boolean complete = rangeStart >= 0 && rangeEnd >= 0;
-        rangeCopyButton.setEnabled(complete);
-        rangeShareButton.setEnabled(complete);
-        rangeExpandButton.setEnabled(complete);
+		rangeCopyButton.setEnabled(selecting);
+		rangeShareButton.setEnabled(selecting);
+		rangeExpandButton.setEnabled(selecting);
 	}
 
 	private void addToolbarItem(int id, int titleRes, String glyph, int tint) {
@@ -331,7 +558,7 @@ public class LogFileViewerActivity extends AppCompatActivity {
 		chip.setCheckable(true);
 		chip.setChecked(true);
 		chip.setEnsureMinTouchTargetSize(true);
-		chip.setTextSize(12);
+		chip.setTextSize(14);
 		chip.setTextColor(color);
 		chip.setChipBackgroundColor(new ColorStateList(
 				new int[][] {new int[] {android.R.attr.state_checked}, new int[] {}},
@@ -449,7 +676,7 @@ public class LogFileViewerActivity extends AppCompatActivity {
 		List<LogLine> parsed = new ArrayList<>();
 		Paint paint = new Paint();
 		paint.setTypeface(Typeface.MONOSPACE);
-		paint.setTextSize(12 * getResources().getDisplayMetrics().scaledDensity);
+		paint.setTextSize(WIDTH_BASE_SP * getResources().getDisplayMetrics().scaledDensity);
 		int maxWidth = 0;
 		int start = 0;
 		int previousLevel = LEVEL_INFO;
@@ -465,10 +692,18 @@ public class LogFileViewerActivity extends AppCompatActivity {
 			int level = detectLevel(text, previousLevel);
 			previousLevel = level;
 			parsed.add(new LogLine(firstLineNumber++, text, level));
-			maxWidth = Math.max(maxWidth, (int) Math.ceil(paint.measureText(text)));
+			int tabs = 0;
+			for (int i = 0; i < text.length(); i++) {
+				if (text.charAt(i) == '\t') {
+					tabs++;
+				}
+			}
+			// A default Android tab stop advances at most 20 px. Cache an upper
+			// bound at minimum font size so every later pinch remains fully scrollable.
+			maxWidth = Math.max(maxWidth, (int) Math.ceil(paint.measureText(text)) + tabs * 20);
 			start = end + 1;
 		}
-		return new PreviewData(parsed, truncated, true, maxWidth + dp(92), length, modified);
+		return new PreviewData(parsed, truncated, true, maxWidth, length, modified);
 	}
 
 	private int detectLevel(String text, int previousLevel) {
@@ -501,7 +736,7 @@ public class LogFileViewerActivity extends AppCompatActivity {
 		previewReady = data.text;
 		fileSize = data.size;
 		lastModified = data.modified;
-		unwrappedWidth = data.width;
+		maxLineWidthAtBase = data.width;
 		largeFileNotice.setVisibility(data.truncated ? View.VISIBLE : View.GONE);
 		int errors = 0;
 		int warnings = 0;
@@ -557,7 +792,11 @@ public class LogFileViewerActivity extends AppCompatActivity {
 		if (viewport <= 0) {
 			return;
 		}
-		int width = wrapText ? viewport : Math.max(viewport, unwrappedWidth);
+		Paint paint = textPaint(textSizeSp - 1f);
+		String lastNumber = lines.isEmpty() ? "1" : String.valueOf(lines.get(lines.size() - 1).number);
+		numberWidth = Math.max(dp(52), (int) Math.ceil(paint.measureText(lastNumber)) + dp(16));
+		int width = wrapText ? viewport : Math.max(viewport,
+				(int) Math.ceil(maxLineWidthAtBase * textSizeSp / WIDTH_BASE_SP) + numberWidth + dp(24));
 		ViewGroup.LayoutParams params = scrollCanvas.getLayoutParams();
 		if (params.width != width) {
 			params.width = width;
@@ -628,10 +867,8 @@ public class LogFileViewerActivity extends AppCompatActivity {
 		layoutManager.scrollToPositionWithOffset(match.position, dp(16));
 		if (!wrapText) {
 			LogLine line = lines.get(visibleLineIndices.get(match.position));
-			Paint paint = new Paint();
-			paint.setTypeface(Typeface.MONOSPACE);
-			paint.setTextSize(12 * getResources().getDisplayMetrics().scaledDensity);
-			int x = Math.max(0, dp(64) + (int) paint.measureText(line.text, 0, match.start) - dp(40));
+			TextPaint paint = textPaint(textSizeSp);
+			int x = Math.max(0, numberWidth + dp(4) + (int) Layout.getDesiredWidth(line.text, 0, match.start, paint) - dp(40));
 			if (animate) {
 				horizontalScroll.smoothScrollTo(x, 0);
 			} else {
@@ -686,15 +923,17 @@ public class LogFileViewerActivity extends AppCompatActivity {
 	}
 
 	private void onLineNumberClicked(int lineIndex) {
-		if (rangeStart < 0 || rangeEnd >= 0) {
+		if (consumingPinch || resizingText) {
+			return;
+		}
+		if (rangeStart < 0 || !awaitingRangeEnd) {
 			rangeStart = lineIndex;
-			rangeEnd = -1;
-			if (rangeActionBar.getVisibility() != View.VISIBLE) {
-				showBar(rangeActionBar);
-			}
-            toast(getString(R.string.log_viewer_range_hint));
+			rangeEnd = lineIndex;
+			awaitingRangeEnd = true;
+			toast(getString(R.string.log_detail_range_hint));
 		} else {
 			rangeEnd = lineIndex;
+			awaitingRangeEnd = false;
 		}
 		updateToolbar();
 		adapter.notifyDataSetChanged();
@@ -706,6 +945,7 @@ public class LogFileViewerActivity extends AppCompatActivity {
 		}
 		rangeStart = -1;
 		rangeEnd = -1;
+		awaitingRangeEnd = false;
 		rangeActionBar.animate().cancel();
 		rangeActionBar.setVisibility(View.GONE);
 		updateToolbar();
@@ -718,6 +958,7 @@ public class LogFileViewerActivity extends AppCompatActivity {
 		}
 		rangeStart = visibleLineIndices.get(0);
 		rangeEnd = visibleLineIndices.get(visibleLineIndices.size() - 1);
+		awaitingRangeEnd = false;
 		updateToolbar();
 		adapter.notifyDataSetChanged();
 	}
@@ -757,38 +998,26 @@ public class LogFileViewerActivity extends AppCompatActivity {
 		int end = Math.max(rangeStart, rangeEnd);
 		rangeStart = Math.max(0, start - 20);
 		rangeEnd = Math.min(lines.size() - 1, end + 20);
+		awaitingRangeEnd = false;
 		updateToolbar();
 		adapter.notifyDataSetChanged();
 	}
 
 	private void showMoreMenu(View anchor) {
 		PopupMenu popup = new PopupMenu(this, anchor == null ? toolbar : anchor, Gravity.END);
-		popup.getMenu().add(Menu.NONE, MENU_COPY, Menu.NONE, R.string.log_file_viewer_copy_all)
-				.setIcon(MaterialSymbols.drawable(this, "content_copy", COLOR_MUTED, 24)).setEnabled(previewReady);
-		popup.getMenu().add(Menu.NONE, MENU_SHARE, Menu.NONE, R.string.log_file_viewer_share)
-				.setIcon(MaterialSymbols.drawable(this, "share", COLOR_MUTED, 24)).setEnabled(sourceFile != null && sourceFile.isFile());
-		popup.getMenu().add(Menu.NONE, MENU_EXPORT, Menu.NONE, R.string.log_file_viewer_export)
-				.setIcon(MaterialSymbols.drawable(this, "ios_share", COLOR_MUTED, 24)).setEnabled(sourceFile != null && sourceFile.isFile());
-		popup.getMenu().add(Menu.NONE, MENU_LOCATION, Menu.NONE, R.string.log_file_viewer_location)
-				.setIcon(MaterialSymbols.drawable(this, "folder_open", COLOR_MUTED, 24)).setEnabled(sourceFile != null);
+		popup.getMenu().add(Menu.NONE, MENU_ANALYZE, Menu.NONE, R.string.log_detail_analyze)
+				.setIcon(MaterialSymbols.drawable(this, "auto_awesome", COLOR_MUTED, 24)).setEnabled(sourceFile != null);
 		popup.setForceShowIcon(true);
 		popup.setOnMenuItemClickListener(item -> {
-			switch (item.getItemId()) {
-				case MENU_COPY:
-					copyAllContent();
-					return true;
-				case MENU_SHARE:
-					shareOriginalFile();
-					return true;
-				case MENU_EXPORT:
-					exportOriginalFile();
-					return true;
-				case MENU_LOCATION:
-					openFileLocation();
-					return true;
-				default:
-					return false;
+			if (item.getItemId() == MENU_ANALYZE) {
+				if (sourceFile == null || !sourceFile.isFile()) {
+					showError(new IOException(getString(R.string.log_file_viewer_missing)));
+				} else {
+					startActivity(LogAnalysisActivity.createIntent(this, sourceFile));
+				}
+				return true;
 			}
+			return false;
 		});
 		popup.show();
 	}
@@ -1001,17 +1230,26 @@ public class LogFileViewerActivity extends AppCompatActivity {
 			row.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 			TextView number = new TextView(parent.getContext());
 			number.setTypeface(Typeface.MONOSPACE);
-			number.setTextSize(11);
+			number.setTextSize(textSizeSp - 1f);
 			number.setGravity(Gravity.END);
 			number.setPadding(dp(8), dp(5), dp(8), dp(5));
-			row.addView(number, new LinearLayout.LayoutParams(dp(60), ViewGroup.LayoutParams.MATCH_PARENT));
+			row.addView(number, new LinearLayout.LayoutParams(numberWidth, ViewGroup.LayoutParams.MATCH_PARENT));
 			TextView text = new TextView(parent.getContext());
 			text.setTypeface(Typeface.MONOSPACE);
-			text.setTextSize(12);
+			text.setTextSize(textSizeSp);
 			text.setPadding(dp(4), dp(5), dp(12), dp(5));
 			text.setIncludeFontPadding(false);
 			row.addView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 			return new LineHolder(row, number, text);
+		}
+
+		@Override
+		public void onBindViewHolder(LineHolder holder, int position, List<Object> payloads) {
+			if (!payloads.isEmpty()) {
+				applyHolderTypography(holder);
+			} else {
+				onBindViewHolder(holder, position);
+			}
 		}
 
 		@Override
@@ -1024,8 +1262,7 @@ public class LogFileViewerActivity extends AppCompatActivity {
 			holder.number.setTextColor(selected ? COLOR_ON_PRIMARY_CONTAINER : COLOR_MUTED);
 			holder.number.setContentDescription(getString(R.string.log_file_viewer_select_line, line.number));
 			holder.text.setTextColor(line.level == LEVEL_ERROR ? COLOR_ERROR : line.level == LEVEL_WARNING ? COLOR_WARNING : COLOR_ON_SURFACE);
-			holder.text.setSingleLine(!wrapText);
-			holder.text.setHorizontallyScrolling(!wrapText);
+			applyHolderTypography(holder);
 			if (searchQuery.isEmpty()) {
 				holder.text.setText(line.text);
 				return;
@@ -1063,6 +1300,21 @@ public class LogFileViewerActivity extends AppCompatActivity {
 					onLineNumberClicked(visibleLineIndices.get(position));
 				}
 			});
+			View.OnLongClickListener selectLine = v -> {
+				int position = getBindingAdapterPosition();
+				if (position != RecyclerView.NO_POSITION && !consumingPinch && !resizingText) {
+					onLineNumberClicked(visibleLineIndices.get(position));
+					return true;
+				}
+				return false;
+			};
+			row.setOnLongClickListener(selectLine);
+			text.setOnLongClickListener(selectLine);
+			number.setOnLongClickListener(selectLine);
+			TypedValue ripple = new TypedValue();
+			if (getTheme().resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)) {
+				row.setForeground(getDrawable(ripple.resourceId));
+			}
 		}
 	}
 

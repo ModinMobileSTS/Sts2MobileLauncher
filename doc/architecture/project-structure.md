@@ -40,7 +40,9 @@ s2_re/
 ## 3. Android shell 主要组件
 
 - `GameSettingsActivity`：默认 launcher，承载欢迎向导、游戏主页、设置页、版本页、MOD 页，负责启动前检查；桌面图标默认打开附加设置，也可在设置页切换为完成向导后自动直接启动游戏；启动器更新检查可在关于页手动触发，手动无新版本时用 snackbar 提示，手动失败会弹窗显示原因，启动时自动检查无更新或失败仍保持静默日志。手机保持竖屏启动器，平板/大屏允许系统方向并在横屏时使用左侧 Navigation Rail、居中最大宽度内容、首页双栏与设置/关于双列卡片；游戏本体 `GodotApp` 保持横屏，旋转模式可在普通横屏、反向横屏和横屏传感器自动切换之间选择。游戏主页采用 MD3 深色仪表盘：顶部 Steam chip、动态渐变启动卡、未导入空状态、MOD/存档双状态卡和 4 列维护/高级工具快捷入口；MOD 页 Chip 操作组提供创意工坊入口；启动器图标统一通过 bundled Material Symbols Rounded 字体渲染。
-- `FileBrowserActivity` / `LogViewerActivity` / `LogFileViewerActivity`：启动器工具页。文件页固定在应用私有 `files` 根目录内，用面包屑、剪贴板横幅、名称/时间/大小排序、底部新增/导入抽屉和选择模式底栏承载真实文件复制、导入、导出、重命名、删除与文本编辑；日志页先按来源和日期查找日志，再进入带行号、等级筛选、页内搜索、跳尾、固定底部文件操作栏和范围分享的详情页。两页使用统一深色 Material 3 骨架与 Material Symbols，创意工坊页面不依赖这次工具页改造。
+- `FileBrowserActivity` / `LogViewerActivity` / `LogFileViewerActivity`：启动器工具页使用独立 `Theme.Sts2Tools`，统一顶栏、Bottom Sheet、对话框和列表点击的深色 Material 3 样式；选择模式标题为白色。文件页固定在应用私有 `files` 根目录内，用面包屑、剪贴板横幅、名称/时间/大小排序、底部新增/导入抽屉和选择模式底栏承载复制、导入、导出、重命名、删除与文本编辑；关闭选择模式立即取消底栏动画并移除底栏。日志列表多选仅提供分享和导出，右下角“一键打包最新”独立选择修改时间最新的 live `godot.log` 和 `sts2.log`，不打包归档。详情页保留行号、等级筛选、菜单搜索和跳尾；未选择时底栏为复制全部、分享、导出、所在位置，选择时改为复制、分享片段和上下各扩展 20 行。换行约束实际内容宽度，关闭后允许横向滚动；双指连续调整字号为 10–30sp，并保留阅读锚点、筛选、搜索和行范围。创意工坊页面不随工具页改造变更。
+- `llm/`：通用 OpenAI-compatible Chat Completions 连接、加密配置、可取消 HTTP 与内存多轮工具会话，不依赖日志页面或 Steam 账号。
+- `loganalysis/`：独立 `LogAnalysisActivity` 与只读 `LogTools`；日志详情仅打开入口，不持有分析流程。文件发现复用 `RuntimeLogFiles`。
 - `SteamAccountActivity`：Steam 中心，负责展示 Steam 登录/Guard/refresh token 状态、SteamPipe 下载 STS2 payload，以及当前 launch profile account root 的 Steam Cloud 手动/自动同步。游戏本体下载可选择 1 / 2 / 4 个 chunk worker，默认 2；该设置只改变有界下载 worker 数，不改变单 writer 落盘和完整性校验。credential auth 的网络生命周期不再由 Activity 持有：Activity 只绑定并观察认证服务，切到 Steam App 时触发的 `onStop()` 只解绑，不取消事务。
 - `Sts2SteamCloudClient`：Steam Cloud 的 CM 端点构造保留独立 host/port，支持 IPv4 与 IPv6/NAT64；不得将 IP 拼成字符串后交给 JavaSteam 1.6.0 的 `createWebSocketServer(String)`，该方法会把 `64:ff9b:...` 的 `ff9b` 误当端口并抛 `NumberFormatException`。最后成功端点继续以 `[IPv6]:port` 或 `IPv4:port` 保存，读取时用 URI 解析 authority 后调用 `createServer(host, port, WEB_SOCKET)`，兼容无显式端口的默认端点（443）。服务器列表、最后成功缓存、默认端点的选择顺序及存档上传/冲突策略不变；回归入口为 `SteamCloudEndpointTest`。
 - `Sts2SteamPayloadDownloader`：下载页“自定义”卡片展开后支持分支名或指定 Manifest；Manifest 模式可读取 Steam 可见分支的当前 Windows x64 depot `2868841` 清单，也可手动输入无符号 64 位 ManifestID。列表不是历史目录，查询失败仍可手动输入。精确模式不查询最新版来替换目标、不用其他清单补齐缺失文件，继续复用 prepared manifest、稳定任务目录与 payload 安装流程。来源记录的 `selection_mode` 为 `branch` / `manifest`，`request_branch` 仅表示授权请求分支；手动输入时 `source.steam.branch` 留空，防止 Workshop 把请求参数误当内容归属，按原逻辑回落到兼容包 target 分支或询问用户。
@@ -59,6 +61,19 @@ s2_re/
 - `DisplaySettingsPatches` / `UiScalePatches`：compat 根 Window 的逻辑缩放统一为 `CanvasItems`，前者是 `ContentScaleMode` / `ContentScaleAspect` / `ContentScaleSize` 的唯一协调者。自动比例使用原版 UI scale target，固定比例使用对应 fixed target，`global_scale` 独立作为 `ContentScaleFactor`；`fullscreen_render_size` 不参与逻辑 owner 选择，而是在游戏内修改后立即调整根 renderer render target。compat 会先完成所有高层 `ContentScale*` setter，再只通过 `RenderingServer.ViewportSetRenderDirectToScreen(false)`、`ViewportSetSize()` 与 `ViewportSetGlobalCanvasTransform()` 写入 renderer 侧目标；scene `Window`、输入变换和 Android `Surface` 都保持不变，也绝不调用 `SurfaceHolder.setFixedSize()` 或 `ViewportAttachToScreen()`。`0x0` 会恢复当前 native attachment 尺寸与原始 canvas transform。非零预设按当前 native attachment 宽高比以 Expand 语义覆盖请求矩形，例如 native `2400x1080` 选择 `1280x720` 时实际 render target 为 `1600x720`；自定义目标长边上限为 `max(4096, native 长边)`。根窗口 `SizeChanged`、应用 resume 和一致性 repair 后都会重投 renderer 状态，避免高层 setter 或窗口重建覆盖动态分辨率。
 - `ExtendedMultiplayerRoomPatches`：只处理超过四人的客户端房间 UI 四槽限制，不改变玩法或网络状态。宝箱按同步器当前遗物数动态实例化 holder、用可见槽位保护本地默认焦点并按玩家数分散奖励/剪刀石头布手势；休息点在原版 `_Ready()` 的玩家索引循环前创建有序角色容器。四人及以下保持原版布局；其他原版界面仍可能包含四人假设，因此 `max_multiplayer_players > 4` 仍标记为实验功能。
 - `godot-debug-menu` overlay：打包进 `port-mod/overlay/addons/debug_menu/`，由设置页“系统”分区的性能显示开关控制，默认关闭；开启后下次启动显示 FPS、CPU/GPU frame graph 与渲染器/硬件信息。
+
+### 3.1 日志分析模块
+
+日志详情右上角菜单选择“LLM 分析”，在分析页配置 Base URL、API Key、Model ID 与可选 Thinking Effort。Base URL 可填写服务根地址、带 `/v1` 的地址或完整 `/chat/completions` endpoint；自定义前缀按输入保留。Thinking Effort 原样发送为 `reasoning_effort`，留空时不发送。服务必须支持标准 Chat Completions `tools` / `tool_calls`，不支持时显示失败，不自动改为上传全文或静默去掉参数。
+
+- 默认只授权当前文件；文件按钮可勾选最新关联的 `godot.log` / `sts2.log`，最多三个文件。首次提问前展示目标服务与授权列表并要求明确同意。建议使用可信 HTTPS 服务；问题、文件名和工具按需返回的片段仍可能包含隐私数据。
+- `LlmSettings` 使用 `EncryptedSharedPreferences` 保存配置，不明文回退、不清除读取失败的既有配置；密钥不进入 Intent、日志或模型消息。问题、回答与工具会话只在内存中持有，页面销毁结束会话。
+- 首轮只包含用户问题、文件名、大小与行数等元数据，不带日志正文。`LogTools` 把授权文件映射为 `log_1` 等 ID，模型只能请求 `read_lines(file_id,start_line,end_line)` 或 `search_logs(file_id,keyword,start_line?,limit?)`；不能指定路径、执行命令或访问未授权文件。
+- 行段采用原文件从 1 开始的闭区间；关键词为大小写敏感的单行字面字符串，不是正则。每次最多返回 60 行、12,000 个转义后文本字符，每行保留前 1,200 字符；搜索最多 20 处，提供邻近上下文、`next_line` 和截断标记。日志大小或修改时间变化时拒绝继续读取，需重新开始会话。
+- `ChatSession` 通过通用 `Transport` / `Tools` 接口复用，不依赖日志文件或 Android 页面；保留工具 ID 关联，支持多轮探索和后续追问。每个问题最多 24 轮、每轮最多 8 个工具，总上下文最多 256 Ki 字符；到达轮数边界明确提示尚未完成，取消/异常回滚本轮不完整历史。
+- HTTP、日志扫描与加密配置读写在后台执行。停止、配置/授权列表变更和页面销毁会取消请求并使迟到 UI 回调失效。HTTP 不跟随重定向，也不使用 Steam 凭证或 Workshop 兼容代理。
+
+边界回归：`tools/android/gradle-with-s2-env.sh testMonoReleaseUnitTest --tests com.godot.game.loganalysis.LogToolsTest --tests com.godot.game.llm.OpenAiSessionTest --tests com.godot.game.llm.ChatSessionTest`。这些回归覆盖只读文件授权、行段/搜索分页、标准多轮协议、隐私首轮与 HTTP 取消，不代表真实模型的分析质量或商业游戏崩溃已经实测。
 
 ## 4. 版本矩阵
 

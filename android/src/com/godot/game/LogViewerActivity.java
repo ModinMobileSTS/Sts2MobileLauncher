@@ -1,8 +1,6 @@
 package com.godot.game;
 
 import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.content.Context;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -23,7 +21,6 @@ import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.view.animation.PathInterpolator;
-import androidx.appcompat.widget.PopupMenu;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
@@ -42,14 +39,12 @@ import com.google.android.material.textfield.TextInputLayout;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -65,7 +60,6 @@ import java.util.zip.ZipOutputStream;
 
 public class LogViewerActivity extends AppCompatActivity {
 	private static final int REQUEST_EXPORT_LOGS = 2001;
-	private static final long MAX_PREVIEW_BYTES = 512L * 1024L;
 	private static final String DATE_TIME_PATTERN = "yyyy-MM-dd HH:mm:ss";
 	private static final String ROOT_INTERNAL_ARCHIVE = "internal-files";
 	private static final String ROOT_EXTERNAL_ARCHIVE = "external-files";
@@ -87,6 +81,7 @@ public class LogViewerActivity extends AppCompatActivity {
 
 	private final List<LogEntry> logEntries = new ArrayList<>();
 	private final List<LogEntry> visibleLogEntries = new ArrayList<>();
+    private final List<LogEntry> latestRuntimeEntries = new ArrayList<>(2);
 	private final List<ListItem> listItems = new ArrayList<>();
 	private final LinkedHashSet<Integer> selectedPositions = new LinkedHashSet<>();
 
@@ -101,15 +96,11 @@ public class LogViewerActivity extends AppCompatActivity {
 	private View crashBannerAction;
 	private ExtendedFloatingActionButton shareAllFab;
 	private View selectionActionsBar;
-	private MaterialButton selectionCopyButton;
 	private MaterialButton selectionShareButton;
 	private MaterialButton selectionExportButton;
-	private MaterialButton selectionRangeButton;
 
     private MaterialToolbar toolbar;
     private boolean selectionMode;
-	private int selectionAnchorPosition = RecyclerView.NO_POSITION;
-	private int lastInteractedPosition = RecyclerView.NO_POSITION;
 	private boolean refreshing;
 	private String sourceFilter = SOURCE_ALL;
 	private String searchQuery = "";
@@ -133,7 +124,7 @@ public class LogViewerActivity extends AppCompatActivity {
 		configureSearchAndFilters();
 		configureSelectionActions();
 		shareAllFab.setIcon(MaterialSymbols.drawable(this, "folder_zip", COLOR_ON_PRIMARY, 20));
-		shareAllFab.setOnClickListener(v -> shareLogEntries(new ArrayList<>(logEntries)));
+        shareAllFab.setOnClickListener(v -> shareLogEntries(new ArrayList<>(latestRuntimeEntries)));
 		adapter = new LogAdapter();
 		logsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
 		logsRecyclerView.setAdapter(adapter);
@@ -185,14 +176,6 @@ public class LogViewerActivity extends AppCompatActivity {
             refreshLogs();
         } else if (id == R.id.action_select_all) {
             selectAllLogs();
-        } else if (id == R.id.action_select_range) {
-            selectRange();
-        } else if (id == R.id.action_copy_logs) {
-            copySelectedLogs();
-        } else if (id == R.id.action_share_logs) {
-            shareSelectedLogs();
-        } else if (id == R.id.action_export_logs) {
-            exportSelectedLogs();
         } else {
             return false;
         }
@@ -202,13 +185,14 @@ public class LogViewerActivity extends AppCompatActivity {
     private void updateToolbar() {
         toolbar.getMenu().clear();
         toolbar.inflateMenu(selectionMode ? R.menu.menu_log_selection : R.menu.menu_log_viewer);
-        toolbar.setBackgroundColor(selectionMode ? COLOR_PRIMARY : COLOR_SURFACE);
-        toolbar.setTitleTextColor(selectionMode ? COLOR_ON_PRIMARY : COLOR_ON_SURFACE);
-        toolbar.setNavigationIcon(MaterialSymbols.drawable(this, selectionMode ? "close" : "arrow_back", selectionMode ? COLOR_ON_PRIMARY : COLOR_ON_SURFACE, 24));
+        toolbar.setBackgroundTintList(ColorStateList.valueOf(selectionMode ? COLOR_PRIMARY_CONTAINER : COLOR_SURFACE));
+        toolbar.setTitleTextColor(selectionMode ? Color.WHITE : COLOR_ON_SURFACE);
+        toolbar.setNavigationIconTint(selectionMode ? Color.WHITE : COLOR_ON_SURFACE);
+        toolbar.setNavigationIcon(MaterialSymbols.drawable(this, selectionMode ? "close" : "arrow_back", selectionMode ? Color.WHITE : COLOR_ON_SURFACE, 24));
         if (selectionMode) {
             toolbar.setTitle(getString(R.string.log_viewer_selection_title, selectedPositions.size()));
             toolbar.setSubtitle(null);
-            toolbar.getMenu().findItem(R.id.action_select_all).setIcon(MaterialSymbols.drawable(this, "select_all", COLOR_ON_PRIMARY, 24));
+            toolbar.getMenu().findItem(R.id.action_select_all).setIcon(MaterialSymbols.drawable(this, "select_all", Color.WHITE, 24));
         } else {
             toolbar.setTitle(R.string.log_viewer_title);
             toolbar.getMenu().findItem(R.id.action_refresh_logs).setIcon(MaterialSymbols.drawable(this, "refresh", COLOR_ON_SURFACE, 24));
@@ -230,10 +214,8 @@ public class LogViewerActivity extends AppCompatActivity {
         ((ImageView) findViewById(R.id.log_crash_banner_icon)).setImageDrawable(MaterialSymbols.drawable(this, "bug_report", COLOR_ERROR, 20));
 		shareAllFab = findViewById(R.id.fab_share_all_logs);
 		selectionActionsBar = findViewById(R.id.selection_actions_bar);
-		selectionCopyButton = findViewById(R.id.selection_copy_logs);
 		selectionShareButton = findViewById(R.id.selection_share_logs);
 		selectionExportButton = findViewById(R.id.selection_export_logs);
-		selectionRangeButton = findViewById(R.id.selection_range_logs);
 	}
 
 	private void configureSearchAndFilters() {
@@ -293,14 +275,10 @@ public class LogViewerActivity extends AppCompatActivity {
 	}
 
 	private void configureSelectionActions() {
-		selectionCopyButton.setIcon(MaterialSymbols.drawable(this, "content_copy", COLOR_ON_SURFACE_VARIANT, 20));
 		selectionShareButton.setIcon(MaterialSymbols.drawable(this, "share", COLOR_ON_SURFACE_VARIANT, 20));
 		selectionExportButton.setIcon(MaterialSymbols.drawable(this, "ios_share", COLOR_ON_SURFACE_VARIANT, 20));
-		selectionRangeButton.setIcon(MaterialSymbols.drawable(this, "unfold_more", COLOR_ON_SURFACE_VARIANT, 20));
-		selectionCopyButton.setOnClickListener(v -> copySelectedLogs());
 		selectionShareButton.setOnClickListener(v -> shareSelectedLogs());
 		selectionExportButton.setOnClickListener(v -> exportSelectedLogs());
-		selectionRangeButton.setOnClickListener(v -> selectRange());
 	}
 
 	private void refreshLogs() {
@@ -321,6 +299,19 @@ public class LogViewerActivity extends AppCompatActivity {
 		refreshing = false;
 		logEntries.clear();
 		logEntries.addAll(entries);
+        List<File> runtimeCandidates = new ArrayList<>(entries.size());
+        for (LogEntry entry : entries) {
+            runtimeCandidates.add(entry.file);
+        }
+        latestRuntimeEntries.clear();
+        for (File file : RuntimeLogFiles.selectLatest(runtimeCandidates)) {
+            for (LogEntry entry : entries) {
+                if (entry.file.equals(file)) {
+                    latestRuntimeEntries.add(entry);
+                    break;
+                }
+            }
+        }
 		updateCrashBanner();
 		applyFilters();
 		updateSummary();
@@ -371,7 +362,7 @@ public class LogViewerActivity extends AppCompatActivity {
 		}
 		rebuildListItems();
 		adapter.notifyDataSetChanged();
-        shareAllFab.setVisibility(logEntries.isEmpty() ? View.GONE : View.VISIBLE);
+        shareAllFab.setVisibility(selectionMode || latestRuntimeEntries.isEmpty() ? View.GONE : View.VISIBLE);
         updateEmptyListVisibility();
         updateFilterChipLabels();
 	}
@@ -555,7 +546,6 @@ public class LogViewerActivity extends AppCompatActivity {
 		if (position < 0 || position >= visibleLogEntries.size()) {
 			return;
 		}
-		lastInteractedPosition = position;
         if (selectionMode) {
 			toggleSelection(position);
 			return;
@@ -567,7 +557,6 @@ public class LogViewerActivity extends AppCompatActivity {
 		if (position < 0 || position >= visibleLogEntries.size()) {
 			return false;
 		}
-		lastInteractedPosition = position;
         if (!selectionMode) {
 			startSelection(position);
 		} else {
@@ -592,8 +581,6 @@ public class LogViewerActivity extends AppCompatActivity {
 	}
 
 	private void startSelection(int position) {
-		selectionAnchorPosition = position;
-		lastInteractedPosition = position;
         selectionMode = true;
 		setItemSelected(position, true);
 		setSelectionActionsVisible(true);
@@ -629,8 +616,6 @@ public class LogViewerActivity extends AppCompatActivity {
         boolean wasSelecting = selectionMode;
         selectionMode = false;
         selectedPositions.clear();
-        selectionAnchorPosition = RecyclerView.NO_POSITION;
-        lastInteractedPosition = RecyclerView.NO_POSITION;
         setSelectionActionsVisible(false);
         if (wasSelecting) {
             adapter.notifyDataSetChanged();
@@ -648,8 +633,10 @@ public class LogViewerActivity extends AppCompatActivity {
         } else if (!visible) {
             selectionActionsBar.animate().cancel();
             selectionActionsBar.setVisibility(View.GONE);
+            selectionActionsBar.setAlpha(1f);
+            selectionActionsBar.setTranslationY(0f);
         }
-		shareAllFab.setVisibility(visible ? View.GONE : (logEntries.isEmpty() ? View.GONE : View.VISIBLE));
+        shareAllFab.setVisibility(visible || latestRuntimeEntries.isEmpty() ? View.GONE : View.VISIBLE);
 	}
 
 	private List<LogEntry> getSelectedEntries() {
@@ -670,50 +657,10 @@ public class LogViewerActivity extends AppCompatActivity {
 		for (int i = 0; i < visibleLogEntries.size(); i++) {
 			selectedPositions.add(i);
 		}
-		selectionAnchorPosition = 0;
-		lastInteractedPosition = visibleLogEntries.size() - 1;
 		adapter.notifyDataSetChanged();
 		updateSelectionActionMode();
 	}
 
-	private void selectRange() {
-		int anchor = selectionAnchorPosition;
-		if (anchor == RecyclerView.NO_POSITION && !selectedPositions.isEmpty()) {
-			anchor = selectedPositions.iterator().next();
-		}
-		if (anchor == RecyclerView.NO_POSITION || lastInteractedPosition == RecyclerView.NO_POSITION || anchor == lastInteractedPosition) {
-			toast(getString(R.string.log_viewer_range_hint));
-			return;
-		}
-		int start = Math.min(anchor, lastInteractedPosition);
-		int end = Math.max(anchor, lastInteractedPosition);
-		for (int i = start; i <= end; i++) {
-			selectedPositions.add(i);
-		}
-		adapter.notifyDataSetChanged();
-		updateSelectionActionMode();
-	}
-
-	private void copySelectedLogs() {
-		List<LogEntry> entries = getSelectedEntries();
-		if (entries.isEmpty()) {
-			return;
-		}
-		new Thread(() -> {
-			try {
-				String text = buildCombinedLogPreview(entries);
-				runOnUiThread(() -> {
-					ClipboardManager clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-					if (clipboardManager != null) {
-						clipboardManager.setPrimaryClip(ClipData.newPlainText(getString(R.string.log_viewer_clipboard_label), text));
-						toast(getString(R.string.log_viewer_copied));
-					}
-				});
-			} catch (Exception exception) {
-				runOnUiThread(() -> showError(exception));
-			}
-		}).start();
-	}
 
 	private void shareSelectedLogs() {
 		List<LogEntry> entries = getSelectedEntries();
@@ -731,10 +678,7 @@ public class LogViewerActivity extends AppCompatActivity {
 			try {
 				File sharedDirectory = new File(getCacheDir(), "shared");
 				ensureDirectory(sharedDirectory);
-				File zipFile = new File(sharedDirectory, buildDefaultLogExportName());
-				if (zipFile.exists() && !zipFile.delete()) {
-					throw new IOException("Unable to replace existing shared ZIP: " + zipFile.getAbsolutePath());
-				}
+                File zipFile = File.createTempFile("sts2-logs-", ".zip", sharedDirectory);
 				try (OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(zipFile))) {
 					writeLogsZip(outputStream, exportEntries);
 				}
@@ -776,24 +720,6 @@ public class LogViewerActivity extends AppCompatActivity {
 		}
 	}
 
-	private String buildCombinedLogPreview(List<LogEntry> entries) throws Exception {
-		StringBuilder builder = new StringBuilder();
-		for (int i = 0; i < entries.size(); i++) {
-			LogEntry entry = entries.get(i);
-			if (i > 0) {
-				builder.append("\n\n");
-			}
-			builder.append("===== ")
-					.append(entry.displayPath)
-					.append(" | ")
-					.append(formatDate(entry.lastModified))
-					.append(" | ")
-					.append(Formatter.formatFileSize(this, entry.size))
-					.append(" =====\n");
-			builder.append(readPreviewText(entry.file));
-		}
-		return builder.toString();
-	}
 
 	private void writeLogsZip(OutputStream outputStream, List<LogEntry> entries) throws Exception {
 		Set<String> usedNames = new HashSet<>();
@@ -829,61 +755,6 @@ public class LogViewerActivity extends AppCompatActivity {
 		return candidate;
 	}
 
-	private String readPreviewText(File file) throws Exception {
-		if (!isProbablyText(file)) {
-			return getString(R.string.log_viewer_binary_unavailable);
-		}
-		long length = file.length();
-		if (length <= MAX_PREVIEW_BYTES) {
-			return readTextFile(file);
-		}
-		try (InputStream inputStream = new BufferedInputStream(new FileInputStream(file));
-			 ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-			long toSkip = Math.max(0L, length - MAX_PREVIEW_BYTES);
-			while (toSkip > 0L) {
-				long skipped = inputStream.skip(toSkip);
-				if (skipped > 0L) {
-					toSkip -= skipped;
-					continue;
-				}
-				if (inputStream.read() == -1) {
-					break;
-				}
-				toSkip--;
-			}
-			copyStream(inputStream, outputStream);
-			String content = new String(outputStream.toByteArray(), StandardCharsets.UTF_8);
-			int firstNewline = content.indexOf('\n');
-			if (firstNewline >= 0 && firstNewline + 1 < content.length()) {
-				content = content.substring(firstNewline + 1);
-			}
-			return getString(R.string.log_viewer_preview_truncated, Formatter.formatFileSize(this, MAX_PREVIEW_BYTES)) + "\n\n" + content;
-		}
-	}
-
-	private boolean isProbablyText(File file) throws Exception {
-		try (InputStream inputStream = new BufferedInputStream(new FileInputStream(file))) {
-			byte[] sample = new byte[2048];
-			int read = inputStream.read(sample);
-			if (read <= 0) {
-				return true;
-			}
-			for (int i = 0; i < read; i++) {
-				if (sample[i] == 0) {
-					return false;
-				}
-			}
-			return true;
-		}
-	}
-
-	private String readTextFile(File file) throws IOException {
-		try (InputStream inputStream = new BufferedInputStream(new FileInputStream(file));
-			 ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-			copyStream(inputStream, outputStream);
-			return new String(outputStream.toByteArray(), StandardCharsets.UTF_8);
-		}
-	}
 
 	private void copyStream(InputStream inputStream, OutputStream outputStream) throws IOException {
 		byte[] buffer = new byte[8192];

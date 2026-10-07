@@ -10,10 +10,9 @@
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:backgroundTint="@color/sts2_crash_surface"
         app:navigationIconTint="@color/sts2_crash_on_surface"
         app:subtitleTextColor="@color/sts2_crash_on_surface_variant"
-        app:titleTextColor="@color/sts2_crash_on_surface" />
+        app:titleTextColor="@android:color/white" />
 
     <LinearLayout
         android:id="@+id/log_search_bar"
@@ -44,7 +43,7 @@
                 android:inputType="text"
                 android:maxLines="1"
                 android:textColor="@color/sts2_crash_on_surface"
-                android:textSize="13sp" />
+                android:textSize="16sp" />
         </com.google.android.material.textfield.TextInputLayout>
 
         <TextView
@@ -56,28 +55,28 @@
             android:minWidth="44dp"
             android:text="@string/log_file_viewer_search_count_empty"
             android:textColor="@color/sts2_crash_on_surface_variant"
-            android:textSize="11sp" />
+            android:textSize="14sp" />
 
         <ImageButton
             android:id="@+id/log_search_previous"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="44dp"
+            android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/log_file_viewer_search_previous"
             android:padding="8dp" />
 
         <ImageButton
             android:id="@+id/log_search_next"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="44dp"
+            android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/log_file_viewer_search_next"
             android:padding="8dp" />
 
         <ImageButton
             android:id="@+id/log_search_close"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="44dp"
+            android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/log_file_viewer_search_close"
             android:padding="8dp" />
@@ -112,7 +111,7 @@
             android:gravity="end"
             android:maxLines="1"
             android:textColor="@color/sts2_crash_on_surface_variant"
-            android:textSize="11sp" />
+            android:textSize="14sp" />
     </LinearLayout>
 
     <TextView
@@ -126,7 +125,7 @@
         android:paddingBottom="5dp"
         android:text="@string/log_file_viewer_large_notice"
         android:textColor="@color/sts2_crash_on_surface_variant"
-        android:textSize="11sp"
+        android:textSize="14sp"
         android:visibility="gone" />
 
     <FrameLayout
@@ -142,7 +141,7 @@
             android:fillViewport="true"
             android:scrollbars="horizontal">
 
-            <FrameLayout
+            <com.godot.game.LogViewportCanvas
                 android:id="@+id/log_scroll_canvas"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent">
@@ -155,7 +154,7 @@
                     android:paddingTop="4dp"
                     android:paddingBottom="16dp"
                     android:scrollbars="vertical" />
-            </FrameLayout>
+            </com.godot.game.LogViewportCanvas>
         </HorizontalScrollView>
 
         <TextView
@@ -187,6 +186,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/sts2_crash_surface"
+        android:baselineAligned="false"
         android:gravity="center"
         android:orientation="horizontal"
         android:paddingStart="4dp"
@@ -196,50 +196,46 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/log_detail_copy"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Sts2Tools.Action"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:minWidth="0dp"
             android:text="@string/log_file_viewer_copy_all"
             android:textColor="@color/sts2_crash_on_surface_variant"
-            android:textSize="12sp"
             app:iconTint="@color/sts2_crash_on_surface_variant" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/log_detail_share"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Sts2Tools.Action"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:minWidth="0dp"
             android:text="@string/log_file_viewer_share"
             android:textColor="@color/sts2_crash_on_surface_variant"
-            android:textSize="12sp"
             app:iconTint="@color/sts2_crash_on_surface_variant" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/log_detail_export"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Sts2Tools.Action"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:minWidth="0dp"
             android:text="@string/log_file_viewer_export"
             android:textColor="@color/sts2_crash_on_surface_variant"
-            android:textSize="12sp"
             app:iconTint="@color/sts2_crash_on_surface_variant" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/log_detail_location"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Sts2Tools.Action"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:minWidth="0dp"
             android:text="@string/log_file_viewer_location"
             android:textColor="@color/sts2_crash_on_surface_variant"
-            android:textSize="12sp"
             app:iconTint="@color/sts2_crash_on_surface_variant" />
     </LinearLayout>
     <LinearLayout
@@ -247,6 +243,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/sts2_crash_surface"
+        android:baselineAligned="false"
         android:gravity="center"
         android:orientation="horizontal"
         android:paddingStart="4dp"
@@ -257,38 +254,35 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/log_range_copy"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Sts2Tools.Action"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:minWidth="0dp"
             android:text="@string/log_file_viewer_range_copy"
             android:textColor="@color/sts2_crash_on_surface_variant"
-            android:textSize="12sp"
             app:iconTint="@color/sts2_crash_on_surface_variant" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/log_range_share"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Sts2Tools.Action"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:minWidth="0dp"
             android:text="@string/log_file_viewer_range_share"
             android:textColor="@color/sts2_crash_on_surface_variant"
-            android:textSize="12sp"
             app:iconTint="@color/sts2_crash_on_surface_variant" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/log_range_expand"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Sts2Tools.Action"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:minWidth="0dp"
-            android:text="@string/log_file_viewer_range_expand"
+            android:text="@string/log_detail_expand_label"
             android:textColor="@color/sts2_crash_on_surface_variant"
-            android:textSize="12sp"
             app:iconTint="@color/sts2_crash_on_surface_variant" />
     </LinearLayout>
 </LinearLayout>

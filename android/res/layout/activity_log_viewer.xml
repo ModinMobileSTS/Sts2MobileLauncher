@@ -151,7 +151,7 @@
             android:layout_gravity="bottom|end"
             android:layout_marginEnd="20dp"
             android:layout_marginBottom="20dp"
-            android:text="@string/log_viewer_share_all"
+            android:text="@string/log_viewer_share_latest"
             android:textColor="@color/sts2_crash_on_primary"
             app:backgroundTint="@color/sts2_crash_primary"
             app:iconTint="@color/sts2_crash_on_primary"
@@ -161,6 +161,7 @@
     <LinearLayout
         android:id="@+id/selection_actions_bar"
         android:layout_width="match_parent"
+        android:baselineAligned="false"
         android:layout_height="wrap_content"
         android:background="@color/sts2_crash_surface"
         android:gravity="center"
@@ -172,51 +173,28 @@
         android:visibility="gone">
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/selection_copy_logs"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:minWidth="0dp"
-            android:text="@string/log_viewer_action_copy"
-            android:textColor="@color/sts2_crash_on_surface_variant"
-            android:textSize="12sp"
-            app:iconTint="@color/sts2_crash_on_surface_variant" />
-
-        <com.google.android.material.button.MaterialButton
             android:id="@+id/selection_share_logs"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Sts2Tools.Action"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="64dp"
             android:layout_weight="1"
             android:minWidth="0dp"
             android:text="@string/log_viewer_action_share"
             android:textColor="@color/sts2_crash_on_surface_variant"
-            android:textSize="12sp"
+            android:textSize="14sp"
             app:iconTint="@color/sts2_crash_on_surface_variant" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/selection_export_logs"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Sts2Tools.Action"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="64dp"
             android:layout_weight="1"
             android:minWidth="0dp"
             android:text="@string/log_viewer_action_export"
             android:textColor="@color/sts2_crash_on_surface_variant"
-            android:textSize="12sp"
+            android:textSize="14sp"
             app:iconTint="@color/sts2_crash_on_surface_variant" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/selection_range_logs"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:minWidth="0dp"
-            android:text="@string/log_viewer_action_select_range"
-            android:textColor="@color/sts2_crash_on_surface_variant"
-            android:textSize="12sp"
-            app:iconTint="@color/sts2_crash_on_surface_variant" />
     </LinearLayout>
 </LinearLayout>

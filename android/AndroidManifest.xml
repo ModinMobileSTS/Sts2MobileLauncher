@@ -145,7 +145,7 @@
         <activity
             android:name=".LogViewerActivity"
             android:label="@string/log_viewer_title"
-            android:theme="@style/Theme.Sts2Crash"
+            android:theme="@style/Theme.Sts2Tools"
             android:exported="false"
             android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
@@ -154,7 +154,16 @@
         <activity
             android:name=".LogFileViewerActivity"
             android:label="@string/log_file_viewer_title"
-            android:theme="@style/Theme.Sts2Crash"
+            android:theme="@style/Theme.Sts2Tools"
+            android:exported="false"
+            android:screenOrientation="unspecified"
+            android:windowSoftInputMode="adjustResize"
+            android:resizeableActivity="true" />
+
+        <activity
+            android:name=".loganalysis.LogAnalysisActivity"
+            android:label="@string/log_analysis_title"
+            android:theme="@style/Theme.Sts2Tools"
             android:exported="false"
             android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
@@ -163,7 +172,7 @@
         <activity
             android:name=".FileBrowserActivity"
             android:label="@string/file_browser_title"
-            android:theme="@style/Theme.Sts2Crash"
+            android:theme="@style/Theme.Sts2Tools"
             android:exported="false"
             android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"

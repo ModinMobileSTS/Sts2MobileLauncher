@@ -1,6 +1,6 @@
 package com.godot.game;
 
-import android.app.AlertDialog;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.database.Cursor;
@@ -17,6 +17,7 @@ import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.PathInterpolator;
@@ -240,7 +241,7 @@ public class FileBrowserActivity extends AppCompatActivity {
             moreMenuItem.setIcon(MaterialSymbols.drawable(this, "more_vert", getColor(R.color.sts2_crash_on_surface), 24));
         }
         if (selectAllMenuItem != null) {
-            selectAllMenuItem.setIcon(MaterialSymbols.drawable(this, "select_all", getColor(R.color.sts2_crash_on_primary), 24));
+            selectAllMenuItem.setIcon(MaterialSymbols.drawable(this, "select_all", getColor(R.color.sts2_crash_on_surface), 24));
         }
         updateSelectionChrome();
         return true;
@@ -380,8 +381,10 @@ public class FileBrowserActivity extends AppCompatActivity {
     }
 
     private void setSelectionButtonIcon(MaterialButton button, String glyph) {
-        button.setIcon(MaterialSymbols.drawable(this, glyph, getColor(R.color.sts2_crash_on_surface), 22));
-        button.setIconTint(ColorStateList.valueOf(getColor(R.color.sts2_crash_on_surface)));
+        ColorStateList tint = getColorStateList(button == selectionDeleteButton ? R.color.sts2_tools_danger : R.color.sts2_tools_action);
+        button.setIcon(MaterialSymbols.drawable(this, glyph, tint, 24));
+        button.setIconTint(tint);
+        button.setTextColor(tint);
     }
 
     private void setGridMode(boolean enabled) {
@@ -597,7 +600,7 @@ public class FileBrowserActivity extends AppCompatActivity {
             crumb.setMinHeight(ExtraSettingsUi.dp(this, 40));
             crumb.setClickable(true);
             crumb.setFocusable(true);
-            crumb.setBackgroundResource(android.R.drawable.list_selector_background);
+            applyThemedRipple(crumb);
             crumb.setOnClickListener(v -> navigateToDirectory(target));
             breadcrumbs.addView(crumb, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ExtraSettingsUi.dp(this, 40)));
         }
@@ -766,13 +769,13 @@ public class FileBrowserActivity extends AppCompatActivity {
             return;
         }
         int onSurface = getColor(R.color.sts2_crash_on_surface);
-        int onPrimary = getColor(R.color.sts2_crash_on_primary);
         if (selectionMode) {
-            getWindow().setStatusBarColor(getColor(R.color.sts2_crash_primary));
-            toolbar.setBackgroundColor(getColor(R.color.sts2_crash_primary));
-            toolbar.setTitleTextColor(onPrimary);
-            toolbar.setSubtitleTextColor(onPrimary);
-            toolbar.setNavigationIcon(MaterialSymbols.drawable(this, "close", onPrimary, 24));
+            getWindow().setStatusBarColor(Color.TRANSPARENT);
+            toolbar.setBackgroundTintList(ColorStateList.valueOf(getColor(R.color.sts2_crash_primary_container)));
+            toolbar.setTitleTextColor(Color.WHITE);
+            toolbar.setSubtitleTextColor(onSurface);
+            toolbar.setNavigationIconTint(Color.WHITE);
+            toolbar.setNavigationIcon(MaterialSymbols.drawable(this, "close", Color.WHITE, 24));
             toolbar.setNavigationContentDescription(R.string.file_browser_close_selection);
             if (getSupportActionBar() != null) {
                 getSupportActionBar().setTitle(getString(R.string.file_browser_selection_title, selectedPositions.size()));
@@ -781,10 +784,11 @@ public class FileBrowserActivity extends AppCompatActivity {
             addFab.hide();
             showSelectionActionBar(true);
         } else {
-            getWindow().setStatusBarColor(getColor(R.color.sts2_crash_surface));
-            toolbar.setBackgroundColor(getColor(R.color.sts2_crash_surface));
+            getWindow().setStatusBarColor(Color.TRANSPARENT);
+            toolbar.setBackgroundTintList(ColorStateList.valueOf(getColor(R.color.sts2_crash_surface)));
             toolbar.setTitleTextColor(onSurface);
             toolbar.setSubtitleTextColor(getColor(R.color.sts2_crash_on_surface_variant));
+            toolbar.setNavigationIconTint(onSurface);
             toolbar.setNavigationIcon(MaterialSymbols.drawable(this, "arrow_back", onSurface, 24));
             toolbar.setNavigationContentDescription(R.string.file_browser_title);
             if (getSupportActionBar() != null) {
@@ -807,18 +811,20 @@ public class FileBrowserActivity extends AppCompatActivity {
         if (selectionActionBar == null) {
             return;
         }
+        if (visible && selectionActionBar.getVisibility() == View.VISIBLE) {
+            return;
+        }
         selectionActionBar.animate().cancel();
-        int offset = ExtraSettingsUi.dp(this, 88);
+        selectionActionBar.animate().withEndAction(null);
         if (visible) {
             selectionActionBar.setVisibility(View.VISIBLE);
             selectionActionBar.setAlpha(0f);
-            selectionActionBar.setTranslationY(offset);
+            selectionActionBar.setTranslationY(ExtraSettingsUi.dp(this, 16));
             selectionActionBar.animate().alpha(1f).translationY(0f).setDuration(220L).setInterpolator(uiInterpolator).start();
-        } else if (selectionActionBar.getVisibility() == View.VISIBLE) {
-            selectionActionBar.animate().alpha(0f).translationY(offset).setDuration(180L).setInterpolator(uiInterpolator).withEndAction(() -> {
-                selectionActionBar.setVisibility(View.GONE);
-                selectionActionBar.setTranslationY(0f);
-            }).start();
+        } else {
+            selectionActionBar.setVisibility(View.GONE);
+            selectionActionBar.setAlpha(1f);
+            selectionActionBar.setTranslationY(0f);
         }
     }
 
@@ -1025,7 +1031,7 @@ public class FileBrowserActivity extends AppCompatActivity {
 
     private LinearLayout createSheetContent() {
         LinearLayout content = ExtraSettingsUi.vertical(this);
-        content.setBackgroundColor(getColor(R.color.sts2_crash_surface));
+        content.setBackgroundColor(Color.TRANSPARENT);
         int horizontalPadding = ExtraSettingsUi.dp(this, 20);
         content.setPadding(horizontalPadding, ExtraSettingsUi.dp(this, 8), horizontalPadding, ExtraSettingsUi.dp(this, 28));
         View handle = new View(this);
@@ -1080,7 +1086,7 @@ public class FileBrowserActivity extends AppCompatActivity {
         row.setPadding(ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 4), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 4));
         row.setClickable(true);
         row.setFocusable(true);
-        row.setBackgroundResource(android.R.drawable.list_selector_background);
+        applyThemedRipple(row);
         ImageView icon = new ImageView(this);
         icon.setImageDrawable(MaterialSymbols.drawable(this, glyph, getColor(R.color.sts2_crash_primary), 24));
         LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 48), ExtraSettingsUi.dp(this, 48));
@@ -1102,6 +1108,13 @@ public class FileBrowserActivity extends AppCompatActivity {
         });
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         parent.addView(row, rowParams);
+    }
+
+    private void applyThemedRipple(View view) {
+        TypedValue value = new TypedValue();
+        if (getTheme().resolveAttribute(androidx.appcompat.R.attr.selectableItemBackground, value, true)) {
+            view.setBackgroundResource(value.resourceId);
+        }
     }
 
     private void showEntryBottomSheet(File file) {
@@ -1304,7 +1317,7 @@ public class FileBrowserActivity extends AppCompatActivity {
 		EditText input = new EditText(this);
 		input.setSingleLine(true);
 		input.setHint(R.string.file_browser_name_hint);
-		new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
 			.setTitle(R.string.file_browser_create_folder_title)
 			.setView(input)
 			.setNegativeButton(android.R.string.cancel, null)
@@ -1338,7 +1351,7 @@ public class FileBrowserActivity extends AppCompatActivity {
         input.setSingleLine(true);
         input.setText(selectedFile.getName());
         input.setSelection(input.getText().length());
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
             .setTitle(R.string.file_browser_rename_title)
             .setView(input)
             .setNegativeButton(android.R.string.cancel, null)
@@ -1379,7 +1392,7 @@ public class FileBrowserActivity extends AppCompatActivity {
             return;
         }
         List<File> filesToDelete = new ArrayList<>(selectedFiles);
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
             .setTitle(R.string.file_browser_delete_confirm_title)
             .setMessage(getString(R.string.file_browser_delete_confirm_message, filesToDelete.size()))
             .setNegativeButton(android.R.string.cancel, null)

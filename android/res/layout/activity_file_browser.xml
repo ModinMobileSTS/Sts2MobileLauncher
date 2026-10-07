@@ -201,6 +201,7 @@
     <LinearLayout
         android:id="@+id/selection_action_bar"
         android:layout_width="match_parent"
+        android:baselineAligned="false"
         android:layout_height="wrap_content"
         android:background="@color/sts2_crash_surface_container"
         android:gravity="center"
@@ -214,66 +215,66 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/action_selection_copy"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Sts2Tools.Action"
             android:layout_width="0dp"
             android:layout_height="64dp"
             android:layout_weight="1"
             android:minWidth="0dp"
             android:text="@string/file_browser_copy"
             android:textColor="@color/sts2_crash_on_surface"
-            android:textSize="12sp"
+            android:textSize="14sp"
             app:iconGravity="textTop"
             app:iconPadding="2dp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/action_selection_export"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Sts2Tools.Action"
             android:layout_width="0dp"
             android:layout_height="64dp"
             android:layout_weight="1"
             android:minWidth="0dp"
             android:text="@string/file_browser_export"
             android:textColor="@color/sts2_crash_on_surface"
-            android:textSize="12sp"
+            android:textSize="14sp"
             app:iconGravity="textTop"
             app:iconPadding="2dp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/action_selection_rename"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Sts2Tools.Action"
             android:layout_width="0dp"
             android:layout_height="64dp"
             android:layout_weight="1"
             android:minWidth="0dp"
             android:text="@string/file_browser_rename"
             android:textColor="@color/sts2_crash_on_surface"
-            android:textSize="12sp"
+            android:textSize="14sp"
             app:iconGravity="textTop"
             app:iconPadding="2dp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/action_selection_delete"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Sts2Tools.Action"
             android:layout_width="0dp"
             android:layout_height="64dp"
             android:layout_weight="1"
             android:minWidth="0dp"
             android:text="@string/file_browser_delete"
             android:textColor="@color/sts2_crash_error"
-            android:textSize="12sp"
+            android:textSize="14sp"
             app:iconGravity="textTop"
             app:iconPadding="2dp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/action_selection_more"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Sts2Tools.Action"
             android:layout_width="0dp"
             android:layout_height="64dp"
             android:layout_weight="1"
             android:minWidth="0dp"
             android:text="@string/file_browser_more"
             android:textColor="@color/sts2_crash_on_surface"
-            android:textSize="12sp"
+            android:textSize="14sp"
             app:iconGravity="textTop"
             app:iconPadding="2dp" />
     </LinearLayout>

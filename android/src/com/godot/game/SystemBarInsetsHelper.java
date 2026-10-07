@@ -22,7 +22,7 @@ import java.util.WeakHashMap;
  * is intentionally not used — it feedback-loops with layout and is unreliable on
  * cutout / multi-window / OEM builds.
  */
-final class SystemBarInsetsHelper {
+public final class SystemBarInsetsHelper {
 	private static final int INSET_TYPE_MASK =
 		WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout();
 
@@ -31,7 +31,7 @@ final class SystemBarInsetsHelper {
 	private SystemBarInsetsHelper() {
 	}
 
-	static void enableEdgeToEdge(Activity activity) {
+	public static void enableEdgeToEdge(Activity activity) {
 		if (activity == null) {
 			return;
 		}
@@ -75,7 +75,7 @@ final class SystemBarInsetsHelper {
 	 * Apply system bars/cutout on selected sides, and use {@code max(navigationBars, ime)} for bottom
 	 * when {@code bottom} is true so soft keyboards clear content under edge-to-edge + adjustResize.
 	 */
-	static void applySystemBarPaddingWithIme(View view, boolean top, boolean right, boolean bottom, boolean left) {
+	public static void applySystemBarPaddingWithIme(View view, boolean top, boolean right, boolean bottom, boolean left) {
 		applySystemBarPadding(view, top, right, bottom, left, true);
 	}
 

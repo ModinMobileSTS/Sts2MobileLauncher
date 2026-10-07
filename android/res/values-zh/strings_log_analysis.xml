@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="log_analysis_title">日志分析 · LLM</string>
+    <string name="log_analysis_privacy">仅发送授权日志的按需工具片段，不自动上传全文。每次问题最多 24 轮；对话仅存于内存，离开或旋转会取消并清空。</string>
+    <string name="log_analysis_question">描述问题，或继续追问证据</string>
+    <string name="log_analysis_send">发送问题</string>
+    <string name="log_analysis_stop">停止</string>
+    <string name="log_analysis_config">LLM 配置</string>
+    <string name="log_analysis_files">授权日志</string>
+    <string name="log_analysis_restart">重新开始</string>
+    <string name="log_analysis_save">加密保存</string>
+    <string name="log_analysis_cancel">取消</string>
+    <string name="log_analysis_confirm">确认选择并清空会话</string>
+    <string name="log_analysis_consent_title">同意发送所选日志片段？</string>
+    <string name="log_analysis_consent">问题、文件名、行数、大小和模型按需读取/搜索的日志片段将发送至：\n%1$s\n\n授权文件：\n%2$s\n\n片段可能含个人信息或凭据。日志中的指令不会被执行，模型结果仍须核实。HTTP 明文地址可能被网络窃听。仅本会话记住同意；变更配置或文件将清空历史并重新征求同意。</string>
+    <string name="log_analysis_agree">同意并发送</string>
+    <string name="log_analysis_ready">可提问 · 24 轮预算</string>
+    <string name="log_analysis_loading">准备中…</string>
+    <string name="log_analysis_working">分析中 · 24 轮预算</string>
+    <string name="log_analysis_stopped">已停止</string>
+    <string name="log_analysis_welcome">先在右上角配置自定义 OpenAI 兼容服务，再提出问题。只有明确勾选的日志可被读取。建议问：“请定位崩溃原因，引用文件与行号，并区分证据与推测。”\n长按或选中文字即可复制；工具进度只显示文件与行区间。</string>
+    <string name="log_analysis_no_files">请选择授权日志</string>
+    <string name="log_analysis_select_notice">只勾选当前文件；最新 godot.log / sts2.log 必须由你主动勾选。确认会停止当前请求并清空会话。</string>
+    <string name="log_analysis_config_notice">Base URL 可填 /v1 基址或完整 /chat/completions；站点根地址会补 /v1。API Key 可留空用于本地服务。Thinking effort 留空则不发送；配置变更将清空会话。</string>
+    <string name="log_analysis_base_url">Base URL（HTTP / HTTPS）</string>
+    <string name="log_analysis_api_key">API Key（加密保存，可留空）</string>
+    <string name="log_analysis_model">Model ID</string>
+    <string name="log_analysis_effort">Thinking effort（默认留空，如 low / medium / high）</string>
+    <string name="log_analysis_user">你</string>
+    <string name="log_analysis_assistant">分析</string>
+    <string name="log_analysis_notice">提示</string>
+    <string name="log_analysis_generic_error">分析失败，请检查服务与日志状态；未上传全文。可重新提问。</string>
+    <string name="log_analysis_config_failed">读取加密配置失败；原配置未被清除。请打开配置重新保存。</string>
+    <string name="log_analysis_info">分析说明</string>
+    <string name="log_analysis_close">知道了</string>
+    <string name="log_analysis_tool_failed">工具读取失败</string>
+    <string name="log_analysis_failed">分析失败 · 可重试</string>
+    <string name="log_analysis_budget">预算已达 · 可继续追问</string>
+</resources>
