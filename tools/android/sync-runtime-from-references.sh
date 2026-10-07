@@ -67,6 +67,17 @@ for variant in debug release; do
   # The reference's unused debug bridge requires unbundled libfmodL libraries.
   rm -f "$ANDROID_DST/libs/$variant/arm64-v8a/libGodotFmod.android.template_debug.arm64.so"
 done
+# Godot 4.5.1 obtains a pooled runnable before rejecting mouse button
+# press/release actions.  Patch only the staged AARs so the reference runtime
+# remains immutable; the wrapper rejects unsupported actions before allocation.
+for variant in debug release; do
+  godot_input_aar="$ANDROID_DST/libs/$variant/godot-lib.template_$variant.aar"
+  sts2_require_file "$godot_input_aar" "Godot $variant template AAR"
+  python3 "$ROOT/tools/android/patch-godot-input-pool.py" \
+    "$godot_input_aar" \
+    --javac "$LOCAL_JAVAC" \
+    --android-jar "$ANDROID_JAR"
+done
 rsync -a --delete "$ANDROID_SRC/assets/dotnet_bcl/" "$ANDROID_DST/assets/dotnet_bcl/"
 cp -f "$ANDROID_SRC/gradle/wrapper/gradle-wrapper.jar" "$ANDROID_DST/gradle/wrapper/gradle-wrapper.jar"
 # Only patch staged copies, never the reference libraries. A normal sync with

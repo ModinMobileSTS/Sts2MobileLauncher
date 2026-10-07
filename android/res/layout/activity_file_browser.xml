@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/file_browser_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/sts2_crash_background"
@@ -15,6 +16,143 @@
         app:subtitleTextColor="@color/sts2_crash_on_surface_variant"
         app:navigationIconTint="@color/sts2_crash_on_surface" />
 
+    <HorizontalScrollView
+        android:id="@+id/breadcrumbs_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/sts2_crash_surface"
+        android:clipToPadding="false"
+        android:fadeScrollbars="true"
+        android:overScrollMode="ifContentScrolls"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/breadcrumbs"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="48dp"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="4dp" />
+    </HorizontalScrollView>
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/clipboard_banner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="12dp"
+        android:visibility="gone"
+        app:cardBackgroundColor="@color/sts2_crash_primary_container"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="0dp"
+        app:strokeWidth="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="52dp"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="6dp"
+            android:paddingBottom="4dp">
+
+            <ImageView
+                android:id="@+id/clipboard_banner_icon"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@null" />
+
+            <TextView
+                android:id="@+id/clipboard_banner_text"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:textColor="@color/sts2_crash_on_primary_container"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/clipboard_banner_paste"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:minWidth="72dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="@string/file_browser_paste_here"
+                android:textColor="@color/sts2_crash_primary"
+                android:textStyle="bold" />
+
+            <ImageButton
+                android:id="@+id/clipboard_banner_close"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/file_browser_dismiss_clipboard"
+                android:padding="8dp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <LinearLayout
+        android:id="@+id/list_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:minHeight="48dp"
+        android:paddingStart="16dp"
+        android:paddingTop="4dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="4dp">
+
+        <TextView
+            android:id="@+id/list_summary"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/sts2_crash_on_surface_variant"
+            android:textSize="13sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/button_sort_entries"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:minWidth="0dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:text="@string/file_browser_sort_name"
+            android:textColor="@color/sts2_crash_on_surface_variant"
+            android:textSize="13sp"
+            app:iconGravity="textStart"
+            app:iconPadding="4dp" />
+
+        <ImageButton
+            android:id="@+id/button_list_view"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/file_browser_list_view"
+            android:padding="8dp" />
+
+        <ImageButton
+            android:id="@+id/button_grid_view"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/file_browser_grid_view"
+            android:padding="8dp"
+            android:visibility="visible" />
+    </LinearLayout>
+
     <FrameLayout
         android:id="@+id/content_container"
         android:layout_width="match_parent"
@@ -26,8 +164,8 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="88dp"
             android:scrollbars="vertical" />
 
         <TextView
@@ -40,5 +178,103 @@
             android:textColor="@color/sts2_crash_on_surface_variant"
             android:textSize="14sp"
             android:visibility="gone" />
+
+        <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+            android:id="@+id/fab_add"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="20dp"
+            android:text="@string/file_browser_add"
+            android:textColor="@color/sts2_crash_on_primary"
+            app:backgroundTint="@color/sts2_crash_primary"
+            app:iconTint="@color/sts2_crash_on_primary" />
+
+        <View
+            android:id="@+id/file_browser_sheet_hook"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:visibility="gone" />
     </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/selection_action_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/sts2_crash_surface_container"
+        android:gravity="center"
+        android:minHeight="72dp"
+        android:orientation="horizontal"
+        android:paddingStart="4dp"
+        android:paddingTop="4dp"
+        android:paddingEnd="4dp"
+        android:paddingBottom="4dp"
+        android:visibility="gone">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/action_selection_copy"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="0dp"
+            android:layout_height="64dp"
+            android:layout_weight="1"
+            android:minWidth="0dp"
+            android:text="@string/file_browser_copy"
+            android:textColor="@color/sts2_crash_on_surface"
+            android:textSize="12sp"
+            app:iconGravity="textTop"
+            app:iconPadding="2dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/action_selection_export"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="0dp"
+            android:layout_height="64dp"
+            android:layout_weight="1"
+            android:minWidth="0dp"
+            android:text="@string/file_browser_export"
+            android:textColor="@color/sts2_crash_on_surface"
+            android:textSize="12sp"
+            app:iconGravity="textTop"
+            app:iconPadding="2dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/action_selection_rename"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="0dp"
+            android:layout_height="64dp"
+            android:layout_weight="1"
+            android:minWidth="0dp"
+            android:text="@string/file_browser_rename"
+            android:textColor="@color/sts2_crash_on_surface"
+            android:textSize="12sp"
+            app:iconGravity="textTop"
+            app:iconPadding="2dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/action_selection_delete"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="0dp"
+            android:layout_height="64dp"
+            android:layout_weight="1"
+            android:minWidth="0dp"
+            android:text="@string/file_browser_delete"
+            android:textColor="@color/sts2_crash_error"
+            android:textSize="12sp"
+            app:iconGravity="textTop"
+            app:iconPadding="2dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/action_selection_more"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="0dp"
+            android:layout_height="64dp"
+            android:layout_weight="1"
+            android:minWidth="0dp"
+            android:text="@string/file_browser_more"
+            android:textColor="@color/sts2_crash_on_surface"
+            android:textSize="12sp"
+            app:iconGravity="textTop"
+            app:iconPadding="2dp" />
+    </LinearLayout>
 </LinearLayout>

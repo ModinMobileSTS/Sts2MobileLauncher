@@ -3,22 +3,34 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
-        android:id="@+id/action_import_files"
-        android:title="@string/file_browser_import"
-        app:showAsAction="ifRoom|withText" />
+        android:id="@+id/action_search"
+        android:title="@string/file_browser_search"
+        android:icon="@null"
+        app:actionViewClass="androidx.appcompat.widget.SearchView"
+        app:showAsAction="ifRoom|collapseActionView" />
 
     <item
-        android:id="@+id/action_new_folder"
-        android:title="@string/file_browser_new_folder"
-        app:showAsAction="ifRoom|withText" />
-
-    <item
-        android:id="@+id/action_paste_entries"
-        android:title="@string/file_browser_paste"
-        app:showAsAction="ifRoom|withText" />
+        android:id="@+id/action_more"
+        android:title="@string/file_browser_more"
+        android:icon="@null"
+        app:showAsAction="ifRoom" />
 
     <item
         android:id="@+id/action_refresh_entries"
         android:title="@string/file_browser_refresh"
+        android:visible="false"
         app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_show_hidden"
+        android:title="@string/file_browser_show_hidden"
+        android:checkable="true"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_select_all_entries"
+        android:title="@string/file_browser_select_all"
+        android:visible="false"
+        app:showAsAction="always" />
 </menu>

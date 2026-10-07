@@ -99,6 +99,7 @@ tools/android/sync-runtime-from-references.sh
 - crypto native jar
 - FMOD 2.03.06 Android 三件套：`libfmod.so`、`libfmodstudio.so`、`libGodotFmod.android.template_release.arm64.so`。默认从 `STS2_FMOD_PLUGIN_AAR` 同级的 `arm64/` 读取，也可通过 `STS2_FMOD_ANDROID_LIBS_DIR` / `runtime.fmod_android_libs_dir` 指定；同步前核对已知 2.03.06 SHA，拒绝旧 2.02 和混用版本，然后覆盖参考 runtime 中 debug/release 两套 staged native 文件并移除未使用、依赖未打包 `libfmodL` 的 debug 桥。不能只升级两个 FMOD 引擎库而保留旧 Godot 桥。
 - FMOD AAR，并应用 `tools/android/fmod-shim/` 中的 Java shim；当前 2.03.06 native 使用 `getDevices`/设备名/类型 JNI 接口，仍保留旧 `getAudioDevices(int)` 接口。两条路径统一过滤 remote-submix，耳机/USB/蓝牙输出变化分别通知设备枚举与 AAudio 重连。`audio_compatibility_mode` 在 native 初始化前决定是否禁用 AAudio/低延迟路径；同步脚本替换全部生成的 `FMOD*.class` 并校验 AAR 内 `libs/fmod.jar`，缺少目标 jar 或 class 时直接终止构建。
+- Godot template AAR 的输入池修补：`tools/android/patch-godot-input-pool.py` 只修改 staged debug/release AAR，把 `GodotInputHandler` 对未处理的 mouse action（包括 `ACTION_BUTTON_PRESS/RELEASE`）的过滤提前到 `InputEventRunnable.obtain()` 之前，参考 AAR 不变；`tools/android/test-godot-input-pool.sh` 校验包装类不取得 pooled runnable 且支持事件仍委托给原始路径。
 - Gradle wrapper jar
 
 这些产物位于 `android/assets/dotnet_bcl/`、`android/libs/` 等 gitignored 路径，不手工维护。长期源码化状态和剩余阻塞见 [`source-dependencies.md`](source-dependencies.md)。
@@ -172,6 +173,22 @@ tools/android/gradle-with-s2-env.sh testMonoReleaseUnitTest \
 ```
 
 验证边界：托管 harness 强制 helper 的 Mono 分支，在受控原生缓冲区验证 true/false/重复调用不改字节、缓存及异常释放锁，并在宿主运行时执行真实 Cecil 私有成员/跨生成程序集调用和 Harmony patch/unpatch。它不是 Android Mono 或玩家 MOD 组合的真机验证。`LD_PRELOAD` 仅为 Linux Harmony 验证环境要求，不打入 APK。本修复与默认关闭的内存总量实验独立，不修改 native Mono、GC/堆上限、Godot `StringName`、游戏 DLL 或用户 MOD。
+
+### 4.3 Godot Android 输入事件池修复
+
+Godot 4.5.1 的 `GodotInputHandler.handleMouseEvent` 会先调用 `InputEventRunnable.obtain()`，随后才过滤不转发的 `ACTION_BUTTON_PRESS` / `ACTION_BUTTON_RELEASE`。实体鼠标一次点击通常包含 DOWN、BUTTON_PRESS、BUTTON_RELEASE、UP；两个未处理事件会占用 1,200 个 pooled runnable 中的槽位而不归还，长时间使用后会出现 `Input event pool is at capacity`，触摸、鼠标和键盘输入都会停止。
+
+`sync-runtime-from-references.sh` 对 debug/release **staged** Godot template AAR 运行 `tools/android/patch-godot-input-pool.py`。修补器保留原始处理器作为内部 base，叠加一个只在 `obtain()` 前过滤未处理 action 的小包装类；支持的 mouse action 仍委托给原始实现，参考 runtime 不会被修改，也不改变 Android/游戏输入协议。AAR 缺少预期 handler/gesture class 时构建直接失败，避免把补丁静默应用到未知 Godot ABI。
+
+```bash
+# 检查两个本地参考 AAR 的修补结果；不会修改参考输入。
+tools/android/test-godot-input-pool.sh
+
+# 完整构建会自动同步并应用修补，然后生成 importer APK。
+tools/package/build_importer_apk.sh
+```
+
+静态回归确认包装类不再取得 pooled runnable、原始支持事件路径仍存在，并覆盖 debug/release 两个 AAR。它不能替代蓝牙/USB 鼠标真机长时间测试；真机应确认持续点击数超过 600 次后触摸、鼠标和键盘仍可用，且 logcat 不再刷 `Input event pool is at capacity`。
 
 ## 5. 构建当前 compat fallback
 

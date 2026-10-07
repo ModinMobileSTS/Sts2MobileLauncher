@@ -2,28 +2,43 @@ package com.godot.game;
 
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.database.Cursor;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import androidx.documentfile.provider.DocumentFile;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
 import android.text.TextUtils;
 import android.text.format.Formatter;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.PathInterpolator;
 import android.widget.EditText;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.view.ActionMode;
-import androidx.documentfile.provider.DocumentFile;
+import androidx.appcompat.widget.PopupMenu;
+import androidx.appcompat.widget.SearchView;
+import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
 import com.google.android.material.snackbar.Snackbar;
 
 import java.io.BufferedInputStream;
@@ -47,59 +62,98 @@ public class FileBrowserActivity extends AppCompatActivity {
 	private static final int REQUEST_IMPORT_TREE = 3002;
 	private static final int REQUEST_EXPORT_TREE = 3003;
 	private static final String DATE_TIME_PATTERN = "yyyy-MM-dd HH:mm:ss";
+    private static final int MORE_REFRESH_ITEM_ID = 0x1001;
+    private static final int MORE_HIDDEN_ITEM_ID = 0x1002;
+    private static final int SELECTION_OPEN_ITEM_ID = 0x1010;
+    private static final int SELECTION_EXTERNAL_ITEM_ID = 0x1011;
+    private static final int SELECTION_RENAME_ITEM_ID = 0x1012;
+    private static final int SORT_NAME = 0;
+    private static final int SORT_TIME = 1;
+    private static final int SORT_SIZE = 2;
+    private static final int SORT_NAME_ITEM_ID = 0x1020;
+    private static final int SORT_TIME_ITEM_ID = 0x1021;
+    private static final int SORT_SIZE_ITEM_ID = 0x1022;
 
-	private final List<FileEntry> entries = new ArrayList<>();
-	private final LinkedHashSet<Integer> selectedPositions = new LinkedHashSet<>();
-	private final List<File> copiedEntries = new ArrayList<>();
+    private final List<FileEntry> entries = new ArrayList<>();
+    private final List<FileEntry> allEntries = new ArrayList<>();
+    private final LinkedHashSet<Integer> selectedPositions = new LinkedHashSet<>();
+    private final List<File> copiedEntries = new ArrayList<>();
 
-	private TextView emptyText;
-	private RecyclerView recyclerView;
-	private FileBrowserAdapter adapter;
+    private MaterialToolbar toolbar;
+    private TextView emptyText;
+    private TextView listSummary;
+    private TextView clipboardBannerText;
+    private MaterialCardView clipboardBanner;
+    private LinearLayout breadcrumbs;
+    private LinearLayout selectionActionBar;
+    private ImageButton clipboardBannerClose;
+    private ExtendedFloatingActionButton addFab;
+    private MaterialButton sortButton;
+    private MaterialButton selectionCopyButton;
+    private MaterialButton selectionExportButton;
+    private MaterialButton selectionRenameButton;
+    private MaterialButton selectionDeleteButton;
+    private MaterialButton selectionMoreButton;
+    private RecyclerView recyclerView;
+    private FileBrowserAdapter adapter;
 
-	private ActionMode selectionActionMode;
-	private File rootDirectory;
-	private File currentDirectory;
-	private File pendingImportTargetDirectory;
-	private List<File> pendingExportEntries = new ArrayList<>();
-	private boolean refreshing;
-	private boolean busy;
-	private String busyStatusMessage;
+    private MenuItem searchMenuItem;
+    private MenuItem moreMenuItem;
+    private MenuItem selectAllMenuItem;
+    private File rootDirectory;
+    private File currentDirectory;
+    private File pendingImportTargetDirectory;
+    private List<File> pendingExportEntries = new ArrayList<>();
+    private boolean refreshing;
+    private boolean busy;
+    private boolean selectionMode;
+    private boolean showHiddenFiles;
+    private boolean sortAscending = true;
+    private int sortMode = SORT_NAME;
+    private boolean gridMode;
+    private boolean clipboardBannerDismissed;
+    private String filterQuery = "";
+    private final PathInterpolator uiInterpolator = new PathInterpolator(0.2f, 0f, 0f, 1f);
 
-	@Override
-	protected void onCreate(Bundle savedInstanceState) {
-		super.onCreate(savedInstanceState);
-		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
-		SystemBarInsetsHelper.enableEdgeToEdge(this);
-		setContentView(R.layout.activity_file_browser);
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
+        SystemBarInsetsHelper.enableEdgeToEdge(this);
+        setContentView(R.layout.activity_file_browser);
 
-		MaterialToolbar toolbar = findViewById(R.id.toolbar);
-		setSupportActionBar(toolbar);
-		if (getSupportActionBar() != null) {
-			getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-			getSupportActionBar().setTitle(R.string.file_browser_title);
-		}
-		SystemBarInsetsHelper.applySystemBarPadding(toolbar, true, true, false, true);
-		SystemBarInsetsHelper.applySystemBarPadding(findViewById(R.id.content_container), false, true, true, true);
+        toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+            getSupportActionBar().setTitle(R.string.file_browser_title);
+            getSupportActionBar().setSubtitle(R.string.file_browser_subtitle);
+        }
+        toolbar.setNavigationOnClickListener(v -> handleBackNavigation());
+        SystemBarInsetsHelper.applySystemBarPadding(toolbar, true, true, false, true);
+        SystemBarInsetsHelper.applySystemBarPadding(findViewById(R.id.content_container), false, true, true, true);
+        SystemBarInsetsHelper.applySystemBarPadding(findViewById(R.id.selection_action_bar), false, true, true, true);
 
-		bindViews();
+        bindViews();
 
-		rootDirectory = getFilesDir();
-		currentDirectory = resolveInitialDirectory(getIntent() == null ? null : getIntent().getStringExtra(EXTRA_INITIAL_PATH));
-		FileBrowserSupport.ensureDirectory(rootDirectory);
+        rootDirectory = getFilesDir();
+        currentDirectory = resolveInitialDirectory(getIntent() == null ? null : getIntent().getStringExtra(EXTRA_INITIAL_PATH));
+        FileBrowserSupport.ensureDirectory(rootDirectory);
 
-		adapter = new FileBrowserAdapter();
-		recyclerView.setLayoutManager(new LinearLayoutManager(this));
-		recyclerView.setAdapter(adapter);
+        adapter = new FileBrowserAdapter();
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        recyclerView.setAdapter(adapter);
 
-		getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-			@Override
-			public void handleOnBackPressed() {
-				handleBackNavigation();
-			}
-		});
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                handleBackNavigation();
+            }
+        });
 
-		refreshEntries();
-	}
+        updateSelectionChrome();
+        refreshEntries();
+    }
 
 	/**
 	 * Opens the file browser under the app private files root, optionally starting at
@@ -151,56 +205,86 @@ public class FileBrowserActivity extends AppCompatActivity {
 		return true;
 	}
 
-	@Override
-	public boolean onCreateOptionsMenu(Menu menu) {
-		getMenuInflater().inflate(R.menu.menu_file_browser, menu);
-		return true;
-	}
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_file_browser, menu);
+        searchMenuItem = menu.findItem(R.id.action_search);
+        moreMenuItem = menu.findItem(R.id.action_more);
+        selectAllMenuItem = menu.findItem(R.id.action_select_all_entries);
+        if (searchMenuItem != null) {
+            searchMenuItem.setIcon(MaterialSymbols.drawable(this, "search", getColor(R.color.sts2_crash_on_surface), 24));
+            View actionView = searchMenuItem.getActionView();
+            if (actionView instanceof SearchView) {
+                SearchView searchView = (SearchView) actionView;
+                searchView.setQueryHint(getString(R.string.file_browser_search));
+                searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+                    @Override
+                    public boolean onQueryTextSubmit(String query) {
+                        applyFilter(query);
+                        return true;
+                    }
 
-	@Override
-	public boolean onPrepareOptionsMenu(Menu menu) {
-		boolean canInteract = !busy;
-		MenuItem importItem = menu.findItem(R.id.action_import_files);
-		MenuItem newFolderItem = menu.findItem(R.id.action_new_folder);
-		MenuItem pasteItem = menu.findItem(R.id.action_paste_entries);
-		MenuItem refreshItem = menu.findItem(R.id.action_refresh_entries);
-		if (importItem != null) {
-			importItem.setEnabled(canInteract);
-		}
-		if (newFolderItem != null) {
-			newFolderItem.setEnabled(canInteract);
-		}
-		if (pasteItem != null) {
-			pasteItem.setVisible(hasCopiedEntries());
-			pasteItem.setEnabled(canInteract);
-		}
-		if (refreshItem != null) {
-			refreshItem.setEnabled(!busy && !refreshing);
-		}
-		return super.onPrepareOptionsMenu(menu);
-	}
+                    @Override
+                    public boolean onQueryTextChange(String newText) {
+                        applyFilter(newText);
+                        return true;
+                    }
+                });
+                searchView.setOnCloseListener(() -> {
+                    applyFilter("");
+                    return false;
+                });
+            }
+        }
+        if (moreMenuItem != null) {
+            moreMenuItem.setIcon(MaterialSymbols.drawable(this, "more_vert", getColor(R.color.sts2_crash_on_surface), 24));
+        }
+        if (selectAllMenuItem != null) {
+            selectAllMenuItem.setIcon(MaterialSymbols.drawable(this, "select_all", getColor(R.color.sts2_crash_on_primary), 24));
+        }
+        updateSelectionChrome();
+        return true;
+    }
 
-	@Override
-	public boolean onOptionsItemSelected(MenuItem item) {
-		int itemId = item.getItemId();
-		if (itemId == R.id.action_import_files) {
-			showImportDialog();
-			return true;
-		}
-		if (itemId == R.id.action_new_folder) {
-			showCreateFolderDialog();
-			return true;
-		}
-		if (itemId == R.id.action_paste_entries) {
-			pasteCopiedEntries();
-			return true;
-		}
-		if (itemId == R.id.action_refresh_entries) {
-			refreshEntries();
-			return true;
-		}
-		return super.onOptionsItemSelected(item);
-	}
+    @Override
+    public boolean onPrepareOptionsMenu(Menu menu) {
+        boolean normalMode = !selectionMode;
+        if (searchMenuItem != null) {
+            searchMenuItem.setVisible(normalMode);
+        }
+        if (moreMenuItem != null) {
+            moreMenuItem.setVisible(normalMode);
+            moreMenuItem.setEnabled(normalMode && !busy);
+        }
+        if (selectAllMenuItem != null) {
+            selectAllMenuItem.setVisible(selectionMode);
+            selectAllMenuItem.setEnabled(!busy && !entries.isEmpty());
+        }
+        return super.onPrepareOptionsMenu(menu);
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int itemId = item.getItemId();
+        if (itemId == R.id.action_more) {
+            showMorePopup();
+            return true;
+        }
+        if (itemId == R.id.action_refresh_entries) {
+            refreshEntries();
+            return true;
+        }
+        if (itemId == R.id.action_show_hidden) {
+            showHiddenFiles = !showHiddenFiles;
+            refreshEntries();
+            return true;
+        }
+        if (itemId == R.id.action_select_all_entries) {
+            selectAllEntries();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
 
 	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -248,181 +332,351 @@ public class FileBrowserActivity extends AppCompatActivity {
 		}
 	}
 
-	private void bindViews() {
-		emptyText = findViewById(R.id.text_empty_files);
-		recyclerView = findViewById(R.id.recycler_files);
-	}
+    private void bindViews() {
+        emptyText = findViewById(R.id.text_empty_files);
+        recyclerView = findViewById(R.id.recycler_files);
+        listSummary = findViewById(R.id.list_summary);
+        clipboardBanner = findViewById(R.id.clipboard_banner);
+        clipboardBannerText = findViewById(R.id.clipboard_banner_text);
+        breadcrumbs = findViewById(R.id.breadcrumbs);
+        selectionActionBar = findViewById(R.id.selection_action_bar);
+        addFab = findViewById(R.id.fab_add);
+        sortButton = findViewById(R.id.button_sort_entries);
+        selectionCopyButton = findViewById(R.id.action_selection_copy);
+        selectionExportButton = findViewById(R.id.action_selection_export);
+        selectionRenameButton = findViewById(R.id.action_selection_rename);
+        selectionDeleteButton = findViewById(R.id.action_selection_delete);
+        selectionMoreButton = findViewById(R.id.action_selection_more);
+        clipboardBannerClose = findViewById(R.id.clipboard_banner_close);
 
-	private void handleBackNavigation() {
-		if (selectionActionMode != null) {
-			clearSelection();
-			return;
-		}
-		if (!isRootDirectory(currentDirectory)) {
-			File parent = currentDirectory.getParentFile();
-			if (parent != null && FileBrowserSupport.isSameOrDescendant(parent, rootDirectory)) {
-				navigateToDirectory(parent);
-				return;
-			}
-		}
-		finish();
-	}
+        ImageView clipboardIcon = findViewById(R.id.clipboard_banner_icon);
+        clipboardIcon.setImageDrawable(MaterialSymbols.drawable(this, "content_paste", getColor(R.color.sts2_crash_on_primary_container), 22));
+        clipboardBannerClose.setImageDrawable(MaterialSymbols.drawable(this, "close", getColor(R.color.sts2_crash_on_primary_container), 20));
+        addFab.setIcon(MaterialSymbols.drawable(this, "add", getColor(R.color.sts2_crash_on_primary), 24));
+        sortButton.setIcon(MaterialSymbols.drawable(this, "sort", getColor(R.color.sts2_crash_on_surface_variant), 20));
+        updateSortButton();
+        updateViewModeButtons();
+
+        addFab.setOnClickListener(v -> showAddBottomSheet());
+        sortButton.setOnClickListener(v -> showSortPopup());
+        findViewById(R.id.button_list_view).setOnClickListener(v -> setGridMode(false));
+        findViewById(R.id.button_grid_view).setOnClickListener(v -> setGridMode(true));
+        findViewById(R.id.clipboard_banner_paste).setOnClickListener(v -> pasteCopiedEntries());
+        clipboardBannerClose.setOnClickListener(v -> {
+            clipboardBannerDismissed = true;
+            hideClipboardBanner();
+        });
+
+        setSelectionButtonIcon(selectionCopyButton, "content_copy");
+        setSelectionButtonIcon(selectionExportButton, "ios_share");
+        setSelectionButtonIcon(selectionRenameButton, "edit");
+        setSelectionButtonIcon(selectionDeleteButton, "delete");
+        setSelectionButtonIcon(selectionMoreButton, "more_horiz");
+        selectionCopyButton.setOnClickListener(v -> copySelectedEntries());
+        selectionExportButton.setOnClickListener(v -> exportSelectedEntries());
+        selectionRenameButton.setOnClickListener(v -> showRenameDialog());
+        selectionDeleteButton.setOnClickListener(v -> confirmDeleteSelectedEntries());
+        selectionMoreButton.setOnClickListener(v -> showSelectionMorePopup());
+    }
+
+    private void setSelectionButtonIcon(MaterialButton button, String glyph) {
+        button.setIcon(MaterialSymbols.drawable(this, glyph, getColor(R.color.sts2_crash_on_surface), 22));
+        button.setIconTint(ColorStateList.valueOf(getColor(R.color.sts2_crash_on_surface)));
+    }
+
+    private void setGridMode(boolean enabled) {
+        if (gridMode == enabled || busy) {
+            return;
+        }
+        gridMode = enabled;
+        int spanCount = Math.max(2, getResources().getConfiguration().screenWidthDp / 180);
+        recyclerView.setLayoutManager(enabled ? new GridLayoutManager(this, spanCount) : new LinearLayoutManager(this));
+        adapter.notifyDataSetChanged();
+        updateViewModeButtons();
+    }
+
+    private void updateViewModeButtons() {
+        ImageButton listButton = findViewById(R.id.button_list_view);
+        ImageButton gridButton = findViewById(R.id.button_grid_view);
+        int active = getColor(R.color.sts2_crash_primary);
+        int inactive = getColor(R.color.sts2_crash_on_surface_variant);
+        listButton.setImageDrawable(MaterialSymbols.drawable(this, "view_list", gridMode ? inactive : active, 22));
+        gridButton.setImageDrawable(MaterialSymbols.drawable(this, "grid_view", gridMode ? active : inactive, 22));
+        listButton.setSelected(!gridMode);
+        gridButton.setSelected(gridMode);
+    }
+
+    private void handleBackNavigation() {
+        if (selectionMode) {
+            clearSelection();
+            return;
+        }
+        if (!TextUtils.isEmpty(filterQuery)) {
+            filterQuery = "";
+            applyFilter("");
+            if (searchMenuItem != null) {
+                searchMenuItem.collapseActionView();
+            }
+            return;
+        }
+        if (!isRootDirectory(currentDirectory)) {
+            File parent = currentDirectory.getParentFile();
+            if (parent != null && FileBrowserSupport.isSameOrDescendant(parent, rootDirectory)) {
+                navigateToDirectory(parent);
+                return;
+            }
+        }
+        finish();
+    }
 
 	private boolean isRootDirectory(File directory) {
 		return FileBrowserSupport.buildRelativePath(rootDirectory, directory).isEmpty();
 	}
 
-	private void navigateToDirectory(File directory) {
-		if (directory == null || !directory.isDirectory()) {
-			return;
-		}
-		if (!FileBrowserSupport.isSameOrDescendant(directory, rootDirectory)) {
-			return;
-		}
-		currentDirectory = directory;
-		refreshEntries();
-	}
+    private void navigateToDirectory(File directory) {
+        if (directory == null || !directory.isDirectory()) {
+            return;
+        }
+        if (!FileBrowserSupport.isSameOrDescendant(directory, rootDirectory)) {
+            return;
+        }
+        currentDirectory = directory;
+        filterQuery = "";
+        clipboardBannerDismissed = false;
+        if (searchMenuItem != null) {
+            searchMenuItem.collapseActionView();
+        }
+        refreshEntries();
+    }
 
-	private void refreshEntries() {
-		if (refreshing) {
-			return;
-		}
-		clearSelection();
-		refreshing = true;
-		updateHeaderTexts();
-		supportInvalidateOptionsMenu();
-		File targetDirectory = currentDirectory;
-		new Thread(() -> {
-			List<FileEntry> refreshedEntries = scanEntries(targetDirectory);
-			runOnUiThread(() -> applyEntries(targetDirectory, refreshedEntries));
-		}).start();
-	}
+    private void refreshEntries() {
+        if (refreshing) {
+            return;
+        }
+        clearSelection();
+        refreshing = true;
+        updateHeaderTexts();
+        supportInvalidateOptionsMenu();
+        File targetDirectory = currentDirectory;
+        new Thread(() -> {
+            List<FileEntry> refreshedEntries = scanEntries(targetDirectory);
+            runOnUiThread(() -> applyEntries(targetDirectory, refreshedEntries));
+        }).start();
+    }
 
-	private List<FileEntry> scanEntries(File directory) {
-		List<FileEntry> results = new ArrayList<>();
-		if (directory == null || !directory.isDirectory()) {
-			return results;
-		}
-		File[] children = directory.listFiles();
-		if (children == null) {
-			return results;
-		}
-		for (File child : children) {
-			if (child == null) {
-				continue;
-			}
-			results.add(new FileEntry(child));
-		}
-		results.sort((left, right) -> {
-			if (left.file.isDirectory() != right.file.isDirectory()) {
-				return left.file.isDirectory() ? -1 : 1;
-			}
-			return left.file.getName().compareToIgnoreCase(right.file.getName());
-		});
-		return results;
-	}
+    private List<FileEntry> scanEntries(File directory) {
+        List<FileEntry> results = new ArrayList<>();
+        if (directory == null || !directory.isDirectory()) {
+            return results;
+        }
+        File[] children = directory.listFiles();
+        if (children == null) {
+            return results;
+        }
+        for (File child : children) {
+            if (child == null || (!showHiddenFiles && (child.isHidden() || child.getName().startsWith(".")))) {
+                continue;
+            }
+            results.add(new FileEntry(child));
+        }
+        return results;
+    }
 
-	private void applyEntries(File scannedDirectory, List<FileEntry> refreshedEntries) {
-		if (!sameFilePath(scannedDirectory, currentDirectory)) {
-			refreshing = false;
-			refreshEntries();
-			return;
-		}
-		refreshing = false;
-		if (!currentDirectory.isDirectory()) {
-			currentDirectory = rootDirectory;
-			refreshEntries();
-			return;
-		}
-		entries.clear();
-		entries.addAll(refreshedEntries);
-		adapter.notifyDataSetChanged();
-		updateHeaderTexts();
-		updateEmptyState();
-		supportInvalidateOptionsMenu();
-	}
+    private void applyEntries(File scannedDirectory, List<FileEntry> refreshedEntries) {
+        if (!sameFilePath(scannedDirectory, currentDirectory)) {
+            refreshing = false;
+            refreshEntries();
+            return;
+        }
+        refreshing = false;
+        if (!currentDirectory.isDirectory()) {
+            currentDirectory = rootDirectory;
+            refreshEntries();
+            return;
+        }
+        allEntries.clear();
+        allEntries.addAll(refreshedEntries);
+        sortEntries();
+        applyFilter(filterQuery);
+        updateBreadcrumbs();
+        updateClipboardBanner();
+        supportInvalidateOptionsMenu();
+    }
 
-	private void updateHeaderTexts() {
-		if (getSupportActionBar() == null) {
-			return;
-		}
-		getSupportActionBar().setTitle(R.string.file_browser_title);
-		getSupportActionBar().setSubtitle(buildActionBarSubtitle());
-	}
+    private void sortEntries() {
+        allEntries.sort((left, right) -> {
+            if (left.file.isDirectory() != right.file.isDirectory()) {
+                return left.file.isDirectory() ? -1 : 1;
+            }
+            int comparison;
+            if (sortMode == SORT_TIME) {
+                comparison = Long.compare(left.lastModified, right.lastModified);
+            } else if (sortMode == SORT_SIZE) {
+                comparison = Long.compare(left.size, right.size);
+            } else {
+                comparison = left.file.getName().compareToIgnoreCase(right.file.getName());
+            }
+            if (comparison == 0) {
+                comparison = left.file.getName().compareToIgnoreCase(right.file.getName());
+            }
+            return sortAscending ? comparison : -comparison;
+        });
+    }
 
-	private CharSequence buildCurrentPathLabel() {
-		String relativePath = FileBrowserSupport.buildRelativePath(rootDirectory, currentDirectory);
-		if (TextUtils.isEmpty(relativePath)) {
-			return getString(R.string.file_browser_root_label);
-		}
-		return getString(R.string.file_browser_path_format, getString(R.string.file_browser_root_label), relativePath);
-	}
+    private void applyFilter(String rawQuery) {
+        filterQuery = rawQuery == null ? "" : rawQuery.trim();
+        String normalizedQuery = filterQuery.toLowerCase(Locale.ROOT);
+        entries.clear();
+        for (FileEntry entry : allEntries) {
+            if (normalizedQuery.isEmpty() || entry.file.getName().toLowerCase(Locale.ROOT).contains(normalizedQuery)) {
+                entries.add(entry);
+            }
+        }
+        if (adapter != null) {
+            adapter.notifyDataSetChanged();
+        }
+        updateHeaderTexts();
+        updateEmptyState();
+    }
 
-	private CharSequence buildActionBarSubtitle() {
-		CharSequence pathLabel = buildCurrentPathLabel();
-		CharSequence statusText;
-		if (busyStatusMessage != null) {
-			statusText = busyStatusMessage;
-		} else if (refreshing) {
-			statusText = getString(R.string.file_browser_status_loading);
-		} else {
-			statusText = buildSummaryText();
-		}
-		return pathLabel + " · " + statusText;
-	}
+    private void updateHeaderTexts() {
+        if (getSupportActionBar() != null && !selectionMode) {
+            getSupportActionBar().setTitle(R.string.file_browser_title);
+            getSupportActionBar().setSubtitle(R.string.file_browser_subtitle);
+        }
+        updateBreadcrumbs();
+        if (listSummary != null) {
+            listSummary.setText(buildSummaryText());
+        }
+        updateClipboardBanner();
+    }
 
-	private CharSequence buildSummaryText() {
-		sanitizeCopiedEntries();
-		int directoryCount = 0;
-		int fileCount = 0;
-		for (FileEntry entry : entries) {
-			if (entry.file.isDirectory()) {
-				directoryCount++;
-			} else {
-				fileCount++;
-			}
-		}
-		int copiedCount = copiedEntries.size();
-		if (entries.isEmpty()) {
-			if (copiedCount > 0) {
-				return getString(R.string.file_browser_summary_empty_with_clipboard, copiedCount);
-			}
-			return getString(R.string.file_browser_summary_empty);
-		}
-		if (copiedCount > 0) {
-			return getString(R.string.file_browser_summary_count_with_clipboard, directoryCount, fileCount, copiedCount);
-		}
-		return getString(R.string.file_browser_summary_count, directoryCount, fileCount);
-	}
+    private CharSequence buildCurrentPathLabel() {
+        String relativePath = FileBrowserSupport.buildRelativePath(rootDirectory, currentDirectory);
+        if (TextUtils.isEmpty(relativePath)) {
+            return getString(R.string.file_browser_root_label);
+        }
+        return getString(R.string.file_browser_path_format, getString(R.string.file_browser_root_label), relativePath);
+    }
+    private void updateBreadcrumbs() {
+        if (breadcrumbs == null || rootDirectory == null || currentDirectory == null) {
+            return;
+        }
+        breadcrumbs.removeAllViews();
+        List<File> chain = new ArrayList<>();
+        File cursor = currentDirectory;
+        while (cursor != null && FileBrowserSupport.isSameOrDescendant(cursor, rootDirectory)) {
+            chain.add(cursor);
+            if (sameFilePath(cursor, rootDirectory)) {
+                break;
+            }
+            cursor = cursor.getParentFile();
+        }
+        for (int index = chain.size() - 1; index >= 0; index--) {
+            File target = chain.get(index);
+            if (index != chain.size() - 1) {
+                ImageView chevron = new ImageView(this);
+                chevron.setImageDrawable(MaterialSymbols.drawable(this, "chevron_right", getColor(R.color.sts2_crash_outline), 18));
+                LinearLayout.LayoutParams chevronParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 40));
+                chevronParams.gravity = Gravity.CENTER_VERTICAL;
+                breadcrumbs.addView(chevron, chevronParams);
+            }
+            if (sameFilePath(target, rootDirectory)) {
+                ImageView home = new ImageView(this);
+                home.setImageDrawable(MaterialSymbols.drawable(this, "home", getColor(R.color.sts2_crash_primary), 20));
+                home.setContentDescription(getString(R.string.file_browser_root_label));
+                breadcrumbs.addView(home, new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 32), ExtraSettingsUi.dp(this, 40)));
+            }
+            TextView crumb = new TextView(this);
+            crumb.setText(sameFilePath(target, rootDirectory) ? getString(R.string.file_browser_root_label) : target.getName());
+            crumb.setTextSize(14f);
+            crumb.setTypeface(Typeface.DEFAULT, sameFilePath(target, currentDirectory) ? Typeface.BOLD : Typeface.NORMAL);
+            crumb.setTextColor(getColor(sameFilePath(target, currentDirectory) ? R.color.sts2_crash_primary : R.color.sts2_crash_on_surface_variant));
+            crumb.setGravity(Gravity.CENTER_VERTICAL);
+            crumb.setPadding(ExtraSettingsUi.dp(this, 8), 0, ExtraSettingsUi.dp(this, 8), 0);
+            crumb.setMinHeight(ExtraSettingsUi.dp(this, 40));
+            crumb.setClickable(true);
+            crumb.setFocusable(true);
+            crumb.setBackgroundResource(android.R.drawable.list_selector_background);
+            crumb.setOnClickListener(v -> navigateToDirectory(target));
+            breadcrumbs.addView(crumb, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ExtraSettingsUi.dp(this, 40)));
+        }
+    }
 
-	private void updateEmptyState() {
-		boolean empty = entries.isEmpty();
-		emptyText.setVisibility(empty ? View.VISIBLE : View.GONE);
-		recyclerView.setVisibility(empty ? View.GONE : View.VISIBLE);
-	}
+    private void updateClipboardBanner() {
+        if (clipboardBanner == null) {
+            return;
+        }
+        sanitizeCopiedEntries();
+        boolean visible = !copiedEntries.isEmpty() && !clipboardBannerDismissed;
+        if (visible) {
+            clipboardBannerText.setText(getString(R.string.file_browser_clipboard_format, copiedEntries.size()));
+            if (clipboardBanner.getVisibility() != View.VISIBLE) {
+                clipboardBanner.setVisibility(View.VISIBLE);
+                clipboardBanner.setAlpha(0f);
+                clipboardBanner.setTranslationY(-ExtraSettingsUi.dp(this, 12));
+                clipboardBanner.animate().alpha(1f).translationY(0f).setDuration(220L).setInterpolator(uiInterpolator).start();
+            }
+        } else {
+            hideClipboardBanner();
+        }
+    }
 
-	private void onEntryClicked(int position) {
-		if (position < 0 || position >= entries.size()) {
-			return;
-		}
-		if (selectionActionMode != null) {
-			toggleSelection(position);
-			return;
-		}
-		openEntry(entries.get(position).file);
-	}
+    private void hideClipboardBanner() {
+        if (clipboardBanner == null || clipboardBanner.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        clipboardBanner.animate().cancel();
+        clipboardBanner.animate().alpha(0f).translationY(-ExtraSettingsUi.dp(this, 12)).setDuration(180L).setInterpolator(uiInterpolator).withEndAction(() -> {
+            clipboardBanner.setVisibility(View.GONE);
+            clipboardBanner.setTranslationY(0f);
+        }).start();
+    }
 
-	private boolean onEntryLongPressed(int position) {
-		if (position < 0 || position >= entries.size()) {
-			return false;
-		}
-		if (selectionActionMode == null) {
-			startSelection(position);
-		} else {
-			toggleSelection(position);
-		}
-		return true;
-	}
+    private CharSequence buildSummaryText() {
+        int directoryCount = 0;
+        int fileCount = 0;
+        for (FileEntry entry : entries) {
+            if (entry.file.isDirectory()) {
+                directoryCount++;
+            } else {
+                fileCount++;
+            }
+        }
+        if (entries.isEmpty()) {
+            return getString(R.string.file_browser_summary_empty);
+        }
+        return getString(R.string.file_browser_summary_count, directoryCount, fileCount);
+    }
+
+    private void updateEmptyState() {
+        boolean empty = entries.isEmpty();
+        emptyText.setVisibility(empty ? View.VISIBLE : View.GONE);
+        recyclerView.setVisibility(empty ? View.GONE : View.VISIBLE);
+    }
+
+    private void onEntryClicked(int position) {
+        if (position < 0 || position >= entries.size()) {
+            return;
+        }
+        if (selectionMode) {
+            toggleSelection(position);
+            return;
+        }
+        openEntry(entries.get(position).file);
+    }
+
+    private boolean onEntryLongPressed(int position) {
+        if (position < 0 || position >= entries.size()) {
+            return false;
+        }
+        if (!selectionMode) {
+            startSelection(position);
+        } else {
+            toggleSelection(position);
+        }
+        return true;
+    }
 
 	private void openEntry(File file) {
 		if (file == null || !file.exists()) {
@@ -480,96 +734,145 @@ public class FileBrowserActivity extends AppCompatActivity {
 		FileBrowserSupport.openFileInExternalApp(this, file, preferEdit, getString(chooserTitleRes));
 	}
 
-	private void startSelection(int position) {
-		selectionActionMode = startSupportActionMode(selectionActionModeCallback);
-		if (selectionActionMode == null) {
-			return;
-		}
-		setItemSelected(position, true);
-		updateSelectionActionMode();
-	}
+    private void startSelection(int position) {
+        selectionMode = true;
+        setItemSelected(position, true);
+        updateSelectionChrome();
+    }
 
-	private void toggleSelection(int position) {
-		boolean selected = selectedPositions.contains(position);
-		setItemSelected(position, !selected);
-		if (selectedPositions.isEmpty()) {
-			clearSelection();
-			return;
-		}
-		updateSelectionActionMode();
-	}
+    private void toggleSelection(int position) {
+        boolean selected = selectedPositions.contains(position);
+        setItemSelected(position, !selected);
+        if (selectedPositions.isEmpty()) {
+            clearSelection();
+            return;
+        }
+        updateSelectionChrome();
+    }
 
-	private void setItemSelected(int position, boolean selected) {
-		if (selected) {
-			selectedPositions.add(position);
-		} else {
-			selectedPositions.remove(position);
-		}
-		adapter.notifyItemChanged(position);
-		if (selectionActionMode != null) {
-			selectionActionMode.invalidate();
-		}
-	}
+    private void setItemSelected(int position, boolean selected) {
+        if (selected) {
+            selectedPositions.add(position);
+        } else {
+            selectedPositions.remove(position);
+        }
+        if (adapter != null) {
+            adapter.notifyItemChanged(position);
+        }
+    }
 
-	private void updateSelectionActionMode() {
-		if (selectionActionMode == null) {
-			return;
-		}
-		selectionActionMode.setTitle(getString(R.string.file_browser_selection_title, selectedPositions.size()));
-		selectionActionMode.invalidate();
-	}
+    private void updateSelectionChrome() {
+        if (toolbar == null) {
+            return;
+        }
+        int onSurface = getColor(R.color.sts2_crash_on_surface);
+        int onPrimary = getColor(R.color.sts2_crash_on_primary);
+        if (selectionMode) {
+            getWindow().setStatusBarColor(getColor(R.color.sts2_crash_primary));
+            toolbar.setBackgroundColor(getColor(R.color.sts2_crash_primary));
+            toolbar.setTitleTextColor(onPrimary);
+            toolbar.setSubtitleTextColor(onPrimary);
+            toolbar.setNavigationIcon(MaterialSymbols.drawable(this, "close", onPrimary, 24));
+            toolbar.setNavigationContentDescription(R.string.file_browser_close_selection);
+            if (getSupportActionBar() != null) {
+                getSupportActionBar().setTitle(getString(R.string.file_browser_selection_title, selectedPositions.size()));
+                getSupportActionBar().setSubtitle(null);
+            }
+            addFab.hide();
+            showSelectionActionBar(true);
+        } else {
+            getWindow().setStatusBarColor(getColor(R.color.sts2_crash_surface));
+            toolbar.setBackgroundColor(getColor(R.color.sts2_crash_surface));
+            toolbar.setTitleTextColor(onSurface);
+            toolbar.setSubtitleTextColor(getColor(R.color.sts2_crash_on_surface_variant));
+            toolbar.setNavigationIcon(MaterialSymbols.drawable(this, "arrow_back", onSurface, 24));
+            toolbar.setNavigationContentDescription(R.string.file_browser_title);
+            if (getSupportActionBar() != null) {
+                getSupportActionBar().setTitle(R.string.file_browser_title);
+                getSupportActionBar().setSubtitle(R.string.file_browser_subtitle);
+            }
+            addFab.show();
+            showSelectionActionBar(false);
+        }
+        boolean singleSelection = getSingleSelectedFile() != null;
+        selectionRenameButton.setEnabled(singleSelection && !busy);
+        selectionCopyButton.setEnabled(!selectedPositions.isEmpty() && !busy);
+        selectionExportButton.setEnabled(!selectedPositions.isEmpty() && !busy);
+        selectionDeleteButton.setEnabled(!selectedPositions.isEmpty() && !busy);
+        selectionMoreButton.setEnabled(!selectedPositions.isEmpty() && !busy);
+        supportInvalidateOptionsMenu();
+    }
 
-	private void clearSelection() {
-		if (selectionActionMode != null) {
-			selectionActionMode.finish();
-			return;
-		}
-		if (selectedPositions.isEmpty()) {
-			return;
-		}
-		selectedPositions.clear();
-		adapter.notifyDataSetChanged();
-	}
+    private void showSelectionActionBar(boolean visible) {
+        if (selectionActionBar == null) {
+            return;
+        }
+        selectionActionBar.animate().cancel();
+        int offset = ExtraSettingsUi.dp(this, 88);
+        if (visible) {
+            selectionActionBar.setVisibility(View.VISIBLE);
+            selectionActionBar.setAlpha(0f);
+            selectionActionBar.setTranslationY(offset);
+            selectionActionBar.animate().alpha(1f).translationY(0f).setDuration(220L).setInterpolator(uiInterpolator).start();
+        } else if (selectionActionBar.getVisibility() == View.VISIBLE) {
+            selectionActionBar.animate().alpha(0f).translationY(offset).setDuration(180L).setInterpolator(uiInterpolator).withEndAction(() -> {
+                selectionActionBar.setVisibility(View.GONE);
+                selectionActionBar.setTranslationY(0f);
+            }).start();
+        }
+    }
 
-	private List<File> getSelectedFiles() {
-		List<File> results = new ArrayList<>();
-		for (int i = 0; i < entries.size(); i++) {
-			if (selectedPositions.contains(i)) {
-				results.add(entries.get(i).file);
-			}
-		}
-		return results;
-	}
+    private void clearSelection() {
+        boolean hadSelection = selectionMode || !selectedPositions.isEmpty();
+        selectionMode = false;
+        selectedPositions.clear();
+        if (adapter != null && hadSelection) {
+            adapter.notifyDataSetChanged();
+        }
+        if (hadSelection) {
+            updateSelectionChrome();
+        }
+    }
 
-	private File getSingleSelectedFile() {
-		List<File> selectedFiles = getSelectedFiles();
-		return selectedFiles.size() == 1 ? selectedFiles.get(0) : null;
-	}
+    private List<File> getSelectedFiles() {
+        List<File> results = new ArrayList<>();
+        for (int i = 0; i < entries.size(); i++) {
+            if (selectedPositions.contains(i)) {
+                results.add(entries.get(i).file);
+            }
+        }
+        return results;
+    }
 
-	private void selectAllEntries() {
-		if (entries.isEmpty()) {
-			return;
-		}
-		selectedPositions.clear();
-		for (int i = 0; i < entries.size(); i++) {
-			selectedPositions.add(i);
-		}
-		adapter.notifyDataSetChanged();
-		updateSelectionActionMode();
-	}
+    private File getSingleSelectedFile() {
+        List<File> selectedFiles = getSelectedFiles();
+        return selectedFiles.size() == 1 ? selectedFiles.get(0) : null;
+    }
 
-	private void copySelectedEntries() {
-		List<File> selectedFiles = getSelectedFiles();
-		if (selectedFiles.isEmpty()) {
-			return;
-		}
-		copiedEntries.clear();
-		copiedEntries.addAll(selectedFiles);
-		clearSelection();
-		supportInvalidateOptionsMenu();
-		updateHeaderTexts();
-		toast(getString(R.string.file_browser_copy_ready, copiedEntries.size()));
-	}
+    private void selectAllEntries() {
+        if (entries.isEmpty()) {
+            return;
+        }
+        selectedPositions.clear();
+        for (int i = 0; i < entries.size(); i++) {
+            selectedPositions.add(i);
+        }
+        adapter.notifyDataSetChanged();
+        updateSelectionChrome();
+    }
+
+    private void copySelectedEntries() {
+        List<File> selectedFiles = getSelectedFiles();
+        if (selectedFiles.isEmpty()) {
+            return;
+        }
+        copiedEntries.clear();
+        copiedEntries.addAll(selectedFiles);
+        clipboardBannerDismissed = false;
+        clearSelection();
+        updateClipboardBanner();
+        toast(getString(R.string.file_browser_copy_ready, copiedEntries.size()));
+    }
 
 	private void pasteCopiedEntries() {
 		if (busy || !hasCopiedEntries()) {
@@ -594,25 +897,254 @@ public class FileBrowserActivity extends AppCompatActivity {
 		});
 	}
 
-	private void showImportDialog() {
-		if (busy) {
-			return;
-		}
-		String[] items = new String[] {
-			getString(R.string.file_browser_import_file),
-			getString(R.string.file_browser_import_folder)
-		};
-		new AlertDialog.Builder(this)
-			.setTitle(R.string.file_browser_import_dialog_title)
-			.setItems(items, (dialog, which) -> {
-				if (which == 0) {
-					startImportDocumentsPicker();
-				} else {
-					startImportTreePicker();
-				}
-			})
-			.show();
-	}
+    private void showMorePopup() {
+        if (busy) {
+            return;
+        }
+        PopupMenu popup = new PopupMenu(this, toolbar);
+        popup.setForceShowIcon(true);
+        Menu menu = popup.getMenu();
+        MenuItem refreshItem = menu.add(Menu.NONE, MORE_REFRESH_ITEM_ID, Menu.NONE, R.string.file_browser_refresh);
+        refreshItem.setIcon(MaterialSymbols.drawable(this, "refresh", getColor(R.color.sts2_crash_on_surface_variant), 22));
+        MenuItem hiddenItem = menu.add(Menu.NONE, MORE_HIDDEN_ITEM_ID, Menu.NONE, R.string.file_browser_show_hidden);
+        hiddenItem.setCheckable(true);
+        hiddenItem.setChecked(showHiddenFiles);
+        hiddenItem.setIcon(MaterialSymbols.drawable(this, "visibility", getColor(R.color.sts2_crash_on_surface_variant), 22));
+        popup.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == MORE_REFRESH_ITEM_ID) {
+                refreshEntries();
+                return true;
+            }
+            if (item.getItemId() == MORE_HIDDEN_ITEM_ID) {
+                showHiddenFiles = !showHiddenFiles;
+                refreshEntries();
+                return true;
+            }
+            return false;
+        });
+        popup.show();
+    }
+
+
+    private void showSortPopup() {
+        if (busy || refreshing) {
+            return;
+        }
+        PopupMenu popup = new PopupMenu(this, sortButton);
+        popup.setForceShowIcon(true);
+        Menu menu = popup.getMenu();
+        addSortItem(menu, SORT_NAME_ITEM_ID, R.string.file_browser_sort_name, SORT_NAME);
+        addSortItem(menu, SORT_TIME_ITEM_ID, R.string.file_browser_sort_time, SORT_TIME);
+        addSortItem(menu, SORT_SIZE_ITEM_ID, R.string.file_browser_sort_size, SORT_SIZE);
+        popup.setOnMenuItemClickListener(item -> {
+            int selectedMode;
+            if (item.getItemId() == SORT_TIME_ITEM_ID) {
+                selectedMode = SORT_TIME;
+            } else if (item.getItemId() == SORT_SIZE_ITEM_ID) {
+                selectedMode = SORT_SIZE;
+            } else {
+                selectedMode = SORT_NAME;
+            }
+            if (sortMode == selectedMode) {
+                sortAscending = !sortAscending;
+            } else {
+                sortMode = selectedMode;
+                sortAscending = true;
+            }
+            clearSelection();
+            sortEntries();
+            applyFilter(filterQuery);
+            updateSortButton();
+            return true;
+        });
+        popup.show();
+    }
+
+    private void addSortItem(Menu menu, int itemId, int titleRes, int mode) {
+        MenuItem item = menu.add(Menu.NONE, itemId, Menu.NONE, titleRes);
+        item.setCheckable(true);
+        item.setChecked(sortMode == mode);
+        item.setIcon(MaterialSymbols.drawable(this, "sort", getColor(R.color.sts2_crash_on_surface_variant), 22));
+    }
+
+    private void updateSortButton() {
+        int titleRes = sortMode == SORT_TIME
+                ? R.string.file_browser_sort_time
+                : sortMode == SORT_SIZE ? R.string.file_browser_sort_size : R.string.file_browser_sort_name;
+        sortButton.setText(titleRes);
+        sortButton.setContentDescription(getString(
+                R.string.file_browser_sort_content_description,
+                getString(titleRes),
+                getString(sortAscending ? R.string.file_browser_sort_ascending : R.string.file_browser_sort_descending)));
+    }
+    private void showSelectionMorePopup() {
+        if (busy || selectedPositions.isEmpty()) {
+            return;
+        }
+        PopupMenu popup = new PopupMenu(this, selectionMoreButton);
+        popup.setForceShowIcon(true);
+        Menu menu = popup.getMenu();
+        File selectedFile = getSingleSelectedFile();
+        if (selectedFile != null) {
+            MenuItem openItem = menu.add(Menu.NONE, SELECTION_OPEN_ITEM_ID, Menu.NONE, R.string.file_browser_sheet_open);
+            openItem.setIcon(MaterialSymbols.drawable(this, "open_in_new", getColor(R.color.sts2_crash_on_surface_variant), 22));
+            if (selectedFile.isFile()) {
+                MenuItem externalItem = menu.add(Menu.NONE, SELECTION_EXTERNAL_ITEM_ID, Menu.NONE, R.string.file_browser_sheet_external);
+                externalItem.setIcon(MaterialSymbols.drawable(this, "open_in_browser", getColor(R.color.sts2_crash_on_surface_variant), 22));
+            }
+            MenuItem renameItem = menu.add(Menu.NONE, SELECTION_RENAME_ITEM_ID, Menu.NONE, R.string.file_browser_sheet_rename);
+            renameItem.setIcon(MaterialSymbols.drawable(this, "edit", getColor(R.color.sts2_crash_on_surface_variant), 22));
+        }
+        popup.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == SELECTION_OPEN_ITEM_ID) {
+                openSelectedEntry();
+                return true;
+            }
+            if (item.getItemId() == SELECTION_EXTERNAL_ITEM_ID) {
+                openSelectedInExternalApp();
+                return true;
+            }
+            if (item.getItemId() == SELECTION_RENAME_ITEM_ID) {
+                showRenameDialog();
+                return true;
+            }
+            return false;
+        });
+        popup.show();
+    }
+
+    private BottomSheetDialog createFileBrowserSheet() {
+        BottomSheetDialog dialog = new BottomSheetDialog(this);
+        dialog.setOnShowListener(unused -> {
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setDimAmount(0.45f);
+            }
+        });
+        return dialog;
+    }
+
+    private LinearLayout createSheetContent() {
+        LinearLayout content = ExtraSettingsUi.vertical(this);
+        content.setBackgroundColor(getColor(R.color.sts2_crash_surface));
+        int horizontalPadding = ExtraSettingsUi.dp(this, 20);
+        content.setPadding(horizontalPadding, ExtraSettingsUi.dp(this, 8), horizontalPadding, ExtraSettingsUi.dp(this, 28));
+        View handle = new View(this);
+        GradientDrawable handleBackground = new GradientDrawable();
+        handleBackground.setColor(getColor(R.color.sts2_crash_outline));
+        handleBackground.setCornerRadius(ExtraSettingsUi.dp(this, 3));
+        handle.setBackground(handleBackground);
+        LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 36), ExtraSettingsUi.dp(this, 4));
+        handleParams.gravity = Gravity.CENTER_HORIZONTAL;
+        handleParams.bottomMargin = ExtraSettingsUi.dp(this, 16);
+        content.addView(handle, handleParams);
+        return content;
+    }
+
+    private void showAddBottomSheet() {
+        if (busy) {
+            return;
+        }
+        BottomSheetDialog dialog = createFileBrowserSheet();
+        LinearLayout content = createSheetContent();
+        String directoryName = currentDirectory == null || isRootDirectory(currentDirectory)
+                ? getString(R.string.file_browser_root_label) : currentDirectory.getName();
+        TextView title = ExtraSettingsUi.sectionTitle(this, getString(R.string.file_browser_add_to_format, directoryName));
+        content.addView(title);
+        TextView path = ExtraSettingsUi.body(this, buildCurrentPathLabel().toString());
+        LinearLayout.LayoutParams pathParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pathParams.topMargin = ExtraSettingsUi.dp(this, 4);
+        pathParams.bottomMargin = ExtraSettingsUi.dp(this, 12);
+        content.addView(path, pathParams);
+        addSheetAction(content, dialog, "create_new_folder", R.string.file_browser_sheet_create_folder, 0, () -> showCreateFolderDialog());
+        addSheetAction(content, dialog, "upload_file", R.string.file_browser_sheet_import_file, R.string.file_browser_sheet_import_detail, () -> startImportDocumentsPicker());
+        addSheetAction(content, dialog, "drive_folder_upload", R.string.file_browser_sheet_import_folder, R.string.file_browser_sheet_folder_detail, () -> startImportTreePicker());
+        if (hasCopiedEntries()) {
+            addSheetAction(content, dialog, "content_paste", getString(R.string.file_browser_sheet_paste_format, copiedEntries.size()), R.string.file_browser_sheet_copy_detail, () -> pasteCopiedEntries());
+        }
+        dialog.setContentView(content);
+        dialog.show();
+    }
+
+    private void addSheetAction(LinearLayout parent, BottomSheetDialog dialog, String glyph, int titleRes, int detailRes, Runnable action) {
+        addSheetAction(parent, dialog, glyph, getString(titleRes), detailRes == 0 ? null : getString(detailRes), action);
+    }
+
+    private void addSheetAction(LinearLayout parent, BottomSheetDialog dialog, String glyph, String title, int detailRes, Runnable action) {
+        addSheetAction(parent, dialog, glyph, title, detailRes == 0 ? null : getString(detailRes), action);
+    }
+
+    private void addSheetAction(LinearLayout parent, BottomSheetDialog dialog, String glyph, String title, String detail, Runnable action) {
+        LinearLayout row = ExtraSettingsUi.horizontal(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(ExtraSettingsUi.dp(this, detail == null ? 56 : 70));
+        row.setPadding(ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 4), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 4));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setBackgroundResource(android.R.drawable.list_selector_background);
+        ImageView icon = new ImageView(this);
+        icon.setImageDrawable(MaterialSymbols.drawable(this, glyph, getColor(R.color.sts2_crash_primary), 24));
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 48), ExtraSettingsUi.dp(this, 48));
+        iconParams.gravity = Gravity.CENTER_VERTICAL;
+        row.addView(icon, iconParams);
+        LinearLayout texts = ExtraSettingsUi.vertical(this);
+        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        textParams.setMarginStart(ExtraSettingsUi.dp(this, 12));
+        row.addView(texts, textParams);
+        TextView titleView = ExtraSettingsUi.text(this, title, 16, getColor(R.color.sts2_crash_on_surface), Typeface.NORMAL);
+        texts.addView(titleView);
+        if (detail != null) {
+            TextView detailView = ExtraSettingsUi.caption(this, detail);
+            texts.addView(detailView);
+        }
+        row.setOnClickListener(v -> {
+            dialog.dismiss();
+            action.run();
+        });
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        parent.addView(row, rowParams);
+    }
+
+    private void showEntryBottomSheet(File file) {
+        if (file == null || !file.exists() || busy) {
+            return;
+        }
+        BottomSheetDialog dialog = createFileBrowserSheet();
+        LinearLayout content = createSheetContent();
+        content.addView(ExtraSettingsUi.sectionTitle(this, file.getName()));
+        TextView path = ExtraSettingsUi.body(this, buildCurrentPathLabel().toString());
+        LinearLayout.LayoutParams pathParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pathParams.topMargin = ExtraSettingsUi.dp(this, 4);
+        pathParams.bottomMargin = ExtraSettingsUi.dp(this, 12);
+        content.addView(path, pathParams);
+        addSheetAction(content, dialog, "open_in_new", R.string.file_browser_sheet_open, 0, () -> openEntry(file));
+        if (file.isFile()) {
+            addSheetAction(content, dialog, "open_in_browser", R.string.file_browser_sheet_external, 0, () -> {
+                try {
+                    openExternalFile(file, safeIsProbablyText(file));
+                } catch (Exception exception) {
+                    showError(exception);
+                }
+            });
+        }
+        addSheetAction(content, dialog, "content_copy", R.string.file_browser_sheet_copy, R.string.file_browser_sheet_copy_detail, () -> {
+            copiedEntries.clear();
+            copiedEntries.add(file);
+            clipboardBannerDismissed = false;
+            updateClipboardBanner();
+            toast(getString(R.string.file_browser_copy_ready, 1));
+        });
+        addSheetAction(content, dialog, "edit", R.string.file_browser_sheet_rename, 0, () -> showRenameDialog(file));
+        addSheetAction(content, dialog, "ios_share", R.string.file_browser_sheet_export, 0, () -> {
+            pendingExportEntries = new ArrayList<>();
+            pendingExportEntries.add(file);
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+            startActivityForResult(intent, REQUEST_EXPORT_TREE);
+        });
+        addSheetAction(content, dialog, "delete", R.string.file_browser_sheet_delete, 0, () -> confirmDeleteEntries(java.util.Collections.singletonList(file)));
+        dialog.setContentView(content);
+        dialog.show();
+    }
+
 
 	private void startImportDocumentsPicker() {
 		pendingImportTargetDirectory = currentDirectory;
@@ -794,76 +1326,82 @@ public class FileBrowserActivity extends AppCompatActivity {
 			.show();
 	}
 
-	private void showRenameDialog() {
-		File selectedFile = getSingleSelectedFile();
-		if (busy || selectedFile == null) {
-			return;
-		}
-		EditText input = new EditText(this);
-		input.setSingleLine(true);
-		input.setText(selectedFile.getName());
-		input.setSelection(input.getText().length());
-		new AlertDialog.Builder(this)
-			.setTitle(R.string.file_browser_rename_title)
-			.setView(input)
-			.setNegativeButton(android.R.string.cancel, null)
-			.setPositiveButton(android.R.string.ok, (dialog, which) -> {
-				String targetName = normalizeFileName(input.getText() == null ? "" : input.getText().toString());
-				if (TextUtils.isEmpty(targetName)) {
-					toast(getString(R.string.file_browser_name_required));
-					return;
-				}
-				runFileOperation(getString(R.string.file_browser_status_renaming), () -> {
-					File parent = selectedFile.getParentFile();
-					if (parent == null) {
-						throw new IllegalStateException(getString(R.string.file_browser_missing_file));
-					}
-					File targetFile = new File(parent, targetName);
-					if (sameFilePath(selectedFile, targetFile)) {
-						return getString(R.string.file_browser_renamed);
-					}
-					if (targetFile.exists()) {
-						throw new IllegalStateException(getString(R.string.file_browser_name_exists));
-					}
-					boolean renamed = selectedFile.renameTo(targetFile);
-					if (!renamed) {
-						throw new IllegalStateException(getString(R.string.file_browser_rename_failed));
-					}
-					return getString(R.string.file_browser_renamed);
-				});
-			})
-			.show();
-	}
+    private void showRenameDialog() {
+        showRenameDialog(getSingleSelectedFile());
+    }
 
-	private void confirmDeleteSelectedEntries() {
-		List<File> selectedFiles = getSelectedFiles();
-		if (selectedFiles.isEmpty() || busy) {
-			return;
-		}
-		new AlertDialog.Builder(this)
-			.setTitle(R.string.file_browser_delete_confirm_title)
-			.setMessage(getString(R.string.file_browser_delete_confirm_message, selectedFiles.size()))
-			.setNegativeButton(android.R.string.cancel, null)
-			.setPositiveButton(android.R.string.ok, (dialog, which) -> runFileOperation(getString(R.string.file_browser_status_deleting), () -> {
-				int deletedCount = 0;
-				for (File file : selectedFiles) {
-					if (file == null || !file.exists()) {
-						continue;
-					}
-					FileBrowserSupport.deleteRecursively(file);
-					deletedCount++;
-				}
-				return getString(R.string.file_browser_delete_done, deletedCount);
-			}))
-			.show();
-	}
+    private void showRenameDialog(File selectedFile) {
+        if (busy || selectedFile == null) {
+            return;
+        }
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setText(selectedFile.getName());
+        input.setSelection(input.getText().length());
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.file_browser_rename_title)
+            .setView(input)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                String targetName = normalizeFileName(input.getText() == null ? "" : input.getText().toString());
+                if (TextUtils.isEmpty(targetName)) {
+                    toast(getString(R.string.file_browser_name_required));
+                    return;
+                }
+                runFileOperation(getString(R.string.file_browser_status_renaming), () -> {
+                    File parent = selectedFile.getParentFile();
+                    if (parent == null) {
+                        throw new IllegalStateException(getString(R.string.file_browser_missing_file));
+                    }
+                    File targetFile = new File(parent, targetName);
+                    if (sameFilePath(selectedFile, targetFile)) {
+                        return getString(R.string.file_browser_renamed);
+                    }
+                    if (targetFile.exists()) {
+                        throw new IllegalStateException(getString(R.string.file_browser_name_exists));
+                    }
+                    boolean renamed = selectedFile.renameTo(targetFile);
+                    if (!renamed) {
+                        throw new IllegalStateException(getString(R.string.file_browser_rename_failed));
+                    }
+                    return getString(R.string.file_browser_renamed);
+                });
+            })
+            .show();
+    }
+
+    private void confirmDeleteSelectedEntries() {
+        confirmDeleteEntries(getSelectedFiles());
+    }
+
+    private void confirmDeleteEntries(List<File> selectedFiles) {
+        if (selectedFiles == null || selectedFiles.isEmpty() || busy) {
+            return;
+        }
+        List<File> filesToDelete = new ArrayList<>(selectedFiles);
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.file_browser_delete_confirm_title)
+            .setMessage(getString(R.string.file_browser_delete_confirm_message, filesToDelete.size()))
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok, (dialog, which) -> runFileOperation(getString(R.string.file_browser_status_deleting), () -> {
+                int deletedCount = 0;
+                for (File file : filesToDelete) {
+                    if (file == null || !file.exists()) {
+                        continue;
+                    }
+                    FileBrowserSupport.deleteRecursively(file);
+                    deletedCount++;
+                }
+                return getString(R.string.file_browser_delete_done, deletedCount);
+            }))
+            .show();
+    }
 
 	private void runFileOperation(String busyMessage, ThrowingSupplier<String> supplier) {
 		if (busy) {
 			return;
 		}
 		busy = true;
-		busyStatusMessage = busyMessage;
 		clearSelection();
 		updateHeaderTexts();
 		supportInvalidateOptionsMenu();
@@ -872,7 +1410,6 @@ public class FileBrowserActivity extends AppCompatActivity {
 				String result = supplier.run();
 				runOnUiThread(() -> {
 					busy = false;
-					busyStatusMessage = null;
 					updateHeaderTexts();
 					supportInvalidateOptionsMenu();
 					toast(result);
@@ -881,7 +1418,6 @@ public class FileBrowserActivity extends AppCompatActivity {
 			} catch (Exception exception) {
 				runOnUiThread(() -> {
 					busy = false;
-					busyStatusMessage = null;
 					updateHeaderTexts();
 					supportInvalidateOptionsMenu();
 					showError(exception);
@@ -1015,84 +1551,18 @@ public class FileBrowserActivity extends AppCompatActivity {
 		}
 	}
 
-	private final ActionMode.Callback selectionActionModeCallback = new ActionMode.Callback() {
-		@Override
-		public boolean onCreateActionMode(ActionMode mode, Menu menu) {
-			getMenuInflater().inflate(R.menu.menu_file_browser_selection, menu);
-			return true;
-		}
-
-		@Override
-		public boolean onPrepareActionMode(ActionMode mode, Menu menu) {
-			File selectedFile = getSingleSelectedFile();
-			boolean singleSelection = selectedFile != null;
-			MenuItem openItem = menu.findItem(R.id.action_open_entry);
-			MenuItem externalItem = menu.findItem(R.id.action_open_external);
-			MenuItem renameItem = menu.findItem(R.id.action_rename_entry);
-			if (openItem != null) {
-				openItem.setVisible(singleSelection);
-			}
-			if (renameItem != null) {
-				renameItem.setVisible(singleSelection);
-			}
-			if (externalItem != null) {
-				boolean showExternal = singleSelection && selectedFile.isFile();
-				externalItem.setVisible(showExternal);
-				if (showExternal) {
-					externalItem.setTitle(safeIsProbablyText(selectedFile) ? R.string.file_browser_open_external_edit : R.string.file_browser_open_external);
-				}
-			}
-			return true;
-		}
-
-		@Override
-		public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
-			int itemId = item.getItemId();
-			if (itemId == R.id.action_open_entry) {
-				openSelectedEntry();
-				return true;
-			}
-			if (itemId == R.id.action_open_external) {
-				openSelectedInExternalApp();
-				return true;
-			}
-			if (itemId == R.id.action_copy_entries) {
-				copySelectedEntries();
-				return true;
-			}
-			if (itemId == R.id.action_rename_entry) {
-				showRenameDialog();
-				return true;
-			}
-			if (itemId == R.id.action_export_entries) {
-				exportSelectedEntries();
-				return true;
-			}
-			if (itemId == R.id.action_delete_entries) {
-				confirmDeleteSelectedEntries();
-				return true;
-			}
-			if (itemId == R.id.action_select_all_entries) {
-				selectAllEntries();
-				return true;
-			}
-			return false;
-		}
-
-		@Override
-		public void onDestroyActionMode(ActionMode mode) {
-			selectionActionMode = null;
-			selectedPositions.clear();
-			adapter.notifyDataSetChanged();
-		}
-	};
 
 	private final class FileBrowserAdapter extends RecyclerView.Adapter<FileBrowserViewHolder> {
 		@Override
 		public FileBrowserViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
-			View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_file_browser_entry, parent, false);
+            View view = LayoutInflater.from(parent.getContext()).inflate(viewType == 1 ? R.layout.item_file_browser_grid_entry : R.layout.item_file_browser_entry, parent, false);
 			return new FileBrowserViewHolder(view);
 		}
+
+        @Override
+        public int getItemViewType(int position) {
+            return gridMode ? 1 : 0;
+        }
 
 		@Override
 		public void onBindViewHolder(FileBrowserViewHolder holder, int position) {
@@ -1106,57 +1576,105 @@ public class FileBrowserActivity extends AppCompatActivity {
 		}
 	}
 
-	private final class FileBrowserViewHolder extends RecyclerView.ViewHolder {
-		private final View container;
-		private final TextView iconText;
-		private final TextView nameText;
-		private final TextView badgeText;
-		private final TextView metaText;
+    private final class FileBrowserViewHolder extends RecyclerView.ViewHolder {
+        private final View container;
+        private final ImageView iconView;
+        private final TextView nameText;
+        private final TextView metaText;
+        private final ImageView trailingView;
 
-		FileBrowserViewHolder(View itemView) {
-			super(itemView);
-			container = itemView.findViewById(R.id.file_row_container);
-			iconText = itemView.findViewById(R.id.text_file_icon);
-			nameText = itemView.findViewById(R.id.text_file_name);
-			badgeText = itemView.findViewById(R.id.text_file_badge);
-			metaText = itemView.findViewById(R.id.text_file_meta);
-			itemView.setOnClickListener(v -> {
-				int position = getBindingAdapterPosition();
-				if (position != RecyclerView.NO_POSITION) {
-					onEntryClicked(position);
-				}
-			});
-			itemView.setOnLongClickListener(v -> {
-				int position = getBindingAdapterPosition();
-				return position != RecyclerView.NO_POSITION && onEntryLongPressed(position);
-			});
-		}
+        FileBrowserViewHolder(View itemView) {
+            super(itemView);
+            container = itemView.findViewById(R.id.file_row_container);
+            iconView = itemView.findViewById(R.id.text_file_icon);
+            nameText = itemView.findViewById(R.id.text_file_name);
+            metaText = itemView.findViewById(R.id.text_file_meta);
+            trailingView = itemView.findViewById(R.id.file_row_trailing);
+            itemView.setOnClickListener(v -> {
+                int position = getBindingAdapterPosition();
+                if (position != RecyclerView.NO_POSITION) {
+                    onEntryClicked(position);
+                }
+            });
+            itemView.setOnLongClickListener(v -> {
+                int position = getBindingAdapterPosition();
+                return position != RecyclerView.NO_POSITION && onEntryLongPressed(position);
+            });
+            trailingView.setOnClickListener(v -> {
+                int position = getBindingAdapterPosition();
+                if (position == RecyclerView.NO_POSITION || selectionMode) {
+                    return;
+                }
+                File file = entries.get(position).file;
+                if (file.isDirectory()) {
+                    openEntry(file);
+                } else {
+                    showEntryBottomSheet(file);
+                }
+            });
+        }
 
-		void bind(FileEntry entry, boolean selected) {
-			boolean directory = entry.file.isDirectory();
-			nameText.setText(entry.file.getName());
-			badgeText.setText(directory ? R.string.file_browser_badge_directory : R.string.file_browser_badge_file);
-			if (directory) {
-				metaText.setText(getString(R.string.file_browser_directory_meta, formatDate(entry.lastModified)));
-			} else {
-				metaText.setText(getString(R.string.file_browser_file_meta, Formatter.formatFileSize(FileBrowserActivity.this, entry.size), formatDate(entry.lastModified)));
-			}
-			iconText.setText(selected ? "✓" : (directory ? "D" : "F"));
-			if (selected) {
-				container.setBackgroundColor(0xFF2B3762);
-				iconText.setTextColor(0xFFDCE2FF);
-				nameText.setTextColor(0xFFDCE2FF);
-				badgeText.setTextColor(0xFFDCE2FF);
-				metaText.setTextColor(0xFFDCE2FF);
-			} else {
-				container.setBackgroundColor(0x00000000);
-				iconText.setTextColor(0xFFF0F0F8);
-				nameText.setTextColor(0xFFF0F0F8);
-				badgeText.setTextColor(0xFFB7C7FF);
-				metaText.setTextColor(0xFFC5C7D3);
-			}
-		}
-	}
+        void bind(FileEntry entry, boolean selected) {
+            boolean directory = entry.file.isDirectory();
+            nameText.setText(entry.file.getName());
+            if (directory) {
+                metaText.setText(getString(R.string.file_browser_directory_meta, formatDate(entry.lastModified)));
+            } else {
+                metaText.setText(getString(R.string.file_browser_file_meta, Formatter.formatFileSize(FileBrowserActivity.this, entry.size), formatDate(entry.lastModified)));
+            }
+            int primaryColor = getColor(R.color.sts2_crash_primary);
+            int onSurface = getColor(R.color.sts2_crash_on_surface);
+            int onSurfaceVariant = getColor(R.color.sts2_crash_on_surface_variant);
+            if (selected) {
+                container.setBackgroundColor(getColor(R.color.sts2_crash_primary_container));
+                iconView.setImageDrawable(MaterialSymbols.drawable(FileBrowserActivity.this, "check", getColor(R.color.sts2_crash_on_primary_container), 24));
+                trailingView.setVisibility(View.INVISIBLE);
+                nameText.setTextColor(getColor(R.color.sts2_crash_on_primary_container));
+                metaText.setTextColor(getColor(R.color.sts2_crash_on_primary_container));
+            } else {
+                container.setBackgroundColor(Color.TRANSPARENT);
+                iconView.setImageDrawable(MaterialSymbols.drawable(FileBrowserActivity.this, directory ? "folder" : iconGlyph(entry.file), directory ? primaryColor : iconTint(entry.file), 24));
+                trailingView.setVisibility(View.VISIBLE);
+                trailingView.setImageDrawable(MaterialSymbols.drawable(FileBrowserActivity.this, directory ? "chevron_right" : "more_vert", onSurfaceVariant, 22));
+                nameText.setTextColor(onSurface);
+                metaText.setTextColor(onSurfaceVariant);
+            }
+        }
+    }
+
+    private String iconGlyph(File file) {
+        String extension = getFileExtension(file.getName()).toLowerCase(Locale.ROOT);
+        if (extension.equals(".zip") || extension.equals(".rar") || extension.equals(".7z") || extension.equals(".tar") || extension.equals(".gz")) {
+            return "folder_zip";
+        }
+        if (extension.equals(".json") || extension.equals(".xml") || extension.equals(".yaml") || extension.equals(".yml") || extension.equals(".ini") || extension.equals(".cfg") || extension.equals(".properties")) {
+            return "settings";
+        }
+        if (extension.equals(".txt") || extension.equals(".md") || extension.equals(".log") || extension.equals(".csv")) {
+            return "description";
+        }
+        if (extension.equals(".png") || extension.equals(".jpg") || extension.equals(".jpeg") || extension.equals(".webp") || extension.equals(".gif")) {
+            return "image";
+        }
+        if (extension.equals(".dll") || extension.equals(".so") || extension.equals(".class")) {
+            return "draft";
+        }
+        return "article";
+    }
+
+    private int iconTint(File file) {
+        String extension = getFileExtension(file.getName()).toLowerCase(Locale.ROOT);
+        if (extension.equals(".zip") || extension.equals(".rar") || extension.equals(".7z") || extension.equals(".tar") || extension.equals(".gz")) {
+            return getColor(R.color.sts2_crash_tertiary);
+        }
+        if (extension.equals(".json") || extension.equals(".xml") || extension.equals(".yaml") || extension.equals(".yml") || extension.equals(".ini") || extension.equals(".cfg") || extension.equals(".properties") || extension.equals(".txt") || extension.equals(".md") || extension.equals(".log")) {
+            return Color.rgb(129, 217, 154);
+        }
+        if (extension.equals(".png") || extension.equals(".jpg") || extension.equals(".jpeg") || extension.equals(".webp") || extension.equals(".gif")) {
+            return getColor(R.color.sts2_crash_secondary);
+        }
+        return getColor(R.color.sts2_crash_on_surface_variant);
+    }
 
 	private static final class FileEntry {
 		final File file;

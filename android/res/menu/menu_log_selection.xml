@@ -10,20 +10,20 @@
     <item
         android:id="@+id/action_select_all"
         android:title="@string/log_viewer_action_select_all"
-        app:showAsAction="never" />
+        app:showAsAction="always" />
 
     <item
         android:id="@+id/action_copy_logs"
         android:title="@string/log_viewer_action_copy"
-        app:showAsAction="ifRoom|withText" />
+        app:showAsAction="never" />
 
     <item
         android:id="@+id/action_share_logs"
         android:title="@string/log_viewer_action_share"
-        app:showAsAction="ifRoom|withText" />
+        app:showAsAction="never" />
 
     <item
         android:id="@+id/action_export_logs"
         android:title="@string/log_viewer_action_export"
-        app:showAsAction="ifRoom|withText" />
+        app:showAsAction="never" />
 </menu>
