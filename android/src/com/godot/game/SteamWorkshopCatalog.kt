@@ -488,11 +488,14 @@ class SteamWorkshopCatalog(private val context: android.content.Context) {
     }
 
     private fun parseSsrBrowsePage(payload: String, page: Int, pageSize: Int): PublicBrowsePage? {
-        val encoded = ssrRenderContextRegex.find(payload)?.groupValues?.getOrNull(1) ?: return null
-        val renderContext = decodeJsonStringLiteral(encoded) ?: return null
-        val queryData = runCatching {
-            JSONObject(renderContext).optString("queryData", "")
-        }.getOrDefault("")
+        // The data script contains JSON, not an HTML-encoded or escaped JavaScript string.
+        val renderContext = ssrDataScriptRegex.find(payload)?.groupValues?.getOrNull(1)
+            ?.let { runCatching { JSONObject(it).optJSONObject("renderContext") }.getOrNull() }
+            ?: ssrRenderContextRegex.find(payload)?.groupValues?.getOrNull(1)
+                ?.let(::decodeJsonStringLiteral)
+                ?.let { runCatching { JSONObject(it) }.getOrNull() }
+            ?: return null
+        val queryData = renderContext.optString("queryData", "")
         if (queryData.isBlank()) {
             return null
         }
@@ -1004,6 +1007,10 @@ class SteamWorkshopCatalog(private val context: android.content.Context) {
         val hoverRegex = Regex(
             """SharedFileBindMouseHover\(\s*"sharedfile_(\d+)"\s*,\s*false\s*,\s*(\{.*?\})\s*\);""",
             setOf(RegexOption.DOT_MATCHES_ALL),
+        )
+        val ssrDataScriptRegex = Regex(
+            """<script\b[^>]*\sid\s*=\s*(?:"valve-ssr-data"|'valve-ssr-data')[^>]*>(.*?)</script\s*>""",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
         )
         val ssrRenderContextRegex = Regex(
             """window\.SSR\.renderContext=JSON\.parse\("(.+?)"\);""",
