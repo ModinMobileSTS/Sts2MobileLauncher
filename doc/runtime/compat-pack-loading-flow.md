@@ -258,11 +258,11 @@ STS2Mobile.ModEntry
 
    三项运行时优化默认随 full compat 生效，不新增设置或改变画质：
 
-   - `CombatVfxPoolPatches` 在当前战斗房间内复用原版 `NDamageNumVfx`、`NHitSparkVfx`、`NShivThrowVfx`。只限制空闲保留数量（16/8/8），并发超出时继续正常创建，不丢弃特效。原版工厂、Ready、动画、随机数与等待流程仍执行；只在正常播放结束后延后归还，恢复节点视觉状态、重新 Ready，并复用各实例独立的粒子染色材质。每次播放携带独立租约，迟到的旧异步释放不能影响新播放；外部取消/移除不进入池，离开房间释放空闲实例。未知节点/子脚本、修改了工厂或生命周期的其他 Harmony owner 保留原版分配和销毁，避免复用未知 MOD 状态。
+   - `CombatVfxPoolPatches` 在当前战斗房间内复用原版 `NDamageNumVfx`、`NHitSparkVfx`、`NShivThrowVfx`，并保守加入粒子型 `NBigSlashVfx` 与 `NFireBurstVfx`。只限制空闲保留数量（16/8/8/2/2），并发超出时继续正常创建，不丢弃特效。新增两族只接受已知 Node2D/GPUParticles2D 树与 Task 播放/CTS 复位合约；不扩充通用节点快照类型、不自动枚举其他 VFX、不复用卡牌/角色/Spine/动画播放器状态。原版工厂、Ready、动画、随机数、ScreenShake 与等待流程仍执行；正常结束后延后归还，停止粒子并关闭旧 CTS，重租恢复节点变换/颜色/可见性后重新 Ready、Restart 粒子并创建新 CTS。小刀仍复用实例独立的染色材质，斩击/火焰保持原版节点 SelfModulate 染色。每次播放携带独立租约，迟到的旧异步释放不能影响新播放；外部取消/移除不进入池，离房释放空闲实例。未知节点/子脚本、修改工厂/生命周期/ApplyTint/ModulateParticles 的其他 Harmony owner 保留原版分配和销毁。不改变特效数量、伤害/网络、预加载范围或 GC，也不承诺消除首次加载/首次 shader 编译卡顿。
    - `RuntimeAssetLoadingPatches` 给原版 `AssetLoadingSession` 的提交、状态查询、完成收尾及 VFX 阶段加出队前预算。各阶段每帧最多处理 8 项，共享约 2ms 的协作时间预算；同帧多次 Process 不能重置预算。限额时保留真实队列和在途状态，让原版稍后继续处理，不提前完成、不丢请求、不改变原版错误/同步 fallback 路径及 VFX 串行约束。原版 128 在途普通请求上限没有被解释为线程数或提高。更多让帧可能延长加载总时间。
    - `AndroidFontSizeScaler` 统一处理字体缩放，固定元数据 StringName，整树刷新只读取一次倍率；默认 100% 不为未缩放的控件创建无用字号覆盖，相同字号/自动字号边界不重复写入和触发调整。保留显式字号、原始基准、100% 恢复、重入树与自动字号处理；语言字体 fallback 不移除、不替换为系统字体。
 
-   下述原生回归还覆盖租约迟到、超额完整创建、空闲上限、材质隔离/复用、房间退出、外部移除、MOD 生命周期 opt-out、同帧重复调度、错误后完成，以及字号继承/幂等/恢复。可选环境变量 `STS2_FRAME_REFERENCE_DLLS` 接受分号分隔的本机原版 `sts2.dll` 路径，以 Cecil 只读验证各目标的出队 IL、VFX 工厂及播放/复位字段；不加载或执行游戏类型，不携带商业 DLL。
+   下述原生回归覆盖租约迟到、超额完整创建、空闲上限、材质隔离/复用、房间退出、外部移除、MOD 生命周期 opt-out、同帧重复调度、错误后完成，以及字号继承/幂等/恢复；新增斩击/火焰用例覆盖真实粒子重播、根/子节点状态与新 tint/scale、CTS、2 槽满溢、未知子脚本及 foreign tint opt-out，已观察新增前失败、新增后通过。可选环境变量 `STS2_FRAME_REFERENCE_DLLS` 接受分号分隔的本机原版 `sts2.dll` 路径，以 Cecil 只读验证各目标的出队 IL、五族 VFX 工厂及播放/复位字段；不加载或执行游戏类型，不携带商业 DLL。
 
    原生回归 `port-mod/tests/FramePreparation.Tests` 使用 Godot 4.5.1 .NET 与实际打包 Harmony，只构造合成场景/损坏资源。覆盖 Shader 父 `_Ready`、重入树、释放、材质隔离和开关切换，以及前述 VFX 池、运行时资源队列错误恢复和字体缩放；旧启动后台加载器的单请求/取回测试已随该加载器删除。准备好官方 .NET 版 Godot 路径 `GODOT_BIN`，在仓库根加载 `.env` 后运行：
 

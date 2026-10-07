@@ -195,6 +195,13 @@ clear the vote. Delayed verification checks the actual mode and Hz, without
 (`high` / `60hz` / `system`); old high-refresh booleans migrate to `high` or
 `system`. A disabled-by-default performance overlay is also available here.
 
+Combat VFX reuse remains an explicit, room-local whitelist: damage numbers,
+hit sparks, shivs, big slashes, and fire bursts, with idle limits of
+16/8/8/2/2. Additional simultaneous effects are still fully created. Unknown
+child scripts or foreign factory/lifecycle/tint patches keep the original
+allocation path. This does not change effect counts, gameplay, preload scope,
+or GC settings, and it does not remove first-use resource/shader work.
+
 The fullscreen render-resolution preset is applied by the full compatibility
 pack at game startup and can also be switched immediately from the in-game
 Android settings page. The root Window keeps Godot `CanvasItems` scaling while
