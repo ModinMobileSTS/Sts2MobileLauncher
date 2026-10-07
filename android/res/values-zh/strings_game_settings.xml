@@ -140,6 +140,8 @@
     <string name="workshop_library_summary">已记录 %1$d 个创意工坊 MOD</string>
     <string name="workshop_installed_mod_missing">已记录此创意工坊条目，但当前 MOD 目录没有找到对应本地 MOD。</string>
     <string name="workshop_local_files_missing">有下载记录，但本地 MOD 文件已删除。</string>
+    <string name="workshop_local_files_other_scope">此记录属于其他启动配置或 MOD 目录。</string>
+    <string name="workshop_local_files_unresolved">正在检查本地安装状态…</string>
     <string name="workshop_installed_size">安装大小：%1$s</string>
     <string name="workshop_imported_mod_ids">MOD ID：%1$s</string>
     <string name="workshop_update_unknown">尚未检查。</string>

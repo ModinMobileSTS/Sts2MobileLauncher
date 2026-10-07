@@ -34,11 +34,166 @@ public final class SteamWorkshopLibrary {
 		this.indexFile = new File(rootDir, INDEX_FILE_NAME);
 	}
 
+	public static final class Scope {
+		public final String key;
+		public final String profileId;
+		public final String modsMode;
+		public final File rootDir;
+
+		Scope(String key, String profileId, String modsMode, File rootDir) {
+			this.key = TextUtils.isEmpty(key) ? "legacy" : key;
+			this.profileId = profileId == null ? "" : profileId;
+			this.modsMode = modsMode == null ? "" : modsMode;
+			this.rootDir = rootDir;
+		}
+	}
+
+	private static final class ScopeMatch {
+		final Scope scope;
+		final String relativePath;
+
+		ScopeMatch(Scope scope, String relativePath) {
+			this.scope = scope;
+			this.relativePath = relativePath;
+		}
+	}
+
+	public Scope getCurrentScope() {
+		LaunchProfileManager manager = new LaunchProfileManager(context);
+		LaunchProfileManager.LaunchProfile profile = manager.getSelectedProfile();
+		if (profile != null && LaunchProfileManager.MODS_MODE_ISOLATED.equals(profile.modsMode)) {
+			return new Scope("profile:" + profile.id, profile.id, LaunchProfileManager.MODS_MODE_ISOLATED, new File(profile.dir, "mods"));
+		}
+		return new Scope("global", "", LaunchProfileManager.MODS_MODE_GLOBAL, new File(context.getFilesDir(), "mods"));
+	}
+
 	public synchronized List<Entry> listEntries() {
-		List<Entry> entries = normalizeEntries(readEntries());
+		List<Entry> rawEntries = readEntries();
+		List<Entry> entries = normalizeEntries(rawEntries);
+		boolean normalizedChanged = rawEntries.size() != entries.size();
+		if (!normalizedChanged) {
+			for (int i = 0; i < rawEntries.size(); i++) {
+				if (rawEntries.get(i) != entries.get(i)) {
+					normalizedChanged = true;
+					break;
+				}
+			}
+		}
+		List<Entry> migrated = migrateLegacyScopeMetadata(entries);
+		if (normalizedChanged || migrated != entries) {
+			try {
+				writeEntries(migrated);
+			} catch (Exception ignored) {
+				// Keep the in-memory migration usable; the next refresh can retry persistence.
+			}
+			entries = migrated;
+		}
 		entries.sort(Comparator.comparingLong((Entry entry) -> entry.installedAtMs).reversed());
 		return entries;
 	}
+
+	private List<Entry> migrateLegacyScopeMetadata(List<Entry> entries) {
+		if (entries == null || entries.isEmpty()) {
+			return entries == null ? new ArrayList<>() : entries;
+		}
+		List<Scope> knownScopes = knownScopes();
+		List<Entry> migrated = new ArrayList<>(entries.size());
+		boolean changed = false;
+		for (Entry entry : entries) {
+			if (entry == null) {
+				continue;
+			}
+			if (!TextUtils.isEmpty(entry.scopeKey) && !TextUtils.isEmpty(entry.installedRelativePath)) {
+				migrated.add(entry);
+				continue;
+			}
+			ScopeMatch match = findScopeMatch(entry.installedRootPath, knownScopes);
+			Entry updated = match == null
+				? entry.withScope("legacy", "", "", "")
+				: entry.withScope(match.scope.key, match.scope.profileId, match.scope.modsMode, match.relativePath);
+			migrated.add(updated);
+			changed |= !entry.scopeKey.equals(updated.scopeKey)
+				|| !entry.profileId.equals(updated.profileId)
+				|| !entry.modsMode.equals(updated.modsMode)
+				|| !entry.installedRelativePath.equals(updated.installedRelativePath);
+		}
+		return changed ? migrated : entries;
+	}
+
+	private List<Scope> knownScopes() {
+		List<Scope> scopes = new ArrayList<>();
+		scopes.add(new Scope("global", "", LaunchProfileManager.MODS_MODE_GLOBAL, new File(context.getFilesDir(), "mods")));
+		try {
+			for (LaunchProfileManager.LaunchProfile profile : new LaunchProfileManager(context).listProfiles()) {
+				if (profile != null && LaunchProfileManager.MODS_MODE_ISOLATED.equals(profile.modsMode)) {
+					scopes.add(new Scope("profile:" + profile.id, profile.id, LaunchProfileManager.MODS_MODE_ISOLATED, new File(profile.dir, "mods")));
+				}
+			}
+		} catch (Exception ignored) {
+			// A partially initialized profile store must not prevent legacy records from loading.
+		}
+		return scopes;
+	}
+
+	private ScopeMatch findScopeMatch(String installedRootPath, List<Scope> scopes) {
+		File installedRoot = firstInstalledRootPath(installedRootPath);
+		if (installedRoot == null) {
+			return null;
+		}
+		for (Scope scope : scopes) {
+			if (scope == null || scope.rootDir == null || !isSameOrDescendant(installedRoot, scope.rootDir)) {
+				continue;
+			}
+			return new ScopeMatch(scope, relativePath(scope.rootDir, installedRoot));
+		}
+		return null;
+	}
+
+	private static File firstInstalledRootPath(String installedRootPath) {
+		if (TextUtils.isEmpty(installedRootPath)) {
+			return null;
+		}
+		for (String line : installedRootPath.split("\\n")) {
+			String trimmed = line == null ? "" : line.trim();
+			if (!TextUtils.isEmpty(trimmed)) {
+				return new File(trimmed);
+			}
+		}
+		return null;
+	}
+
+	private static boolean isSameOrDescendant(File file, File root) {
+		if (file == null || root == null) {
+			return false;
+		}
+		try {
+			String rootPath = root.getCanonicalPath();
+			String filePath = file.getCanonicalPath();
+			return filePath.equals(rootPath) || filePath.startsWith(rootPath + File.separator);
+		} catch (IOException ignored) {
+			return false;
+		}
+	}
+
+	private static String relativePath(File root, File file) {
+		if (root == null || file == null) {
+			return "";
+		}
+		try {
+			String rootPath = root.getCanonicalPath();
+			String filePath = file.getCanonicalPath();
+			if (filePath.equals(rootPath)) {
+				return "";
+			}
+			if (!filePath.startsWith(rootPath + File.separator)) {
+				return "";
+			}
+			return filePath.substring(rootPath.length() + 1).replace(File.separatorChar, '/');
+		} catch (IOException ignored) {
+			return "";
+		}
+	}
+
 
 	public Entry recordInstall(SteamWorkshopCatalog.Item item, File installRoot, List<ExtraSettingsRepository.ModEntry> importedMods) throws Exception {
 		return recordInstall(item, installRoot, importedMods, InstallContext.empty());
@@ -55,6 +210,8 @@ public final class SteamWorkshopLibrary {
 			}
 		}
 		String installedRootPath = installRoot == null ? "" : installRoot.getAbsolutePath();
+		Scope scope = getCurrentScope();
+		String installedRelativePath = relativePath(scope.rootDir, installRoot);
 		long now = System.currentTimeMillis();
 		Entry updated = new Entry(
 			Integer.toString(item.getAppId()),
@@ -83,12 +240,16 @@ public final class SteamWorkshopLibrary {
 			safeContext.resolutionSource,
 			safeContext.matchedBranchMin,
 			safeContext.matchedBranchMax,
-			safeContext.fallbackReason
+			safeContext.fallbackReason,
+			scope.key,
+			scope.profileId,
+			scope.modsMode,
+			installedRelativePath
 		);
 		// Hashing the payload must never hold the index lock. Re-read after hashing
 		// so concurrent update checks/deletions are preserved when committing.
 		synchronized (this) {
-			List<Entry> entries = normalizeEntries(readEntries());
+			List<Entry> entries = migrateLegacyScopeMetadata(normalizeEntries(readEntries()));
 			Map<String, Entry> byId = new LinkedHashMap<>();
 			for (Entry entry : entries) {
 				if (!shouldDropSupersededEntry(entry, updated)) {
@@ -103,7 +264,7 @@ public final class SteamWorkshopLibrary {
 
 	public synchronized UpdateSummary updateCheckResults(Map<String, SteamWorkshopCatalog.Item> details) throws Exception {
 		long now = System.currentTimeMillis();
-		List<Entry> entries = normalizeEntries(readEntries());
+		List<Entry> entries = listEntries();
 		int available = 0;
 		int current = 0;
 		int failed = 0;
@@ -136,10 +297,26 @@ public final class SteamWorkshopLibrary {
 		if (TextUtils.isEmpty(publishedFileId)) {
 			return;
 		}
-		List<Entry> entries = readEntries();
+		List<Entry> entries = listEntries();
 		List<Entry> kept = new ArrayList<>();
 		for (Entry entry : entries) {
 			if (!publishedFileId.equals(entry.publishedFileId)) {
+				kept.add(entry);
+			}
+		}
+		writeEntries(kept);
+	}
+
+	public synchronized void removeEntry(Entry target) throws Exception {
+		if (target == null) {
+			return;
+		}
+		List<Entry> entries = listEntries();
+		List<Entry> kept = new ArrayList<>();
+		for (Entry entry : entries) {
+			boolean sameRecord = target.key().equals(entry.key())
+				|| (target.scopeKey.equals("legacy") && sameItemKey(target, entry));
+			if (!sameRecord) {
 				kept.add(entry);
 			}
 		}
@@ -150,11 +327,11 @@ public final class SteamWorkshopLibrary {
 		if (TextUtils.isEmpty(publishedFileId)) {
 			return;
 		}
-		String key = entryKey(publishedFileId, workshopBranch);
-		List<Entry> entries = readEntries();
+		List<Entry> entries = listEntries();
 		List<Entry> kept = new ArrayList<>();
 		for (Entry entry : entries) {
-			boolean removeEntry = key.equals(entry.key()) || (publishedFileId.equals(entry.publishedFileId) && isLegacyEntry(entry));
+			boolean removeEntry = sameItemKey(publishedFileId, workshopBranch, entry)
+				|| (publishedFileId.equals(entry.publishedFileId) && (isLegacyEntry(entry) || isLegacyScopeEntry(entry)));
 			if (!removeEntry) {
 				kept.add(entry);
 			}
@@ -188,8 +365,29 @@ public final class SteamWorkshopLibrary {
 		for (Entry entry : entries) {
 			array.put(entry.toJson());
 		}
-		try (FileOutputStream outputStream = new FileOutputStream(indexFile)) {
-			outputStream.write(array.toString(2).getBytes(StandardCharsets.UTF_8));
+		File tempFile = new File(rootDir, INDEX_FILE_NAME + ".tmp");
+		File backupFile = new File(rootDir, INDEX_FILE_NAME + ".bak");
+		byte[] bytes = array.toString(2).getBytes(StandardCharsets.UTF_8);
+		try (FileOutputStream outputStream = new FileOutputStream(tempFile)) {
+			outputStream.write(bytes);
+			outputStream.getFD().sync();
+		}
+		if (backupFile.exists() && !backupFile.delete()) {
+			throw new IOException("Unable to replace Workshop index backup: " + backupFile.getAbsolutePath());
+		}
+		if (indexFile.isFile() && !indexFile.renameTo(backupFile)) {
+			tempFile.delete();
+			throw new IOException("Unable to stage Workshop index: " + indexFile.getAbsolutePath());
+		}
+		if (!tempFile.renameTo(indexFile)) {
+			if (backupFile.isFile()) {
+				backupFile.renameTo(indexFile);
+			}
+			tempFile.delete();
+			throw new IOException("Unable to publish Workshop index: " + indexFile.getAbsolutePath());
+		}
+		if (backupFile.exists() && !backupFile.delete()) {
+			// The new index is already durable; keep the backup for manual recovery.
 		}
 	}
 
@@ -273,19 +471,9 @@ public final class SteamWorkshopLibrary {
 		}
 	}
 
-	private static String relativePath(File root, File file) {
-		String rootPath = root.getAbsolutePath();
-		String path = file.getAbsolutePath();
-		if (path.startsWith(rootPath)) {
-			path = path.substring(rootPath.length());
-		}
-		while (path.startsWith(File.separator)) {
-			path = path.substring(1);
-		}
-		return path.replace(File.separatorChar, '/');
-	}
 
 	private static String toHex(byte[] bytes) {
+
 		StringBuilder builder = new StringBuilder(bytes.length * 2);
 		for (byte b : bytes) {
 			builder.append(String.format(Locale.US, "%02x", b & 0xff));
@@ -297,22 +485,38 @@ public final class SteamWorkshopLibrary {
 		return sanitizeKeyPart(publishedFileId) + "@" + sanitizeKeyPart(normalizeBranch(workshopBranch));
 	}
 
+	private static String scopedEntryKey(String scopeKey, String publishedFileId, String workshopBranch) {
+		return sanitizeKeyPart(scopeKey) + ":" + entryKey(publishedFileId, workshopBranch);
+	}
+
+	private static boolean sameItemKey(String publishedFileId, String workshopBranch, Entry entry) {
+		return entry != null
+			&& sanitizeKeyPart(publishedFileId).equals(sanitizeKeyPart(entry.publishedFileId))
+			&& sanitizeKeyPart(normalizeBranch(workshopBranch)).equals(sanitizeKeyPart(entry.workshopBranch));
+	}
+
+	private static boolean sameItemKey(Entry left, Entry right) {
+		return left != null && right != null && sameItemKey(left.publishedFileId, left.workshopBranch, right);
+	}
+
 	private static List<Entry> normalizeEntries(List<Entry> entries) {
 		if (entries == null || entries.isEmpty()) {
 			return new ArrayList<>();
 		}
-		Set<String> idsWithModernEntry = new java.util.LinkedHashSet<>();
+		Map<String, Entry> modernEntries = new LinkedHashMap<>();
 		for (Entry entry : entries) {
-			if (entry != null && !isLegacyEntry(entry)) {
-				idsWithModernEntry.add(entry.publishedFileId);
+			if (entry != null && !isLegacyEntry(entry) && !isLegacyScopeEntry(entry)) {
+				modernEntries.put(entry.publishedFileId, entry);
 			}
 		}
+		Set<String> idsWithModernEntry = modernEntries.keySet();
 		Map<String, Entry> byKey = new LinkedHashMap<>();
 		for (Entry entry : entries) {
 			if (entry == null) {
 				continue;
 			}
-			if (idsWithModernEntry.contains(entry.publishedFileId) && isLegacyEntry(entry)) {
+			if (idsWithModernEntry.contains(entry.publishedFileId)
+				&& (isLegacyEntry(entry) || (isLegacyScopeEntry(entry) && canDropLegacyScopeEntry(entry, modernEntries.get(entry.publishedFileId))))) {
 				continue;
 			}
 			Entry previous = byKey.get(entry.key());
@@ -323,6 +527,22 @@ public final class SteamWorkshopLibrary {
 		return new ArrayList<>(byKey.values());
 	}
 
+	private static boolean canDropLegacyScopeEntry(Entry legacy, Entry modern) {
+		File legacyRoot = firstInstalledRootPath(legacy == null ? "" : legacy.installedRootPath);
+		if (legacyRoot == null || !legacyRoot.exists()) {
+			return true;
+		}
+		File modernRoot = firstInstalledRootPath(modern == null ? "" : modern.installedRootPath);
+		if (modernRoot == null) {
+			return false;
+		}
+		try {
+			return legacyRoot.getCanonicalFile().equals(modernRoot.getCanonicalFile());
+		} catch (IOException ignored) {
+			return legacyRoot.getAbsoluteFile().equals(modernRoot.getAbsoluteFile());
+		}
+	}
+
 	private static boolean shouldDropSupersededEntry(Entry existing, Entry installed) {
 		if (existing == null || installed == null) {
 			return false;
@@ -330,11 +550,16 @@ public final class SteamWorkshopLibrary {
 		if (existing.key().equals(installed.key())) {
 			return true;
 		}
-		return existing.publishedFileId.equals(installed.publishedFileId) && isLegacyEntry(existing);
+		return existing.publishedFileId.equals(installed.publishedFileId)
+			&& (isLegacyEntry(existing) || (isLegacyScopeEntry(existing) && canDropLegacyScopeEntry(existing, installed)));
 	}
 
 	private static boolean isLegacyEntry(Entry entry) {
 		return entry != null && "legacy".equals(entry.branchMode);
+	}
+
+	private static boolean isLegacyScopeEntry(Entry entry) {
+		return entry != null && "legacy".equals(entry.scopeKey) && TextUtils.isEmpty(entry.installedRelativePath);
 	}
 
 	private static String normalizeBranch(String workshopBranch) {
@@ -426,8 +651,12 @@ public final class SteamWorkshopLibrary {
 		public final String matchedBranchMin;
 		public final String matchedBranchMax;
 		public final String fallbackReason;
+		public final String scopeKey;
+		public final String profileId;
+		public final String modsMode;
+		public final String installedRelativePath;
 
-		Entry(String appId, String publishedFileId, String gameTitle, String title, String description, String previewUrl, long fileSizeBytes, long installedRemoteUpdatedAtMs, long installedAtMs, long lastCheckedAtMs, long remoteUpdatedAtMs, String updateStatus, String lastError, String installedRootPath, List<String> importedModIds, long installedBytes, String installedSha1, String workshopBranch, String branchMode, String payloadId, String payloadVersion, String payloadSts2DllSha256, String resolvedManifestId, String resolutionSource, String matchedBranchMin, String matchedBranchMax, String fallbackReason) {
+		Entry(String appId, String publishedFileId, String gameTitle, String title, String description, String previewUrl, long fileSizeBytes, long installedRemoteUpdatedAtMs, long installedAtMs, long lastCheckedAtMs, long remoteUpdatedAtMs, String updateStatus, String lastError, String installedRootPath, List<String> importedModIds, long installedBytes, String installedSha1, String workshopBranch, String branchMode, String payloadId, String payloadVersion, String payloadSts2DllSha256, String resolvedManifestId, String resolutionSource, String matchedBranchMin, String matchedBranchMax, String fallbackReason, String scopeKey, String profileId, String modsMode, String installedRelativePath) {
 			this.appId = appId == null ? "" : appId;
 			this.publishedFileId = publishedFileId == null ? "" : publishedFileId;
 			this.gameTitle = gameTitle == null ? "" : gameTitle;
@@ -455,10 +684,14 @@ public final class SteamWorkshopLibrary {
 			this.matchedBranchMin = matchedBranchMin == null ? "" : matchedBranchMin;
 			this.matchedBranchMax = matchedBranchMax == null ? "" : matchedBranchMax;
 			this.fallbackReason = fallbackReason == null ? "" : fallbackReason;
+			this.scopeKey = TextUtils.isEmpty(scopeKey) ? "legacy" : scopeKey;
+			this.profileId = profileId == null ? "" : profileId;
+			this.modsMode = modsMode == null ? "" : modsMode;
+			this.installedRelativePath = installedRelativePath == null ? "" : installedRelativePath;
 		}
 
 		String key() {
-			return entryKey(publishedFileId, workshopBranch);
+			return scopedEntryKey(scopeKey, publishedFileId, workshopBranch);
 		}
 
 		boolean hasRemoteUpdate(long remoteUpdatedAtMs) {
@@ -466,16 +699,21 @@ public final class SteamWorkshopLibrary {
 			return installedRemoteUpdatedAtMs > 0L && remoteUpdatedAtMs > installedRemoteUpdatedAtMs;
 		}
 
+		Entry withScope(String newScopeKey, String newProfileId, String newModsMode, String newRelativePath) {
+			return new Entry(appId, publishedFileId, gameTitle, title, description, previewUrl, fileSizeBytes, installedRemoteUpdatedAtMs, installedAtMs, lastCheckedAtMs, remoteUpdatedAtMs, updateStatus, lastError, installedRootPath, importedModIds, installedBytes, installedSha1, workshopBranch, branchMode, payloadId, payloadVersion, payloadSts2DllSha256, resolvedManifestId, resolutionSource, matchedBranchMin, matchedBranchMax, fallbackReason, newScopeKey, newProfileId, newModsMode, newRelativePath);
+		}
+
 		Entry withRemoteDetail(SteamWorkshopCatalog.Item item, long checkedAtMs, long remoteUpdatedAtMs, String status, String error) {
-			return new Entry(appId, publishedFileId, gameTitle, item.getTitle(), item.getDescription(), item.getPreviewUrl(), item.getFileSizeBytes(), installedRemoteUpdatedAtMs, installedAtMs, checkedAtMs, remoteUpdatedAtMs, status, error, installedRootPath, importedModIds, installedBytes, installedSha1, workshopBranch, branchMode, payloadId, payloadVersion, payloadSts2DllSha256, resolvedManifestId, resolutionSource, matchedBranchMin, matchedBranchMax, fallbackReason);
+			return new Entry(appId, publishedFileId, gameTitle, item.getTitle(), item.getDescription(), item.getPreviewUrl(), item.getFileSizeBytes(), installedRemoteUpdatedAtMs, installedAtMs, checkedAtMs, remoteUpdatedAtMs, status, error, installedRootPath, importedModIds, installedBytes, installedSha1, workshopBranch, branchMode, payloadId, payloadVersion, payloadSts2DllSha256, resolvedManifestId, resolutionSource, matchedBranchMin, matchedBranchMax, fallbackReason, scopeKey, profileId, modsMode, installedRelativePath);
 		}
 
 		Entry withCheckResult(long checkedAtMs, long remoteUpdatedAtMs, String status, String error) {
-			return new Entry(appId, publishedFileId, gameTitle, title, description, previewUrl, fileSizeBytes, installedRemoteUpdatedAtMs, installedAtMs, checkedAtMs, remoteUpdatedAtMs, status, error, installedRootPath, importedModIds, installedBytes, installedSha1, workshopBranch, branchMode, payloadId, payloadVersion, payloadSts2DllSha256, resolvedManifestId, resolutionSource, matchedBranchMin, matchedBranchMax, fallbackReason);
+			return new Entry(appId, publishedFileId, gameTitle, title, description, previewUrl, fileSizeBytes, installedRemoteUpdatedAtMs, installedAtMs, checkedAtMs, remoteUpdatedAtMs, status, error, installedRootPath, importedModIds, installedBytes, installedSha1, workshopBranch, branchMode, payloadId, payloadVersion, payloadSts2DllSha256, resolvedManifestId, resolutionSource, matchedBranchMin, matchedBranchMax, fallbackReason, scopeKey, profileId, modsMode, installedRelativePath);
 		}
 
 		JSONObject toJson() throws Exception {
 			JSONObject object = new JSONObject();
+			object.put("schema_version", 2);
 			object.put("app_id", appId);
 			object.put("published_file_id", publishedFileId);
 			object.put("game_title", gameTitle);
@@ -502,6 +740,10 @@ public final class SteamWorkshopLibrary {
 			object.put("matched_branch_min", matchedBranchMin);
 			object.put("matched_branch_max", matchedBranchMax);
 			object.put("fallback_reason", fallbackReason);
+			object.put("mods_scope", scopeKey);
+			object.put("profile_id", profileId);
+			object.put("mods_mode", modsMode);
+			object.put("installed_relative_path", installedRelativePath);
 			JSONArray ids = new JSONArray();
 			for (String id : importedModIds) {
 				ids.put(id);
@@ -548,7 +790,11 @@ public final class SteamWorkshopLibrary {
 				object.optString("resolution_source", ""),
 				object.optString("matched_branch_min", ""),
 				object.optString("matched_branch_max", ""),
-				object.optString("fallback_reason", "")
+				object.optString("fallback_reason", ""),
+				object.optString("mods_scope", ""),
+				object.optString("profile_id", ""),
+				object.optString("mods_mode", ""),
+				object.optString("installed_relative_path", "")
 			);
 		}
 	}

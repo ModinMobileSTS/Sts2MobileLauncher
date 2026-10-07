@@ -130,6 +130,43 @@ public class SteamWorkshopUpdateWatermarkTest {
 		assertTrue(activityHasUpdate(item("90001", 0L), installed));
 	}
 
+	@Test public void legacyRecordPathGetsCurrentScopeMetadata() throws Exception {
+		ExtraSettingsRepository repository = new ExtraSettingsRepository(activity);
+		File root = new File(repository.getModsRootDir(), "legacy-fixture");
+		Files.createDirectories(root.toPath());
+		seed(entry("90010", "public", 100_000L, 300_000L).put("installed_root_path", root.getAbsolutePath()).put("branch_mode", "manual"));
+
+		SteamWorkshopLibrary.Entry migrated = library.listEntries().get(0);
+
+		assertEquals("global", migrated.scopeKey);
+		assertEquals("global", migrated.modsMode);
+		assertEquals("legacy-fixture", migrated.installedRelativePath);
+	}
+
+	@Test public void modernScopedRecordSupersedesUnscopedRecordForSameItem() throws Exception {
+		ExtraSettingsRepository repository = new ExtraSettingsRepository(activity);
+		File root = new File(repository.getModsRootDir(), "modern-fixture");
+		Files.createDirectories(root.toPath());
+		JSONObject legacy = entry("90011", "public", 100_000L, 300_000L)
+			.put("branch_mode", "manual")
+			.put("installed_root_path", root.getAbsolutePath());
+		JSONObject modern = entry("90011", "public", 200_000L, 400_000L)
+			.put("branch_mode", "manual")
+			.put("installed_root_path", root.getAbsolutePath())
+			.put("mods_scope", "global")
+			.put("mods_mode", "global")
+			.put("installed_relative_path", "modern-fixture");
+		seed(legacy, modern);
+
+		List<SteamWorkshopLibrary.Entry> entries = library.listEntries();
+
+		assertEquals(1, entries.size());
+		assertEquals(200_000L, entries.get(0).installedRemoteUpdatedAtMs);
+		assertEquals("global", entries.get(0).scopeKey);
+		JSONArray stored = new JSONArray(new String(Files.readAllBytes(new File(activity.getFilesDir(), "workshop/library/index.json").toPath()), StandardCharsets.UTF_8));
+		assertEquals(1, stored.length());
+	}
+
 	private boolean activityHasUpdate(SteamWorkshopCatalog.Item item, SteamWorkshopLibrary.Entry entry) throws Exception {
 		Method method = SteamWorkshopActivity.class.getDeclaredMethod("hasWorkshopUpdate", SteamWorkshopCatalog.Item.class, SteamWorkshopLibrary.Entry.class);
 		method.setAccessible(true);

@@ -103,6 +103,7 @@ public final class ExtraSettingsRepository {
 		ensureDirectory(getAccountRootDir());
 		File modsRoot = getModsRootDir();
 		ensureDirectory(modsRoot);
+		recoverWorkshopInstallTransactions(modsRoot);
 		normalizeRuntimeModAliases(modsRoot);
 	}
 
@@ -768,12 +769,16 @@ public final class ExtraSettingsRepository {
 		if (preparedImport == null || preparedImport.stagingRoot == null || !preparedImport.stagingRoot.isDirectory()) {
 			throw new IOException("Prepared MOD import is no longer available.");
 		}
+		File stagingInstallRoot = null;
+		File backupInstallRoot = null;
+		File installRoot = null;
+		boolean handedOff = false;
 		try {
 			List<ModImportConflict> idConflicts = replaceExistingConflicts ? findCurrentWorkshopImportConflicts(preparedImport, rawGroupName, publishedFileId, workshopBranch) : Collections.emptyList();
 			if (replaceExistingConflicts) {
 				deleteExistingImportConflicts(idConflicts);
 			}
-			File installRoot = getWorkshopItemInstallDir(rawGroupName, publishedFileId, workshopBranch);
+			installRoot = getWorkshopItemInstallDir(rawGroupName, publishedFileId, workshopBranch);
 			File branchDirectory = installRoot.getParentFile();
 			if (branchDirectory != null) {
 				ensureDirectory(branchDirectory);
@@ -782,17 +787,72 @@ public final class ExtraSettingsRepository {
 			if (groupDirectory != null) {
 				ensureDirectory(groupDirectory);
 			}
-			deleteRecursively(installRoot);
-			ensureDirectory(installRoot);
-			copyDirectoryContents(preparedImport.stagingRoot, installRoot);
-			normalizeRuntimeModAliases(installRoot);
+			File parent = installRoot.getParentFile();
+			if (parent == null) {
+				throw new IOException("Workshop install directory has no parent: " + installRoot);
+			}
+			String safeName = installRoot.getName();
+			stagingInstallRoot = new File(parent, "." + safeName + ".incoming-" + UUID.randomUUID());
+			backupInstallRoot = new File(parent, "." + safeName + ".backup-" + UUID.randomUUID());
+			ensureDirectory(stagingInstallRoot);
+			copyDirectoryContents(preparedImport.stagingRoot, stagingInstallRoot);
+			normalizeRuntimeModAliases(stagingInstallRoot);
+			if (installRoot.exists() || isSymbolicLink(installRoot)) {
+				if (!installRoot.renameTo(backupInstallRoot)) {
+					throw new IOException("Unable to stage existing Workshop install: " + installRoot);
+				}
+			}
+			if (!stagingInstallRoot.renameTo(installRoot)) {
+				if (backupInstallRoot.exists()) {
+					backupInstallRoot.renameTo(installRoot);
+				}
+				throw new IOException("Unable to publish Workshop install: " + installRoot);
+			}
 			JSONObject settings = loadSettingsJson();
 			ensureModSettings(settings).put("mods_enabled", true);
 			saveSettingsJson(settings);
 			List<ModEntry> installedEntries = listInstalledModManifestsUnder(installRoot);
-			return new WorkshopModImportResult(installRoot, installedEntries, preparedImport.normalizedName);
+			WorkshopModImportResult result = new WorkshopModImportResult(installRoot, installedEntries, preparedImport.normalizedName, backupInstallRoot.exists() ? backupInstallRoot : null);
+			handedOff = true;
+			return result;
+		} catch (Exception exception) {
+			if (!handedOff) {
+				if (installRoot != null && installRoot.exists() && backupInstallRoot != null && backupInstallRoot.exists()) {
+					deleteRecursively(installRoot);
+				}
+				if (installRoot != null && !installRoot.exists() && backupInstallRoot != null && backupInstallRoot.exists()) {
+					backupInstallRoot.renameTo(installRoot);
+				}
+				if (stagingInstallRoot != null && stagingInstallRoot.exists()) {
+					deleteRecursively(stagingInstallRoot);
+				}
+			}
+			throw exception;
 		} finally {
 			discardPreparedModImport(preparedImport);
+		}
+	}
+
+	public void finalizeWorkshopModImport(WorkshopModImportResult result) {
+		if (result == null || result.backupRoot == null || !result.backupRoot.exists()) {
+			return;
+		}
+		try {
+			deleteRecursively(result.backupRoot);
+		} catch (RuntimeException ignored) {
+			// The published install and index remain usable; startup recovery will retry cleanup.
+		}
+	}
+
+	public void rollbackWorkshopModImport(WorkshopModImportResult result) {
+		if (result == null || result.installRoot == null) {
+			return;
+		}
+		if (result.installRoot.exists() && result.backupRoot != null && result.backupRoot.exists()) {
+			deleteRecursively(result.installRoot);
+		}
+		if (!result.installRoot.exists() && result.backupRoot != null && result.backupRoot.exists()) {
+			result.backupRoot.renameTo(result.installRoot);
 		}
 	}
 
@@ -2843,6 +2903,46 @@ public final class ExtraSettingsRepository {
 		}
 	}
 
+	private void recoverWorkshopInstallTransactions(File root) {
+		if (root == null || !root.isDirectory() || isSymbolicLink(root)) {
+			return;
+		}
+		File[] children = root.listFiles();
+		if (children == null) {
+			return;
+		}
+		for (File child : children) {
+			if (child == null || !child.isDirectory() || isSymbolicLink(child)) {
+				continue;
+			}
+			String name = child.getName();
+			int marker = name.indexOf(".backup-");
+			if (name.startsWith(".") && marker > 1) {
+				File target = new File(child.getParentFile(), name.substring(1, marker));
+				if (target.exists()) {
+					deleteRecursively(child);
+				} else {
+					child.renameTo(target);
+				}
+			}
+		}
+		children = root.listFiles();
+		if (children == null) {
+			return;
+		}
+		for (File child : children) {
+			if (child == null || !child.isDirectory() || isSymbolicLink(child)) {
+				continue;
+			}
+			String name = child.getName();
+			if (name.startsWith(".") && name.contains(".incoming-")) {
+				deleteRecursively(child);
+			} else if (!name.startsWith(".")) {
+				recoverWorkshopInstallTransactions(child);
+			}
+		}
+	}
+
 	private boolean isSameOrDescendant(File file, File possibleAncestor) {
 		if (file == null || possibleAncestor == null) {
 			return false;
@@ -3085,11 +3185,13 @@ public final class ExtraSettingsRepository {
 
 	public static final class WorkshopModImportResult {
 		public final File installRoot;
+		public final File backupRoot;
 		public final List<ModEntry> installedEntries;
 		public final String importedName;
 
-		WorkshopModImportResult(File installRoot, List<ModEntry> installedEntries, String importedName) {
+		WorkshopModImportResult(File installRoot, List<ModEntry> installedEntries, String importedName, File backupRoot) {
 			this.installRoot = installRoot;
+			this.backupRoot = backupRoot;
 			this.installedEntries = Collections.unmodifiableList(new ArrayList<>(installedEntries));
 			this.importedName = importedName == null ? "" : importedName;
 		}

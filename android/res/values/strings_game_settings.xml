@@ -140,6 +140,8 @@
     <string name="workshop_library_summary">%1$d tracked Workshop MOD(s)</string>
     <string name="workshop_installed_mod_missing">This Workshop item is tracked, but no matching local MOD was found in the current MOD folder.</string>
     <string name="workshop_local_files_missing">Download record exists, but the local MOD files have been deleted.</string>
+    <string name="workshop_local_files_other_scope">This record belongs to another launch profile or MOD folder.</string>
+    <string name="workshop_local_files_unresolved">Checking local installation state…</string>
     <string name="workshop_installed_size">Installed size: %1$s</string>
     <string name="workshop_imported_mod_ids">MOD IDs: %1$s</string>
     <string name="workshop_update_unknown">Not checked yet.</string>
