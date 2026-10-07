@@ -1433,6 +1433,8 @@ SteamID64：%2$s
     <string name="steam_game_card_not_logged_in">Steam：未登录</string>
     <string name="steam_cloud_title">Steam 云存档</string>
     <string name="steam_cloud_subtitle">将当前启动配置的存档根目录与 Steam Cloud 同步。</string>
+    <string name="cloud_save_namespace_hint">普通存档：profile1–3/saves；MOD 存档：modded/profile1–3/saves。两套目录均独立同步，不自动移动或合并。游戏只读取当前 MOD 模式与 profile 槽位对应的一套，因此同步成功后进度仍可能不同。</string>
+    <string name="cloud_mod_save_transfer_hint">PC 曾装纯 UI／快速重开 MOD 也可能使用 modded。手机不使用 MOD 时，先备份两套存档，再用「附加设置 → MOD存档转移」中的「MOD存档 → 普通存档」。此工具会覆盖目标存档，不能自动转换含 MOD 内容的存档。</string>
     <string name="steam_cloud_profile_status">配置：%1$s · 远端文件：%2$d · baseline：%3$s</string>
     <string name="steam_cloud_settings_status">Steam：%1$s · 模式：%2$s · 远端文件：%3$d</string>
     <string name="steam_cloud_mode_title">云存档模式</string>

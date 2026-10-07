@@ -77,6 +77,25 @@ public class CloudSyncSafetyTest {
 		}
 	}
 
+	@Test public void steamUploadRetainsDiscoveredFilenameWithoutMergingModdedBaseline() throws Exception {
+		Cloud cloud = new Cloud(new Sts2SteamCloudSyncManager(RuntimeEnvironment.getApplication()));
+		String localPath = "modded/profile1/saves/progress.save";
+		String remotePath = "%GameInstall%/" + localPath;
+		Object remote = cloud.entry("RemoteEntry", remotePath, localPath, 1L, 0L, "", "", "A");
+		cloud.persist(List.of(cloud.local(localPath, "A")), List.of(remote));
+		Object ordinary = cloud.local("profile1/saves/progress.save", "C");
+		cloud.persist(List.of(ordinary), List.of(cloud.remote("profile1/saves/progress.save", "C")));
+		assertEquals(2, cloud.baseline().getJSONArray("entries").length());
+		List<?> uploads = cloud.plan(true, List.of(cloud.local(localPath, "B"), ordinary), List.of(remote, cloud.remote("profile1/saves/progress.save", "C")), false);
+		assertEquals(1, uploads.size());
+		Method toJson = uploads.get(0).getClass().getDeclaredMethod("toJson");
+		toJson.setAccessible(true);
+		JSONObject upload = (JSONObject)toJson.invoke(uploads.get(0));
+		assertEquals(remotePath, upload.getString("remote_path"));
+		assertEquals(localPath, upload.getString("local_relative_path"));
+		assertEquals("B", upload.getString("local_sha1"));
+	}
+
 	private static List<Cloud> clouds() throws Exception {
 		Context context = RuntimeEnvironment.getApplication();
 		return List.of(new Cloud(new Sts2SteamCloudSyncManager(context)), new Cloud(new WebDavSyncManager(context)));

@@ -662,16 +662,6 @@ public final class Sts2SteamCloudClient implements AutoCloseable {
         return beginUploadBatch(appId, remotePaths, Collections.emptyList());
     }
 
-    public UploadBatch beginManualUploadBatch(int appId, List<String> remotePaths) throws Exception {
-        int uploadCount = remotePaths == null ? 0 : remotePaths.size();
-        recordDiagnosticEvent(
-            "begin_app_upload_batch manual_uploads actualUploadCount="
-                + uploadCount
-                + " declaredUploadPaths=false"
-        );
-        return beginUploadBatch(appId, Collections.emptyList(), Collections.emptyList());
-    }
-
     public UploadBatch beginUploadBatch(
         int appId,
         List<String> remotePathsToUpload,

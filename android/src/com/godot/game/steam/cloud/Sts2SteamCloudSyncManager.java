@@ -165,7 +165,7 @@ public final class Sts2SteamCloudSyncManager {
 				remotePaths.add(entry.remotePath);
 			}
 			report(listener, 20, "Starting upload batch…");
-			Sts2SteamCloudClient.UploadBatch batch = cloud.client.beginManualUploadBatch(STS2_APP_ID, remotePaths);
+			Sts2SteamCloudClient.UploadBatch batch = cloud.client.beginUploadBatch(STS2_APP_ID, remotePaths);
 			boolean completeOk = false;
 			try {
 				for (int i = 0; i < uploadEntries.size(); i++) {

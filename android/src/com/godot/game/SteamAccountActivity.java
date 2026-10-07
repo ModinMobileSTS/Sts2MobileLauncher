@@ -914,6 +914,8 @@ public class SteamAccountActivity extends AppCompatActivity {
 		statusContent.addView(ExtraSettingsUi.iconTitleRow(this, R.drawable.ic_cloud_sync_24, R.string.steam_cloud_title, R.string.steam_cloud_subtitle, null));
 		cloudStatusBodyView = ExtraSettingsUi.body(this, "");
 		ExtraSettingsUi.addSmallSpacing(statusContent, cloudStatusBodyView);
+		ExtraSettingsUi.addSmallSpacing(statusContent, ExtraSettingsUi.body(this, R.string.cloud_save_namespace_hint));
+		ExtraSettingsUi.addSmallSpacing(statusContent, ExtraSettingsUi.caption(this, getString(R.string.cloud_mod_save_transfer_hint)));
 
 		TextView pathLabel = ExtraSettingsUi.caption(this, getString(R.string.steam_cloud_path_label));
 		ExtraSettingsUi.addSmallSpacing(statusContent, pathLabel);

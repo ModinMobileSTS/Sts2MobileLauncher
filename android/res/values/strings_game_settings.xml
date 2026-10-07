@@ -1435,6 +1435,8 @@ Last error: %4$s</string>
     <string name="steam_game_card_not_logged_in">Steam: not logged in</string>
     <string name="steam_cloud_title">Steam Cloud saves</string>
     <string name="steam_cloud_subtitle">Synchronize the current launch profile save root with Steam Cloud.</string>
+    <string name="cloud_save_namespace_hint">Normal saves: profile1–3/saves. MOD saves: modded/profile1–3/saves. Both sync independently; cloud sync does not move or merge them. The game reads only the directory for its current MOD mode and profile slot, so synced progress may differ.</string>
+    <string name="cloud_mod_save_transfer_hint">Even PC UI-only or quick-restart MODs may use modded. On a MOD-free phone, back up both save sets before using “MOD Save → Normal Save” in Extra Settings → MOD Save Transfer. This overwrites destination saves; it cannot automatically convert saves containing MOD content.</string>
     <string name="steam_cloud_profile_status">Profile: %1$s · remote files: %2$d · baseline: %3$s</string>
     <string name="steam_cloud_settings_status">Steam: %1$s · mode: %2$s · remote files: %3$d</string>
     <string name="steam_cloud_mode_title">Cloud mode</string>

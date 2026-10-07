@@ -8,6 +8,7 @@ import java.io.File;
 import java.util.Locale;
 
 public final class Sts2SteamCloudPathMapper {
+	private static final String AUTO_CLOUD_PREFIX = "%GameInstall%/";
 	private final boolean includeSettingsSave;
 
 	public Sts2SteamCloudPathMapper(Context context) {
@@ -16,9 +17,8 @@ public final class Sts2SteamCloudPathMapper {
 
 	public String toLocalRelativePath(String remotePath) {
 		String normalized = normalize(remotePath);
-		if (normalized.startsWith("%gameinstall%")) {
-			normalized = normalized.substring("%gameinstall%".length());
-			normalized = normalize(normalized);
+		if (normalized.regionMatches(true, 0, AUTO_CLOUD_PREFIX, 0, AUTO_CLOUD_PREFIX.length())) {
+			normalized = normalized.substring(AUTO_CLOUD_PREFIX.length());
 		}
 		if (!isSupportedLocalPath(normalized)) {
 			return "";
@@ -43,7 +43,7 @@ public final class Sts2SteamCloudPathMapper {
 			}
 		}
 		String lower = path.toLowerCase(Locale.ROOT);
-		if ("profile.save".equals(lower)) {
+		if ("profile.save".equals(lower) || "modded/profile.save".equals(lower)) {
 			return true;
 		}
 		if ("settings.save".equals(lower)) {

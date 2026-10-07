@@ -32,7 +32,7 @@ public final class WebDavSavePathMapper {
 			}
 		}
 		String lower = path.toLowerCase(Locale.ROOT);
-		if ("profile.save".equals(lower)) {
+		if ("profile.save".equals(lower) || "modded/profile.save".equals(lower)) {
 			return true;
 		}
 		if ("settings.save".equals(lower)) {

@@ -109,6 +109,8 @@ public class WebDavCloudActivity extends AppCompatActivity {
 		content.addView(ExtraSettingsUi.iconTitleRow(this, R.drawable.ic_save_24, R.string.webdav_cloud_sync_title, R.string.webdav_cloud_sync_subtitle, null));
 		WebDavSyncManager.Status status = new WebDavSyncManager(this).getStatus();
 		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.body(this, getString(R.string.webdav_cloud_profile_status, status.profileId, status.remoteSlot, status.remoteFileCount, status.hasBaseline ? getString(R.string.yes) : getString(R.string.no))));
+		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.body(this, R.string.cloud_save_namespace_hint));
+		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(this, getString(R.string.cloud_mod_save_transfer_hint)));
 		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.caption(this, status.accountRoot.getAbsolutePath()));
 
 		LinearLayout modeRow = ExtraSettingsUi.horizontal(this);

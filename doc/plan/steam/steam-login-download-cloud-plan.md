@@ -779,7 +779,7 @@ profile1/saves/prefs.save        ...   ...        ...   ...
 profile1/saves/current_run.save  ...   ...        ...   ...
 ```
 
-如果 Steam 返回 `%GameInstall%` 前缀，则在 mapper 中单独处理。
+STS2 的 RemoteStorage SDK 文件名以账号根相对路径为准，不给新上传文件自动添加 `%GameInstall%/`。真实账号枚举与上传已确认裸路径可用；本机验证中，为同一 AppID 新建 `%GameInstall%/` 文件返回 `NoMatch`，不能把 STS1 的 Auto Cloud 根套用到 STS2。对远端清单实际返回的已知 `%GameInstall%/` 前缀，mapper 仍大小写不敏感地识别，并兼容 `/`、`\` 分隔符；本地去掉前缀，更新既有远端文件时保留清单中的原始文件名，不重命名或创建另一套路径。
 
 ### 10.2 本地路径映射
 
@@ -793,6 +793,7 @@ android/src/com/godot/game/steam/cloud/Sts2SteamCloudPathMapper.java
 
 ```text
 profile.save
+modded/profile.save
 profile1/saves/progress.save
 profile1/saves/prefs.save
 profile1/saves/current_run.save
@@ -806,6 +807,10 @@ modded/profile1/saves/...
 modded/profile2/saves/...
 modded/profile3/saves/...
 ```
+
+普通目录与 `modded/` 目录分别保留自己的槽位选择、进度、偏好、当前 run 和历史，不自动移动或合并。游戏按当前 MOD 模式及选中的 `profile1–3` 槽位读取一套存档；PC 即使只装纯 UI／快速重开 MOD，也可能进入 `modded/`，所以“同步完成但进度不同”不等于下载失败。Steam 中心和 WebDAV 页面均显示这一提示。
+
+手机不使用 MOD 时，先备份两套存档，再视情况使用现有「附加设置 → MOD存档转移 → MOD存档 → 普通存档」，并在游戏中确认相同槽位。该工具覆盖目标侧同槽位存档，不能自动转换含 MOD 内容的模型或 run；云同步本身不执行转移。
 
 `settings.save` v1 建议默认排除，原因：
 
@@ -959,6 +964,8 @@ refresh remote manifest
 - `completeUploadBatch()`
 
 但要把 appId 改为 `2868840`，并替换路径 mapper。
+
+当前 `Sts2SteamCloudSyncManager` 使用 `beginUploadBatch()`，必须把本次实际上传的远端文件名传入 `CCloud_BeginAppUploadBatch_Request.files_to_upload`；逐文件的 `ClientBeginFileUpload` 和 `ClientCommitFileUpload` 仍使用同一批次及文件名。不能将非空上传计划声明为空批次，也不能仅因 `DuplicateRequest` 就推断云端已有正确内容。上传完成后的基线仍只推进本地/远端内容相同的文件；未同步项保留已有共同祖先。
 
 ### 11.4 强制覆盖操作
 
