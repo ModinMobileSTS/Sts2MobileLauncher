@@ -62,22 +62,24 @@ public final class RuntimeLogFiles {
             return;
         }
         try {
-            File canonicalRoot = root.getCanonicalFile();
             ArrayDeque<File> pending = new ArrayDeque<>();
-            pending.add(canonicalRoot);
+            pending.add(root.getCanonicalFile());
             while (!pending.isEmpty() && !Thread.currentThread().isInterrupted()) {
                 File[] children = pending.removeFirst().listFiles();
                 if (children == null) {
                     continue;
                 }
                 for (File child : children) {
-                    // Never follow a link outside the app's log roots or a directory cycle.
-                    if (!child.getAbsoluteFile().equals(child.getCanonicalFile())) {
-                        continue;
+                    if (Thread.currentThread().isInterrupted()) {
+                        break;
                     }
                     if (child.isDirectory()) {
-                        pending.addLast(child);
-                    } else if (child.isFile() && ("godot.log".equals(child.getName()) || "sts2.log".equals(child.getName()))) {
+                        // Directory links remain excluded, including links within the root.
+                        if (child.getAbsoluteFile().equals(child.getCanonicalFile())) {
+                            pending.addLast(child);
+                        }
+                    } else if (("godot.log".equals(child.getName()) || "sts2.log".equals(child.getName()))
+                            && child.isFile() && child.getAbsoluteFile().equals(child.getCanonicalFile())) {
                         candidates.add(child);
                     }
                 }

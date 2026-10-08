@@ -8,6 +8,9 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
@@ -18,6 +21,7 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.view.animation.PathInterpolator;
@@ -48,6 +52,7 @@ import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Comparator;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
@@ -78,14 +83,32 @@ public class LogViewerActivity extends AppCompatActivity {
 	private static final int COLOR_ON_PRIMARY_CONTAINER = 0xFFDCE2FF;
 	private static final int COLOR_ERROR = 0xFFFFB4AB;
 	private static final int COLOR_ERROR_CONTAINER = 0xFF5A1B1D;
+    private static final long SCAN_UI_UPDATE_MS = 150L;
+    private static final Comparator<LogEntry> LOG_ENTRY_ORDER = (left, right) -> {
+        int modifiedCompare = Long.compare(right.lastModified, left.lastModified);
+        if (modifiedCompare != 0) {
+            return modifiedCompare;
+        }
+        return left.archivePath.compareToIgnoreCase(right.archivePath);
+    };
+
 
 	private final List<LogEntry> logEntries = new ArrayList<>();
 	private final List<LogEntry> visibleLogEntries = new ArrayList<>();
     private final List<LogEntry> latestRuntimeEntries = new ArrayList<>(2);
 	private final List<ListItem> listItems = new ArrayList<>();
 	private final LinkedHashSet<Integer> selectedPositions = new LinkedHashSet<>();
+    private final Handler scanHandler = new Handler(Looper.getMainLooper());
+    private final Object scanBatchLock = new Object();
+    private List<LogEntry> pendingScanEntries = new ArrayList<>();
+    private long pendingScanGeneration;
+    private long nextScanDeliveryAt;
+    private boolean scanDeliveryScheduled;
+    private final Runnable deliverScanBatch = this::deliverScannedLogs;
 
 	private TextView emptyListText;
+    private View loadingState;
+
 	private RecyclerView logsRecyclerView;
 	private LogAdapter adapter;
 	private TextInputEditText searchInput;
@@ -105,6 +128,8 @@ public class LogViewerActivity extends AppCompatActivity {
 	private String sourceFilter = SOURCE_ALL;
 	private String searchQuery = "";
 	private List<LogEntry> pendingExportEntries = Collections.emptyList();
+    private Thread scanThread;
+    private long refreshGeneration;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -138,6 +163,16 @@ public class LogViewerActivity extends AppCompatActivity {
 
 		refreshLogs();
 	}
+    @Override
+    protected void onDestroy() {
+        resetScanUpdates(0L);
+        Thread currentScan = scanThread;
+        if (currentScan != null) {
+            currentScan.interrupt();
+        }
+        super.onDestroy();
+    }
+
 
     private void handleBackNavigation() {
         if (selectionMode) {
@@ -204,7 +239,8 @@ public class LogViewerActivity extends AppCompatActivity {
     }
 
 	private void bindViews() {
-		emptyListText = findViewById(R.id.text_empty_logs);
+        loadingState = findViewById(R.id.log_loading_state);
+        emptyListText = findViewById(R.id.text_empty_logs);
 		logsRecyclerView = findViewById(R.id.recycler_logs);
 		searchInput = findViewById(R.id.search_logs_input);
 		sourceChipGroup = findViewById(R.id.log_source_chip_group);
@@ -281,62 +317,173 @@ public class LogViewerActivity extends AppCompatActivity {
 		selectionExportButton.setOnClickListener(v -> exportSelectedLogs());
 	}
 
-	private void refreshLogs() {
-		if (refreshing) {
-			return;
-		}
-		refreshing = true;
-		updateSubtitle(getString(R.string.log_viewer_status_loading));
-		finishSelectionMode();
-        updateToolbar();
-		new Thread(() -> {
-			List<LogEntry> entries = scanLogEntries();
-			runOnUiThread(() -> applyRefreshedLogs(entries));
-		}).start();
-	}
-
-	private void applyRefreshedLogs(List<LogEntry> entries) {
-		refreshing = false;
-		logEntries.clear();
-		logEntries.addAll(entries);
-        List<File> runtimeCandidates = new ArrayList<>(entries.size());
-        for (LogEntry entry : entries) {
-            runtimeCandidates.add(entry.file);
+    private void refreshLogs() {
+        if (refreshing) {
+            return;
         }
+        refreshing = true;
+        long generation = ++refreshGeneration;
+        resetScanUpdates(generation);
+        updateSubtitle(getString(R.string.log_viewer_status_loading));
+        finishSelectionMode();
+        logEntries.clear();
+        visibleLogEntries.clear();
+        listItems.clear();
         latestRuntimeEntries.clear();
-        for (File file : RuntimeLogFiles.selectLatest(runtimeCandidates)) {
+        adapter.notifyDataSetChanged();
+        updateCrashBanner();
+        updateFilterChipLabels();
+        updateEmptyListVisibility();
+        shareAllFab.setVisibility(View.GONE);
+        updateToolbar();
+        scanThread = new Thread(() -> {
+            try {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                List<LogEntry> entries = scanLogEntries(generation);
+                List<LogEntry> latest = findLatestRuntimeEntries(entries);
+                runOnUiThread(() -> applyRefreshedLogs(generation, entries, latest));
+            } catch (Exception exception) {
+                runOnUiThread(() -> failRefresh(generation, exception));
+            }
+        }, "Sts2LogScan");
+        scanThread.start();
+    }
+
+    private void applyRefreshedLogs(long generation, List<LogEntry> entries, List<LogEntry> latest) {
+        if (!isCurrentRefresh(generation)) {
+            return;
+        }
+        resetScanUpdates(0L);
+        refreshing = false;
+        scanThread = null;
+        logEntries.clear();
+        logEntries.addAll(entries);
+        latestRuntimeEntries.clear();
+        latestRuntimeEntries.addAll(latest);
+        updateCrashBanner();
+        applyFilters();
+        updateSummary();
+        updateToolbar();
+    }
+
+    private List<LogEntry> findLatestRuntimeEntries(List<LogEntry> entries) {
+        List<File> candidates = new ArrayList<>();
+        for (LogEntry entry : entries) {
+            String name = entry.file.getName();
+            if ("godot.log".equals(name) || "sts2.log".equals(name)) {
+                candidates.add(entry.file);
+            }
+        }
+        List<LogEntry> latest = new ArrayList<>(2);
+        for (File file : RuntimeLogFiles.selectLatest(candidates)) {
             for (LogEntry entry : entries) {
                 if (entry.file.equals(file)) {
-                    latestRuntimeEntries.add(entry);
+                    latest.add(entry);
                     break;
                 }
             }
         }
-		updateCrashBanner();
-		applyFilters();
-		updateSummary();
+        return latest;
+    }
+
+    private void queueScannedLogs(long generation, List<LogEntry> entries) {
+        synchronized (scanBatchLock) {
+            if (pendingScanGeneration != generation) {
+                return;
+            }
+            pendingScanEntries.addAll(entries);
+            if (!scanDeliveryScheduled) {
+                scanDeliveryScheduled = true;
+                scanHandler.postDelayed(deliverScanBatch, Math.max(0L, nextScanDeliveryAt - SystemClock.uptimeMillis()));
+            }
+        }
+    }
+
+    private void deliverScannedLogs() {
+        List<LogEntry> entries;
+        long generation;
+        synchronized (scanBatchLock) {
+            generation = pendingScanGeneration;
+            entries = pendingScanEntries;
+            pendingScanEntries = new ArrayList<>();
+            scanDeliveryScheduled = false;
+            nextScanDeliveryAt = SystemClock.uptimeMillis() + SCAN_UI_UPDATE_MS;
+        }
+        appendScannedLogs(generation, entries);
+    }
+
+    private void resetScanUpdates(long generation) {
+        synchronized (scanBatchLock) {
+            scanHandler.removeCallbacks(deliverScanBatch);
+            pendingScanEntries.clear();
+            pendingScanGeneration = generation;
+            scanDeliveryScheduled = false;
+            nextScanDeliveryAt = 0L;
+        }
+    }
+
+    private void appendScannedLogs(long generation, List<LogEntry> entries) {
+        if (!isCurrentRefresh(generation) || entries.isEmpty()) {
+            return;
+        }
+        logEntries.addAll(entries);
+        logEntries.sort(LOG_ENTRY_ORDER);
+        updateCrashBanner();
+        applyFilters();
+    }
+
+    private void failRefresh(long generation, Exception exception) {
+        if (!isCurrentRefresh(generation)) {
+            return;
+        }
+        resetScanUpdates(0L);
+        refreshing = false;
+        scanThread = null;
+        loadingState.setVisibility(View.GONE);
+        updateEmptyListVisibility();
         updateToolbar();
-	}
+        showError(exception);
+    }
 
-	private void updateSummary() {
-		if (logEntries.isEmpty()) {
-			updateSubtitle(getString(R.string.log_viewer_summary_empty));
-			return;
-		}
-		LogEntry newestEntry = logEntries.get(0);
-		updateSubtitle(getString(R.string.log_viewer_summary_count, logEntries.size(), formatRecentDate(newestEntry.lastModified)));
-	}
+    private boolean isCurrentRefresh(long generation) {
+        return refreshing && refreshGeneration == generation && !isFinishing() && !isDestroyed();
+    }
 
-	private void updateEmptyListVisibility() {
-		boolean empty = visibleLogEntries.isEmpty();
-		if (empty) {
-			emptyListText.setText(logEntries.isEmpty()
-					? R.string.log_viewer_summary_empty
-					: R.string.log_viewer_no_filter_results);
-		}
-		emptyListText.setVisibility(empty ? View.VISIBLE : View.GONE);
-		logsRecyclerView.setVisibility(empty ? View.GONE : View.VISIBLE);
-	}
+    private void updateSummary() {
+        if (logEntries.isEmpty()) {
+            updateSubtitle(getString(R.string.log_viewer_summary_empty));
+            return;
+        }
+        LogEntry newestEntry = logEntries.get(0);
+        updateSubtitle(getString(R.string.log_viewer_summary_count, logEntries.size(), formatRecentDate(newestEntry.lastModified)));
+    }
+
+    private void updateEmptyListVisibility() {
+        boolean empty = visibleLogEntries.isEmpty();
+        if (refreshing) {
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) loadingState.getLayoutParams();
+            int gravity = empty ? Gravity.CENTER : Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+            if (params.gravity != gravity) {
+                params.gravity = gravity;
+                loadingState.setLayoutParams(params);
+            }
+            loadingState.setBackgroundColor(empty ? Color.TRANSPARENT : COLOR_BACKGROUND);
+            loadingState.setVisibility(View.VISIBLE);
+            emptyListText.setVisibility(View.GONE);
+            logsRecyclerView.setPadding(0, ExtraSettingsUi.dp(this, 2), 0, ExtraSettingsUi.dp(this, 128));
+            logsRecyclerView.setVisibility(empty ? View.GONE : View.VISIBLE);
+            return;
+        }
+        loadingState.setVisibility(View.GONE);
+        logsRecyclerView.setPadding(0, ExtraSettingsUi.dp(this, 2), 0, ExtraSettingsUi.dp(this, 88));
+        if (empty) {
+            emptyListText.setText(logEntries.isEmpty()
+                    ? R.string.log_viewer_summary_empty
+                    : R.string.log_viewer_no_filter_results);
+        }
+        emptyListText.setVisibility(empty ? View.VISIBLE : View.GONE);
+        logsRecyclerView.setVisibility(empty ? View.GONE : View.VISIBLE);
+    }
 
     private void updateSubtitle(CharSequence subtitle) {
         if (!selectionMode) {
@@ -369,13 +516,21 @@ public class LogViewerActivity extends AppCompatActivity {
 
 	private void rebuildListItems() {
 		listItems.clear();
-		String previousGroup = null;
-		for (int i = 0; i < visibleLogEntries.size(); i++) {
-			LogEntry entry = visibleLogEntries.get(i);
-			String group = formatGroupDate(entry.lastModified);
-			if (!group.equals(previousGroup)) {
-				listItems.add(ListItem.header(group));
-				previousGroup = group;
+        Calendar day = Calendar.getInstance();
+        long dayStart = Long.MAX_VALUE;
+        long dayEnd = Long.MIN_VALUE;
+        for (int i = 0; i < visibleLogEntries.size(); i++) {
+            LogEntry entry = visibleLogEntries.get(i);
+            if (entry.lastModified < dayStart || entry.lastModified >= dayEnd) {
+                day.setTimeInMillis(entry.lastModified);
+                day.set(Calendar.HOUR_OF_DAY, 0);
+                day.set(Calendar.MINUTE, 0);
+                day.set(Calendar.SECOND, 0);
+                day.set(Calendar.MILLISECOND, 0);
+                dayStart = day.getTimeInMillis();
+                day.add(Calendar.DAY_OF_YEAR, 1);
+                dayEnd = day.getTimeInMillis();
+                listItems.add(ListItem.header(formatGroupDate(entry.lastModified)));
 			}
 			listItems.add(ListItem.entry(i, entry));
 		}
@@ -412,135 +567,76 @@ public class LogViewerActivity extends AppCompatActivity {
         crashBanner.setOnClickListener(v -> openLogDetail(finalCrashEntry));
 	}
 
-	private List<LogEntry> scanLogEntries() {
-		List<LogEntry> results = new ArrayList<>();
-		Set<String> seenPaths = new HashSet<>();
-		addLogsFromRoot(results, seenPaths, getFilesDir(), ROOT_INTERNAL_ARCHIVE, getString(R.string.log_viewer_root_internal));
-		File externalFilesDir = getExternalFilesDir(null);
-		if (externalFilesDir != null) {
-			addLogsFromRoot(results, seenPaths, externalFilesDir, ROOT_EXTERNAL_ARCHIVE, getString(R.string.log_viewer_root_external));
-		}
-		results.sort((left, right) -> {
-			int modifiedCompare = Long.compare(right.lastModified, left.lastModified);
-			if (modifiedCompare != 0) {
-				return modifiedCompare;
-			}
-			return left.archivePath.compareToIgnoreCase(right.archivePath);
-		});
-		return results;
-	}
+    private List<LogEntry> scanLogEntries(long generation) {
+        List<LogEntry> results = new ArrayList<>();
+        LogFileScanner.BatchConsumer consumer = batch -> {
+            List<LogEntry> converted = convertScannedEntries(batch);
+            results.addAll(converted);
+            queueScannedLogs(generation, converted);
+        };
+        File externalFilesDir = getExternalFilesDir(null);
+        LogFileScanner.scan(
+                consumer,
+                new LogFileScanner.Root(
+                        getFilesDir(),
+                        ROOT_INTERNAL_ARCHIVE,
+                        getString(R.string.log_viewer_root_internal)),
+                new LogFileScanner.Root(
+                        externalFilesDir,
+                        ROOT_EXTERNAL_ARCHIVE,
+                        getString(R.string.log_viewer_root_external)));
+        results.sort(LOG_ENTRY_ORDER);
+        return results;
+    }
 
-	private void addLogsFromRoot(List<LogEntry> results, Set<String> seenPaths, File rootDirectory, String archiveRootName, String displayRootName) {
-		if (rootDirectory == null || !rootDirectory.isDirectory()) {
-			return;
-		}
-		collectRelevantLogs(results, seenPaths, rootDirectory, rootDirectory, archiveRootName, displayRootName);
-	}
+    private List<LogEntry> convertScannedEntries(List<LogFileScanner.Entry> scannedEntries) {
+        List<LogEntry> converted = new ArrayList<>(scannedEntries.size());
+        for (LogFileScanner.Entry scanned : scannedEntries) {
+            String fileName = scanned.file.getName();
+            String sourceType = resolveSourceType(scanned.relativePath, fileName);
+            converted.add(new LogEntry(
+                    scanned.file,
+                    scanned.displayPath,
+                    scanned.archivePath,
+                    resolveSourceLabel(sourceType),
+                    sourceType,
+                    scanned.storageLabel,
+                    scanned.lastModified,
+                    scanned.size));
+        }
+        return converted;
+    }
 
-	private void collectRelevantLogs(List<LogEntry> results, Set<String> seenPaths, File scanRoot, File currentFile, String archiveRootName, String displayRootName) {
-		File[] children = currentFile.listFiles();
-		if (children == null) {
-			return;
-		}
-		List<File> sortedChildren = new ArrayList<>(children.length);
-		Collections.addAll(sortedChildren, children);
-		sortedChildren.sort((left, right) -> left.getName().compareToIgnoreCase(right.getName()));
-		for (File child : sortedChildren) {
-			if (child.isDirectory()) {
-				collectRelevantLogs(results, seenPaths, scanRoot, child, archiveRootName, displayRootName);
-				continue;
-			}
-			if (!child.isFile()) {
-				continue;
-			}
-			String relativePath = buildRelativePath(scanRoot, child);
-			if (!isRelevantLogFile(relativePath, child.getName())) {
-				continue;
-			}
-			String canonicalPath = getCanonicalOrAbsolutePath(child);
-			if (!seenPaths.add(canonicalPath)) {
-				continue;
-			}
-			String normalizedRelativePath = normalizeRelativePath(relativePath);
-			results.add(new LogEntry(
-					child,
-					buildDisplayPath(displayRootName, normalizedRelativePath),
-					buildArchivePath(archiveRootName, normalizedRelativePath),
-					resolveSourceLabel(normalizedRelativePath, child.getName()),
-					resolveSourceType(normalizedRelativePath, child.getName()),
-					displayRootName,
-					child.lastModified(),
-					child.length()
-			));
-		}
-	}
+    private String resolveSourceLabel(String sourceType) {
+        if (SOURCE_CRASH.equals(sourceType)) {
+            return getString(R.string.log_viewer_source_sentry);
+        }
+        if (SOURCE_HARMONY.equals(sourceType)) {
+            return getString(R.string.log_viewer_source_harmony);
+        }
+        if (SOURCE_CONSOLE.equals(sourceType)) {
+            return getString(R.string.log_viewer_source_console);
+        }
+        if (SOURCE_RUNTIME.equals(sourceType)) {
+            return getString(R.string.log_viewer_source_runtime);
+        }
+        return getString(R.string.log_viewer_source_other);
+    }
 
-	private boolean isRelevantLogFile(String relativePath, String fileName) {
-		String normalizedPath = normalizeRelativePath(relativePath).toLowerCase(Locale.ROOT);
-		String lowerFileName = fileName == null ? "" : fileName.toLowerCase(Locale.ROOT);
-		if (normalizedPath.startsWith("logs/") || normalizedPath.contains("/logs/")) {
-			return true;
-		}
-		if (normalizedPath.startsWith("sentry/reports/") || normalizedPath.contains("/sentry/reports/")) {
-			return true;
-		}
-		return lowerFileName.endsWith(".log");
-	}
-
-	private String resolveSourceLabel(String relativePath, String fileName) {
-		String sourceType = resolveSourceType(relativePath, fileName);
-		if (SOURCE_CRASH.equals(sourceType)) {
-			return getString(R.string.log_viewer_source_sentry);
-		}
-		if (SOURCE_HARMONY.equals(sourceType)) {
-			return getString(R.string.log_viewer_source_harmony);
-		}
-		if (SOURCE_CONSOLE.equals(sourceType)) {
-			return getString(R.string.log_viewer_source_console);
-		}
-		if (SOURCE_RUNTIME.equals(sourceType)) {
-			return getString(R.string.log_viewer_source_runtime);
-		}
-		return getString(R.string.log_viewer_source_other);
-	}
-
-	private String resolveSourceType(String relativePath, String fileName) {
-		String normalizedPath = normalizeRelativePath(relativePath).toLowerCase(Locale.ROOT);
-		String lowerFileName = fileName == null ? "" : fileName.toLowerCase(Locale.ROOT);
-		if (normalizedPath.startsWith("sentry/reports/") || normalizedPath.contains("/sentry/reports/")) {
-			return SOURCE_CRASH;
-		}
-		if ("monomod-harmony.log".equals(lowerFileName) || lowerFileName.contains("harmony")) {
-			return SOURCE_HARMONY;
-		}
-		if ("console_history.log".equals(lowerFileName) || lowerFileName.contains("console")) {
-			return SOURCE_CONSOLE;
-		}
-		if (normalizedPath.startsWith("logs/") || normalizedPath.contains("/logs/")) {
-			return SOURCE_RUNTIME;
-		}
-		return SOURCE_RUNTIME;
-	}
-
-	private String buildDisplayPath(String displayRootName, String relativePath) {
-		return displayRootName + "/" + relativePath;
-	}
-
-	private String buildArchivePath(String archiveRootName, String relativePath) {
-		return archiveRootName + "/" + relativePath;
-	}
-
-	private String normalizeRelativePath(String relativePath) {
-		return relativePath == null ? "" : relativePath.replace('\\', '/');
-	}
-
-	private String getCanonicalOrAbsolutePath(File file) {
-		try {
-			return file.getCanonicalPath();
-		} catch (IOException ignored) {
-			return file.getAbsolutePath();
-		}
-	}
+    private String resolveSourceType(String relativePath, String fileName) {
+        String normalizedPath = relativePath == null ? "" : relativePath.toLowerCase(Locale.ROOT);
+        String lowerFileName = fileName == null ? "" : fileName.toLowerCase(Locale.ROOT);
+        if (normalizedPath.startsWith("sentry/reports/") || normalizedPath.contains("/sentry/reports/")) {
+            return SOURCE_CRASH;
+        }
+        if ("monomod-harmony.log".equals(lowerFileName) || lowerFileName.contains("harmony")) {
+            return SOURCE_HARMONY;
+        }
+        if ("console_history.log".equals(lowerFileName) || lowerFileName.contains("console")) {
+            return SOURCE_CONSOLE;
+        }
+        return SOURCE_RUNTIME;
+    }
 
 	private void onLogClicked(int position) {
 		if (position < 0 || position >= visibleLogEntries.size()) {
@@ -554,7 +650,7 @@ public class LogViewerActivity extends AppCompatActivity {
 	}
 
 	private boolean onLogLongPressed(int position) {
-		if (position < 0 || position >= visibleLogEntries.size()) {
+        if (refreshing || position < 0 || position >= visibleLogEntries.size()) {
 			return false;
 		}
         if (!selectionMode) {
@@ -774,18 +870,6 @@ public class LogViewerActivity extends AppCompatActivity {
 		}
 	}
 
-	private String buildRelativePath(File root, File file) {
-		String rootPath = root.getAbsolutePath();
-		String filePath = file.getAbsolutePath();
-		if (filePath.startsWith(rootPath)) {
-			String relative = filePath.substring(rootPath.length());
-			if (relative.startsWith(File.separator)) {
-				relative = relative.substring(1);
-			}
-			return relative.replace(File.separatorChar, '/');
-		}
-		return file.getName();
-	}
 
 	private String removeExtension(String fileName) {
 		int extensionIndex = fileName.lastIndexOf('.');

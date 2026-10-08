@@ -134,6 +134,33 @@
             android:paddingBottom="88dp"
             android:scrollbars="vertical" />
 
+        <LinearLayout
+            android:id="@+id/log_loading_state"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <ProgressBar
+                android:id="@+id/progress_log_scan"
+                style="?android:attr/progressBarStyleLarge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:indeterminate="true"
+                android:indeterminateTint="@color/sts2_crash_primary" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/log_viewer_status_loading"
+                android:textColor="@color/sts2_crash_on_surface_variant"
+                android:textSize="14sp" />
+        </LinearLayout>
+
         <TextView
             android:id="@+id/text_empty_logs"
             android:layout_width="match_parent"
