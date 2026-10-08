@@ -304,15 +304,25 @@ STS2Mobile.ModEntry
 OS.GetDataDir()/port_compat.pck
 ```
 
-成功后通过 `ProjectSettings.LoadResourcePack()` 挂载资源，并在节点加入树时替换已知桌面 shader 为 `res://shaders/mobile_compat/*`。
+成功后通过 `ProjectSettings.LoadResourcePack()` 挂载资源。是否执行替换由 Android 附加设置 `shader_compatibility_mode` 控制；开关关闭时不订阅 `SceneTree.NodeAdded`，也不处理已有节点。shader 兼容使用 `port_compat.pck` 中 `res://shaders/mobile_compat/*.gdshader` 下的独立移动 shader variants，不改写 payload 中的原版 shader 或共享 `ShaderMaterial`。
+当前 path/identity 表已覆盖原有 screen effects 以及新增的普通卡牌 portrait blur、非古卡 canvas-group blur、water reflection、flipbook / row-flipbook、screen chromatic aberration、HSV、scry reveal、rest-site light 与 Vantom oil variants；内嵌 VisualShader 的 hash allowlist 覆盖 stepped-fire flat/add/dark、blood wall、molten fist、Aeonglass ray 与 slash 等已生成变体。每个 variant 都必须保留原 material 实际使用的 uniform 与纹理，并保留其 `TIME`、`SCREEN_UV`、`INSTANCE_CUSTOM`（若原 shader 使用）及 alpha/blend 语义；screen-sensitive variant 必须继续取屏幕内容，不能退化成纯白或纯黑占位。该行为约束不宣称 Android GPU 与桌面逐像素一致。
 
-卡面/先古卡遮罩使用的 `res://shaders/blur/canvas_group_mask_blur.gdshader` 不再进入替换表，也不预加载或随 overlay 发布旧的 `mobile_compat/canvas_group_mask_blur_compat.gdshader`。该移动替代版在开启着色器兼容后可能把先古卡面渲染成纯白，因此保留原版 shader。
+替换只覆盖已实现且可观察的有限边界：
 
-另外 `TransitionMaterialPatches` 会在 `NTransition._Ready` 后复制场景默认 `ShaderMaterial`，并在原版 `AssetCache.GetMaterial()` 返回 `fade_transition_mat.tres` / `fight_transition_mat.tres` 时返回缓存材质的副本。全局 disposal guard 已阻止 cache cleanup 显式释放资源；该补丁仍作为纵深保护，隔离 transition tween 对共享材质状态的修改并兼容旧兼容包行为。
+- 具有稳定内置 `ResourcePath` 的 shader/material 只按兼容层的精确路径表处理；未命中路径表的资源保持原样。
+- inline `VisualShader` 不按资源对象身份猜测，而按生成代码的 SHA-256 命中已审计 variant，并且 source path 还必须通过内置前缀 allowlist（`res://scenes/`、`res://images/`、`res://shaders/`）。`res://mods/` 与 `res://user/` 明确不替换；hash 命中但不在这些内置前缀内也不替换。
+- VisualShader 生成代码中的隐藏 sampler alias 属于 baked/generated texture 输入，不会因为 hash 命中而新增可写的 shader parameter key；variant 只复制原 material 可见的参数协议。
+- 通用 `SceneTree.NodeAdded` 路径只检查 CanvasItem 自身的 `Material`；每个命中节点获得独立的 `ShaderMaterial` 副本。Spine 的 material slots 不由这条 CanvasItem 自动路径覆盖，本补丁不改写 slots。
+- 缓存材质不依赖 NodeAdded 猜测：`NCard.Reload` 专门修复卡面 portrait/canvas-group blur，`NMainMenu._Ready` 修复主菜单 blur，`NEpochSlot._Ready` 修复时间线 blur，`NRadialBlurVfx._Ready` 修复径向 blur；`AssetCache.GetMaterial()` 对已知卡面 blur material 路径也返回替换材质的副本。
+- 这些已知动态路径写回的是替代 `ShaderMaterial` 副本，而不是把原始共享材质换成新 shader；当前没有覆盖任意晚到 `CanvasItem.Material` 赋值的通用 helper。若后续集成 owner 暴露专用更新入口，调用方必须沿用这条替代材质路径；本兼容层当前不对不存在的 helper 或自动重写能力作承诺。
+
+古卡（先古卡）遮罩使用的 `res://shaders/blur/canvas_group_mask_blur.gdshader` 明确排除在替换表之外；overlay 不提供、不预加载 `canvas_group_mask_blur` 的移动 variant，因此该遮罩继续使用原版 shader。这个排除不妨碍上面的 `NCard.Reload` 专用路径修复其它卡面 blur 缓存材质。
+
+`TransitionMaterialPatches` 会在 `NTransition._Ready` 后复制场景默认 `ShaderMaterial`，并在原版 `AssetCache.GetMaterial()` 返回 `fade_transition_mat.tres` / `fight_transition_mat.tres` 时返回缓存材质的副本。全局 disposal guard 已阻止 cache cleanup 显式释放资源；该补丁仍作为纵深保护，隔离 transition tween 对共享材质状态的修改并兼容旧兼容包行为。
 
 `v0.107.0-beta`、`v0.107.1`、`v0.108.0`、共享 `v0.109.x` / `v0.110.x` 与独立 `v0.111.0` target 的 `MapDrawingSceneCachePatches` 同样作为资源 owner 纵深保护：它拦截 `NMapDrawings.CreateLineForPlayer()`，让地图画笔绘制/橡皮线条从 Android 兼容层自持有的 `PackedScene` 实例化，避免长期字段依赖已经离开 cache 索引的场景；橡皮线条会同步刷新 `_eraserMaterial`，保留原版保存时通过材质判断 eraser line 的行为。
 
-是否启用由附加设置中的 `shader_compatibility_mode` 控制。
+关闭 `shader_compatibility_mode` 时会退订节点监听并停止后续替换，但已经写入节点或缓存字段的替换材质不会反向恢复为原版；要还原本进程中已替换的材质，必须退出并重启游戏。重启后开关关闭的进程才不会重新应用这些 shader variants。
 
 ## 10. 普通用户 MOD 加载
 
