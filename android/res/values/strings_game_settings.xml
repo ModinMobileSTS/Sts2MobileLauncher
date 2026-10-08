@@ -312,6 +312,7 @@
     <string name="screen_rotation_user_landscape">Follow system</string>
     <string name="screen_rotation_landscape">No rotation</string>
     <string name="screen_rotation_reverse_landscape">180°</string>
+    <string name="screen_rotation_portrait">Portrait (requires portrait UI MOD)</string>
     <string name="section_preload">Preload</string>
     <string name="preload_switch">Enable preload / warmup</string>
     <string name="section_lan">LAN Multiplayer</string>
@@ -591,6 +592,7 @@
     <string name="choice_sheet_screen_rotation_user_landscape_desc">Follow the system auto-rotate lock while staying in landscape orientations.</string>
     <string name="choice_sheet_screen_rotation_landscape_desc">Lock the game to the normal landscape orientation.</string>
     <string name="choice_sheet_screen_rotation_reverse_desc">Lock the game to the reverse landscape orientation.</string>
+    <string name="choice_sheet_screen_rotation_portrait_desc">Lock the game to portrait orientation and let a compatible portrait UI MOD own the layout. Install and enable a portrait UI MOD before selecting this mode; off by default.</string>
     <string name="scale_default">Default (1.0x)</string>
     <string name="scale_custom">Custom</string>
     <string name="scale_custom_title">Custom scale</string>

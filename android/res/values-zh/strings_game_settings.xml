@@ -312,6 +312,7 @@
     <string name="screen_rotation_user_landscape">跟随系统</string>
     <string name="screen_rotation_landscape">不旋转</string>
     <string name="screen_rotation_reverse_landscape">180°</string>
+    <string name="screen_rotation_portrait">竖屏（需配合竖屏 MOD）</string>
     <string name="section_preload">预加载</string>
     <string name="preload_switch">启用预加载 / 启动预热</string>
     <string name="section_lan">局域网联机</string>
@@ -591,6 +592,7 @@
     <string name="choice_sheet_screen_rotation_user_landscape_desc">跟随系统屏幕自动旋转开关，但仅在横屏方向之间切换。</string>
     <string name="choice_sheet_screen_rotation_landscape_desc">固定为普通横屏方向。</string>
     <string name="choice_sheet_screen_rotation_reverse_desc">固定为反向横屏方向。</string>
+    <string name="choice_sheet_screen_rotation_portrait_desc">锁定游戏为竖屏，并由兼容的竖屏 UI MOD 接管布局。请先安装并启用竖屏 MOD；此模式默认关闭。</string>
     <string name="scale_default">默认（1.0x）</string>
     <string name="scale_custom">自定义</string>
     <string name="scale_custom_title">自定义缩放</string>

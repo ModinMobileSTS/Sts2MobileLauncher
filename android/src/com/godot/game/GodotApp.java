@@ -795,6 +795,10 @@ public class GodotApp extends GodotActivity {
 
 		int orientation;
 		switch (mode) {
+			case ExtraSettingsRepository.SCREEN_ROTATION_PORTRAIT:
+				orientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
+				disableOrientationEventListener();
+				break;
 			case ExtraSettingsRepository.SCREEN_ROTATION_LANDSCAPE:
 				orientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
 				disableOrientationEventListener();

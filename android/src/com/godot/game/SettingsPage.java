@@ -90,7 +90,8 @@ public final class SettingsPage {
 		ExtraSettingsRepository.SCREEN_ROTATION_AUTO,
 		ExtraSettingsRepository.SCREEN_ROTATION_USER_LANDSCAPE,
 		ExtraSettingsRepository.SCREEN_ROTATION_LANDSCAPE,
-		ExtraSettingsRepository.SCREEN_ROTATION_REVERSE_LANDSCAPE
+		ExtraSettingsRepository.SCREEN_ROTATION_REVERSE_LANDSCAPE,
+		ExtraSettingsRepository.SCREEN_ROTATION_PORTRAIT
 	};
 
 	private enum SettingsSegment { GRAPHICS, INPUT, SAVE, SYSTEM }
@@ -797,12 +798,13 @@ public final class SettingsPage {
 				new ChoiceOption(labels.get(2), context.getString(R.string.choice_sheet_mobile_tooltip_hidden_desc), R.drawable.ic_close_24)
 			);
 		}
-		if (labelRes == R.string.screen_rotation_mode && labels.size() >= 4) {
+		if (labelRes == R.string.screen_rotation_mode && labels.size() >= 5) {
 			return Arrays.asList(
 				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_screen_rotation_auto_desc), R.drawable.ic_sync_24),
 				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_screen_rotation_user_landscape_desc), R.drawable.ic_sync_24),
 				new ChoiceOption(labels.get(2), context.getString(R.string.choice_sheet_screen_rotation_landscape_desc), R.drawable.ic_desktop_windows_24),
-				new ChoiceOption(labels.get(3), context.getString(R.string.choice_sheet_screen_rotation_reverse_desc), R.drawable.ic_compare_arrows_24)
+				new ChoiceOption(labels.get(3), context.getString(R.string.choice_sheet_screen_rotation_reverse_desc), R.drawable.ic_compare_arrows_24),
+				new ChoiceOption(labels.get(4), context.getString(R.string.choice_sheet_screen_rotation_portrait_desc), R.drawable.ic_phone_android_24)
 			);
 		}
 		if (labelRes == R.string.preload_vfx_mode_title && labels.size() >= 3) {
@@ -1482,7 +1484,8 @@ public final class SettingsPage {
 			context.getString(R.string.screen_rotation_auto),
 			context.getString(R.string.screen_rotation_user_landscape),
 			context.getString(R.string.screen_rotation_landscape),
-			context.getString(R.string.screen_rotation_reverse_landscape)
+			context.getString(R.string.screen_rotation_reverse_landscape),
+			context.getString(R.string.screen_rotation_portrait)
 		);
 	}
 

@@ -61,6 +61,7 @@ public final class ExtraSettingsRepository {
 	public static final String SCREEN_ROTATION_USER_LANDSCAPE = "user_landscape";
 	public static final String SCREEN_ROTATION_LANDSCAPE = "landscape";
 	public static final String SCREEN_ROTATION_REVERSE_LANDSCAPE = "reverse_landscape";
+	public static final String SCREEN_ROTATION_PORTRAIT = "portrait";
 	public static final String TOOLTIP_MODE_IMMEDIATE = "immediate";
 	public static final String TOOLTIP_MODE_LONG_PRESS = "long_press";
 	public static final String TOOLTIP_MODE_HIDDEN = "hidden";
@@ -311,6 +312,9 @@ public final class ExtraSettingsRepository {
 		}
 		if ("180".equals(normalized) || "flip_180".equals(normalized) || "rotate_180".equals(normalized) || "reverse".equals(normalized) || SCREEN_ROTATION_REVERSE_LANDSCAPE.equals(normalized)) {
 			return SCREEN_ROTATION_REVERSE_LANDSCAPE;
+		}
+		if (SCREEN_ROTATION_PORTRAIT.equals(normalized) || "portrait_mode".equals(normalized)) {
+			return SCREEN_ROTATION_PORTRAIT;
 		}
 		if ("user".equals(normalized) || "system".equals(normalized) || "follow_system".equals(normalized) || SCREEN_ROTATION_USER_LANDSCAPE.equals(normalized)) {
 			return SCREEN_ROTATION_USER_LANDSCAPE;

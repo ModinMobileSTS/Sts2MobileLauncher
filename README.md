@@ -215,6 +215,17 @@ on a 2400×1080 attachment). Android Surface size and the high-refresh request a
 left untouched; aspect-ratio, UI-scale, global-scale, and font-scale settings
 continue to apply independently.
 
+Extra Settings → Graphics → Graphics parameters → Rotation mode also offers
+**Portrait (requires portrait UI MOD)**. It is opt-in; the default remains
+**Follow system**, limited to landscape. Install and enable a compatible portrait
+UI MOD separately before using it; the launcher does not supply a portrait UI.
+With the updated full compat pack, portrait mode uses a 1080-wide logical canvas
+whose height follows the physical portrait aspect. Stored landscape aspect and
+UI-scale choices are retained but do not override this canvas; game scale and
+font scale remain independent. Selecting a landscape mode restores the stored
+aspect/UI-scale behavior. Render resolution remains a separate renderer setting.
+
+
 ### 7. ADB Automation Debugging
 For connected-device debugging, the repository includes an ADB harness that can install the APK, push a payload/compat pack/MOD into app-private storage, run launch preparation, start the game, and collect logs or Perfetto traces:
 ```bash
