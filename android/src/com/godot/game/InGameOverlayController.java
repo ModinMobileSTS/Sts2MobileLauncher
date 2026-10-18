@@ -817,12 +817,14 @@ public final class InGameOverlayController {
 				ExtraSettingsRepository.SCREEN_ROTATION_USER_LANDSCAPE,
 				ExtraSettingsRepository.SCREEN_ROTATION_AUTO,
 				ExtraSettingsRepository.SCREEN_ROTATION_LANDSCAPE,
-				ExtraSettingsRepository.SCREEN_ROTATION_REVERSE_LANDSCAPE
+				ExtraSettingsRepository.SCREEN_ROTATION_REVERSE_LANDSCAPE,
+				ExtraSettingsRepository.SCREEN_ROTATION_PORTRAIT
 			}, new int[] {
 				R.string.screen_rotation_user_landscape,
 				R.string.screen_rotation_auto,
 				R.string.screen_rotation_landscape,
-				R.string.screen_rotation_reverse_landscape
+				R.string.screen_rotation_reverse_landscape,
+				R.string.screen_rotation_portrait
 			}, rotation, value -> {
 				try {
 					repository.saveSetting(root -> {

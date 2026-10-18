@@ -15,6 +15,16 @@
         app:subtitleTextColor="@color/sts2_crash_on_surface_variant"
         app:titleTextColor="@color/sts2_crash_on_surface" />
 
+    <com.google.android.material.progressindicator.LinearProgressIndicator
+        android:id="@+id/progress_log_scan_bar"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:indeterminate="true"
+        android:visibility="gone"
+        app:indicatorColor="@color/sts2_crash_primary"
+        app:trackColor="@color/sts2_crash_primary_container"
+        app:trackThickness="4dp" />
+
     <LinearLayout
         android:id="@+id/log_tools"
         android:layout_width="match_parent"

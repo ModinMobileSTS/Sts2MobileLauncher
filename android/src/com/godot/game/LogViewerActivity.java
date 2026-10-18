@@ -21,7 +21,6 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.view.animation.PathInterpolator;
@@ -37,6 +36,7 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
+import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
@@ -108,6 +108,7 @@ public class LogViewerActivity extends AppCompatActivity {
 
 	private TextView emptyListText;
     private View loadingState;
+    private LinearProgressIndicator loadingProgressBar;
 
 	private RecyclerView logsRecyclerView;
 	private LogAdapter adapter;
@@ -240,6 +241,7 @@ public class LogViewerActivity extends AppCompatActivity {
 
 	private void bindViews() {
         loadingState = findViewById(R.id.log_loading_state);
+        loadingProgressBar = findViewById(R.id.progress_log_scan_bar);
         emptyListText = findViewById(R.id.text_empty_logs);
 		logsRecyclerView = findViewById(R.id.recycler_logs);
 		searchInput = findViewById(R.id.search_logs_input);
@@ -439,7 +441,6 @@ public class LogViewerActivity extends AppCompatActivity {
         resetScanUpdates(0L);
         refreshing = false;
         scanThread = null;
-        loadingState.setVisibility(View.GONE);
         updateEmptyListVisibility();
         updateToolbar();
         showError(exception);
@@ -460,28 +461,15 @@ public class LogViewerActivity extends AppCompatActivity {
 
     private void updateEmptyListVisibility() {
         boolean empty = visibleLogEntries.isEmpty();
-        if (refreshing) {
-            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) loadingState.getLayoutParams();
-            int gravity = empty ? Gravity.CENTER : Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-            if (params.gravity != gravity) {
-                params.gravity = gravity;
-                loadingState.setLayoutParams(params);
-            }
-            loadingState.setBackgroundColor(empty ? Color.TRANSPARENT : COLOR_BACKGROUND);
-            loadingState.setVisibility(View.VISIBLE);
-            emptyListText.setVisibility(View.GONE);
-            logsRecyclerView.setPadding(0, ExtraSettingsUi.dp(this, 2), 0, ExtraSettingsUi.dp(this, 128));
-            logsRecyclerView.setVisibility(empty ? View.GONE : View.VISIBLE);
-            return;
-        }
-        loadingState.setVisibility(View.GONE);
-        logsRecyclerView.setPadding(0, ExtraSettingsUi.dp(this, 2), 0, ExtraSettingsUi.dp(this, 88));
-        if (empty) {
+        boolean scanningWithoutLogs = refreshing && logEntries.isEmpty();
+        loadingState.setVisibility(scanningWithoutLogs ? View.VISIBLE : View.GONE);
+        loadingProgressBar.setVisibility(refreshing && !logEntries.isEmpty() ? View.VISIBLE : View.GONE);
+        if (empty && !scanningWithoutLogs) {
             emptyListText.setText(logEntries.isEmpty()
                     ? R.string.log_viewer_summary_empty
                     : R.string.log_viewer_no_filter_results);
         }
-        emptyListText.setVisibility(empty ? View.VISIBLE : View.GONE);
+        emptyListText.setVisibility(empty && !scanningWithoutLogs ? View.VISIBLE : View.GONE);
         logsRecyclerView.setVisibility(empty ? View.GONE : View.VISIBLE);
     }
 
