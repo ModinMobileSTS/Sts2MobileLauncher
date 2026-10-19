@@ -79,6 +79,7 @@ The creation of this project relies heavily on the explorations of the open-sour
   Optional anonymous Workshop download service. Enable **Download with Spire Supply Station** in Workshop settings (off by default); the About icon beside the switch provides acknowledgements, copyright information and external links. The native downloader does not send Steam login credentials to the service. Site-default content has no verified game branch; see [Workshop download notes](doc/modding/mod-and-compat-notes.md#41-可选的尖塔补给站下载) and the [service terms](https://workshop.apricityx.top/legal/terms).
 - **[STS2-RitsuLib](https://github.com/BAKAOLC/STS2-RitsuLib) / [BaseLib-StS2](https://github.com/Alchyr/BaseLib-StS2)**
   Served as vital test baseline reference libraries for troubleshooting Android MOD compatibility.
+  The native [BaseLib save regression](doc/modding/offline-mod-validation.md#33-baselib-扩展存档原生回归) uses a locally supplied BaseLib DLL and original game references; neither is redistributed by the test project.
 - **[Google Material Symbols](https://fonts.google.com/icons)**
   Provides the official rounded icon outlines used by the launcher UI, generated into Android vector drawables from the bundled font.
 - **[Android desugar_jdk_libs](https://github.com/google/desugar_jdk_libs)**

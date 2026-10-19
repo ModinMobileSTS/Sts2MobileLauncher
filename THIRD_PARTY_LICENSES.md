@@ -28,7 +28,7 @@
 | 组件 | 本仓库位置/用途 | 许可证/注意事项 |
 | --- | --- | --- |
 | Godot Engine Android template | `android/` Gradle template 结构、`GodotApp.java` 等；构建时同步 Godot Android AAR / GodotSharp / Mono publish runtime 到 gitignored 路径。 | MIT。保留 Godot 文件头；完整 runtime 不入库。 |
-| Godot.NET.Sdk 4.5.1（仅原生回归） | `port-mod/tests/FramePreparation.Tests` 用官方 Godot .NET SDK 编译合成测试场景，配合官方桌面引擎验证真实 ResourceLoader/节点生命周期；不改变发布 APK 的依赖。 | MIT；<https://github.com/godotengine/godot>。测试引擎下载与生成产物仅保留在 ignored 路径，不提交。 |
+| Godot.NET.Sdk 4.5.1（仅原生回归） | `port-mod/tests/FramePreparation.Tests` 验证真实 ResourceLoader/节点生命周期；`port-mod/tests/BaseLibExtendedSave.Tests` 验证真实 BaseLib 扩展存档跨进程写入/读回；均配合官方桌面 .NET 引擎，不改变发布 APK 的依赖。 | MIT；<https://github.com/godotengine/godot>。测试引擎下载与生成产物仅保留在 ignored 路径，不提交。 |
 | Material Symbols Rounded | `android/res/font/material_symbols_rounded.ttf` 作为离线生成输入；`tools/android/generate-material-symbol-vectors.py` 从字体导出 `android/res/drawable/ic_ms_*.xml` 官方轮廓 vector，Java 侧 `MaterialSymbols` 运行时加载这些 vector 统一启动器 MD3 图标。 | Google Fonts / Material Symbols，Apache-2.0；生成的 vector 资源仍按该来源审计。 |
 | FMOD Android engine + Godot plugin | 通过 `.env` 的 `STS2_FMOD_PLUGIN_AAR` 和同级 `arm64/`（或 `STS2_FMOD_ANDROID_LIBS_DIR`）同步与 PC 引擎版本一致的 2.03.06 FMOD core/Studio 和 Godot 原生桥到 gitignored 的 `android/libs/`，只在 APK 中打包；同步前检查三件套 SHA。 | FMOD 自身许可及 Godot 插件上游许可分别适用；本仓库不提交 AAR/原生库，正式分发前仍须确认再分发授权。 |
 | .NET / Godot Mono runtime 与 crypto native jar | 通过 `.env` / `tools/android/sync-runtime-from-references.sh` 同步到 `android/assets/dotnet_bcl/` 等 gitignored 路径。 | .NET / Godot / 上游组件各自许可证；发布包前审计实际打入 APK 的文件。 |
@@ -65,7 +65,7 @@
 | 名称 | URL | 用途 | 许可证/注意事项 |
 | --- | --- | --- | --- |
 | STS2-RitsuLib | <https://github.com/BAKAOLC/STS2-RitsuLib> | 常见前置 MOD 兼容性排查。 | MIT |
-| BaseLib-StS2 | <https://github.com/Alchyr/BaseLib-StS2> | 常见前置 MOD 兼容性排查。 | MIT |
+| BaseLib-StS2 | <https://github.com/Alchyr/BaseLib-StS2> | 常见前置 MOD 兼容性排查；`port-mod/tests/BaseLibExtendedSave.Tests` 动态加载用户本机提供的 DLL，验证卡牌修改数据的真实 JSON 持久化，不复制其源码或分发其二进制。 | MIT；不新增 APK 内置 BaseLib 依赖。 |
 | sts2-quickRestart | <https://github.com/freude916/sts2-quickRestart> | 快速重开 UI/流程兼容性参考。 | 未检测到标准 license；仅作本地参考。 |
 
 ## 发布前合规检查

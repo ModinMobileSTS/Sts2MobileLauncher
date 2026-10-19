@@ -217,6 +217,7 @@ v0.110.0 是游戏 MOD API 更新，不只是 Android target 更新；v0.110.1 �
 - 优先使用 prefix/postfix 和反射兜底，谨慎使用复杂 transpiler；Android 上 MonoMod/Cecil/Godot StringName 生命周期问题更容易暴露。
 - 任何直接引用游戏内部类型的 patch 都可能随游戏版本变化失效，应通过 active target compile gate 验证；只在单版本复现的问题优先收敛到 target adapter/capability 或条件编译，不要默认拆回 compat 分支。
 - `ModEntry.Apply()` patch 顺序很重要：BaseLib/RitsuLib 与平台/路径类 patch 必须早于 ModLoader。
+- BaseLib 扩展存档必须沿用其自身的 `ExtendedSavePatches.Patch(Harmony)` 注册，不得因历史 workaround 全局屏蔽 JSON 扩展字段；这会让 `CardModifier` 等数据在保存时静默丢失。当前只保留独立的异步状态机 hook 降级，不能把扩展存档恢复宣称为 BaseLib 完整兼容。修复不补回旧存档中已丢失的修改；测试前保留备份，并在目标 Android 设备上验证保存退出、进程重启和继续游戏。开发机数据回归见[离线验证流程](offline-mod-validation.md#33-baselib-扩展存档原生回归)。
 - Android temp 目录必须尽早配置，否则 Harmony/MonoMod 可能尝试使用不可写 `/tmp`。
 - Shader/resource overlay 资源应放入 `port-mod/overlay/`，重新打包 `port_compat.pck` 后才能生效。
 - 普通 MOD loader 的目标是尽量复用游戏原本的 scanner、dependency sort 和 TryLoadMod，减少与 PC 行为分叉。

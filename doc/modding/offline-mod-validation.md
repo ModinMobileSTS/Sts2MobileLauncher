@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | 合成 Harmony 回归 | `port-mod/tools/test-deferred-mod-patch-queue.sh` | compat 的 direct patch、PatchAll、危险目标与模型目标工厂延迟、资源静态初始化/池冻结边界、prepare/cleanup、失败隔离和重复 flush 行为 |
 | 原版模型 shadow 回归 | `port-mod/tools/test-modeldb-shadow-placeholder.sh` | 使用本机原版程序集，确认 generic/Type/ID/类别查询、canonical 优先级、字典隔离、错误语义和 phase 1 对象身份 |
+| BaseLib 扩展存档原生回归 | `port-mod/tests/BaseLibExtendedSave.Tests` | 在真实 Godot native 宿主加载本机 BaseLib 和原版程序集，跨进程验证永久卡牌修改的 JSON 持久化与旧存档兼容 |
 | 静态 IL 检查 | 本地 `.agent/probes/loadoutinspect/` | 查看选定方法及 iterator 的 IL，寻找早期模型访问、Harmony 与 Godot 调用线索；不执行 MOD |
 | 真实 Loadout 工厂 smoke | 本地 `.agent/probes/loadout-runtime/` | 三个实际 Loadout 工厂在早期被延迟，模型构造后重放，并在目标上安装指定 Harmony owner |
 | 实际游戏验证 | Godot / Android 与 ADB | MOD 初始化、PCK/场景、玩法、音频、输入和 Android Mono/native 行为 |
@@ -98,6 +99,36 @@ env LD_PRELOAD=libgcc_s.so.1 \
 桌面 Mono 的原版模型构造器/基类 `.cctor` 可能创建 `Godot.StringName`，因此完整 phase 2 必须在已初始化 Godot native 的宿主中验证；无宿主进程在 `godotsharp_string_name_new_from_string` 等空 native 调用处崩溃，不能计为通过，也不能用 no-op 替代。early shadow、phase 1 和合成资源/池边界可独立验证，但它们不证明 Android 上的完整构造或 MOD 功能。
 
 Linux 上 `LD_PRELOAD=libgcc_s.so.1` 用于本机 Ekyso Harmony 验证；不是 Android 配置，也不要据此修改 APK native 环境。
+
+### 3.3 BaseLib 扩展存档原生回归
+
+`BaseLibExtendedSave.Tests` 需要官方 Godot 4.5.1 .NET 桌面引擎、匹配的本机 original references、APK 打包的 Harmony/MonoMod 和本机可信 `BaseLib.dll`。测试不内置游戏或 MOD 二进制，不需要游戏 PCK，也不执行 BaseLib 的完整 initializer。
+
+从父仓库根加载配置后，将 `GODOT_BIN` 和 `BASELIB_DLL` 指向本机实际文件：
+
+```bash
+source tools/env/load-local-config.sh
+sts2_load_dotenv
+GODOT_BIN=/path/to/Godot_v4.5.1-stable_mono_linux.x86_64
+BASELIB_DLL=/path/to/BaseLib.dll
+(
+  set -e
+  CASE_DIR="$(mktemp -d)"
+  trap 'rm -rf "$CASE_DIR"' EXIT
+  "$DOTNET_BIN" build port-mod/tests/BaseLibExtendedSave.Tests/BaseLibExtendedSave.Tests.csproj \
+    "-p:CompatReferenceDir=$STS2_ORIGINAL_V1110_REFERENCE_DIR" \
+    "-p:HarmonyReferenceDir=$PWD/android/assets/dotnet_bcl"
+  for phase in write read; do
+    env LD_PRELOAD=libgcc_s.so.1 DOTNET_ROOT="$(dirname "$DOTNET_BIN")" \
+      "$GODOT_BIN" --headless --path "$PWD/port-mod/tests/BaseLibExtendedSave.Tests" -- \
+      "$BASELIB_DLL" "$STS2_ORIGINAL_V1110_REFERENCE_DIR" "$phase" "$CASE_DIR"
+  done
+)
+```
+
+测试先绑定生产 `BaseLibCompatPatches` 的 AssemblyLoad listener，再把 BaseLib 加载到 Godot 脚本所在的同一 `AssemblyLoadContext`，避免重复 Harmony/game 类型身份。它调用真实的扩展类型/卡牌修改注册与 `ExtendedSavePatches.Patch()`，用游戏原版 JSON context 写入 `SerializableCard` 记录；另一个进程读回同一磁盘文件，确认多种修改的类型、数量、整数/字符串自定义属性和不同卡牌的隔离，同时确认无扩展字段的旧记录仍可读。恢复扩展存档不改变独立的异步状态机 hook 屏蔽。
+
+已验证输入为 BaseLib 3.4.7 与 v0.111.0 original references。此回归只验证真实保存格式的持久化，不构造完整 ModelDb、不运行 ZoneTheSpire 的玩法或整个 MOD initializer，也不代表其他 BaseLib 版本、Android Mono/native 或实际联机已通过。实际设备仍需在备份后验证“获得修改 → 保存退出 → 继续游戏”，并覆盖杀进程后重进；旧存档中已丢失的修改不能自动恢复。
 
 ## 4. 静态检查目标 MOD
 
