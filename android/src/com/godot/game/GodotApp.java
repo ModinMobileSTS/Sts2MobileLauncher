@@ -32,6 +32,7 @@ package com.godot.game;
 
 import org.godotengine.godot.Godot;
 import org.godotengine.godot.GodotActivity;
+import org.godotengine.godot.plugin.GodotPlugin;
 
 import org.fmod.FMOD;
 
@@ -65,6 +66,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Template activity for Godot Android builds.
@@ -85,6 +87,8 @@ public class GodotApp extends GodotActivity {
 	private InGameOverlayController inGameOverlayController;
 	private final HighRefreshRateController highRefreshRateController = new HighRefreshRateController();
 	private FloatingMouseInputController floatingMouseInputController;
+	private BuiltinKeyboardController builtinKeyboardController;
+	private GodotKeyboardHost keyboardHostPlugin;
 
 	static {
 		Log.i(TAG, "DIAG GodotApp static init begin versionCode=" + BuildConfig.VERSION_CODE + " versionName=" + BuildConfig.VERSION_NAME + " flavor=" + BuildConfig.FLAVOR);
@@ -173,6 +177,7 @@ public class GodotApp extends GodotActivity {
 		requestDisplayRefreshRate("onCreate_after_super");
 		scheduleInGameOverlayAttach("onCreate_after_super");
 		floatingMouseInputController = new FloatingMouseInputController(this);
+		builtinKeyboardController = new BuiltinKeyboardController(this);
 		Log.i(TAG, "DIAG GodotApp.onCreate end windowFocused=" + currentWindowFocused);
 	}
 
@@ -713,6 +718,10 @@ public class GodotApp extends GodotActivity {
 		if (floatingMouseInputController != null) {
 			floatingMouseInputController.onResume();
 		}
+		if (builtinKeyboardController == null) {
+			builtinKeyboardController = new BuiltinKeyboardController(this);
+		}
+		builtinKeyboardController.onResume();
 	}
 
 	@Override
@@ -724,6 +733,9 @@ public class GodotApp extends GodotActivity {
 		if (floatingMouseInputController != null) {
 			floatingMouseInputController.onPause();
 		}
+		if (builtinKeyboardController != null) {
+			builtinKeyboardController.onPause();
+		}
 		super.onPause();
 	}
 
@@ -732,6 +744,9 @@ public class GodotApp extends GodotActivity {
 		// The in-game drawer is transient UI. Match Android's expected Back behavior
 		// without swallowing Back once the drawer itself is already closed.
 		if (inGameOverlayController != null && inGameOverlayController.handleBackPressed()) {
+			return;
+		}
+		if (builtinKeyboardController != null && builtinKeyboardController.handleBackPressed()) {
 			return;
 		}
 		super.onBackPressed();
@@ -870,18 +885,67 @@ public class GodotApp extends GodotActivity {
 		return activity.showSoftKeyboardForGame();
 	}
 
-	private boolean showSoftKeyboardForGame() {
+	/**
+	 * On-screen keyboard entry shared by the volume-up shortcut and the in-game
+	 * overlay. With the built-in keyboard enabled this opens the full PC keyboard
+	 * (or the system keyboard if the switcher last selected it); otherwise it
+	 * keeps the original Godot soft-keyboard request.
+	 */
+	boolean showSoftKeyboardForGame() {
 		if (!isGameWindowInteractive()) {
 			Log.w("GODOT", "Unable to show soft keyboard because the game window is not interactive.");
 			return false;
 		}
 		runOnUiThread(() -> {
-			if (!isGameWindowInteractive()
-				|| !GodotKeyboardBridge.showSoftKeyboard(getGodot(), getGodotKeyboardRootView())) {
-				Log.w("GODOT", "Godot soft-keyboard request was not accepted.");
+			if (!isGameWindowInteractive()) {
+				return;
+			}
+			boolean accepted = builtinKeyboardController != null
+				? builtinKeyboardController.showKeyboard()
+				: GodotKeyboardBridge.showSoftKeyboard(getGodot(), getGodotKeyboardRootView());
+			if (!accepted) {
+				Log.w("GODOT", "Godot keyboard request was not accepted.");
 			}
 		});
 		return true;
+	}
+
+	/** Godot creates exactly one keyboard host plugin per activity. */
+	@Override
+	public Set<GodotPlugin> getHostPlugins(Godot godot) {
+		if (keyboardHostPlugin == null) {
+			keyboardHostPlugin = new GodotKeyboardHost(godot);
+		}
+		return Collections.singleton(keyboardHostPlugin);
+	}
+
+	/** Host view handed to the keyboard controllers (the decor view tree). */
+	View getKeyboardHostView() {
+		return getGodotKeyboardRootView();
+	}
+
+	/** Called by {@link GodotKeyboardHost} when Godot wants text input. */
+	void onGameKeyboardRequestedFromGodot() {
+		runOnUiThread(() -> {
+			if (!currentResumed || !isGameWindowInteractive()) {
+				return;
+			}
+			if (builtinKeyboardController != null && builtinKeyboardController.showKeyboard()) {
+				Log.i(TAG, "Keyboard opened for Godot text input.");
+			}
+		});
+	}
+
+	/** Called once the Godot main loop exists so deferred IME requests can retry. */
+	void onGodotMainLoopStartedForKeyboard() {
+		if (builtinKeyboardController != null) {
+			builtinKeyboardController.onGodotMainLoopStarted();
+		}
+	}
+
+	/** GodotApp instance used by the keyboard host plugin callbacks. */
+	static GodotApp currentInstance() {
+		return currentInstance;
 	}
 
 	private View getGodotKeyboardRootView() {
@@ -960,6 +1024,7 @@ public class GodotApp extends GodotActivity {
 			if (floatingMouseInputController != null) {
 				floatingMouseInputController.onGodotMainLoopStarted();
 			}
+			onGodotMainLoopStartedForKeyboard();
 		});
 	}
 

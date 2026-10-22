@@ -357,6 +357,15 @@
     <string name="mobile_two_finger_inspect_hint">Enabled by default. When on, placing a second finger on screen triggers card inspect / alternate preview behavior. Turn this off if it causes touch issues on your device.</string>
     <string name="volume_up_soft_keyboard_switch">Use volume up to open soft keyboard</string>
     <string name="volume_up_soft_keyboard_hint">Disabled by default. When enabled, pressing the volume up key in-game opens the system soft keyboard so you can use the console or keyboard shortcuts more easily.</string>
+    <string name="builtin_full_keyboard_switch">Use built-in full keyboard</string>
+    <string name="builtin_full_keyboard_hint">Off by default. When enabled, the on-screen keyboard is an in-app full PC layout that sends real hardware key events, including Ctrl/Alt/Shift/Win combinations, function keys and arrow keys. Best paired with PC-oriented mods. If the game ignores a key, nothing else changes.</string>
+    <string name="builtin_keyboard_tab_builtin">Full keyboard</string>
+    <string name="builtin_keyboard_tab_system">System keyboard</string>
+    <string name="builtin_keyboard_switcher_description">Switch between the built-in full keyboard and the system keyboard</string>
+    <string name="builtin_keyboard_close">Close keyboard</string>
+    <string name="floating_keyboard_switch">Floating keyboard button</string>
+    <string name="floating_keyboard_hint">Off by default. Tap the draggable in-game button to open the keyboard. Uses the system keyboard when the built-in full keyboard is disabled. No system overlay permission needed.</string>
+    <string name="floating_keyboard_open">Open keyboard</string>
     <string name="floating_mouse_switch">Floating mouse button</string>
     <string name="floating_mouse_hint">Off by default. Drag to reposition. Tap once for a single right-click; tap again before touching the game to lock right-click mode. Tap once more to unlock. In-game only; no system overlay permission needed.</string>
     <string name="floating_mouse_left">Left button · Tap for one right-click</string>

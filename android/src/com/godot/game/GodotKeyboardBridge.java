@@ -37,6 +37,15 @@ final class GodotKeyboardBridge {
 	 * editing state. Must be called on the Android UI thread.
 	 */
 	static boolean showSoftKeyboard(Godot godot, View rootView) {
+		return showSystemKeyboard(godot, rootView);
+	}
+
+	/**
+	 * System IME path only. The built-in full keyboard is routed by the game
+	 * activity before it ever reaches this method, so this stays the original
+	 * Godot soft-keyboard request unchanged.
+	 */
+	static boolean showSystemKeyboard(Godot godot, View rootView) {
 		if (!isGodotInputReady(godot)) {
 			Log.w(TAG, "Godot input is not ready; soft-keyboard request ignored.");
 			return false;
@@ -143,7 +152,7 @@ final class GodotKeyboardBridge {
 		return keyCode >= KeyEvent.KEYCODE_F1 && keyCode <= KeyEvent.KEYCODE_F12;
 	}
 
-	private static boolean isGodotInputReady(Godot godot) {
+	static boolean isGodotInputReady(Godot godot) {
 		return godot != null
 			&& godot.isInitialized()
 			&& godot.getRenderView() != null
@@ -176,7 +185,7 @@ final class GodotKeyboardBridge {
 		return maxLength;
 	}
 
-	private static GodotEditText findGodotEditText(View view) {
+	static GodotEditText findGodotEditText(View view) {
 		if (view instanceof GodotEditText) {
 			return (GodotEditText) view;
 		}
