@@ -54,6 +54,7 @@ dependencies {
     implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
     implementation 'org.slf4j:slf4j-nop:2.0.17'
     implementation 'org.tukaani:xz:1.9'
+    implementation 'me.zhanghai.android.libarchive:library:1.1.6'
     implementation 'com.fpliu.ndk.pkg.prefab.android.21:zstd:1.5.2'
     debugImplementation 'com.github.L-JINBIN:MTDataFilesProvider:v1.0.0'
     devImplementation 'com.github.L-JINBIN:MTDataFilesProvider:v1.0.0'

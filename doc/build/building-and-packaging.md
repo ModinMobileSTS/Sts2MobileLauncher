@@ -71,7 +71,7 @@ STS2_ORIGINAL_V1110_REFERENCE_DIR=/path/to/v0.111.0/bin/Debug
 - Gradle wrapper：`8.13`
 - Kotlin：`2.1.20`
 - Steam 子模块：`android/steam-protocol`、`android/steam-content`（Kotlin JVM + protobuf，用于 Steam 登录/SteamPipe 下载）
-- 主要依赖：JavaSteam `1.6.0`、OkHttp `5.3.2`、protobuf `4.31.1`、AndroidX Security Crypto、Android Prefab zstd、XZ；app module 启用 `desugar_jdk_libs 2.0.3` core-library desugaring，使 Steam 下载/云同步使用的 `java.time` 在 minSdk 24/25 可用。许可证速览、直接参考仓库与发布前合规检查见 `THIRD_PARTY_LICENSES.md`
+- 主要依赖：JavaSteam `1.6.0`、OkHttp `5.3.2`、protobuf `4.31.1`、AndroidX Security Crypto、Android Prefab zstd、XZ、`libarchive-android` `1.1.6`；app module 启用 `desugar_jdk_libs 2.0.3` core-library desugaring，使 Steam 下载/云同步使用的 `java.time` 在 minSdk 24/25 可用。许可证速览、直接参考仓库与发布前合规检查见 `THIRD_PARTY_LICENSES.md`
 - compileSdk/targetSdk：`35`
 - minSdk：`24`
 - buildTools：`35.0.0`
@@ -85,6 +85,10 @@ STS2_ORIGINAL_V1110_REFERENCE_DIR=/path/to/v0.111.0/bin/Debug
 - versionName/versionCode：`v0.1.11` / `113`
 
 `release` build type 当前保留 `debuggable true`，便于本地 sideload 和 `run-as` 验证。package 脚本默认使用 `RELEASE_KEYSTORE_*` 或 `local.properties` 中的签名配置；本地测试可使用 Android debug keystore，正式发布前必须重新配置签名和安全策略。
+
+本地 payload 与 MOD 导入现在保留 ZIP 的 Java 解包路径，并通过 `libarchive-android` 支持常见非 ZIP 归档（RAR/RAR5、7z、tar/压缩 tar、gzip、bzip2、xz、zstd、lz4、cab、cpio、ar、lha 等）。归档仍先进入现有 staging，再做路径/内容校验；非 ZIP 归档的加密条目、符号链接/硬链接、设备等特殊文件、超过 200,000 个条目、单文件 8 GiB 或总展开 16 GiB 的输入会 fail closed。只有非 ZIP 导入首次使用归档解析器时加载 native library，普通 ZIP/单文件 MOD 不增加运行时解压开销；CPU、内存和临时磁盘成本只发生在导入期间。
+
+当前 app 仅打包 `arm64-v8a`，`libarchive-android:1.1.6` AAR 本地缓存大小约 3.98 MB，其中 arm64 `libarchive-jni.so` 约 2.03 MB 未压缩；最终 APK 增量取决于 Gradle 对 native library 的打包/压缩方式。该增量换取导入格式支持，不会增加游戏运行时的解压路径。
 
 ## 4. 同步大型 runtime
 

@@ -405,7 +405,6 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
 		intent.addCategory(Intent.CATEGORY_OPENABLE);
 		intent.setType("*/*");
-		intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "application/zip", "application/octet-stream" });
 		startActivityForResult(intent, REQUEST_IMPORT_GAME_PAYLOAD);
 	}
 

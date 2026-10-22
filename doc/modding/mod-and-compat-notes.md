@@ -73,6 +73,13 @@ MOD 卡片默认折叠，只显示左侧拖拽手柄、名称、版本/作者和
 
 别名安全边界：manifest 的 `id` / `mod_id` / `modId` / `ID` 与 `pck_name` 的受支持拼写只能提供文件基名，不能含目录分隔符、控制字符、Windows 路径特殊字符或单独的 `.` / `..`；不改变合法 Unicode、点号、连字符名称。导入在别名生成和冲突确认前拒绝不安全名称；启动器清单扫描及 full compat 别名扫描不跟随符号链接，Java 与 full compat 的文件别名创建/删除再次校验同目录约束。该规则只限制导入与别名文件操作，不把普通 C# MOD 变成沙箱代码。运行时回归入口为 `port-mod/tests/ModManifestAlias.Tests`。
 
+### 2.2 导入归档格式与安全边界
+
+本地 MOD、Nexus 下载和 Workshop 下载目录中如果只包含一个归档文件，启动器会把它当作一次归档导入；单个 SAF 文件也会先按内容签名/名称识别。ZIP 继续使用现有 Java 解包路径，其他常见格式交给 `libarchive-android`：RAR/RAR5、7z、tar 及 gzip/bzip2/xz/zstd/lz4 压缩的 tar、单流压缩文件、cab、cpio、ar、lha 和 libarchive 构建支持的其它归档格式。导入 payload 使用同一套非 ZIP 解包器，SteamPipe 已下载目录不改变。
+
+归档只会展开到 app-private staging，并继续经过 MOD manifest、路径和文件覆盖检查。为避免归档炸弹或特殊文件逃逸，非 ZIP 归档拒绝加密条目、符号链接、硬链接、设备/套接字等特殊文件、路径穿越和超出条目/展开总量限制的输入；限制为 200,000 个条目、单文件 8 GiB、总展开 16 GiB。多卷归档必须由 libarchive 能从用户选择的主文件解析；加密归档需要先在可信设备解密后再导入。归档支持是离线导入能力，不改变运行时 MOD 加载协议。
+
+
 ### 3.1 三星 ROM 下拉菜单字体 fallback
 
 `AndroidFontCoveragePatches` 在原版本地化初始化后，用 `FontManager` 当前语言字体为现有控件及后续新增节点设置显式 fallback。Godot 的 `PopupMenu` 是独立 `Window`，不属于其 `OptionButton` 的普通 `Control` 子树；因此补丁也单独包装 PopupMenu 的 `font` / `font_separator` 主题字体，并在处理 `OptionButton` 时覆盖其 `GetPopup()` 下拉菜单。保留各自基底字体和已有 fallback，不复制游戏字体到 overlay；新增节点仍只走 `SceneTree.NodeAdded` 单节点处理，不在热 `Node.AddChild` 路径递归扫描。

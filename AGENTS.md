@@ -24,9 +24,9 @@ Android 侧拆成三层维护：
 
 1. **Android shell / launcher / 附加设置**
    - APK 默认进入 `GameSettingsActivity`，不是直接进入游戏。
-   - 负责首次向导、本地 PC 游戏 zip 导入、Steam 登录/游戏下载、本地存档快照、Steam Cloud 与 WebDAV 云存档、私有目录管理、游戏版本/兼容包管理、启动 Godot Activity、日志/文件浏览、存档备份、MOD 管理。
+   - 负责首次向导、本地 PC 游戏 zip/常见归档导入、Steam 登录/游戏下载、本地存档快照、Steam Cloud 与 WebDAV 云存档、私有目录管理、游戏版本/兼容包管理、启动 Godot Activity、日志/文件浏览、存档备份、MOD 管理。
 2. **原版游戏 payload**
-   - 用户本地提供 `SlayTheSpire2.zip`，或使用自己拥有 STS2 的 Steam 账号从 SteamPipe 下载。
+   - 用户本地提供 `SlayTheSpire2.zip` 或 libarchive 支持的常见归档（如 RAR/RAR5、7z、tar 及常见压缩流），或使用自己拥有 STS2 的 Steam 账号从 SteamPipe 下载。
    - 导入/下载后安装到 `<files>/payloads/<payload_id>/game/`；版本/配置切换只切换 launch profile 指针，不再复制完整 PCK/解压目录。
    - “版本”页可为同一个 payload 创建多个 `<files>/instances/<profile_id>/instance.json` 启动配置，并分别选择兼容包、存档/设置、MOD 使用全局目录或隔离目录；删除游戏本体或兼容包不会删除启动配置，启动时再提示缺失项。
    - 直装版构建时可临时内置 zip 到 APK assets，但构建脚本退出会清理，不能提交。

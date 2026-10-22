@@ -721,9 +721,9 @@ public final class ExtraSettingsRepository {
 		if (sourceDirectory == null || !sourceDirectory.isDirectory()) {
 			throw new IOException(context.getString(R.string.workshop_download_missing_directory));
 		}
-		File singleZip = findSingleImportZip(sourceDirectory);
-		if (singleZip != null) {
-			return prepareDownloadedModImport(singleZip, TextUtils.isEmpty(displayName) ? singleZip.getName() : displayName);
+		File singleArchive = findSingleImportArchive(sourceDirectory);
+		if (singleArchive != null) {
+			return prepareDownloadedModImport(singleArchive, TextUtils.isEmpty(displayName) ? singleArchive.getName() : displayName);
 		}
 		File stagingRoot = createModImportTempRoot();
 		deleteRecursively(stagingRoot);
@@ -749,7 +749,17 @@ public final class ExtraSettingsRepository {
 			if (shouldUnzip) {
 				unzipIntoDirectory(inputUri, stagingRoot);
 			} else {
-				copyUriToFile(inputUri, new File(stagingRoot, normalizedName));
+				File archiveSource = new File(stagingRoot.getParentFile(), stagingRoot.getName() + "-source-" + normalizedName);
+				try {
+					copyUriToFile(inputUri, archiveSource);
+					if (ArchiveExtractor.isArchive(archiveSource)) {
+						extractArchiveFile(archiveSource, stagingRoot);
+					} else {
+						copyRecursively(archiveSource, new File(stagingRoot, normalizedName));
+					}
+				} finally {
+					deleteRecursively(archiveSource);
+				}
 			}
 			return finishPreparedModImport(stagingRoot, displayName, normalizedName);
 		} catch (Exception exception) {
@@ -768,9 +778,12 @@ public final class ExtraSettingsRepository {
 		try {
 			String normalizedName = sanitizeFileName(TextUtils.isEmpty(displayName) ? sourceFile.getName() : displayName);
 			String lowerName = normalizedName.toLowerCase(Locale.ROOT);
-			boolean shouldUnzip = lowerName.endsWith(".zip") || isZipFile(sourceFile);
-			if (shouldUnzip) {
+			boolean zipArchive = lowerName.endsWith(".zip") || isZipFile(sourceFile);
+			boolean shouldUnzip = zipArchive || ArchiveExtractor.isArchive(sourceFile);
+			if (zipArchive) {
 				unzipFileIntoDirectory(sourceFile, stagingRoot);
+			} else if (shouldUnzip) {
+				extractArchiveFile(sourceFile, stagingRoot);
 			} else {
 				copyRecursively(sourceFile, new File(stagingRoot, normalizedName));
 			}
@@ -2702,6 +2715,14 @@ public final class ExtraSettingsRepository {
 		outputStream.closeEntry();
 	}
 
+	private void extractArchiveFile(File sourceFile, File targetDirectory) throws Exception {
+		ArchiveFormatDetector.Format format = ArchiveFormatDetector.detect(sourceFile);
+		if (format == ArchiveFormatDetector.Format.UNKNOWN) {
+			throw new ArchiveExtractor.UnsupportedArchiveException("Unsupported or unrecognized archive format.");
+		}
+		ArchiveExtractor.extract(sourceFile, targetDirectory, null, null);
+	}
+
 	private void unzipIntoDirectory(Uri uri, File targetDirectory) throws Exception {
 		ensureDirectory(targetDirectory);
 		try (InputStream rawStream = context.getContentResolver().openInputStream(uri);
@@ -2895,12 +2916,12 @@ public final class ExtraSettingsRepository {
 		}
 	}
 
-	private File findSingleImportZip(File sourceDirectory) {
+	private File findSingleImportArchive(File sourceDirectory) throws IOException {
 		File[] children = sourceDirectory == null ? null : sourceDirectory.listFiles(file -> !isWorkshopDownloadSupportFile(file));
 		if (children == null || children.length != 1 || !children[0].isFile()) {
 			return null;
 		}
-		return isZipFile(children[0]) ? children[0] : null;
+		return ArchiveExtractor.isArchive(children[0]) ? children[0] : null;
 	}
 
 	private boolean isWorkshopDownloadSupportFile(File file) {

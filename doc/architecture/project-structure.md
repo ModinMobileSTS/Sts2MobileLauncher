@@ -5,7 +5,7 @@
 本仓库把 Slay the Spire 2 Android 侧拆成三层：
 
 1. **Android shell / launcher / 附加设置**：位于 `android/`，负责 UI、导入、版本/兼容包管理、启动 Godot、日志和文件管理。
-2. **原版游戏 payload**：用户本地提供 PC zip，导入到应用私有目录；仓库不包含游戏本体。
+2. **原版游戏 payload**：用户本地提供 PC zip 或 libarchive 支持的常见归档，导入到应用私有目录；仓库不包含游戏本体。
 3. **Android 兼容包**：位于 `port-mod/` submodule。legacy mode 仍可按游戏版本分支编译独立 `STS2Mobile.dll` / `port_compat.pck`；flat matrix mode 从同一 checkout 的 target 配置构建 schema 2 family 包，每个 target variant 拥有自己的 dll/pck。
 4. **通用离线启动层**：位于 `offline-bootstrap/`。它独立于 `port-mod`，不静态引用 `sts2.dll`，构建 `sts2-android-offline-bootstrap.zip` 作为最低优先级 fallback；只有导入 payload 没有任何已安装 full compat 包按 SHA/version 命中时才会被自动推荐。它按运行时 API 形状解析已知 `ModelDb.Init` 合约，未知语义 fail closed；probe v2 只有在真实 two-phase 完成后才标记 `ready`，已知失败的 pack/version/SHA tuple 不再自动匹配。
 
@@ -53,7 +53,7 @@ s2_re/
 - `WebDavCloudActivity`：WebDAV 云存档中心，负责 WebDAV URL/用户名/密码/远端槽位配置、连接测试，以及当前 launch profile account root 的 WebDAV 手动/自动同步。
 - `LocalSaveSnapshotManager`：本地存档快照管理，启动前和干净退出后自动创建当前 launch profile account root 的 zip 快照，默认保留最近 5 个；设置页“存档”分区可手动创建和恢复。
 - `GodotApp`：真正的 Godot Activity，拼接 Godot 命令行，加载 imported PCK 或 bootstrap PCK，暴露 Java bridge 给 C#；干净退出回设置时写入云存档/本地快照自动处理 marker。Java 不再把 `fullscreen_render_size` 追加为 Godot `--resolution`；动态渲染分辨率由 compat 在根 renderer viewport 内处理。窗口焦点变化只更新 Java 侧生命周期状态，不再直接调用 `GodotLib.focusin/focusout`，避免与 Godot Activity 自身 pause/resume 焦点派发重复。附加设置启用“音量上键打开软键盘”后，音量上键与应用内快捷面板统一通过 `GodotKeyboardBridge` 复用 Godot runtime 已创建的透明 `GodotEditText` / `GodotIO.showKeyboard()` 输入代理，不再把 IME 请求发给没有 `InputConnection` 的渲染 `SurfaceView` 或 DecorView；代理会保留当前文本、光标/选区和键盘类型，并把软键盘实际发送的 F1–F12 `KeyEvent` 交给 Godot `GodotInputHandler`，普通文本仍由 Godot 自带 `GodotTextInputWrapper` 转换为游戏输入事件。
-- `PayloadManager`：导入 PC zip 或 SteamPipe 下载目录、校验必需文件、patch 私有 PCK copy、写 `.payload_manifest.json` 并安装到 payload store。
+- `PayloadManager`：导入 PC zip/常见归档或 SteamPipe 下载目录、校验必需文件、patch 私有 PCK copy、写 `.payload_manifest.json` 并安装到 payload store。
 - `LaunchProfileManager`：维护 payload store 与 launch profile，支持同一游戏本体多套全局/隔离存档和 MOD 配置，profile 保存 `compat_pack_id`，schema 2 family 包还保存 `compat_target_id`；从旧 schema 1 bundled 包升级到 flat matrix 内置包时会迁移旧 `sts2-android-compat-v0.*` 选择到 `sts2-android-compat` family target；切换时不复制 PCK。
 - `GameBodyVersionManager`：legacy facade，版本选择委托给 `LaunchProfileManager`。
 - `CompatPackManager`：安装/选择/删除兼容包，从 APK assets 安装内置包；支持 schema 1 单目标包、schema 2 family 包和受限的 schema 2 offline bootstrap 包，并按 payload `sts2_dll_sha256` / version 匹配具体 target variant。`sts2_dll_sha256` 同时兼容单字符串和数组，同一 API-compatible variant 可记录多个原版 DLL SHA，精确匹配会检查全部元素；版本页和 ADB 状态会展示完整 SHA 列表并保留 legacy 主 SHA 字段。同等精确命中时优先推荐 schema 2 family 包；offline bootstrap wildcard 只在没有任何 full compat 包命中时作为最低优先级 fallback。当前 profile 未选择包、包已删除或 schema 2 target 缺失时，启动页 Bottom Sheet 会先在内置/已安装 full targets 中推荐，再按上述规则尝试 offline fallback；只有用户点击使用推荐才写回 profile，另一个入口直接打开兼容包管理。schema 2 解析要求 `compat_target_id` 真实存在，不得回落到 family 第一个 target。它读取 probe v2 并按 pack id、target、compat version、source zip SHA、payload version 与 DLL SHA 校验状态：终态失败不再参与自动推荐，手动选择时显示失败详情并允许诊断重试。安装 bundled 包后触发旧 bundled 选择到 flat family target 的迁移。

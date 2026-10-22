@@ -57,6 +57,7 @@
 | XZ for Java | Steam VZip/LZMA chunk 解压。 | Public Domain / 0BSD-style upstream notice |
 | zstd Android Prefab (`com.fpliu.ndk.pkg.prefab.android.21:zstd`) | Steam VZstd depot chunk JNI/native 解压。 | zstd upstream BSD-3-Clause / package metadata |
 | MTDataFilesProvider (`com.github.L-JINBIN:MTDataFilesProvider`) | debug/dev/release 文件访问 provider 依赖。 | 上游未检测到标准 license；发布前应单独确认。 |
+| libarchive-android `1.1.6` / libarchive | `ArchiveExtractor` 的非 ZIP 本体/MOD 归档读取；ZIP 仍走 Java 标准库路径。 | Android wrapper 以 Apache-2.0 发布；AAR 内置 libarchive 及其压缩组件，分别受 libarchive BSD-2-Clause/组件自带许可与 notices 约束（含 zlib、bzip2、XZ/liblzma、LZ4、zstd、Mbed TLS）；发布前审计实际 AAR 的完整 notices。 |
 
 ## 可选参考 MOD / 排查仓库
 

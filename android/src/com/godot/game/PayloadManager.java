@@ -176,23 +176,28 @@ public final class PayloadManager {
 		ensureDirectory(getImportRootDir());
 		String displayName = queryDisplayName(uri);
 		if (displayName == null || displayName.trim().isEmpty()) {
-			displayName = "selected-payload.zip";
+			displayName = "selected-payload.archive";
 		}
 		long sourceSize = querySize(uri);
-		File sourceZip = new File(getImportRootDir(), "source-" + UUID.randomUUID() + ".zip");
+		File sourceArchive = new File(getImportRootDir(), "source-" + UUID.randomUUID() + ".archive");
 		String sha256;
 		reportProgress(progressListener, 1, "copy");
 		try (InputStream inputStream = context.getContentResolver().openInputStream(uri)) {
 			if (inputStream == null) {
-				throw new IOException("Unable to open selected payload zip.");
+				throw new IOException("Unable to open selected payload archive.");
 			}
-			sha256 = copyToFileWithSha256(inputStream, sourceZip, sourceSize, progressListener, control, 1, 35);
+			sha256 = copyToFileWithSha256(inputStream, sourceArchive, sourceSize, progressListener, control, 1, 35);
 		}
 		if (sourceSize < 0) {
-			sourceSize = sourceZip.length();
+			sourceSize = sourceArchive.length();
 		}
-		SourceInfo source = new SourceInfo("saf_zip", displayName, sourceSize, sha256);
-		return installFromZip(sourceZip, source, progressListener, control);
+		ArchiveFormatDetector.Format format = ArchiveFormatDetector.detect(sourceArchive, displayName);
+		if (format == ArchiveFormatDetector.Format.UNKNOWN) {
+			deleteIfExists(sourceArchive);
+			throw new IOException("Selected payload is not a supported archive.");
+		}
+		SourceInfo source = new SourceInfo(format == ArchiveFormatDetector.Format.ZIP ? "saf_zip" : "saf_archive", displayName, sourceSize, sha256);
+		return installFromArchive(sourceArchive, source, progressListener, control);
 	}
 
 	public Status extractBundledPayload() throws Exception {
@@ -240,19 +245,24 @@ public final class PayloadManager {
 	}
 
 	private Status installFromZip(File sourceZip, SourceInfo source, ProgressListener progressListener, ImportControl control) throws Exception {
+		return installFromArchive(sourceZip, source, progressListener, control);
+	}
+
+	private Status installFromArchive(File sourceArchive, SourceInfo source, ProgressListener progressListener, ImportControl control) throws Exception {
 		checkCancelled(control);
 		File importRoot = getImportRootDir();
 		ensureDirectory(importRoot);
-		cleanupOldImportScratch(importRoot, sourceZip);
+		cleanupOldImportScratch(importRoot, sourceArchive);
 
 		File staging = new File(importRoot, "staging-" + UUID.randomUUID());
 		try {
 			ensureDirectory(staging);
 			reportProgress(progressListener, 36, "extract");
-			extractZipSafely(sourceZip, staging, progressListener, control);
+			extractArchiveSafely(sourceArchive, staging, progressListener, control, source.displayName);
 			return installPreparedDirectory(staging, source, progressListener, control, true);
 		} finally {
-			deleteIfExists(sourceZip);
+			deleteIfExists(sourceArchive);
+			deleteRecursively(staging);
 		}
 	}
 
@@ -315,6 +325,27 @@ public final class PayloadManager {
 				deleteRecursively(backup);
 			}
 		}
+	}
+
+	private void extractArchiveSafely(File sourceArchive, File targetRoot, ProgressListener progressListener, ImportControl control, String displayName) throws Exception {
+		ArchiveFormatDetector.Format format = ArchiveFormatDetector.detect(sourceArchive, displayName);
+		if (format == ArchiveFormatDetector.Format.UNKNOWN) {
+			throw new ArchiveExtractor.UnsupportedArchiveException("Unsupported or unrecognized archive format.");
+		}
+		if (format == ArchiveFormatDetector.Format.ZIP) {
+			extractZipSafely(sourceArchive, targetRoot, progressListener, control);
+			return;
+		}
+		ArchiveExtractor.Cancellation cancellation = control == null ? null : control::throwIfCancelled;
+		ArchiveExtractor.extract(sourceArchive, targetRoot, (processedBytes, totalBytes) -> {
+			long denominator = totalBytes > 0L ? totalBytes : sourceArchive.length();
+			int percent = 36;
+			if (denominator > 0L && processedBytes > 0L) {
+				long span = processedBytes >= denominator ? 49L : (processedBytes * 49L) / denominator;
+				percent += (int) Math.min(49L, span);
+			}
+			reportProgress(progressListener, percent, "extract");
+		}, cancellation);
 	}
 
 	private void extractZipSafely(File zipFile, File targetRoot, ProgressListener progressListener, ImportControl control) throws Exception {
