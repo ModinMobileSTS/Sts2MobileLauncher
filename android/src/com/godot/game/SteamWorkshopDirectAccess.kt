@@ -3,12 +3,15 @@ package com.godot.game
 import android.content.Context
 import android.util.Log
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.net.ProtocolException
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLSession
+import okhttp3.Call
 import okhttp3.ConnectionPool
+import okhttp3.EventListener
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -88,8 +91,33 @@ internal object SteamWorkshopDirectAccess {
             .connectionPool(ConnectionPool(0, 1, TimeUnit.MILLISECONDS))
             .build()
         return baseClient.newBuilder()
+            .eventListenerFactory { call ->
+                DirectAccessCancellationListener + baseClient.eventListenerFactory.create(call)
+            }
             .addInterceptor(DirectAccessInterceptor(appContext, mode, directClient))
             .build()
+    }
+
+    private object DirectAccessCancellationListener : EventListener() {
+        override fun canceled(call: Call) {
+            call.tag(DirectAccessCallState::class.java)?.cancel()
+        }
+    }
+
+    private class DirectAccessCallState {
+        @Volatile private var child: Call? = null
+
+        fun attach(parent: Call, child: Call) {
+            this.child = child
+            // Cancellation may have arrived while newCall was constructing the child.
+            if (parent.isCanceled()) {
+                child.cancel()
+            }
+        }
+
+        fun cancel() {
+            child?.cancel()
+        }
     }
 
     private class DirectAccessInterceptor(
@@ -105,10 +133,20 @@ internal object SteamWorkshopDirectAccess {
             if (mode == WorkshopHttpRouteMode.DEFAULT && !SteamWorkshopPreferences.isDirectAccessEnabled(context)) {
                 return chain.proceed(request)
             }
+            val parentCall = chain.call()
+            val callState = parentCall.tag(DirectAccessCallState::class.java) { DirectAccessCallState() }
             return try {
-                executeDirectAccessRequest(request, directClient)
+                executeDirectAccessRequest(request, directClient, parentCall, callState)
+            } catch (error: InterruptedException) {
+                Thread.currentThread().interrupt()
+                callState.cancel()
+                throw InterruptedIOException("Workshop direct-access request interrupted").apply { initCause(error) }
             } catch (error: IOException) {
-                if (mode == WorkshopHttpRouteMode.DIRECT_ONLY) {
+                if (Thread.currentThread().isInterrupted) {
+                    callState.cancel()
+                    throw error
+                }
+                if (parentCall.isCanceled() || mode == WorkshopHttpRouteMode.DIRECT_ONLY) {
                     throw error
                 }
                 Log.w(TAG, "Workshop direct-access route failed; falling back to original Steam host: ${error.message}", error)
@@ -120,14 +158,27 @@ internal object SteamWorkshopDirectAccess {
     private fun executeDirectAccessRequest(
         initialLogicalRequest: Request,
         directClient: OkHttpClient,
+        parentCall: Call,
+        callState: DirectAccessCallState,
     ): Response {
         var logicalRequest = initialLogicalRequest
         var followUpCount = 0
         while (true) {
+            if (Thread.currentThread().isInterrupted) {
+                callState.cancel()
+                throw InterruptedIOException("Workshop direct-access request interrupted")
+            }
+            if (parentCall.isCanceled()) {
+                callState.cancel()
+                throw IOException("Canceled")
+            }
             val networkRequest = buildNetworkRequest(logicalRequest)
-            val response = directClient.newCall(networkRequest).execute()
+            val childCall = directClient.newCall(networkRequest)
+            callState.attach(parentCall, childCall)
+            val response = childCall.execute()
             val redirectTarget = response.redirectTarget(logicalRequest.url)
             if (redirectTarget == null) {
+                // Keep the last child attached: execute() returns before its body is consumed.
                 return response.newBuilder()
                     .request(logicalRequest)
                     .build()

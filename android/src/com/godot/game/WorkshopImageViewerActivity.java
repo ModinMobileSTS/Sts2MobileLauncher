@@ -38,6 +38,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.security.MessageDigest;
 import java.util.Locale;
@@ -135,6 +136,7 @@ public final class WorkshopImageViewerActivity extends AppCompatActivity {
     }
 
     private void loadImage() {
+        if (destroyed) return;
         final int targetEdge = Math.min(MAX_DECODE_EDGE,
             Math.max(1024, Math.max(imageView.getWidth(), imageView.getHeight()) * 2));
         final String url = normalizeUrl(imageUrl);
@@ -171,6 +173,7 @@ public final class WorkshopImageViewerActivity extends AppCompatActivity {
             buildClient(WorkshopHttpRouteMode.DIRECT_ONLY)
         };
         for (OkHttpClient client : clients) {
+            if (destroyed || Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Image request cancelled");
             try {
                 Request request = new Request.Builder()
                     .url(url)
@@ -181,6 +184,7 @@ public final class WorkshopImageViewerActivity extends AppCompatActivity {
                     .build();
                 Call call = client.newCall(request);
                 activeCall = call;
+                if (destroyed || Thread.currentThread().isInterrupted()) call.cancel();
                 try (Response response = call.execute()) {
                     if (!response.isSuccessful() || response.body() == null) {
                         throw new IOException("HTTP " + response.code());
@@ -193,6 +197,7 @@ public final class WorkshopImageViewerActivity extends AppCompatActivity {
                             int count;
                             while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
                         }
+                        if (destroyed || Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Image request cancelled");
                         BitmapFactory.Options bounds = new BitmapFactory.Options();
                         bounds.inJustDecodeBounds = true;
                         BitmapFactory.decodeFile(temporary.getPath(), bounds);
@@ -216,6 +221,7 @@ public final class WorkshopImageViewerActivity extends AppCompatActivity {
                     if (activeCall == call) activeCall = null;
                 }
             } catch (IOException exception) {
+                if (destroyed || Thread.currentThread().isInterrupted()) throw exception;
                 last = exception;
             } finally {
                 client.dispatcher().cancelAll();
@@ -348,9 +354,9 @@ public final class WorkshopImageViewerActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         destroyed = true;
-        worker.shutdownNow();
         Call call = activeCall;
         if (call != null) call.cancel();
+        worker.shutdown();
         bitmap = null;
         super.onDestroy();
     }
