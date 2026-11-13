@@ -115,6 +115,7 @@ offline bootstrap:
    - manifest/target 仍存在但 `STS2Mobile.dll` 或 `port_compat.pck` 缺失，同样属于缺失依赖，走上述推荐入口，不提供“版本不匹配仍继续”绕过。
    - 若选中包 manifest 支持版本列表与 payload version 不一致，弹出风险对话框，用户可取消、去启动配置页或强制启动。
    - 若选中包是 offline bootstrap wildcard，首次启动当前 `pack_id + target_id + compat_version + source zip SHA + payload version + sts2.dll SHA` 组合时弹出风险确认；确认后只记住该组合。offline bootstrap 运行时原子写 `<files>/launcher/offline-bootstrap-probe.json`：`starting -> patches_installed -> modeldb_initializing -> ready` 表示完整成功；`unsupported_api`、`apply_failed`、`runtime_failed` 是终态失败。版本页选择器会区分“未验证 / 已验证 / 探测失败”；相同 tuple 曾失败时每次启动都显示失败详情并只允许显式重试，不把旧确认当成成功认证。ADB 自动化 `status` 也会把原始 JSON 放入 `offline_bootstrap_probe`。
+   - 离线风险确认和失败详情对话框只说明当前配置仍绑定离线兜底，不再声称当前一定没有匹配的完整包。若按上述 SHA/version 评分找到 DLL 与 overlay 均完整的 full target，正文下方显示“发现匹配兼容包：<支持版本> / 切换并继续启动”按钮；无 full 匹配时不显示。点击后复用“使用推荐并继续”流程，写回当前 profile 的 `compat_pack_id` / `compat_target_id` 与 `compat_selection_source=auto`，同步启动上下文并重新执行完整启动校验，不为离线包写入确认。旧配置来源为 `unknown` 或用户手选为 `manual` 时，也可通过此显式操作切换；不点击则不改写绑定，原有取消、启动配置和继续离线/诊断重试入口保持可用，既有离线确认频率与 probe 规则不变。
 3. 启动前 launcher 会为当前 launch profile account root 创建一份本地 `before-launch` 存档快照（默认只保留最近 5 个）。若 Steam Cloud 模式配置为“启动前拉取”或“完整自动”，且已保存 Steam refresh token，则随后拉取当前 account root 的 Steam Cloud 文件；若 WebDAV 模式配置为“启动前拉取”或“完整自动”，且已配置 WebDAV URL，则继续拉取同一 account root 的 WebDAV 文件。任一同步失败时会弹窗允许取消、打开对应云存档中心或跳过同步继续启动。
 4. 启动后台线程执行 `GameLaunchPreparationManager.prepareForLaunch()`。
 5. 准备完成后启动 `GodotApp` 并附加 `launch_prepared=true`。

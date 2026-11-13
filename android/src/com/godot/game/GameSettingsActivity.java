@@ -1,6 +1,7 @@
 package com.godot.game;
 
 import android.animation.ObjectAnimator;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -1532,7 +1533,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		return getString(R.string.unknown);
 	}
 
-	private void applyCompatRecommendationAndContinue(BottomSheetDialog dialog, CompatRecommendation recommendation) {
+	private void applyCompatRecommendationAndContinue(DialogInterface dialog, CompatRecommendation recommendation) {
 		if (busy || recommendation == null || recommendation.pack == null) {
 			return;
 		}
@@ -1630,19 +1631,46 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			positiveLabel = R.string.launch_offline_bootstrap_confirm;
 		}
 
-		new MaterialAlertDialogBuilder(this)
+		// Keep every choice reachable even when probe details need most of the dialog height.
+		LinearLayout content = ExtraSettingsUi.vertical(this);
+		content.setPadding(ExtraSettingsUi.dp(this, 24), 0, ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 8));
+		content.addView(ExtraSettingsUi.body(this, message));
+		ScrollView scrollView = new ScrollView(this);
+		scrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		AlertDialog warningDialog = new MaterialAlertDialogBuilder(this)
 			.setTitle(title)
-			.setMessage(message)
+			.setView(scrollView)
 			.setNegativeButton(android.R.string.cancel, null)
-			.setNeutralButton(R.string.version_manager_tab_profiles, (dialog, which) -> {
-				GameVersionManagerPage.selectProfilesTab();
-				openVersionsTab();
-			})
-			.setPositiveButton(positiveLabel, (dialog, which) -> {
-				compatPackManager.approveOfflineBootstrap(selectedCompatPack, payloadStatus.manifest);
-				prepareAndStartGameAfterOptionalSteamCloudPull();
-			})
-			.show();
+			.create();
+		CompatRecommendation recommendation = findCompatRecommendation(payloadStatus);
+		if (recommendation != null && recommendation.kind != CompatRecommendationKind.OFFLINE) {
+			MaterialButton switchPack = ExtraSettingsUi.filledButton(this, R.string.launch_offline_bootstrap_switch_matching, R.drawable.ic_check_circle_24);
+			switchPack.setText(getString(R.string.launch_offline_bootstrap_switch_matching, compatRecommendationVersions(recommendation.pack)));
+			switchPack.setAllCaps(false);
+			switchPack.setSingleLine(false);
+			switchPack.setMinHeight(ExtraSettingsUi.dp(this, 48));
+			switchPack.setOnClickListener(view -> applyCompatRecommendationAndContinue(warningDialog, recommendation));
+			ExtraSettingsUi.addSmallSpacing(content, switchPack);
+		}
+		MaterialButton useOffline = ExtraSettingsUi.outlineButton(this, positiveLabel, 0);
+		useOffline.setAllCaps(false);
+		useOffline.setSingleLine(false);
+		useOffline.setOnClickListener(view -> {
+			warningDialog.dismiss();
+			compatPackManager.approveOfflineBootstrap(selectedCompatPack, payloadStatus.manifest);
+			prepareAndStartGameAfterOptionalSteamCloudPull();
+		});
+		ExtraSettingsUi.addSmallSpacing(content, useOffline);
+		MaterialButton editProfile = ExtraSettingsUi.outlineButton(this, R.string.version_manager_tab_profiles, 0);
+		editProfile.setAllCaps(false);
+		editProfile.setSingleLine(false);
+		editProfile.setOnClickListener(view -> {
+			warningDialog.dismiss();
+			GameVersionManagerPage.selectProfilesTab();
+			openVersionsTab();
+		});
+		ExtraSettingsUi.addSmallSpacing(content, editProfile);
+		warningDialog.show();
 	}
 
 	private void prepareAndStartGameAfterOptionalSteamCloudPull() {

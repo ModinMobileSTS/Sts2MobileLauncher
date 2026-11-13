@@ -83,6 +83,8 @@ v0.113.0 独立 target 使用 `STS2_TARGET_1130`，full family `compat_version=0
 
 自动 offline 重匹配：`instance.json` 与 selected launch context / ADB 状态记录 `compat_selection_source=auto/manual/unknown`。默认推荐与“使用推荐并继续”为 `auto`，选择器显式点选（包括同一 offline 包或清空选择）为 `manual`；只改名称/存档/MOD 模式保留最新绑定和来源。仅当前自动 offline wildcard 绑定可在出现完整、按现有 SHA/version 评分命中的 full target 后升级；内置安装完成、外部包导入、重选配置、复用默认配置与启动前均重查，同步 selected context / compat 诊断，不重选已有 full 包。缺少来源字段的旧配置及未知来源按 `unknown` 保守保留，不能猜测成自动选择或覆盖用户手动绑定。回归：`AutomaticOfflineCompatSelectionTest`。
 
+离线风险确认/失败详情对话框的正文下方，在存在按现有 SHA/version 规则命中且 DLL/overlay 完整的 full target 时，提供显示支持版本的“发现匹配兼容包 / 切换并继续启动”按钮。点击复用推荐应用流程，更新当前 profile 的 pack/target、来源 `auto` 和 selected context 后重新走 `launchGame()` 校验，不为离线包写入批准；无 full 匹配时隐藏该按钮。提示只说明当前配置绑定离线兜底，不能断言当前没有匹配 full 包。未知/手动绑定仍不静默覆盖，离线确认频率与 probe 规则不变。
+
 ## 3. 本地配置 / 参考输入
 
 构建脚本不再写死某个 workspace 的相邻目录。首次配置：

@@ -1141,9 +1141,10 @@
     <string name="status_applying_compat_recommendation">Applying recommended compatibility pack…</string>
     <string name="launch_incompatible_compat_pack_dialog_title">Compatibility pack version mismatch</string>
     <string name="launch_incompatible_compat_pack_dialog_message">Selected pack: %1$s\nPack support: %2$s\nCurrent game: %3$s\n\nThis check only compares game version labels/support lists. Edit the current launch profile to switch packs, or continue anyway.</string>
-    <string name="launch_offline_bootstrap_dialog_title">Use generic offline bootstrap?</string>
-    <string name="launch_offline_bootstrap_dialog_message">Selected pack: %1$s\nPack support: %2$s\nCurrent game: %3$s\nsts2.dll: %4$s\n\nNo exact mobile compatibility pack matched this game, so the launcher selected the generic offline bootstrap. It only provides startup/bootstrap and small reflective safety patches; full mobile UI, MOD and version-specific fixes may be unavailable. This approval is remembered only for this pack, game version and sts2.dll hash.</string>
-    <string name="launch_offline_bootstrap_confirm">Use offline bootstrap</string>
+    <string name="launch_offline_bootstrap_dialog_title">Offline fallback is selected</string>
+    <string name="launch_offline_bootstrap_dialog_message">Selected pack: %1$s\nPack support: %2$s\nCurrent game: %3$s\nsts2.dll: %4$s\n\nThis launch profile is bound to the generic offline bootstrap, not a full mobile compatibility pack for this game version. It only provides startup and small safety patches; full mobile UI, MOD and version-specific fixes may be unavailable. Prefer a full compatibility pack that matches the current game.\n\nApproval to continue with the offline bootstrap is remembered only for this pack, game version and sts2.dll hash.</string>
+    <string name="launch_offline_bootstrap_confirm">Continue with offline bootstrap</string>
+    <string name="launch_offline_bootstrap_switch_matching">Matching compatibility pack: %1$s\nSwitch and continue</string>
     <string name="launch_offline_bootstrap_failed_dialog_title">Offline bootstrap probe failed</string>
     <string name="launch_offline_bootstrap_failed_dialog_message">Selected pack: %1$s\nCurrent game: %2$s\nsts2.dll: %3$s\nProbe status: %4$s\n\nThe same compatibility-pack version and payload DLL previously failed its runtime capability probe:\n%5$s\n\nThe wildcard manifest only permits a best-effort fallback; it does not certify this game build. Choose another launch profile/pack, or retry only for diagnostics.</string>
     <string name="launch_offline_bootstrap_retry">Retry offline bootstrap</string>
