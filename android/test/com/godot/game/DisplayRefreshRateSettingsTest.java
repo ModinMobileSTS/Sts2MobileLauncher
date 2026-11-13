@@ -145,10 +145,10 @@ public class DisplayRefreshRateSettingsTest {
 
 		LaunchProfileManager.LaunchProfile first = profiles.createProfile(
 			"refresh-fixture", "First", LaunchProfileManager.SAVE_MODE_ISOLATED,
-			LaunchProfileManager.MODS_MODE_GLOBAL, "", "", true);
+			LaunchProfileManager.MODS_MODE_GLOBAL, "", "", LaunchProfileManager.COMPAT_SELECTION_MANUAL, true);
 		LaunchProfileManager.LaunchProfile second = profiles.createProfile(
 			"refresh-fixture", "Second", LaunchProfileManager.SAVE_MODE_ISOLATED,
-			LaunchProfileManager.MODS_MODE_GLOBAL, "", "", false);
+			LaunchProfileManager.MODS_MODE_GLOBAL, "", "", LaunchProfileManager.COMPAT_SELECTION_MANUAL, false);
 
 		profiles.selectProfile(first.id);
 		repository.saveDisplayRefreshRateMode(ExtraSettingsRepository.DISPLAY_REFRESH_RATE_60HZ);

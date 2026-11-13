@@ -591,7 +591,7 @@ final class DebugAutomationRunner {
 			String displayName = valueOrDefault(normalizedExtra("profile_name", ""), selected.displayName);
 			String saveMode = valueOrDefault(normalizedExtra("save_mode", ""), selected.saveMode);
 			String modsMode = valueOrDefault(normalizedExtra("mods_mode", ""), selected.modsMode);
-			manager.updateProfile(selected.id, selected.payloadId, displayName, saveMode, modsMode, selected.compatPackId, selected.compatTargetId);
+			manager.updateProfile(selected.id, selected.payloadId, displayName, saveMode, modsMode, selected.compatPackId, selected.compatTargetId, null);
 			putEvent("profile_updated", selected.id);
 		}
 		LaunchProfileManager.LaunchProfile updated = manager.getSelectedProfile();
@@ -629,7 +629,7 @@ final class DebugAutomationRunner {
 			CompatPackManager.CompatPack selection = chooseCompatAfterImport(manager, installed);
 			if (selection != null) {
 				String explicitTarget = normalizedExtra("compat_target_id", "");
-				manager.selectPack(selection.packId, explicitTarget.isEmpty() ? selection.targetId : explicitTarget);
+				manager.selectPack(selection.packId, explicitTarget.isEmpty() ? selection.targetId : explicitTarget, LaunchProfileManager.COMPAT_SELECTION_MANUAL);
 				putEvent("compat_selected", selection.selectionLabel());
 			}
 		}
@@ -661,7 +661,7 @@ final class DebugAutomationRunner {
 		if (packId.isEmpty()) {
 			return;
 		}
-		new CompatPackManager(context).selectPack(packId, targetId);
+		new CompatPackManager(context).selectPack(packId, targetId, LaunchProfileManager.COMPAT_SELECTION_MANUAL);
 		JSONObject selected = compatToJson(new CompatPackManager(context).getSelectedPackIgnoringEnabled());
 		details.put("selected_compat", selected);
 		putEvent("compat_selected_explicit", targetId.isEmpty() ? packId : packId + "/" + targetId);
@@ -963,6 +963,7 @@ final class DebugAutomationRunner {
 		json.put("payload_id", profile.payloadId);
 		json.put("compat_pack_id", profile.compatPackId);
 		json.put("compat_target_id", profile.compatTargetId);
+		json.put("compat_selection_source", profile.compatSelectionSource);
 		json.put("save_mode", profile.saveMode);
 		json.put("mods_mode", profile.modsMode);
 		json.put("ready", profile.ready);

@@ -144,14 +144,10 @@ public final class CompatPackManager {
 		}
 	}
 
-	public void selectPack(String packId) throws Exception {
-		selectPack(packId, "");
-	}
-
-	public void selectPack(String packId, String targetId) throws Exception {
+	public void selectPack(String packId, String targetId, String selectionSource) throws Exception {
 		if (TextUtils.isEmpty(packId)) {
 			prefs().edit().remove(KEY_SELECTED_COMPAT_PACK_ID).apply();
-			new LaunchProfileManager(context).setSelectedProfileCompatPack("", "");
+			new LaunchProfileManager(context).setSelectedProfileCompatPack("", "", selectionSource);
 			writeSelectedCompatJson("", null);
 			return;
 		}
@@ -160,8 +156,9 @@ public final class CompatPackManager {
 			throw new IOException("Compat pack is not installed or incomplete: " + packId + (TextUtils.isEmpty(targetId) ? "" : "/" + targetId));
 		}
 		prefs().edit().remove(KEY_SELECTED_COMPAT_PACK_ID).apply();
-		new LaunchProfileManager(context).setSelectedProfileCompatPack(pack.packId, pack.targetId);
-		writeSelectedCompatJson(pack.packId, pack);
+		LaunchProfileManager profiles = new LaunchProfileManager(context);
+		profiles.setSelectedProfileCompatPack(pack.packId, pack.targetId, selectionSource);
+		profiles.refreshAutomaticOfflineCompatSelection();
 	}
 
 	public File getSelectedCompatDll() {
@@ -452,6 +449,7 @@ public final class CompatPackManager {
 		} catch (Exception exception) {
 			Log.w(TAG, "Unable to migrate legacy bundled compatibility pack selections.", exception);
 		}
+		new LaunchProfileManager(context).refreshAutomaticOfflineCompatSelection();
 		return installed;
 	}
 
@@ -470,7 +468,9 @@ public final class CompatPackManager {
 			copyStreamToFile(inputStream, tempZip);
 		}
 		try {
-			return installFromZipFile(tempZip, "saf_zip", displayName);
+			CompatPack installed = installFromZipFile(tempZip, "saf_zip", displayName);
+			new LaunchProfileManager(context).refreshAutomaticOfflineCompatSelection();
+			return installed;
 		} finally {
 			FileBrowserSupport.deleteRecursively(tempZip);
 		}

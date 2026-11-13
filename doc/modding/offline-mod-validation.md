@@ -39,10 +39,11 @@ sts2_load_dotenv
 
 `sts2_load_dotenv` 会把 `.env` 中相对仓库的工具链/reference 路径规范化。已有脚本会自行加载配置；裸跑本地 probe 时需要上面的步骤。
 
-以下三个常用 target 的映射来自 `port-mod/targets/active/*/target.json`；其他版本也以对应 target 文件为准：
+以下四个常用 target 的映射来自 `port-mod/targets/active/*/target.json`；其他版本也以对应 target 文件为准：
 
 | 游戏引用 | `ReferenceFlavor` | `.env` reference 变量 | compile constant |
 | --- | --- | --- | --- |
+| v0.113.0 | `original-v0.113.0` | `STS2_ORIGINAL_V1130_REFERENCE_DIR` | `STS2_TARGET_1130` |
 | v0.111.0 | `original-v0.111.0` | `STS2_ORIGINAL_V1110_REFERENCE_DIR` | `STS2_TARGET_1110` |
 | v0.110.x，共享 target 使用 v0.110.1 引用 | `original-v0.110.0` | `STS2_ORIGINAL_V1100_REFERENCE_DIR` | `STS2_TARGET_1100` |
 | v0.109.x，共享 target 使用 v0.109.1 引用 | `original-v0.109.0` | `STS2_ORIGINAL_V1090_REFERENCE_DIR` | `STS2_TARGET_1090` |

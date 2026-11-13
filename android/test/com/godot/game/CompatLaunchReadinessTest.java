@@ -54,7 +54,7 @@ public class CompatLaunchReadinessTest {
 		put(new File(game, "data_sts2_windows_x86_64/sts2.runtimeconfig.json"), "{}");
 		selectedPack = pack("fixture-selected", "Selected fixture pack");
 		pack("fixture-working", "Working fixture pack");
-		profiles.createProfile("fixture-payload", "Fixture", "global", "global", "fixture-selected", "", true);
+		profiles.createProfile("fixture-payload", "Fixture", "global", "global", "fixture-selected", "", LaunchProfileManager.COMPAT_SELECTION_MANUAL, true);
 		settings = new ExtraSettingsRepository(context);
 		settings.saveSetting(json -> json.put(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, true));
 		packs = new CompatPackManager(context);

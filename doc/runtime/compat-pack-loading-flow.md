@@ -1,6 +1,6 @@
 # MOD 与兼容包加载流程
 
-本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。当前说明适用于内置的 `v0.103.x` / `v0.107.1` / `v0.108.0` 正式/稳定兼容 target、共享 `v0.109.x`（v0.109.0/v0.109.1，稳定 target id 为 `v0.109.0`）与共享 `v0.110.x`（v0.110.0/v0.110.1，稳定 target id 为 `v0.110.0`）target、独立 `v0.111.0` public-beta target，以及旧 `v0.106.1` / `v0.107.0` beta target。
+本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。当前说明适用于内置的 `v0.103.x` / `v0.107.1` / `v0.108.0` 正式/稳定兼容 target、共享 `v0.109.x`（v0.109.0/v0.109.1，稳定 target id 为 `v0.109.0`）与共享 `v0.110.x`（v0.110.0/v0.110.1，稳定 target id 为 `v0.110.0`）target、独立 `v0.111.0` / 当前 `v0.113.0` public-beta target，以及旧 `v0.106.1` / `v0.107.0` beta target。
 
 ## 1. 术语
 
@@ -76,9 +76,9 @@ offline bootstrap:
    - schema 1 校验根目录 `STS2Mobile.dll` 与 `port_compat.pck` 存在；schema 2 校验 `targets[]` 中每个 artifact 指向的 variant dll/pck 存在。
    - 普通 full compat 包不允许在版本或 `sts2_dll_sha256` 中使用 `*`。`sts2_dll_sha256` 可为 legacy 单字符串，也可为同一 API-compatible variant 的 SHA 数组；精确匹配会遍历全部元素。只有 schema 2 且 `pack_kind=offline-bootstrap`、`match_mode=offline-wildcard` 的 target 可以声明完整版本字符串 `*`；`target_id` 和每个 `sts2_dll_sha256` 仍不允许通配符。
    - 安装到 `<files>/compat-packs/<pack_id>/`。
-   - 不会自动把新安装的包设为全局选中包；用户需要在创建或编辑启动配置时选择。
+   - 不会把新安装的包设为全局选中包；仅当前 profile 明确记录为自动选择的 offline 绑定可在安装完成后升级到匹配的 full target，详见下节。
    - 从旧 schema 1 bundled 包升级到 flat matrix 包时，会把启动配置中旧 `sts2-android-compat-v0.*` bundled pack id 自动迁移到 `sts2-android-compat` family 包和对应 `compat_target_id`。例如 `sts2-android-compat-v0.107.0-beta` 会迁移为 `compat_pack_id=sts2-android-compat`、`compat_target_id=v0.107.0-beta`；用户手动导入/选择的非 bundled 包不会被覆盖。
-3. 用户也可在“版本”页通过 SAF 导入外部 compat pack zip；导入后同样只进入已安装包列表。
+3. 用户也可在“版本”页通过 SAF 导入外部 compat pack zip；导入后进入已安装包列表，并按下节规则重查当前自动 offline 绑定，不替换手动选择。
 
 ## 4. Payload 导入与版本匹配
 
@@ -96,7 +96,11 @@ offline bootstrap:
 4. `PckPatcher` 只修改私有 PCK copy，禁用旧版 GDScript `SentryInit`、v0.110.0 起的 C# `SentryBootstrap` autoload 和 Sentry gdextension 元数据，避免 compat Apply 前启动桌面 Sentry。patch record schema 2 明确表示两种 autoload 都已检查；旧 APK 留下的 schema 1 记录会在升级后第一次 launch preparation 自动重扫并刷新 PCK SHA，保证 v0.110.0 及后续 payload 都能补上新 bootstrap patch。
 5. 写入 staging 中的 `.payload_manifest.json`，包含 `release_info`、`version`、`commit`、`sts2_dll_sha256`、PCK patch 结果等。
 6. 按 manifest 身份生成 `payload_id`，原子安装到 `<files>/payloads/<payload_id>/game/`；同一 payload 已存在时只替换 payload store 中的该目录，不再复制到 `<files>/game/`。
-7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload；新建 profile 时会按 payload manifest 中的 `sts2_dll_sha256` 与 `version` 填入推荐 compat pack。匹配评分顺序为：命中 target 单 SHA 或 SHA 数组任一元素、target 主版本、manifest 显式支持版本、offline bootstrap wildcard。schema 2 family 包在同等精确命中时优先；offline bootstrap 只有在没有任何 full compat 包命中当前 payload 时才会自动填入。若 probe v2 已记录相同 `pack_id + target_id + compat_version + source zip SHA + payload version + sts2.dll SHA` 的终态失败，wildcard 不再为新配置自动匹配该离线包；用户仍可手工选择并从风险对话框重试。schema 2 family 包会写入 `compat_pack_id` 和 `compat_target_id`；已有 profile 不会在每次导入/启动时被覆盖，只有旧 bundled schema 1 pack id 到 flat family pack 的升级迁移会自动改写。Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot`、`source.steam.depots[]` 与 `source.steam.concurrent_chunks` 中记录。v0.109.0/v0.109.1 的 DLL SHA 都由稳定 id `v0.109.0` 的共享 variant 精确匹配；v0.110.0/v0.110.1 按各自 DLL SHA 精确匹配共享 `compat_target_id=v0.110.0`；v0.111.0 的 SHA `0861bfa1...` 精确匹配独立 `compat_target_id=v0.111.0`。
+7. 导入/Steam 下载完成后创建或选择一个 launch profile，profile 会绑定该 payload；新建 profile 时会按 payload manifest 中的 `sts2_dll_sha256` 与 `version` 填入推荐 compat pack。匹配评分顺序为：命中 target 单 SHA 或 SHA 数组任一元素、target 主版本、manifest 显式支持版本、offline bootstrap wildcard。schema 2 family 包在同等精确命中时优先；offline bootstrap 只有在没有任何 full compat 包命中当前 payload 时才会自动填入。若 probe v2 已记录相同 `pack_id + target_id + compat_version + source zip SHA + payload version + sts2.dll SHA` 的终态失败，wildcard 不再为新配置自动匹配该离线包；用户仍可手工选择并从风险对话框重试。schema 2 family 包会写入 `compat_pack_id` 和 `compat_target_id`。
+   - `instance.json` 的 `compat_selection_source` 区分 `auto` / `manual` / `unknown`：默认推荐、新建默认配置和“使用推荐并继续”记为 `auto`；用户在兼容包选择器中点选任何项（包括原来自动选中的同一个 offline 包或“不使用”）记为 `manual`。仅修改名称、存档或 MOD 模式保留最新绑定及来源，不能用编辑器打开时的旧快照覆盖后台升级结果。
+   - 只有当前绑定是 offline wildcard、来源明确为 `auto`、且现有 SHA/version 评分能找到完整可用的 full target 时，才自动升级该绑定，并同步 `launcher/selected_instance.json` 与兼容包诊断记录。内置包安装完成、外部包导入、重新选择配置、复用同一 payload 的默认配置及启动前都会重查；没有 full 命中或候选缺少 DLL/overlay 时不改写。已绑定 full 包不会因新候选出现而重新选择。
+   - 手动选择不自动覆盖。旧配置缺少来源字段或来源值未知时按 `unknown` 处理，不能根据 offline 包 ID 猜测用户意图，因此也不自动升级；用户可在启动配置中手动选用匹配 full target。旧 bundled schema 1 pack id 到 flat family pack 的既有迁移规则保持不变。
+   - Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot`、`source.steam.depots[]` 与 `source.steam.concurrent_chunks` 中记录。v0.109.0/v0.109.1 的 DLL SHA 都由稳定 id `v0.109.0` 的共享 variant 精确匹配；v0.110.0/v0.110.1 按各自 DLL SHA 精确匹配共享 `compat_target_id=v0.110.0`；v0.111.0 的 SHA `0861bfa1...` 精确匹配独立 `compat_target_id=v0.111.0`。
 8. 旧安装中的 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制。
 
 ## 5. 启动前检查
@@ -105,9 +109,9 @@ offline bootstrap:
 
 1. 检查当前 launch profile 绑定的 payload 是否 ready；配置存在但本体缺失/被删除时不 fallback 到旧 `<files>/game/`，而是提示重新导入/下载、切换配置或编辑配置；没有 payload 时提示导入，直装版可先解压内置 payload。
 2. 如果 Android 兼容包开关启用：
-   - 只读取当前 launch profile 的 `compat_pack_id` / `compat_target_id` 并解析已安装包；schema 2 family 必须有真实存在的 target，target id 为空或已移除时不得静默回落到 family 第一个 variant。
+   - 先按上一节规则重查当前自动 offline 绑定，再读取当前 launch profile 的 `compat_pack_id` / `compat_target_id` 并解析已安装包；schema 2 family 必须有真实存在的 target，target id 为空或已移除时不得静默回落到 family 第一个 variant。
    - 若配置未选择兼容包、引用的包已删除或 target 缺失，启动请求会先等待本次 APK 内置兼容包安装 bootstrap 完成，再弹出 MD3 Bottom Sheet。推荐分两层计算：先仅在内置/已安装 full 包中沿用 DLL SHA、主版本、显式支持版本与 schema/priority 评分选最佳 target；只有没有任何 full 命中时，才从未记录当前 tuple 终态失败的 offline wildcard 中选择通用离线包。
-   - Bottom Sheet 展示当前 payload 版本/短 DLL SHA、推荐来源（内置、已安装或通用离线兜底）与具体 target。用户点“使用推荐并继续”后才把 `compat_pack_id + compat_target_id` 写回当前 profile 并重新进入完整启动校验；点“打开兼容包管理”会直接进入“版本 → 兼容包”。没有可安全自动推荐项时只提供管理入口，启动器不会静默覆盖 profile。
+   - Bottom Sheet 展示当前 payload 版本/短 DLL SHA、推荐来源（内置、已安装或通用离线兜底）与具体 target。用户点“使用推荐并继续”后才把 `compat_pack_id + compat_target_id` 写回当前 profile，同时记录 `compat_selection_source=auto`，再重新进入完整启动校验；点“打开兼容包管理”会直接进入“版本 → 兼容包”。没有可安全自动推荐项时只提供管理入口，不静默替用户补选缺失绑定。
    - manifest/target 仍存在但 `STS2Mobile.dll` 或 `port_compat.pck` 缺失，同样属于缺失依赖，走上述推荐入口，不提供“版本不匹配仍继续”绕过。
    - 若选中包 manifest 支持版本列表与 payload version 不一致，弹出风险对话框，用户可取消、去启动配置页或强制启动。
    - 若选中包是 offline bootstrap wildcard，首次启动当前 `pack_id + target_id + compat_version + source zip SHA + payload version + sts2.dll SHA` 组合时弹出风险确认；确认后只记住该组合。offline bootstrap 运行时原子写 `<files>/launcher/offline-bootstrap-probe.json`：`starting -> patches_installed -> modeldb_initializing -> ready` 表示完整成功；`unsupported_api`、`apply_failed`、`runtime_failed` 是终态失败。版本页选择器会区分“未验证 / 已验证 / 探测失败”；相同 tuple 曾失败时每次启动都显示失败详情并只允许显式重试，不把旧确认当成成功认证。ADB 自动化 `status` 也会把原始 JSON 放入 `offline_bootstrap_probe`。
@@ -300,6 +304,7 @@ STS2Mobile.ModEntry
    损坏资源用例会输出预期的 Godot Parse Error，最终必须看到 `PASS` 且进程成功退出。桌面 headless 回归不等于 Android GPU/帧率实测；高刷请求、原版 FPS 上限、VSync、画质和特效数量均未因这项优化而改变。
 
 8. LAN bootstrap。`LanMultiplayerBootstrapPatches` 在主菜单就绪后才尝试应用本地 LAN 兼容补丁；若 `settings.save` 中 `lan_multiplayer_enabled=false`，或已加载 `sts2_lan_connect` / STS2 Game Lobby 大厅 MOD，`LanMultiplayerPatches` 会整组跳过，避免 Android LAN host/join、玩家 ID 等适配与大厅 MOD 自己的联机协议 profile 冲突。内置 LAN 补丁只处理 Android transport/UI/settings/player/save 兼容，不 patch `MessageTypes.ToId`、`MessageTypes.TryGetMessageType` 或 `NetMessageBus.TryDeserializeMessage`，也不维护固定消息表；消息类型发现、排序、ID 与序列化/反序列化始终由当前 payload 对应版本的原版实现负责，因此 Android 与未修改 PC 使用同一 wire protocol，普通 MOD 自定义 `INetMessage` 也继续按原版规则参与排序。v0.111.0 构造 host/client service 时额外传入 `PeerVersionInfo.LocalDefault()`，随后完全交给原版 transport-level `HandshakeManager` 在消息总线启用前校验游戏版本、ModelDb hash 和 gameplay/non-gameplay MOD；Android 不复制握手数据结构，也不回退旧 lobby-message 校验。启用本地 LAN patch 时，兼容层还会拦截多人读档 canonicalize 的本地玩家 ID：如果当前自定义平台/玩家 ID 不在 `current_run_mp.save` 的玩家列表中，会优先使用隐藏稳定字段 `lan_multiplayer_save_player_id`、旧自动 LAN ID 或单玩家存档中的唯一 `NetId`，避免用户修改自定义平台 ID 后旧多人存档被误判为不属于本机。`max_multiplayer_players` 只扩展 host/lobby 容量；超过四人的运行仍属实验模式，本次已覆盖宝箱和休息点的确定性四槽故障，但不能据此认定原版所有房间和任意配置人数都已兼容。
+   v0.113.0 加入复用 `NJoinFriendScreen.JoinGameAsync`，由原版处理带 `SceneTree` 的 `JoinFlow.Begin`、取消与错误；新建 host 独立保留 `isCustom`，非自定义房间按 Standard/Daily/Blitz/Dread 进入原版 lobby，读档以 `SerializableRun.IsCustomGame` 判断自定义。不得退回兼容层手工复制 JoinFlow/模式路由。商店确认则在一次性 allowance 内调用原版 `OnSelected()` 并等待实际购买任务，新旧 target 都不再依赖已删除的 slot `OnTryPurchase`。
 9. `ModLoaderPatches`。
 10. save diagnostic。
 11. `RenderDiagnosticPatches` 后置调度；它只用于设备/渲染信息采集，调度异常会记录但不阻断 Steam 跳过和存档路径重定向等核心 patch。
@@ -338,7 +343,7 @@ OS.GetDataDir()/port_compat.pck
 - inline `VisualShader` 不按资源对象身份猜测，而按生成代码的 SHA-256 命中已审计 variant，并且 source path 还必须通过内置前缀 allowlist（`res://scenes/`、`res://images/`、`res://shaders/`）。`res://mods/` 与 `res://user/` 明确不替换；hash 命中但不在这些内置前缀内也不替换。
 - VisualShader 生成代码中的隐藏 sampler alias 属于 baked/generated texture 输入，不会因为 hash 命中而新增可写的 shader parameter key；variant 只复制原 material 可见的参数协议。
 - 通用 `SceneTree.NodeAdded` 路径只检查 CanvasItem 自身的 `Material`；每个命中节点获得独立的 `ShaderMaterial` 副本。Spine 的 material slots 不由这条 CanvasItem 自动路径覆盖，本补丁不改写 slots。
-- 缓存材质不依赖 NodeAdded 猜测：`NCard.Reload` 专门修复卡面 portrait/canvas-group blur，`NMainMenu._Ready` 修复主菜单 blur，`NEpochSlot._Ready` 修复时间线 blur，`NRadialBlurVfx._Ready` 修复径向 blur；`AssetCache.GetMaterial()` 对已知卡面 blur material 路径也返回替换材质的副本。
+- 旧 target 的缓存材质不依赖 NodeAdded 猜测：`NCard.Reload` 专门修复卡面 portrait/canvas-group blur，`NMainMenu._Ready` 修复主菜单 blur，`NEpochSlot._Ready` 修复时间线 blur，`NRadialBlurVfx._Ready` 修复径向 blur；`AssetCache.GetMaterial()` 对已知卡面 blur material 路径也返回替换材质的副本。v0.113.0 的卡面/时间线例外见下文。
 - 这些已知动态路径写回的是替代 `ShaderMaterial` 副本，而不是把原始共享材质换成新 shader；当前没有覆盖任意晚到 `CanvasItem.Material` 赋值的通用 helper。若后续集成 owner 暴露专用更新入口，调用方必须沿用这条替代材质路径；本兼容层当前不对不存在的 helper 或自动重写能力作承诺。
 
 **Maleoon OpenGL 回能粒子兼容**
@@ -354,6 +359,8 @@ OS.GetDataDir()/port_compat.pck
 原生回归 `port-mod/tests/FramePreparation.Tests` 覆盖首次进树前处理、平台/GPU/渲染器/开关边界、材质隔离、MOD 排除、原版 `Restart()` 和重复设置应用。桌面 OpenGL 回归不替代华为驱动验证。
 
 古卡（先古卡）遮罩使用的 `res://shaders/blur/canvas_group_mask_blur.gdshader` 明确排除在替换表之外；overlay 不提供、不预加载 `canvas_group_mask_blur` 的移动 variant，因此该遮罩继续使用原版 shader。这个排除不妨碍上面的 `NCard.Reload` 专用路径修复其它卡面 blur 缓存材质。
+
+v0.113.0 的 `Blur.gdshader` 改为 atlas-clamped `uv_region/radius_scale` instance uniforms，不能继续使用旧 `step` shader。该 target 在 shader resolver、NodeAdded、`AssetCache.GetMaterial` 与卡面缓存边界都保留原版 blur，并停止注册旧 `NCard.Reload` / 已删除的 `NEpochSlot._blurShader` 修复；不降低采样质量、不增加资源。`Sts2Target1130=true` 的 `FramePreparation.Tests` 覆盖实际节点材质和两条 material-cache 路径；搭配 `TreasureHolderLayoutShape=true` 还覆盖新版 1–6 预置布局、较大容量布局复用与原版奖励流程。真实卡面像素、厂商 GPU 及新模式联机仍需真机验证。
 
 `TransitionMaterialPatches` 会在 `NTransition._Ready` 后复制场景默认 `ShaderMaterial`，并在原版 `AssetCache.GetMaterial()` 返回 `fade_transition_mat.tres` / `fight_transition_mat.tres` 时返回缓存材质的副本。全局 disposal guard 已阻止 cache cleanup 显式释放资源；该补丁仍作为纵深保护，隔离 transition tween 对共享材质状态的修改并兼容旧兼容包行为。
 

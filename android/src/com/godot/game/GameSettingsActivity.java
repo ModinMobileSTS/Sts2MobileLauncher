@@ -385,6 +385,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				showCompatDisabledLaunchWarning();
 				return;
 			}
+			launchProfileManager.refreshAutomaticOfflineCompatSelection();
 			CompatPackManager.CompatPack selectedCompatPack = compatPackManager.getSelectedPack();
 			if (selectedCompatPack == null || !selectedCompatPack.ready) {
 				if (!bundledCompatPackBootstrapFinished) {
@@ -568,6 +569,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			CompatPackManager.CompatPack initialCompatPack = profile == null ? findBestCompatPackForPayload(selectedPayload[0]) : findCompatPackById(compatPackManager.listInstalledPacks(), profile.compatPackId, profile.compatTargetId);
 			final String[] selectedCompatPackId = new String[] { initialCompatPack == null ? (profile == null ? "" : profile.compatPackId) : initialCompatPack.packId };
 			final String[] selectedCompatTargetId = new String[] { initialCompatPack == null ? (profile == null ? "" : profile.compatTargetId) : initialCompatPack.targetId };
+			final String[] selectedCompatSource = new String[] { profile == null ? LaunchProfileManager.COMPAT_SELECTION_AUTO : null };
 			final MaterialButton[] compatButtonRef = new MaterialButton[1];
 
 			BottomSheetDialog dialog = new BottomSheetDialog(this);
@@ -606,6 +608,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				CompatPackManager.CompatPack pickedCompat = findBestCompatPackForPayload(picked);
 				selectedCompatPackId[0] = pickedCompat == null ? "" : pickedCompat.packId;
 				selectedCompatTargetId[0] = pickedCompat == null ? "" : pickedCompat.targetId;
+				selectedCompatSource[0] = LaunchProfileManager.COMPAT_SELECTION_AUTO;
 				selectPayload.setText(getString(R.string.launch_profile_select_payload_button, picked.label));
 				if (compatButtonRef[0] != null) {
 					setLaunchProfileCompatButtonText(compatButtonRef[0], selectedCompatPackId[0], selectedCompatTargetId[0]);
@@ -623,6 +626,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			selectCompat.setOnClickListener(v -> showLaunchProfileCompatPicker(selectedCompatPackId[0], selectedCompatTargetId[0], selectedPayload[0], picked -> {
 				selectedCompatPackId[0] = picked.packId;
 				selectedCompatTargetId[0] = picked.targetId;
+				selectedCompatSource[0] = LaunchProfileManager.COMPAT_SELECTION_MANUAL;
 				setLaunchProfileCompatButtonText(selectCompat, selectedCompatPackId[0], selectedCompatTargetId[0]);
 			}));
 			ExtraSettingsUi.addSmallSpacing(content, selectCompat);
@@ -682,12 +686,12 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 						if (selectedPayload[0] == null || !selectedPayload[0].ready) {
 							throw new IllegalStateException(getString(R.string.launch_profile_payload_missing));
 						}
-						launchProfileManager.createProfile(selectedPayload[0].id, name, saveMode, modsMode, selectedCompatPackId[0], selectedCompatTargetId[0], true);
+						launchProfileManager.createProfile(selectedPayload[0].id, name, saveMode, modsMode, selectedCompatPackId[0], selectedCompatTargetId[0], selectedCompatSource[0], true);
 						repository.ensureAppDirectories();
 						return getString(R.string.status_create_launch_profile_done);
 					}
 					String updatedPayloadId = selectedPayload[0] == null ? profile.payloadId : selectedPayload[0].id;
-					launchProfileManager.updateProfile(profile.id, updatedPayloadId, name, saveMode, modsMode, selectedCompatPackId[0], selectedCompatTargetId[0]);
+					launchProfileManager.updateProfile(profile.id, updatedPayloadId, name, saveMode, modsMode, selectedCompatPackId[0], selectedCompatTargetId[0], selectedCompatSource[0]);
 					repository.ensureAppDirectories();
 					return getString(R.string.status_update_launch_profile_done);
 				});
@@ -1537,7 +1541,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		showMessage(getString(R.string.status_applying_compat_recommendation));
 		new Thread(() -> {
 			try {
-				compatPackManager.selectPack(recommendation.pack.packId, recommendation.pack.targetId);
+				compatPackManager.selectPack(recommendation.pack.packId, recommendation.pack.targetId, LaunchProfileManager.COMPAT_SELECTION_AUTO);
 				runOnUiThread(() -> {
 					busy = false;
 					refreshCurrentScreen();

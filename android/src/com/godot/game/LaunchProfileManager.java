@@ -32,6 +32,9 @@ public final class LaunchProfileManager {
 	public static final String SAVE_MODE_ISOLATED = "isolated";
 	public static final String MODS_MODE_GLOBAL = "global";
 	public static final String MODS_MODE_ISOLATED = "isolated";
+	public static final String COMPAT_SELECTION_AUTO = "auto";
+	public static final String COMPAT_SELECTION_MANUAL = "manual";
+	public static final String COMPAT_SELECTION_UNKNOWN = "unknown";
 
 	private static final String TAG = "Sts2LaunchProfiles";
 	private static final String PREFS_NAME = "sts2_version_manager";
@@ -39,6 +42,7 @@ public final class LaunchProfileManager {
 	private static final String LEGACY_KEY_SELECTED_GAME_VERSION_ID = "selected_game_version_id";
 	private static final String FLAT_COMPAT_PACK_ID = "sts2-android-compat";
 	private static final String LEGACY_BUNDLED_COMPAT_PREFIX = FLAT_COMPAT_PACK_ID + "-";
+	private static final Object PROFILE_LOCK = new Object();
 
 	private final Context context;
 
@@ -212,14 +216,10 @@ public final class LaunchProfileManager {
 	}
 
 	public LaunchProfile createProfile(String payloadId, String displayName, String saveMode, String modsMode, boolean select) throws Exception {
-		return createProfile(payloadId, displayName, saveMode, modsMode, null, select);
+		return createProfile(payloadId, displayName, saveMode, modsMode, null, "", COMPAT_SELECTION_AUTO, select);
 	}
 
-	public LaunchProfile createProfile(String payloadId, String displayName, String saveMode, String modsMode, String compatPackId, boolean select) throws Exception {
-		return createProfile(payloadId, displayName, saveMode, modsMode, compatPackId, "", select);
-	}
-
-	public LaunchProfile createProfile(String payloadId, String displayName, String saveMode, String modsMode, String compatPackId, String compatTargetId, boolean select) throws Exception {
+	public LaunchProfile createProfile(String payloadId, String displayName, String saveMode, String modsMode, String compatPackId, String compatTargetId, String compatSelectionSource, boolean select) throws Exception {
 		GamePayload payload = readPayload(payloadId);
 		if (payload == null || !payload.ready) {
 			throw new IOException("Game payload is missing or incomplete: " + payloadId);
@@ -227,7 +227,7 @@ public final class LaunchProfileManager {
 		String name = TextUtils.isEmpty(displayName) ? payload.label : displayName.trim();
 		String id = buildUniqueProfileId(name + "-" + UUID.randomUUID().toString().substring(0, 8));
 		CompatSelection selectedCompat = compatPackId == null ? findBestCompatSelection(payload) : new CompatSelection(sanitizeOptionalId(compatPackId), sanitizeOptionalId(compatTargetId));
-		LaunchProfile profile = writeProfile(id, name, payload.id, selectedCompat.packId, selectedCompat.targetId, normalizeSaveMode(saveMode), normalizeModsMode(modsMode), System.currentTimeMillis() / 1000L);
+		LaunchProfile profile = writeProfile(id, name, payload.id, selectedCompat.packId, selectedCompat.targetId, compatSelectionSource, normalizeSaveMode(saveMode), normalizeModsMode(modsMode), System.currentTimeMillis() / 1000L);
 		ensureProfileDirectories(profile);
 		if (select) {
 			selectProfile(profile.id);
@@ -241,6 +241,7 @@ public final class LaunchProfileManager {
 		}
 		LaunchProfile existing = findFirstProfileForPayload(payload.id);
 		if (existing != null) {
+			existing = refreshAutomaticOfflineCompatSelection(existing.id);
 			if (select) {
 				selectProfile(existing.id);
 			}
@@ -248,7 +249,7 @@ public final class LaunchProfileManager {
 		}
 		String baseId = buildUniqueProfileId("profile-" + payload.id);
 		CompatSelection compat = findBestCompatSelection(payload);
-		LaunchProfile profile = writeProfile(baseId, payload.label, payload.id, compat.packId, compat.targetId, SAVE_MODE_GLOBAL, MODS_MODE_GLOBAL, System.currentTimeMillis() / 1000L);
+		LaunchProfile profile = writeProfile(baseId, payload.label, payload.id, compat.packId, compat.targetId, COMPAT_SELECTION_AUTO, SAVE_MODE_GLOBAL, MODS_MODE_GLOBAL, System.currentTimeMillis() / 1000L);
 		ensureProfileDirectories(profile);
 		if (select) {
 			selectProfile(profile.id);
@@ -256,55 +257,83 @@ public final class LaunchProfileManager {
 		return readProfile(profile.id);
 	}
 
-	public LaunchProfile updateProfile(String profileId, String displayName, String saveMode, String modsMode, String compatPackId) throws Exception {
-		LaunchProfile profile = readProfile(profileId);
-		return updateProfile(profileId, profile == null ? "" : profile.payloadId, displayName, saveMode, modsMode, compatPackId);
-	}
-
-	public LaunchProfile updateProfile(String profileId, String payloadId, String displayName, String saveMode, String modsMode, String compatPackId) throws Exception {
-		return updateProfile(profileId, payloadId, displayName, saveMode, modsMode, compatPackId, "");
-	}
-
-	public LaunchProfile updateProfile(String profileId, String payloadId, String displayName, String saveMode, String modsMode, String compatPackId, String compatTargetId) throws Exception {
-		LaunchProfile profile = readProfile(profileId);
-		if (profile == null) {
-			throw new IOException("Launch profile not found: " + profileId);
+	/** A null selection source preserves the latest binding when only profile metadata is edited. */
+	public LaunchProfile updateProfile(String profileId, String payloadId, String displayName, String saveMode, String modsMode, String compatPackId, String compatTargetId, String compatSelectionSource) throws Exception {
+		synchronized (PROFILE_LOCK) {
+			LaunchProfile profile = readProfile(profileId);
+			if (profile == null) {
+				throw new IOException("Launch profile not found: " + profileId);
+			}
+			String name = TextUtils.isEmpty(displayName) ? profile.displayName : displayName.trim();
+			String normalizedPayloadId = TextUtils.isEmpty(payloadId) ? profile.payloadId : sanitizeId(payloadId);
+			String normalizedCompatPackId = compatSelectionSource == null ? profile.compatPackId : sanitizeOptionalId(compatPackId);
+			String normalizedCompatTargetId = compatSelectionSource == null ? profile.compatTargetId : sanitizeOptionalId(compatTargetId);
+			String source = compatSelectionSource == null ? profile.compatSelectionSource : compatSelectionSource;
+			LaunchProfile updated = writeProfile(profile.id, name, normalizedPayloadId, normalizedCompatPackId, normalizedCompatTargetId, source, normalizeSaveMode(saveMode), normalizeModsMode(modsMode), profile.createdAtUnix);
+			ensureProfileDirectories(updated);
+			if (profile.id.equals(getSelectedProfileId())) {
+				writeSelectedLaunchContextJson(updated);
+			}
+			return updated;
 		}
-		String name = TextUtils.isEmpty(displayName) ? profile.displayName : displayName.trim();
-		String normalizedPayloadId = TextUtils.isEmpty(payloadId) ? profile.payloadId : sanitizeId(payloadId);
-		String normalizedCompatPackId = sanitizeOptionalId(compatPackId);
-		String normalizedCompatTargetId = sanitizeOptionalId(compatTargetId);
-		LaunchProfile updated = writeProfile(profile.id, name, normalizedPayloadId, normalizedCompatPackId, normalizedCompatTargetId, normalizeSaveMode(saveMode), normalizeModsMode(modsMode), profile.createdAtUnix);
-		ensureProfileDirectories(updated);
-		if (profile.id.equals(getSelectedProfileId())) {
-			writeSelectedLaunchContextJson(readProfile(profile.id));
-		}
-		return readProfile(profile.id);
 	}
 
-	public void setSelectedProfileCompatPack(String compatPackId) throws Exception {
-		setSelectedProfileCompatPack(compatPackId, "");
-	}
-
-	public void setSelectedProfileCompatPack(String compatPackId, String compatTargetId) throws Exception {
+	public void setSelectedProfileCompatPack(String compatPackId, String compatTargetId, String compatSelectionSource) throws Exception {
 		LaunchProfile profile = getSelectedProfile();
 		if (profile == null) {
 			return;
 		}
-		updateProfile(profile.id, profile.payloadId, profile.displayName, profile.saveMode, profile.modsMode, compatPackId, compatTargetId);
+		updateProfile(profile.id, profile.payloadId, profile.displayName, profile.saveMode, profile.modsMode, compatPackId, compatTargetId, compatSelectionSource);
 	}
 
 	public void selectProfile(String profileId) throws Exception {
-		LaunchProfile profile = readProfile(profileId);
-		if (profile == null) {
-			throw new IOException("Launch profile not found: " + profileId);
+		synchronized (PROFILE_LOCK) {
+			LaunchProfile profile = refreshAutomaticOfflineCompatSelection(profileId);
+			if (profile == null) {
+				throw new IOException("Launch profile not found: " + profileId);
+			}
+			ensureProfileDirectories(profile);
+			prefs().edit()
+				.putString(KEY_SELECTED_LAUNCH_PROFILE_ID, profile.id)
+				.putString(LEGACY_KEY_SELECTED_GAME_VERSION_ID, profile.payloadId)
+				.apply();
+			writeSelectedLaunchContextJson(profile);
 		}
-		ensureProfileDirectories(profile);
-		prefs().edit()
-			.putString(KEY_SELECTED_LAUNCH_PROFILE_ID, profile.id)
-			.putString(LEGACY_KEY_SELECTED_GAME_VERSION_ID, profile.payloadId)
-			.apply();
-		writeSelectedLaunchContextJson(profile);
+	}
+
+	public void refreshAutomaticOfflineCompatSelection() throws Exception {
+		refreshAutomaticOfflineCompatSelection(getSelectedProfileId());
+	}
+
+	private LaunchProfile refreshAutomaticOfflineCompatSelection(String profileId) throws Exception {
+		synchronized (PROFILE_LOCK) {
+			LaunchProfile profile = readProfileWithoutBootstrap(profileId);
+			if (profile == null || !COMPAT_SELECTION_AUTO.equals(profile.compatSelectionSource) || profile.payload == null || !profile.payload.ready) {
+				return profile;
+			}
+			CompatPackManager manager = new CompatPackManager(context);
+			List<CompatPackManager.CompatPack> installed = manager.listInstalledPacks();
+			CompatPackManager.CompatPack current = null;
+			for (CompatPackManager.CompatPack pack : installed) {
+				if (pack.packId.equals(profile.compatPackId) && pack.targetId.equals(profile.compatTargetId)) {
+					current = pack;
+					break;
+				}
+			}
+			if (current == null || !current.isOfflineWildcard()) {
+				return profile;
+			}
+			CompatPackManager.CompatPack best = manager.findBestMatch(profile.payload.manifest, installed);
+			if (best == null || manager.isOfflineBootstrapPack(best)) {
+				return profile;
+			}
+			LaunchProfile updated = writeProfile(profile.id, profile.displayName, profile.payloadId, best.packId, best.targetId, COMPAT_SELECTION_AUTO, profile.saveMode, profile.modsMode, profile.createdAtUnix);
+			if (profile.id.equals(getSelectedProfileId())) {
+				writeSelectedLaunchContextJson(updated);
+			}
+			Log.i(TAG, "Upgraded automatic offline compatibility selection to " + best.selectionLabel() + " for profile " + profile.id);
+			return updated;
+		}
 	}
 
 	public void deleteProfile(String profileId) throws Exception {
@@ -360,7 +389,7 @@ public final class LaunchProfileManager {
 			if (replacement.packId.equals(profile.compatPackId) && replacement.targetId.equals(profile.compatTargetId)) {
 				continue;
 			}
-			writeProfile(profile.id, profile.displayName, profile.payloadId, replacement.packId, replacement.targetId, profile.saveMode, profile.modsMode, profile.createdAtUnix);
+			writeProfile(profile.id, profile.displayName, profile.payloadId, replacement.packId, replacement.targetId, profile.compatSelectionSource, profile.saveMode, profile.modsMode, profile.createdAtUnix);
 			migrated++;
 			Log.i(TAG, "Migrated launch profile compat selection from " + profile.compatPackId + "/" + profile.compatTargetId + " to " + replacement.packId + "/" + replacement.targetId + " for profile " + profile.id);
 			if (profile.id.equals(selectedProfileId)) {
@@ -583,27 +612,30 @@ public final class LaunchProfileManager {
 		return new LaunchProfile(id, displayName, payloadId, compatPackId, compatTargetId, saveMode, modsMode, dir, json, payload, createdAt, updatedAt, payload != null && payload.ready);
 	}
 
-	private LaunchProfile writeProfile(String id, String displayName, String payloadId, String compatPackId, String compatTargetId, String saveMode, String modsMode, long createdAtUnix) throws Exception {
-		String normalizedId = sanitizeId(id);
-		File dir = new File(getProfilesRootDir(), normalizedId);
-		FileBrowserSupport.ensureDirectory(dir);
-		long now = System.currentTimeMillis() / 1000L;
-		JSONObject json = new JSONObject();
-		json.put("schema", 2);
-		json.put("id", normalizedId);
-		json.put("display_name", displayName == null ? "" : displayName.trim());
-		json.put("payload_id", sanitizeId(payloadId));
-		json.put("compat_pack_id", sanitizeOptionalId(compatPackId));
-		String normalizedCompatTargetId = sanitizeOptionalId(compatTargetId);
-		if (!TextUtils.isEmpty(normalizedCompatTargetId)) {
-			json.put("compat_target_id", normalizedCompatTargetId);
+	private LaunchProfile writeProfile(String id, String displayName, String payloadId, String compatPackId, String compatTargetId, String compatSelectionSource, String saveMode, String modsMode, long createdAtUnix) throws Exception {
+		synchronized (PROFILE_LOCK) {
+			String normalizedId = sanitizeId(id);
+			File dir = new File(getProfilesRootDir(), normalizedId);
+			FileBrowserSupport.ensureDirectory(dir);
+			long now = System.currentTimeMillis() / 1000L;
+			JSONObject json = new JSONObject();
+			json.put("schema", 2);
+			json.put("id", normalizedId);
+			json.put("display_name", displayName == null ? "" : displayName.trim());
+			json.put("payload_id", sanitizeId(payloadId));
+			json.put("compat_pack_id", sanitizeOptionalId(compatPackId));
+			String normalizedCompatTargetId = sanitizeOptionalId(compatTargetId);
+			if (!TextUtils.isEmpty(normalizedCompatTargetId)) {
+				json.put("compat_target_id", normalizedCompatTargetId);
+			}
+			json.put("compat_selection_source", normalizeCompatSelectionSource(compatSelectionSource));
+			json.put("save_mode", normalizeSaveMode(saveMode));
+			json.put("mods_mode", normalizeModsMode(modsMode));
+			json.put("created_at_unix", createdAtUnix > 0 ? createdAtUnix : now);
+			json.put("updated_at_unix", now);
+			FileBrowserSupport.writeTextFile(new File(dir, PROFILE_FILE_NAME), json.toString(2));
+			return readProfileWithoutBootstrap(normalizedId);
 		}
-		json.put("save_mode", normalizeSaveMode(saveMode));
-		json.put("mods_mode", normalizeModsMode(modsMode));
-		json.put("created_at_unix", createdAtUnix > 0 ? createdAtUnix : now);
-		json.put("updated_at_unix", now);
-		FileBrowserSupport.writeTextFile(new File(dir, PROFILE_FILE_NAME), json.toString(2));
-		return readProfileWithoutBootstrap(normalizedId);
 	}
 
 	private void ensureProfileDirectories(LaunchProfile profile) {
@@ -676,6 +708,7 @@ public final class LaunchProfileManager {
 		root.put("selected_mods_dir", getModsRootDir(profile).getAbsolutePath());
 		root.put("selected_logs_dir", new File(profile.dir, "logs").getAbsolutePath());
 		root.put("compat_pack_id", profile.compatPackId);
+		root.put("compat_selection_source", profile.compatSelectionSource);
 		if (!TextUtils.isEmpty(profile.compatTargetId)) {
 			root.put("compat_target_id", profile.compatTargetId);
 		}
@@ -907,6 +940,10 @@ public final class LaunchProfileManager {
 		return TextUtils.isEmpty(sanitized) ? "unnamed" : sanitized;
 	}
 
+	private static String normalizeCompatSelectionSource(String source) {
+		return COMPAT_SELECTION_AUTO.equals(source) || COMPAT_SELECTION_MANUAL.equals(source) ? source : COMPAT_SELECTION_UNKNOWN;
+	}
+
 	private SharedPreferences prefs() {
 		return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 	}
@@ -979,6 +1016,7 @@ public final class LaunchProfileManager {
 		public final String payloadId;
 		public final String compatPackId;
 		public final String compatTargetId;
+		public final String compatSelectionSource;
 		public final String saveMode;
 		public final String modsMode;
 		public final File dir;
@@ -994,6 +1032,7 @@ public final class LaunchProfileManager {
 			this.payloadId = payloadId == null ? "" : payloadId;
 			this.compatPackId = compatPackId == null ? "" : compatPackId;
 			this.compatTargetId = compatTargetId == null ? "" : compatTargetId;
+			this.compatSelectionSource = normalizeCompatSelectionSource(manifest.optString("compat_selection_source", ""));
 			this.saveMode = SAVE_MODE_ISOLATED.equals(saveMode) ? SAVE_MODE_ISOLATED : SAVE_MODE_GLOBAL;
 			this.modsMode = MODS_MODE_ISOLATED.equals(modsMode) ? MODS_MODE_ISOLATED : MODS_MODE_GLOBAL;
 			this.dir = dir;

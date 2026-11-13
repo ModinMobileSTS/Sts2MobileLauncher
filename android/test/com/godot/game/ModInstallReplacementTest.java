@@ -258,7 +258,7 @@ public class ModInstallReplacementTest {
 		LaunchProfileManager profiles = new LaunchProfileManager(context);
 		createPayload(profiles);
 		LaunchProfileManager.LaunchProfile isolated = profiles.createProfile("mod-install-fixture", "Isolated",
-			LaunchProfileManager.SAVE_MODE_ISOLATED, LaunchProfileManager.MODS_MODE_ISOLATED, "", "", true);
+			LaunchProfileManager.SAVE_MODE_ISOLATED, LaunchProfileManager.MODS_MODE_ISOLATED, "", "", LaunchProfileManager.COMPAT_SELECTION_MANUAL, true);
 		mods = repository.getModsRootDir();
 		assertNotEquals(globalMods.getCanonicalPath(), mods.getCanonicalPath());
 		assertThrows(IOException.class, () -> repository.commitPreparedModImport(globalPrepared, true, true));
