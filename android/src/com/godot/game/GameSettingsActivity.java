@@ -5,7 +5,6 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.TextUtils;
@@ -576,22 +575,6 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			BottomSheetDialog dialog = new BottomSheetDialog(this);
 			LinearLayout content = ExtraSettingsUi.vertical(this);
 			content.setPadding(ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 12), ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 32));
-			GradientDrawable background = new GradientDrawable();
-			background.setColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
-			float radius = ExtraSettingsUi.dp(this, 28);
-			background.setCornerRadii(new float[] { radius, radius, radius, radius, 0, 0, 0, 0 });
-			content.setBackground(background);
-
-			View handle = new View(this);
-			GradientDrawable handleBackground = new GradientDrawable();
-			handleBackground.setColor(Color.argb(104, 202, 196, 208));
-			handleBackground.setCornerRadius(ExtraSettingsUi.dp(this, 2));
-			handle.setBackground(handleBackground);
-			LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 32), ExtraSettingsUi.dp(this, 4));
-			handleParams.gravity = Gravity.CENTER_HORIZONTAL;
-			handleParams.bottomMargin = ExtraSettingsUi.dp(this, 24);
-			content.addView(handle, handleParams);
-
 			content.addView(ExtraSettingsUi.text(this, profile == null ? R.string.create_launch_profile_title : R.string.edit_launch_profile_title, 22, ExtraSettingsUi.COLOR_ON_SURFACE, android.graphics.Typeface.BOLD));
 
 			EditText nameInput = new EditText(this);
@@ -603,6 +586,8 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			ExtraSettingsUi.addSmallSpacing(content, nameInput);
 
 			MaterialButton selectPayload = ExtraSettingsUi.outlineButton(this, R.string.launch_profile_select_payload_title, R.drawable.ic_folder_24);
+			selectPayload.setSingleLine(false);
+			selectPayload.setEllipsize(null);
 			selectPayload.setText(getString(R.string.launch_profile_select_payload_button, launchProfilePayloadLabel(profile, selectedPayload[0])));
 			selectPayload.setOnClickListener(v -> showLaunchProfilePayloadPicker(selectedPayload[0], picked -> {
 				selectedPayload[0] = picked;
@@ -622,6 +607,8 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			ExtraSettingsUi.addSmallSpacing(content, selectPayload);
 
 			MaterialButton selectCompat = ExtraSettingsUi.outlineButton(this, R.string.launch_profile_select_compat_title, R.drawable.ic_extension_24);
+			selectCompat.setSingleLine(false);
+			selectCompat.setEllipsize(null);
 			compatButtonRef[0] = selectCompat;
 			setLaunchProfileCompatButtonText(selectCompat, selectedCompatPackId[0], selectedCompatTargetId[0]);
 			selectCompat.setOnClickListener(v -> showLaunchProfileCompatPicker(selectedCompatPackId[0], selectedCompatTargetId[0], selectedPayload[0], picked -> {
@@ -703,7 +690,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			buttons.addView(ok, okParams);
 			ExtraSettingsUi.addSmallSpacing(content, buttons);
 
-			dialog.setContentView(content);
+			ScrollableBottomSheet.setContent(dialog, content);
 			dialog.show();
 		} catch (Exception exception) {
 			showError(exception);
@@ -1312,22 +1299,6 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 		LinearLayout content = ExtraSettingsUi.vertical(this);
 		content.setPadding(ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 12), ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 32));
-		GradientDrawable background = new GradientDrawable();
-		background.setColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
-		float radius = ExtraSettingsUi.dp(this, 28);
-		background.setCornerRadii(new float[] { radius, radius, radius, radius, 0, 0, 0, 0 });
-		content.setBackground(background);
-
-		View handle = new View(this);
-		GradientDrawable handleBackground = new GradientDrawable();
-		handleBackground.setColor(Color.argb(104, 202, 196, 208));
-		handleBackground.setCornerRadius(ExtraSettingsUi.dp(this, 2));
-		handle.setBackground(handleBackground);
-		LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 32), ExtraSettingsUi.dp(this, 4));
-		handleParams.gravity = Gravity.CENTER_HORIZONTAL;
-		handleParams.bottomMargin = ExtraSettingsUi.dp(this, 24);
-		content.addView(handle, handleParams);
-
 		content.addView(ExtraSettingsUi.text(this, R.string.launch_compat_recommendation_sheet_title, 22, ExtraSettingsUi.COLOR_ON_SURFACE, android.graphics.Typeface.BOLD));
 		TextView introduction = ExtraSettingsUi.body(this, R.string.launch_compat_recommendation_sheet_message);
 		LinearLayout.LayoutParams introductionParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -1358,6 +1329,8 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				: R.string.launch_compat_use_recommendation;
 			MaterialButton useRecommendation = ExtraSettingsUi.filledButton(this, useLabel, R.drawable.ic_check_circle_24);
 			useRecommendation.setAllCaps(false);
+			useRecommendation.setSingleLine(false);
+			useRecommendation.setEllipsize(null);
 			useRecommendation.setMinHeight(ExtraSettingsUi.dp(this, 48));
 			useRecommendation.setOnClickListener(v -> applyCompatRecommendationAndContinue(dialog, recommendation));
 			actions.addView(useRecommendation, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1365,6 +1338,8 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 		MaterialButton manage = ExtraSettingsUi.outlineButton(this, R.string.launch_compat_open_management, R.drawable.ic_layers_24);
 		manage.setAllCaps(false);
+		manage.setSingleLine(false);
+		manage.setEllipsize(null);
 		manage.setMinHeight(ExtraSettingsUi.dp(this, 48));
 		manage.setOnClickListener(v -> {
 			dialog.dismiss();
@@ -1374,7 +1349,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		manageParams.topMargin = recommendation == null ? 0 : ExtraSettingsUi.dp(this, 10);
 		actions.addView(manage, manageParams);
 
-		dialog.setContentView(content);
+		ScrollableBottomSheet.setContent(dialog, content);
 		dialog.show();
 	}
 

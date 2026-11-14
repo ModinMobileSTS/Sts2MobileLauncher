@@ -25,6 +25,7 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -141,6 +142,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 	private String pendingAuthUsername;
 	private String pendingAuthPassword;
 	private AlertDialog steamAuthDialog;
+	private TextView steamGuardCodeMessage;
 	private String steamAuthDialogKey = "";
 	private String suppressedConfirmationTransactionId = "";
 	private IBinder lastHandledAuthTerminalBinder;
@@ -1219,19 +1221,9 @@ public class SteamAccountActivity extends AppCompatActivity {
 			String current = SteamSettings.getCloudMode(this);
 			BottomSheetDialog dialog = new BottomSheetDialog(this);
 			LinearLayout sheetRoot = ExtraSettingsUi.vertical(this);
-			sheetRoot.setBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
 			int pad = ExtraSettingsUi.dp(this, 20);
 			sheetRoot.setPadding(pad, ExtraSettingsUi.dp(this, 12), pad, ExtraSettingsUi.dp(this, 28));
 
-			View handle = new View(this);
-			GradientDrawable handleBg = new GradientDrawable();
-			handleBg.setColor(ExtraSettingsUi.COLOR_OUTLINE);
-			handleBg.setCornerRadius(ExtraSettingsUi.dp(this, 100));
-			handle.setBackground(handleBg);
-			LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 36), ExtraSettingsUi.dp(this, 4));
-			handleParams.gravity = Gravity.CENTER_HORIZONTAL;
-			handleParams.bottomMargin = ExtraSettingsUi.dp(this, 12);
-			sheetRoot.addView(handle, handleParams);
 			sheetRoot.addView(ExtraSettingsUi.sectionTitle(this, R.string.steam_cloud_mode_title));
 
 			for (int i = 0; i < values.size(); i++) {
@@ -1269,25 +1261,8 @@ public class SteamAccountActivity extends AppCompatActivity {
 				sheetRoot.addView(option, optionParams);
 			}
 
-			ScrollView scroll = new ScrollView(this);
-			scroll.setFillViewport(true);
-			scroll.addView(sheetRoot, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-			dialog.setContentView(scroll);
+			ScrollableBottomSheet.setContent(dialog, sheetRoot);
 			dialog.setOnShowListener(shown -> {
-				FrameLayout bottomSheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
-				if (bottomSheet != null) {
-					bottomSheet.setBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
-					ViewGroup.LayoutParams params = bottomSheet.getLayoutParams();
-					if (params != null) {
-						params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-						bottomSheet.setLayoutParams(params);
-					}
-					com.google.android.material.bottomsheet.BottomSheetBehavior<FrameLayout> behavior =
-						com.google.android.material.bottomsheet.BottomSheetBehavior.from(bottomSheet);
-					behavior.setSkipCollapsed(true);
-					behavior.setState(com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED);
-					behavior.setDraggable(true);
-				}
 				if (dialog.getWindow() != null) {
 					dialog.getWindow().setDimAmount(0.48f);
 				}
@@ -1338,9 +1313,19 @@ public class SteamAccountActivity extends AppCompatActivity {
 			}
 			return;
 		}
+		// Material's 80dp top/bottom insets otherwise consume the form viewport
+		// when a large-font dialog is resized above the soft keyboard.
+		MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
+			.setBackgroundInsetTop(ExtraSettingsUi.dp(this, 24))
+			.setBackgroundInsetBottom(ExtraSettingsUi.dp(this, 24));
 		LinearLayout content = ExtraSettingsUi.vertical(this);
 		int padding = ExtraSettingsUi.dp(this, 8);
-		content.setPadding(padding, padding, padding, 0);
+		content.setPadding(padding, padding, padding, padding);
+		TextView message = new TextView(builder.getContext(), null, com.google.android.material.R.attr.materialAlertDialogBodyTextStyle);
+		message.setText(R.string.steam_login_message);
+		LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		messageParams.bottomMargin = ExtraSettingsUi.dp(this, 12);
+		content.addView(message, messageParams);
 
 		TextInputLayout usernameLayout = new TextInputLayout(this);
 		usernameLayout.setHint(getString(R.string.steam_username_hint));
@@ -1368,10 +1353,12 @@ public class SteamAccountActivity extends AppCompatActivity {
 			username.setText(snapshot.accountName);
 			username.setSelection(username.getText() == null ? 0 : username.getText().length());
 		}
-		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+		ScrollView scroll = new ScrollView(builder.getContext());
+		scroll.setFillViewport(false);
+		scroll.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		AlertDialog dialog = builder
 			.setTitle(R.string.steam_login)
-			.setMessage(R.string.steam_login_message)
-			.setView(content)
+			.setView(scroll)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(R.string.steam_login, null)
 			.create();
@@ -1386,6 +1373,9 @@ public class SteamAccountActivity extends AppCompatActivity {
 			dialog.dismiss();
 			startSteamAuthentication(user, pass);
 		}));
+		if (dialog.getWindow() != null) {
+			dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+		}
 		dialog.show();
 	}
 
@@ -1535,18 +1525,30 @@ public class SteamAccountActivity extends AppCompatActivity {
 		String transactionId = snapshot.getTransactionId() == null ? "" : snapshot.getTransactionId();
 		String key = "code:" + transactionId + ":" + type.name() + ":" + snapshot.getPreviousCodeRejected();
 		if (steamAuthDialog != null && key.equals(steamAuthDialogKey)) {
-			steamAuthDialog.setMessage(snapshot.getMessage());
+			steamGuardCodeMessage.setText(snapshot.getMessage());
 			return;
 		}
 		dismissSteamAuthDialog();
+		MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
+			.setBackgroundInsetTop(ExtraSettingsUi.dp(this, 24))
+			.setBackgroundInsetBottom(ExtraSettingsUi.dp(this, 24));
+		LinearLayout content = ExtraSettingsUi.vertical(this);
+		steamGuardCodeMessage = new TextView(builder.getContext(), null, com.google.android.material.R.attr.materialAlertDialogBodyTextStyle);
+		steamGuardCodeMessage.setText(snapshot.getMessage());
+		LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		messageParams.bottomMargin = ExtraSettingsUi.dp(this, 12);
+		content.addView(steamGuardCodeMessage, messageParams);
 		EditText input = new EditText(this);
 		input.setSingleLine(true);
 		input.setHint(R.string.steam_guard_code_hint);
 		input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
-		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+		content.addView(input, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		ScrollView scroll = new ScrollView(builder.getContext());
+		scroll.setFillViewport(false);
+		scroll.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		AlertDialog dialog = builder
 			.setTitle(R.string.steam_guard_title)
-			.setMessage(snapshot.getMessage())
-			.setView(input)
+			.setView(scroll)
 			.setCancelable(false)
 			.setNegativeButton(R.string.steam_guard_cancel_login_button, (ignored, which) -> cancelSteamAuthentication())
 			.setPositiveButton(android.R.string.ok, null)
@@ -1567,6 +1569,9 @@ public class SteamAccountActivity extends AppCompatActivity {
 				showMessage(getString(R.string.steam_status_auth_resuming));
 			}
 		}));
+		if (dialog.getWindow() != null) {
+			dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+		}
 		showSteamAuthDialog(dialog, key);
 	}
 
@@ -1578,6 +1583,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 			if (steamAuthDialog == dialog) {
 				steamAuthDialog = null;
 				steamAuthDialogKey = "";
+				steamGuardCodeMessage = null;
 			}
 		});
 		dialog.show();
@@ -1587,6 +1593,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 		AlertDialog dialog = steamAuthDialog;
 		steamAuthDialog = null;
 		steamAuthDialogKey = "";
+		steamGuardCodeMessage = null;
 		if (dialog != null && dialog.isShowing()) {
 			dialog.dismiss();
 		}

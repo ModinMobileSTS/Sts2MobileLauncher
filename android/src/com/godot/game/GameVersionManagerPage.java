@@ -554,7 +554,7 @@ public final class GameVersionManagerPage {
 			dialog.dismiss();
 			actions.requestDeleteLaunchProfile(profile.id);
 		}));
-		dialog.setContentView(content);
+		ScrollableBottomSheet.setContent(dialog, content);
 		dialog.show();
 	}
 
@@ -595,7 +595,7 @@ public final class GameVersionManagerPage {
 			dialog.dismiss();
 			actions.requestDeleteGamePayload(payload.id);
 		}));
-		dialog.setContentView(content);
+		ScrollableBottomSheet.setContent(dialog, content);
 		dialog.show();
 	}
 
@@ -626,7 +626,7 @@ public final class GameVersionManagerPage {
 			dialog.dismiss();
 			actions.requestDeleteCompatPack(pack.packId);
 		}));
-		dialog.setContentView(content);
+		ScrollableBottomSheet.setContent(dialog, content);
 		dialog.show();
 	}
 
@@ -644,22 +644,6 @@ public final class GameVersionManagerPage {
 	private LinearLayout buildSheetContent(String title) {
 		LinearLayout root = ExtraSettingsUi.vertical(context);
 		root.setPadding(ExtraSettingsUi.dp(context, 24), ExtraSettingsUi.dp(context, 12), ExtraSettingsUi.dp(context, 24), ExtraSettingsUi.dp(context, 32));
-		GradientDrawable bg = new GradientDrawable();
-		bg.setColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
-		float radius = ExtraSettingsUi.dp(context, 28);
-		bg.setCornerRadii(new float[] { radius, radius, radius, radius, 0, 0, 0, 0 });
-		root.setBackground(bg);
-
-		View handle = new View(context);
-		GradientDrawable handleBg = new GradientDrawable();
-		handleBg.setColor(Color.argb(104, 202, 196, 208));
-		handleBg.setCornerRadius(ExtraSettingsUi.dp(context, 2));
-		handle.setBackground(handleBg);
-		LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(context, 32), ExtraSettingsUi.dp(context, 4));
-		handleParams.gravity = Gravity.CENTER_HORIZONTAL;
-		handleParams.bottomMargin = ExtraSettingsUi.dp(context, 24);
-		root.addView(handle, handleParams);
-
 		TextView titleView = ExtraSettingsUi.text(context, title == null ? "" : title, 22, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
 		titleView.setLineSpacing(ExtraSettingsUi.dp(context, 2), 1.0f);
 		root.addView(titleView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -705,6 +689,8 @@ public final class GameVersionManagerPage {
 	}
 
 	private void addSheetAction(LinearLayout actionsLayout, MaterialButton button) {
+		button.setSingleLine(false);
+		button.setEllipsize(null);
 		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
 		params.topMargin = actionsLayout.getChildCount() == 0 ? 0 : ExtraSettingsUi.dp(context, 10);
 		actionsLayout.addView(button, params);

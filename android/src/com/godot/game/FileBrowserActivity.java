@@ -1031,18 +1031,8 @@ public class FileBrowserActivity extends AppCompatActivity {
 
     private LinearLayout createSheetContent() {
         LinearLayout content = ExtraSettingsUi.vertical(this);
-        content.setBackgroundColor(Color.TRANSPARENT);
         int horizontalPadding = ExtraSettingsUi.dp(this, 20);
         content.setPadding(horizontalPadding, ExtraSettingsUi.dp(this, 8), horizontalPadding, ExtraSettingsUi.dp(this, 28));
-        View handle = new View(this);
-        GradientDrawable handleBackground = new GradientDrawable();
-        handleBackground.setColor(getColor(R.color.sts2_crash_outline));
-        handleBackground.setCornerRadius(ExtraSettingsUi.dp(this, 3));
-        handle.setBackground(handleBackground);
-        LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(this, 36), ExtraSettingsUi.dp(this, 4));
-        handleParams.gravity = Gravity.CENTER_HORIZONTAL;
-        handleParams.bottomMargin = ExtraSettingsUi.dp(this, 16);
-        content.addView(handle, handleParams);
         return content;
     }
 
@@ -1067,7 +1057,7 @@ public class FileBrowserActivity extends AppCompatActivity {
         if (hasCopiedEntries()) {
             addSheetAction(content, dialog, "content_paste", getString(R.string.file_browser_sheet_paste_format, copiedEntries.size()), R.string.file_browser_sheet_copy_detail, () -> pasteCopiedEntries());
         }
-        dialog.setContentView(content);
+        ScrollableBottomSheet.setContent(dialog, content);
         dialog.show();
     }
 
@@ -1154,7 +1144,7 @@ public class FileBrowserActivity extends AppCompatActivity {
             startActivityForResult(intent, REQUEST_EXPORT_TREE);
         });
         addSheetAction(content, dialog, "delete", R.string.file_browser_sheet_delete, 0, () -> confirmDeleteEntries(java.util.Collections.singletonList(file)));
-        dialog.setContentView(content);
+        ScrollableBottomSheet.setContent(dialog, content);
         dialog.show();
     }
 

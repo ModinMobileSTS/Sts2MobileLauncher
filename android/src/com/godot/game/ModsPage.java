@@ -46,12 +46,10 @@ import android.graphics.drawable.ColorDrawable;
 import android.text.SpannableString;
 
 import androidx.appcompat.widget.PopupMenu;
-import androidx.core.widget.NestedScrollView;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
@@ -1679,28 +1677,13 @@ public final class ModsPage {
 			}
 		});
 		groupManageSheet = dialog;
-		dialog.setContentView(buildGroupManageContent(dialog));
+		ScrollableBottomSheet.setContent(dialog, buildGroupManageContent(dialog));
 		dialog.show();
 	}
 
-	private View buildGroupManageContent(BottomSheetDialog dialog) {
+	private LinearLayout buildGroupManageContent(BottomSheetDialog dialog) {
 		LinearLayout root = ExtraSettingsUi.vertical(context);
 		root.setPadding(ExtraSettingsUi.dp(context, 24), ExtraSettingsUi.dp(context, 12), ExtraSettingsUi.dp(context, 24), ExtraSettingsUi.dp(context, 32));
-		GradientDrawable bg = new GradientDrawable();
-		bg.setColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
-		float radius = ExtraSettingsUi.dp(context, 28);
-		bg.setCornerRadii(new float[] { radius, radius, radius, radius, 0, 0, 0, 0 });
-		root.setBackground(bg);
-
-		View handle = new View(context);
-		GradientDrawable handleBg = new GradientDrawable();
-		handleBg.setColor(ExtraSettingsUi.COLOR_OUTLINE);
-		handleBg.setCornerRadius(ExtraSettingsUi.dp(context, 2));
-		handle.setBackground(handleBg);
-		LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(ExtraSettingsUi.dp(context, 40), ExtraSettingsUi.dp(context, 4));
-		handleParams.gravity = Gravity.CENTER_HORIZONTAL;
-		handleParams.bottomMargin = ExtraSettingsUi.dp(context, 16);
-		root.addView(handle, handleParams);
 
 		root.addView(ExtraSettingsUi.sectionTitle(context, context.getString(R.string.mod_group_manage)));
 
@@ -1719,13 +1702,8 @@ public final class ModsPage {
 		createRow.addView(createBtn, createBtnParams);
 		root.addView(createRow);
 
-		ScrollView scrollView = new ScrollView(context);
-		scrollView.setFillViewport(true);
 		LinearLayout list = ExtraSettingsUi.vertical(context);
-		scrollView.addView(list, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-		LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ExtraSettingsUi.dp(context, 420));
-		scrollParams.topMargin = ExtraSettingsUi.dp(context, 4);
-		root.addView(scrollView, scrollParams);
+		root.addView(list, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
 		Runnable rebuildList = () -> populateGroupManageList(list, dialog);
 		createBtn.setOnClickListener(v -> {
@@ -3098,16 +3076,11 @@ public final class ModsPage {
 		}
 		BottomSheetDialog dialog = new BottomSheetDialog(context);
 		issuesSheet = dialog;
-		dialog.setContentView(buildModIssuesContent(dialog));
+		ScrollableBottomSheet.setContent(dialog, buildModIssuesContent(dialog));
 		configureModIssuesBottomSheet(dialog);
 		dialog.show();
 	}
 
-	/**
-	 * Opens at the normal content-height expanded state (not full-screen).
-	 * Sheet body is not draggable so list scrolling never dismisses it;
-	 * only the top handle can pull down to close or pull up to re-expand.
-	 */
 	private void configureModIssuesBottomSheet(BottomSheetDialog dialog) {
 		dialog.setOnShowListener(unused -> {
 			Window window = dialog.getWindow();
@@ -3115,44 +3088,12 @@ public final class ModsPage {
 				window.setDimAmount(0.56f);
 				window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
 			}
-			FrameLayout bottomSheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
-			if (bottomSheet != null) {
-				// Keep wrap-content so Material sizes to content, not MATCH_PARENT full screen.
-				ViewGroup.LayoutParams params = bottomSheet.getLayoutParams();
-				if (params != null) {
-					params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-					bottomSheet.setLayoutParams(params);
-				}
-			}
-			BottomSheetBehavior<FrameLayout> behavior = dialog.getBehavior();
-			behavior.setFitToContents(true);
-			behavior.setSkipCollapsed(true);
-			behavior.setPeekHeight(BottomSheetBehavior.PEEK_HEIGHT_AUTO);
-			behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
-			behavior.setDraggable(false);
 		});
 	}
 
-	private View buildModIssuesContent(BottomSheetDialog dialog) {
+	private LinearLayout buildModIssuesContent(BottomSheetDialog dialog) {
 		LinearLayout root = ExtraSettingsUi.vertical(context);
 		root.setPadding(ExtraSettingsUi.dp(context, 24), ExtraSettingsUi.dp(context, 4), ExtraSettingsUi.dp(context, 24), ExtraSettingsUi.dp(context, 24));
-		GradientDrawable bg = new GradientDrawable();
-		bg.setColor(ExtraSettingsUi.COLOR_SURFACE_CONTAINER);
-		float radius = ExtraSettingsUi.dp(context, 28);
-		bg.setCornerRadii(new float[] { radius, radius, radius, radius, 0, 0, 0, 0 });
-		root.setBackground(bg);
-
-		// Large hit target for handle-only drag/dismiss.
-		FrameLayout handleTarget = new FrameLayout(context);
-		handleTarget.setPadding(0, ExtraSettingsUi.dp(context, 10), 0, ExtraSettingsUi.dp(context, 12));
-		View handle = new View(context);
-		GradientDrawable handleBg = new GradientDrawable();
-		handleBg.setColor(ExtraSettingsUi.COLOR_OUTLINE);
-		handleBg.setCornerRadius(ExtraSettingsUi.dp(context, 2));
-		handle.setBackground(handleBg);
-		handleTarget.addView(handle, new FrameLayout.LayoutParams(ExtraSettingsUi.dp(context, 40), ExtraSettingsUi.dp(context, 4), Gravity.CENTER));
-		root.addView(handleTarget, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ExtraSettingsUi.dp(context, 36)));
-		attachIssuesSheetHandle(handleTarget, dialog);
 
 		root.addView(ExtraSettingsUi.sectionTitle(context, context.getString(R.string.mod_issues_title)));
 		if (issuesByModId.isEmpty()) {
@@ -3204,14 +3145,6 @@ public final class ModsPage {
 			root.addView(actions, actionsParams);
 		}
 
-		NestedScrollView scrollView = new NestedScrollView(context);
-		scrollView.setFillViewport(false);
-		scrollView.setNestedScrollingEnabled(true);
-		// Content gestures must never be treated as sheet drag.
-		scrollView.setOnTouchListener((view, event) -> {
-			view.getParent().requestDisallowInterceptTouchEvent(true);
-			return false;
-		});
 		LinearLayout list = ExtraSettingsUi.vertical(context);
 		for (Map.Entry<String, List<ModIssue>> entry : issuesByModId.entrySet()) {
 			List<ModIssue> issues = entry.getValue();
@@ -3224,24 +3157,7 @@ public final class ModsPage {
 			cardParams.topMargin = ExtraSettingsUi.dp(context, 8);
 			list.addView(card, cardParams);
 		}
-		scrollView.addView(list, new NestedScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-		// Cap scroll height so sheet stays content-expanded and can still scroll long lists.
-		int maxScroll = (int) (context.getResources().getDisplayMetrics().heightPixels * 0.55f);
-		LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-		scrollView.setMinimumHeight(0);
-		root.addView(scrollView, scrollParams);
-		scrollView.post(() -> {
-			if (scrollView.getChildCount() == 0) {
-				return;
-			}
-			View child = scrollView.getChildAt(0);
-			int contentHeight = child.getMeasuredHeight();
-			ViewGroup.LayoutParams lp = scrollView.getLayoutParams();
-			if (lp != null) {
-				lp.height = Math.min(Math.max(contentHeight, 1), maxScroll);
-				scrollView.setLayoutParams(lp);
-			}
-		});
+		root.addView(list, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 		return root;
 	}
 
@@ -3342,35 +3258,6 @@ public final class ModsPage {
 		return null;
 	}
 
-	/** Handle-only sheet control: pull down to dismiss, pull up to re-expand. */
-	private void attachIssuesSheetHandle(View handleTarget, BottomSheetDialog dialog) {
-		final float[] downRawY = new float[1];
-		int dismissDistance = ExtraSettingsUi.dp(context, 36);
-		int expandDistance = ExtraSettingsUi.dp(context, 24);
-		handleTarget.setOnTouchListener((view, event) -> {
-			BottomSheetBehavior<FrameLayout> behavior = dialog.getBehavior();
-			switch (event.getActionMasked()) {
-				case MotionEvent.ACTION_DOWN:
-					downRawY[0] = event.getRawY();
-					view.getParent().requestDisallowInterceptTouchEvent(true);
-					return true;
-				case MotionEvent.ACTION_MOVE:
-					return true;
-				case MotionEvent.ACTION_UP:
-				case MotionEvent.ACTION_CANCEL:
-					view.getParent().requestDisallowInterceptTouchEvent(false);
-					float delta = event.getRawY() - downRawY[0];
-					if (delta >= dismissDistance) {
-						dialog.dismiss();
-					} else if (delta <= -expandDistance) {
-						behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
-					}
-					return true;
-				default:
-					return true;
-			}
-		});
-	}
 
 	private void runIssueAutoFix(BottomSheetDialog dialog, boolean enableDeps, boolean fixOrder) {
 		try {

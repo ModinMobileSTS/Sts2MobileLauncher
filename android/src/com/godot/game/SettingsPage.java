@@ -837,18 +837,15 @@ public final class SettingsPage {
 
 	private void showChoiceBottomSheet(int titleRes, List<ChoiceOption> options, int selectedIndex, SettingOperation operation, TextView valueView) {
 		BottomSheetDialog dialog = new BottomSheetDialog(context);
-		dialog.setContentView(buildChoiceSheetContent(dialog, titleRes, options, Math.max(0, Math.min(selectedIndex, options.size() - 1)), operation, valueView));
+		ScrollableBottomSheet.setContent(dialog, buildChoiceSheetContent(dialog, titleRes, options, Math.max(0, Math.min(selectedIndex, options.size() - 1)), operation, valueView));
 		configureBottomSheetWindow(dialog);
 		dialog.show();
 	}
 
-	private View buildChoiceSheetContent(BottomSheetDialog dialog, int titleRes, List<ChoiceOption> options, int selectedIndex, SettingOperation operation, TextView valueView) {
-		ScrollView scrollView = bottomSheetScrollView();
+	private LinearLayout buildChoiceSheetContent(BottomSheetDialog dialog, int titleRes, List<ChoiceOption> options, int selectedIndex, SettingOperation operation, TextView valueView) {
 		LinearLayout content = ExtraSettingsUi.vertical(context);
 		int horizontalPadding = ExtraSettingsUi.dp(context, 12);
 		content.setPadding(horizontalPadding, ExtraSettingsUi.dp(context, 12), horizontalPadding, ExtraSettingsUi.dp(context, 24));
-		scrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-		addBottomSheetHandle(content);
 		TextView title = ExtraSettingsUi.text(context, titleRes, 20, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
 		LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
 		titleParams.setMargins(ExtraSettingsUi.dp(context, 12), 0, ExtraSettingsUi.dp(context, 12), ExtraSettingsUi.dp(context, 8));
@@ -868,7 +865,7 @@ public final class SettingsPage {
 			});
 			content.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 		}
-		return scrollView;
+		return content;
 	}
 
 	private View choiceSheetRow(ChoiceOption option, boolean selected, Runnable onClick) {
@@ -978,17 +975,12 @@ public final class SettingsPage {
 	}
 
 	private void configureBottomSheetWindow(BottomSheetDialog dialog) {
-		configureBottomSheetWindow(dialog, true);
-	}
-
-	private void configureBottomSheetWindow(BottomSheetDialog dialog, boolean draggable) {
 		dialog.setOnShowListener(unused -> {
 			Window window = dialog.getWindow();
 			if (window != null) {
 				window.setDimAmount(0.48f);
 				window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
 			}
-			dialog.getBehavior().setDraggable(draggable);
 		});
 	}
 
