@@ -195,7 +195,7 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 | `v0.109.0` / `v0.109.1` beta（旧测试） | `v0.109.0`（稳定 id，显示 v0.109.x） | `.env`: `STS2_ORIGINAL_V1090_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1090_ROOT`（历史名，指向最新 v0.109.1） | `original-v0.109.0` |
 | `v0.110.0` / `v0.110.1` public beta（旧测试） | `v0.110.0`（显示 v0.110.x） | `.env`: `STS2_ORIGINAL_V1100_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1100_ROOT`（指向 v0.110.1） | `original-v0.110.0` |
 | `v0.111.0` public beta（旧测试） | `v0.111.0` | `.env`: `STS2_ORIGINAL_V1110_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1110_ROOT` | `original-v0.111.0` |
-| `v0.113.0` public beta（当前） | `v0.113.0` | `.env`: `STS2_ORIGINAL_V1130_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1130_ROOT` | `original-v0.113.0` |
+| `v0.113.0` / `v0.113.1` public beta（当前） | `v0.113.0`（稳定 id，显示 v0.113.x） | `.env`: `STS2_ORIGINAL_V1130_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1130_ROOT`（历史名，指向最新 v0.113.1） | `original-v0.113.0` |
 
 开发步骤建议：
 
@@ -223,6 +223,8 @@ tools/package/build_importer_apk.sh
 v0.110.0 是游戏 MOD API 更新，不只是 Android target 更新；v0.110.1 仅包含不触达 Android compat 的 AutoSlay/lobby 实现修复，继续共用 v0.110.x target。该 API 线移除了 `Scare`、`OutbreakPower`、旧 `LobbyPlayer`、`JoinFlow.MockInfo`、`MegaInput.accept/releaseCard` 与旧 controller/keyboard mapping API。v0.111.0 再次使用独立 target：原版新增 transport-level `HandshakeManager`，`NetClientGameService` / `NetHostGameService` 构造时必须传入 `PeerVersionInfo`，版本、ModelDb hash 与 MOD 校验在消息总线启用前完成；Android LAN 只传入 `PeerVersionInfo.LocalDefault()` 并继续使用原版握手与 wire protocol。`AnimState` 同时把 trigger branch 字段改名并增加条件 next-state graph，compat 动画预热会读取两种字段形状。直接静态引用这些变化成员的普通 MOD 必须发布匹配 v0.111.0 的版本；full compat 不会向 `sts2.dll` 伪造已删除成员。
 
 v0.113.0 是独立 target，使用 `STS2_TARGET_1130`，不与 v0.111.0 共用 variant。LAN 加入直接走原版 `NJoinFriendScreen.JoinGameAsync`，让 payload 管理 `JoinFlow.Begin(SceneTree)`、取消、错误和模式路由；host 保留 `isCustom` 与 Standard/Daily/Blitz/Dread 的原版入口，读档使用 `IsCustomGame`。商店确认在一次性 allowance 内重放原版 `OnSelected()` 并等待实际任务，不再反射调用已删除的 `OnTryPurchase`；旧 target 也回到各自原版购买流程。新版宝箱保留预置 1–6 个遗物布局及 Large icon reveal，仅为更大容量补充布局。atlas-aware blur 的 `uv_region/radius_scale` 实例参数与旧 shader 不兼容，因此只在 v113 保留原版卡面 blur，不再安装已删除的 `NEpochSlot._blurShader` 修复；其他已审计 shader variants 不变。普通 MOD 仍须自行匹配该版本 API，compat 不补造已删除成员；桌面回归不等于 Android GPU/触控/跨设备认证。
+
+v0.113.1 与 v0.113.0 共用上述 variant，保留 target id `v0.113.0`、flavor `original-v0.113.0` 与 `STS2_TARGET_1130`，显示为 v0.113.x，并声明两版完整 DLL SHA。V1130 引用应指向最新 v0.113.1。两版并非所有 API/IL 相同：v0.113.1 删除 `HoverTipAlignment.Center`、新增 `NHoverTipSet.SetAlignmentBelow` 并调整药水、玩法和存档逻辑；compat 没有调用删除项，所用初始化、LAN、商店、宝箱、输入和显示合约不变，scene/material/shader 条目也不变，因此无需新增运行时分支。普通 MOD 仍须匹配实际 payload，不能因共享 Android target 就推断两版 MOD API 或跨版本 LAN 兼容。
 
 ## 8. 新增游戏版本 checklist
 
@@ -304,15 +306,18 @@ schema 2 family manifest：
   "schema": 2,
   "pack_id": "sts2-android-compat",
   "display_name": "STS2 Android Compatibility",
-  "compat_version": "0.7.0-dev",
+  "compat_version": "0.7.1-dev",
   "channel": "mixed",
   "targets": [
     {
       "target_id": "v0.113.0",
-      "versions": ["v0.113.0"],
-      "source": "original_pc_reference_v0.113.0",
+      "versions": ["v0.113.0", "v0.113.1"],
+      "source": "original_pc_reference_v0.113.1",
       "steam_branch": "public-beta",
-      "sts2_dll_sha256": "a6cc282c52b96ad2e01d5692b1144b33aa8e3ba4e969582f648ecb13b2f751d7",
+      "sts2_dll_sha256": [
+        "a6cc282c52b96ad2e01d5692b1144b33aa8e3ba4e969582f648ecb13b2f751d7",
+        "62ecbe91093e1fa862de4329aac865209dcb297804caf0f0520d92d8c0b4a9c3"
+      ],
       "artifacts": {
         "dll": "variants/v0.113.0/STS2Mobile.dll",
         "overlay_pck": "variants/v0.113.0/port_compat.pck"

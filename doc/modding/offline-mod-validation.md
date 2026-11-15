@@ -43,7 +43,7 @@ sts2_load_dotenv
 
 | 游戏引用 | `ReferenceFlavor` | `.env` reference 变量 | compile constant |
 | --- | --- | --- | --- |
-| v0.113.0 | `original-v0.113.0` | `STS2_ORIGINAL_V1130_REFERENCE_DIR` | `STS2_TARGET_1130` |
+| v0.113.x，共享 target 使用最新 v0.113.1 引用 | `original-v0.113.0` | `STS2_ORIGINAL_V1130_REFERENCE_DIR` | `STS2_TARGET_1130` |
 | v0.111.0 | `original-v0.111.0` | `STS2_ORIGINAL_V1110_REFERENCE_DIR` | `STS2_TARGET_1110` |
 | v0.110.x，共享 target 使用 v0.110.1 引用 | `original-v0.110.0` | `STS2_ORIGINAL_V1100_REFERENCE_DIR` | `STS2_TARGET_1100` |
 | v0.109.x，共享 target 使用 v0.109.1 引用 | `original-v0.109.0` | `STS2_ORIGINAL_V1090_REFERENCE_DIR` | `STS2_TARGET_1090` |

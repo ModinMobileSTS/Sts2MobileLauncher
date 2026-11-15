@@ -57,8 +57,8 @@ STS2_ORIGINAL_V1090_REFERENCE_DIR=/path/to/v0.109.1/bin/Debug
 STS2_ORIGINAL_V1100_REFERENCE_DIR=/path/to/v0.110.1/bin/Debug
 # Older v0.111.0 public-beta target.
 STS2_ORIGINAL_V1110_REFERENCE_DIR=/path/to/v0.111.0/bin/Debug
-# Current v0.113.0 public-beta target.
-STS2_ORIGINAL_V1130_REFERENCE_DIR=/path/to/v0.113.0/data_sts2_windows_x86_64
+# Historical V1130 flavor; shared v0.113.x gate uses the latest v0.113.1 reference.
+STS2_ORIGINAL_V1130_REFERENCE_DIR=/path/to/v0.113.1/data_sts2_windows_x86_64
 ```
 
 `STS2_ORIGINAL_*_REFERENCE_DIR` 目录需包含 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll`。这些是 compile gate 引用，不提交到仓库。
@@ -84,7 +84,7 @@ STS2_ORIGINAL_V1130_REFERENCE_DIR=/path/to/v0.113.0/data_sts2_windows_x86_64
 - 默认 build type：`release`，脚本执行 `assembleMonoRelease`
 - ABI：`arm64-v8a`
 - applicationId：`com.megacrit.sts2re`
-- versionName/versionCode：`v0.1.12` / `114`
+- versionName/versionCode：`v0.1.13` / `115`
 
 `release` build type 当前保留 `debuggable true`，便于本地 sideload 和 `run-as` 验证。package 脚本默认使用 `RELEASE_KEYSTORE_*` 或 `local.properties` 中的签名配置；本地测试可使用 Android debug keystore，正式发布前必须重新配置签名和安全策略。
 
@@ -221,7 +221,7 @@ android/assets/port_compat.pck
 # 当前稳定版 v0.108.0
 REFERENCE_FLAVOR=original-v0.108.0 tools/android/build-port-mod.sh
 
-# 当前 public-beta v0.113.0
+# 当前 public-beta v0.113.x（历史 flavor，引用使用 v0.113.1）
 REFERENCE_FLAVOR=original-v0.113.0 tools/android/build-port-mod.sh
 
 # 旧 public-beta v0.111.0
@@ -294,7 +294,7 @@ tools/android/stage-bundled-compat-packs.sh
 - `v0.109.0`（稳定 target id，显示为 v0.109.x，同时支持 v0.109.0/v0.109.1；历史 `ReferenceFlavor=original-v0.109.0` 指向最新 v0.109.1 引用）
 - `v0.110.0` / `v0.110.1`（旧 public beta，共享 API/protocol target id `v0.110.0`，历史 `ReferenceFlavor=original-v0.110.0` 使用 v0.110.1 引用）
 - `v0.111.0`（旧 public beta，独立 API/transport-handshake target，`ReferenceFlavor=original-v0.111.0`）
-- `v0.113.0`（当前 public beta，独立模式/商店/宝箱与 atlas blur 合约，`ReferenceFlavor=original-v0.113.0`、`STS2_TARGET_1130`）
+- `v0.113.0` / `v0.113.1`（当前 public beta，共享稳定 target id `v0.113.0`、显示 v0.113.x；历史 `ReferenceFlavor=original-v0.113.0` 与 `STS2_TARGET_1130` 保留，引用使用 v0.113.1）
 
 同一 variant 覆盖多个 API-compatible 原版 DLL 时，target 的 `sts2_dll_sha256` 可声明为字符串数组；构建脚本会原样写入 schema 2 manifest，启动器会遍历全部元素做精确 SHA 匹配。旧单字符串 manifest 继续兼容。
 
@@ -463,11 +463,11 @@ tools/package/build_android_body_zip.sh \
   --source-dir "/path/to/s201091" \
   --out "dist/payload/sts2-v0.109.1-android-body.zip"
 
-# v0.113.0 当前 public beta
+# v0.113.1 当前 public beta（本体与源码必须同版本，不能复用 v0.113.0 PCK）
 tools/package/build_android_body_zip.sh \
-  --pc-zip "/path/to/sts2-v0.113.0.zip" \
-  --source-dir "/path/to/s201130" \
-  --out "dist/payload/sts2-v0.113.0-android-body.zip"
+  --pc-zip "/path/to/sts2-v0.113.1.zip" \
+  --source-dir "/path/to/s201131" \
+  --out "dist/payload/sts2-v0.113.1-android-body.zip"
 ```
 
 临时工程和 Godot 日志默认写入 `.agent/tmp/android-body-build/`，该目录不入库；生成的 zip 应留在 `dist/` 或其他本地输出目录，不要提交。
@@ -519,7 +519,7 @@ rg 'preferredRefreshRate' \
 # payload zip 校验
 tools/package/validate_payload_zip.py "/path/to/SlayTheSpire2.zip"
 
-# 当前 public-beta v0.113.0 compile gate
+# 当前 public-beta v0.113.x compile gate（历史 flavor，引用使用 v0.113.1）
 REFERENCE_FLAVOR=original-v0.113.0 tools/android/build-port-mod.sh
 
 # 旧 v0.110.x compile gate（历史 flavor，引用为 v0.110.1）

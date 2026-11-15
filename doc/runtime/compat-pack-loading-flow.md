@@ -1,6 +1,6 @@
 # MOD 与兼容包加载流程
 
-本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。当前说明适用于内置的 `v0.103.x` / `v0.107.1` / `v0.108.0` 正式/稳定兼容 target、共享 `v0.109.x`（v0.109.0/v0.109.1，稳定 target id 为 `v0.109.0`）与共享 `v0.110.x`（v0.110.0/v0.110.1，稳定 target id 为 `v0.110.0`）target、独立 `v0.111.0` / 当前 `v0.113.0` public-beta target，以及旧 `v0.106.1` / `v0.107.0` beta target。
+本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。当前说明适用于内置的 `v0.103.x` / `v0.107.1` / `v0.108.0` 正式/稳定兼容 target、共享 `v0.109.x`（v0.109.0/v0.109.1，稳定 id `v0.109.0`）、共享 `v0.110.x`（v0.110.0/v0.110.1，稳定 id `v0.110.0`）、独立 `v0.111.0`、当前共享 `v0.113.x`（v0.113.0/v0.113.1，稳定 id `v0.113.0`）public-beta target，以及旧 `v0.106.1` / `v0.107.0` beta target。
 
 ## 1. 术语
 
@@ -306,7 +306,7 @@ STS2Mobile.ModEntry
    损坏资源用例会输出预期的 Godot Parse Error，最终必须看到 `PASS` 且进程成功退出。桌面 headless 回归不等于 Android GPU/帧率实测；高刷请求、原版 FPS 上限、VSync、画质和特效数量均未因这项优化而改变。
 
 8. LAN bootstrap。`LanMultiplayerBootstrapPatches` 在主菜单就绪后才尝试应用本地 LAN 兼容补丁；若 `settings.save` 中 `lan_multiplayer_enabled=false`，或已加载 `sts2_lan_connect` / STS2 Game Lobby 大厅 MOD，`LanMultiplayerPatches` 会整组跳过，避免 Android LAN host/join、玩家 ID 等适配与大厅 MOD 自己的联机协议 profile 冲突。内置 LAN 补丁只处理 Android transport/UI/settings/player/save 兼容，不 patch `MessageTypes.ToId`、`MessageTypes.TryGetMessageType` 或 `NetMessageBus.TryDeserializeMessage`，也不维护固定消息表；消息类型发现、排序、ID 与序列化/反序列化始终由当前 payload 对应版本的原版实现负责，因此 Android 与未修改 PC 使用同一 wire protocol，普通 MOD 自定义 `INetMessage` 也继续按原版规则参与排序。v0.111.0 构造 host/client service 时额外传入 `PeerVersionInfo.LocalDefault()`，随后完全交给原版 transport-level `HandshakeManager` 在消息总线启用前校验游戏版本、ModelDb hash 和 gameplay/non-gameplay MOD；Android 不复制握手数据结构，也不回退旧 lobby-message 校验。启用本地 LAN patch 时，兼容层还会拦截多人读档 canonicalize 的本地玩家 ID：如果当前自定义平台/玩家 ID 不在 `current_run_mp.save` 的玩家列表中，会优先使用隐藏稳定字段 `lan_multiplayer_save_player_id`、旧自动 LAN ID 或单玩家存档中的唯一 `NetId`，避免用户修改自定义平台 ID 后旧多人存档被误判为不属于本机。`max_multiplayer_players` 只扩展 host/lobby 容量；超过四人的运行仍属实验模式，本次已覆盖宝箱和休息点的确定性四槽故障，但不能据此认定原版所有房间和任意配置人数都已兼容。
-   v0.113.0 加入复用 `NJoinFriendScreen.JoinGameAsync`，由原版处理带 `SceneTree` 的 `JoinFlow.Begin`、取消与错误；新建 host 独立保留 `isCustom`，非自定义房间按 Standard/Daily/Blitz/Dread 进入原版 lobby，读档以 `SerializableRun.IsCustomGame` 判断自定义。不得退回兼容层手工复制 JoinFlow/模式路由。商店确认则在一次性 allowance 内调用原版 `OnSelected()` 并等待实际购买任务，新旧 target 都不再依赖已删除的 slot `OnTryPurchase`。
+   v0.113.x 加入复用 `NJoinFriendScreen.JoinGameAsync`，由原版处理带 `SceneTree` 的 `JoinFlow.Begin`、取消与错误；新建 host 独立保留 `isCustom`，非自定义房间按 Standard/Daily/Blitz/Dread 进入原版 lobby，读档以 `SerializableRun.IsCustomGame` 判断自定义。不得退回兼容层手工复制 JoinFlow/模式路由。商店确认在一次性 allowance 内调用原版 `OnSelected()` 并等待实际购买任务，新旧 target 都不再依赖已删除的 slot `OnTryPurchase`。v0.113.0/v0.113.1 虽共享 Android variant，握手和普通 MOD 仍以实际 payload 版本为准，不承诺跨版本互联。
 9. `ModLoaderPatches`。
 10. save diagnostic。
 11. `RenderDiagnosticPatches` 后置调度；它只用于设备/渲染信息采集，调度异常会记录但不阻断 Steam 跳过和存档路径重定向等核心 patch。
@@ -345,7 +345,7 @@ OS.GetDataDir()/port_compat.pck
 - inline `VisualShader` 不按资源对象身份猜测，而按生成代码的 SHA-256 命中已审计 variant，并且 source path 还必须通过内置前缀 allowlist（`res://scenes/`、`res://images/`、`res://shaders/`）。`res://mods/` 与 `res://user/` 明确不替换；hash 命中但不在这些内置前缀内也不替换。
 - VisualShader 生成代码中的隐藏 sampler alias 属于 baked/generated texture 输入，不会因为 hash 命中而新增可写的 shader parameter key；variant 只复制原 material 可见的参数协议。
 - 通用 `SceneTree.NodeAdded` 路径只检查 CanvasItem 自身的 `Material`；每个命中节点获得独立的 `ShaderMaterial` 副本。Spine 的 material slots 不由这条 CanvasItem 自动路径覆盖，本补丁不改写 slots。
-- 旧 target 的缓存材质不依赖 NodeAdded 猜测：`NCard.Reload` 专门修复卡面 portrait/canvas-group blur，`NMainMenu._Ready` 修复主菜单 blur，`NEpochSlot._Ready` 修复时间线 blur，`NRadialBlurVfx._Ready` 修复径向 blur；`AssetCache.GetMaterial()` 对已知卡面 blur material 路径也返回替换材质的副本。v0.113.0 的卡面/时间线例外见下文。
+- 旧 target 的缓存材质不依赖 NodeAdded 猜测：`NCard.Reload` 专门修复卡面 portrait/canvas-group blur，`NMainMenu._Ready` 修复主菜单 blur，`NEpochSlot._Ready` 修复时间线 blur，`NRadialBlurVfx._Ready` 修复径向 blur；`AssetCache.GetMaterial()` 对已知卡面 blur material 路径也返回替换材质的副本。v0.113.x 的卡面/时间线例外见下文。
 - 这些已知动态路径写回的是替代 `ShaderMaterial` 副本，而不是把原始共享材质换成新 shader；当前没有覆盖任意晚到 `CanvasItem.Material` 赋值的通用 helper。若后续集成 owner 暴露专用更新入口，调用方必须沿用这条替代材质路径；本兼容层当前不对不存在的 helper 或自动重写能力作承诺。
 
 **Maleoon OpenGL 回能粒子兼容**
@@ -362,7 +362,7 @@ OS.GetDataDir()/port_compat.pck
 
 古卡（先古卡）遮罩使用的 `res://shaders/blur/canvas_group_mask_blur.gdshader` 明确排除在替换表之外；overlay 不提供、不预加载 `canvas_group_mask_blur` 的移动 variant，因此该遮罩继续使用原版 shader。这个排除不妨碍上面的 `NCard.Reload` 专用路径修复其它卡面 blur 缓存材质。
 
-v0.113.0 的 `Blur.gdshader` 改为 atlas-clamped `uv_region/radius_scale` instance uniforms，不能继续使用旧 `step` shader。该 target 在 shader resolver、NodeAdded、`AssetCache.GetMaterial` 与卡面缓存边界都保留原版 blur，并停止注册旧 `NCard.Reload` / 已删除的 `NEpochSlot._blurShader` 修复；不降低采样质量、不增加资源。`Sts2Target1130=true` 的 `FramePreparation.Tests` 覆盖实际节点材质和两条 material-cache 路径；搭配 `TreasureHolderLayoutShape=true` 还覆盖新版 1–6 预置布局、较大容量布局复用与原版奖励流程。真实卡面像素、厂商 GPU 及新模式联机仍需真机验证。
+v0.113.x 的 `Blur.gdshader` 使用 atlas-clamped `uv_region/radius_scale` instance uniforms，不能继续使用旧 `step` shader。共享 target 在 shader resolver、NodeAdded、`AssetCache.GetMaterial` 与卡面缓存边界保留原版 blur，不注册旧 `NCard.Reload` / 已删除的 `NEpochSlot._blurShader` 修复；不降低采样质量、不增加资源。v0.113.1 的 scene/material/shader 条目与 v0.113.0 相同，复用该规则。`Sts2Target1130=true` 的 `FramePreparation.Tests` 覆盖实际节点材质和两条 material-cache 路径；搭配 `TreasureHolderLayoutShape=true` 还覆盖新版 1–6 预置布局、较大容量布局复用与原版奖励流程。真实卡面像素、厂商 GPU 及新模式联机仍需真机验证。
 
 `TransitionMaterialPatches` 会在 `NTransition._Ready` 后复制场景默认 `ShaderMaterial`，并在原版 `AssetCache.GetMaterial()` 返回 `fade_transition_mat.tres` / `fight_transition_mat.tres` 时返回缓存材质的副本。全局 disposal guard 已阻止 cache cleanup 显式释放资源；该补丁仍作为纵深保护，隔离 transition tween 对共享材质状态的修改并兼容旧兼容包行为。
 
