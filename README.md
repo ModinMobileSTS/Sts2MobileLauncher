@@ -188,7 +188,13 @@ Run the build script. This will output an "Importer APK" that **DOES NOT** conta
 ```bash
 tools/package/build_importer_apk.sh
 ```
-Upon successful build, the APK will be output to `dist/sts2-re-importer.apk`.
+Upon successful build, the APK is output to `dist/sts2-re-importer.apk`. Release
+builds explicitly enable **v1/v2/v3** and disable v4; no `.idsig` is produced or
+required. Packaging verifies all three and, if a previous stable APK exists,
+refuses to replace it with a different signing certificate. Keep the **original
+keystore and certificate** for in-place updates, even if earlier releases used a
+debug certificate; generating another debug keystore or switching to a new key
+breaks that identity. See [signing and update checks](doc/build/building-and-packaging.md#31-apk-签名方案与更新身份).
 
 Android display refresh rate is selectable in Extra Settings → System below
 Preload: **High refresh (default)** requests the highest compatible rate,

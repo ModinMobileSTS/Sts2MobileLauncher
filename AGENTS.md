@@ -529,6 +529,8 @@ REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
 
 注意：`release` build type 当前仍保留 `debuggable true`，便于 sideload 后使用 `run-as` 验证；正式发布前必须重新审视签名、debuggable、混淆、资源优化、FileProvider 暴露范围。
 
+release signing config 显式启用 v1/v2/v3、关闭 v4，只交付 APK，不生成或依赖 `.idsig`。importer/direct 脚本复制稳定产物前用 `tools/package/VerifyApkSignatures.java` + Build Tools 35.0.0 的 apksig 验证三种方案，已有稳定 APK 时先验证旧包并比较同一签名证书（旧包可仅 v2），失败不覆盖稳定产物；成功复制后清除旧输出残留的 `.idsig`。更新必须沿用原 keystore 的同一私钥/证书，包括曾用 debug key 发布的版本，不可为补签名方案直接换 key/重建 debug.keystore；同 alias/password 不代表同证书。回归：加载本地环境后运行 `python3 tools/package/test_apk_signatures.py -v`，覆盖真实合成 APK 的签名和证书拒绝边界；细节见 `doc/build/building-and-packaging.md` §3.1。
+
 本仓库构建使用 `.env` 中配置的 JDK/Android SDK。容器系统自带 Java 可能只是 JRE，不能直接编译 Java；请使用：
 
 ```bash
@@ -572,7 +574,7 @@ tools/package/build_importer_apk.sh
 2. `tools/android/build-port-mod.sh`
 3. `tools/android/stage-bundled-compat-artifacts.sh`
 4. `tools/android/gradle-with-s2-env.sh assembleMonoRelease`（默认使用 debug keystore 参数签 release build）
-5. 复制输出：
+5. 验证 v1/v2/v3 签名及已有稳定 APK 的证书连续性，成功后复制输出、清除残留 `.idsig` 并输出 APK SHA-256：
    - Gradle 产物：`android/build/outputs/apk/mono/release/sts2-re.apk`
    - 稳定副本：`dist/sts2-re-importer.apk`
 

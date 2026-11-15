@@ -86,11 +86,32 @@ STS2_ORIGINAL_V1130_REFERENCE_DIR=/path/to/v0.113.1/data_sts2_windows_x86_64
 - applicationId：`com.megacrit.sts2re`
 - versionName/versionCode：`v0.1.13` / `115`
 
-`release` build type 当前保留 `debuggable true`，便于本地 sideload 和 `run-as` 验证。package 脚本默认使用 `RELEASE_KEYSTORE_*` 或 `local.properties` 中的签名配置；本地测试可使用 Android debug keystore，正式发布前必须重新配置签名和安全策略。
+`release` build type 当前保留 `debuggable true`，便于本地 sideload 和 `run-as` 验证。package 脚本使用 `RELEASE_KEYSTORE_*` 或 `local.properties` 中的签名配置；本地测试默认可使用 Android debug keystore。**已发布过 APK 后，更新必须保留原 keystore 中的同一私钥和证书**；即使原来使用 debug 证书，也不能直接换成新 release key 或重新生成同名 debug keystore，否则旧用户不能正常覆盖安装。正式发布的安全策略需单独规划，不能把更换签名 key 当作补齐签名方案。
 
 本地 payload 与 MOD 导入现在保留 ZIP 的 Java 解包路径，并通过 `libarchive-android` 支持常见非 ZIP 归档（RAR/RAR5、7z、tar/压缩 tar、gzip、bzip2、xz、zstd、lz4、cab、cpio、ar、lha 等）。归档仍先进入现有 staging，再做路径/内容校验；非 ZIP 归档的加密条目、符号链接/硬链接、设备等特殊文件、超过 200,000 个条目、单文件 8 GiB 或总展开 16 GiB 的输入会 fail closed。只有非 ZIP 导入首次使用归档解析器时加载 native library，普通 ZIP/单文件 MOD 不增加运行时解压开销；CPU、内存和临时磁盘成本只发生在导入期间。
 
 当前 app 仅打包 `arm64-v8a`，`libarchive-android:1.1.6` AAR 本地缓存大小约 3.98 MB，其中 arm64 `libarchive-jni.so` 约 2.03 MB 未压缩；最终 APK 增量取决于 Gradle 对 native library 的打包/压缩方式。该增量换取导入格式支持，不会增加游戏运行时的解压路径。
+
+### 3.1 APK 签名方案与更新身份
+
+`android/build.gradle` 的 release signing config 显式启用 **v1 + v2 + v3**、关闭 v4，只交付 APK，不生成 `.idsig`。继续使用原有签名身份，不生成新 key、不做 key rotation，也不改变包名或 minSdk。v2 本身就是 Android 7.0+ 标准签名；历史构建只有 v2 不等于 APK 未签名。补齐 v1 提供 JAR / `META-INF` 签名，但不能据此认定厂商“未签名”提示都由缺 v1 导致，仍应核对用户实际收到的 APK、下载完整性和厂商安装策略。
+
+- v1/v2/v3 均位于 APK 内，不依赖外部签名文件；v4 不参与本项目 release 打包和验签。
+- importer / direct 打包脚本在覆盖稳定产物前调用 `tools/package/VerifyApkSignatures.java`，使用 SDK Build Tools `35.0.0` 自带的 `apksig` 验证 v1/v2/v3，三种方案必须全部通过。为实际检查 v1，验证下界设为 API 23；应用 minSdk 仍是 24。
+- 如果稳定输出位置已存在旧 APK，先验证旧包并比较签名证书；旧包可以只有 v2。证书变化或旧包损坏时终止，保留旧稳定产物。首次构建无旧包可比时只验证新包；CI 可把上一发布 APK 放到相应稳定输出路径以启用连续性检查。
+- 同 alias、同密码或同为“Android Debug”不代表同一证书，必须备份原 keystore。第三方重签名 APK 不在本签名身份的覆盖安装保证内；版本还须符合系统更新规则，不能用降级绕过签名不匹配。
+
+完整验签（可在最后追加上一版 APK 路径，检查证书连续性）：
+
+```bash
+source tools/env/load-local-config.sh
+sts2_init_env
+"$JAVA_HOME/bin/java" --class-path "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" \
+  tools/package/VerifyApkSignatures.java dist/sts2-re-importer.apk
+python3 tools/package/test_apk_signatures.py -v
+```
+
+签名回归使用临时生成的测试 key 与无业务代码 APK，覆盖旧 v2-only 包到 v1/v2/v3 包的同证书更新、不同证书拒绝、APK 篡改和新产物缺少方案的拒绝；测试 APK 不生成 sidecar。官方说明：[apksigner](https://developer.android.com/tools/apksigner)、[签名与更新身份](https://developer.android.com/studio/publish/app-signing)。
 
 ## 4. 同步大型 runtime
 
@@ -390,7 +411,7 @@ tools/package/build_importer_apk.sh
 2. 构建当前 compat fallback。
 3. 构建/刷新全部内置 compat pack zip 到 gitignored 的 `android/assets/compat_packs/`。
 4. 执行 `local.properties` 中的 `android.gradle.task`（默认 `assembleMonoRelease`）。
-5. 复制 APK 到 `android.importer.dist`（默认 `dist/sts2-re-importer.apk`）。
+5. 验证 APK 的 v1/v2/v3 签名；稳定输出位置已有旧 APK 时比较证书，成功后复制到 `android.importer.dist`（默认 `dist/sts2-re-importer.apk`），移除输出位置残留的 `.idsig` 并输出 APK SHA-256。
 
 正式 APK 默认声明 `android:appCategory="game"` / `android:isGame="true"`，让 OEM 游戏/GPU 调度识别 `GodotApp`。设置页“系统”分区预加载下方及游戏内 Android 设置提供三挡刷新率：默认高刷、请求 60Hz、跟随系统，对应 `android_display_refresh_rate_mode=high/60hz/system`。旧高刷开关 true/false 迁移为 high/system；新字段优先，迁移后移除旧字段。60Hz 只接受当前尺寸下的近似 60Hz（含 59.94Hz）目标，设备不暴露目标时撤销旧请求并交回系统，不保证 OEM 采纳，也不改变游戏 FPS 上限或 VSync。`HighRefreshRateController` 只在 resumed + focused + render Surface 有效时应用，失焦、pause、destroy 或 Surface 销毁时取消延迟任务，以 100/500/1500ms 有限重试等待 Surface。Android 12+ 使用 `CHANGE_FRAME_RATE_ALWAYS`，同一 Surface 未变的请求不重复投票，三挡切换允许更新/撤销 vote；精确 mode 使用 `preferredDisplayModeId`，alternative-only 清空 mode ID 并使用 `preferredRefreshRate`，随后有界验证实际 mode/Hz。不使用 `SurfaceControl` 或改 Surface 尺寸。设置页同一分区保留默认关闭的“Show performance overlay”开关；开启后下次启动加载 `godot-debug-menu`，显示 FPS、帧时间、CPU/GPU frame graph 和渲染器/硬件信息。
 
@@ -418,7 +439,7 @@ tools/package/build_direct_apk.sh
 4. 构建/刷新全部内置 compat pack zip 到 gitignored 的 `android/assets/compat_packs/`。
 5. 临时复制 zip 到 `android/assets/payload/SlayTheSpire2.zip`。
 6. 执行 Gradle task。
-7. 复制 APK 到 `android.direct.dist`（默认 `dist/sts2-re-direct.apk`），脚本退出时删除临时 zip。
+7. 按 §3.1 验证 v1/v2/v3 签名和已有稳定 APK 的证书连续性，复制 APK 到 `android.direct.dist`（默认 `dist/sts2-re-direct.apk`），移除输出位置残留的 `.idsig` 并输出 APK SHA-256；脚本退出时删除临时游戏 zip。
 
 ## 11. 生成 Android 优化本体 zip（可选）
 

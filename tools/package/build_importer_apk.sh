@@ -30,9 +30,12 @@ fi
 "$ROOT/tools/android/gradle-with-s2-env.sh" "${GRADLE_ARGS[@]}"
 
 if [[ -f "$APK" ]]; then
+  "$JAVA_HOME/bin/java" --class-path "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" \
+    "$ROOT/tools/package/VerifyApkSignatures.java" "$APK" "$DIST_APK"
   mkdir -p "$(dirname "$DIST_APK")"
   cp -f "$APK" "$DIST_APK"
-  sha256sum "$APK"
+  rm -f "$APK.idsig" "$DIST_APK.idsig"
+  sha256sum "$DIST_APK"
   echo "APK: $APK"
   echo "Stable importer APK: $DIST_APK"
 else

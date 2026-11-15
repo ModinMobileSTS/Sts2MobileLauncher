@@ -35,7 +35,7 @@ cp local.properties.example local.properties
 | `STS2_ORIGINAL_V1100_ROOT` 或 `STS2_ORIGINAL_V1100_REFERENCE_DIR` | 共享 v0.110.x public-beta target 的 original compile gate；历史变量名，应指向 v0.110.1 引用。 |
 | `STS2_ORIGINAL_V1110_ROOT` 或 `STS2_ORIGINAL_V1110_REFERENCE_DIR` | 旧 v0.111.0 public-beta 独立 target 的 original compile gate。 |
 | `STS2_ORIGINAL_V1130_ROOT` 或 `STS2_ORIGINAL_V1130_REFERENCE_DIR` | 共享 v0.113.x public-beta target 的 original compile gate；历史 V1130 名称保留，应指向最新 v0.113.1 引用。 |
-| `RELEASE_KEYSTORE_FILE` / `RELEASE_KEYSTORE_PASSWORD` / `RELEASE_KEYSTORE_ALIAS` | 本地 APK 签名参数。默认可用 Android debug keystore，正式发布请改为私有 release keystore。 |
+| `RELEASE_KEYSTORE_FILE` / `RELEASE_KEYSTORE_PASSWORD` / `RELEASE_KEYSTORE_ALIAS` | APK 签名参数；首次本地测试可用 Android debug keystore。已发布版本的更新必须沿用原私钥与证书，不可直接换 key 或重新生成同名 keystore。签名方案与覆盖安装校验见[构建文档 §3.1](building-and-packaging.md#31-apk-签名方案与更新身份)。 |
 
 可选快捷项：
 
@@ -52,8 +52,8 @@ cp local.properties.example local.properties
 | --- | --- | --- |
 | `android.gradle.task` | `assembleMonoRelease` | package 脚本执行的 Gradle task。 |
 | `android.apk.output` | `android/build/outputs/apk/mono/release/sts2-re.apk` | Gradle APK 输出路径。 |
-| `android.importer.dist` | `dist/sts2-re-importer.apk` | 导入版稳定副本。 |
-| `android.direct.dist` | `dist/sts2-re-direct.apk` | 直装版稳定副本。 |
+| `android.importer.dist` | `dist/sts2-re-importer.apk` | 导入版稳定副本；若已有旧 APK 则先检查签名证书一致。只发布 v1/v2/v3 APK，清除残留 `.idsig`。 |
+| `android.direct.dist` | `dist/sts2-re-direct.apk` | 直装版稳定副本；若已有旧 APK 则先检查签名证书一致。只发布 v1/v2/v3 APK，清除残留 `.idsig`。 |
 | `android.release_keystore_*` | debug keystore 兼容默认值 | 本地签名 fallback；更建议把密码类值放到 `.env` 或 CI secrets。 |
 | `runtime.mono_memory_stats_fix` | `0` | `1` 启用严格 SHA 限定的 Ekyso ARM64 Mono 内存总量查询实验修复；只改 staged 副本。环境变量 `MONO_MEMORY_STATS_FIX` 优先，仅允许 `0` / `1`。恢复 `0` 后重新打包会同步原始参考库，不改堆上限；范围与回滚见 [构建文档](building-and-packaging.md#41-实验性-mono-内存总量修复默认关闭)。 |
 | `runtime.fmod_android_libs_dir` | AAR 同级的 `arm64/` | 当 native 库与 AAR 分开放置时指定目录；环境变量 `STS2_FMOD_ANDROID_LIBS_DIR` 优先，要求经过校验的 2.03.06 三件套。 |

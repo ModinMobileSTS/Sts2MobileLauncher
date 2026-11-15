@@ -206,6 +206,11 @@ android {
         }
 
         release {
+            // Keep the existing signing identity; scheme selection does not rotate keys.
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+            enableV4Signing = false
             File keystoreFile = new File(getReleaseKeystoreFile())
             if (keystoreFile.isFile()) {
                 storeFile keystoreFile

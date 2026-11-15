@@ -15,6 +15,8 @@ android.direct.dist=dist/sts2-re-direct.apk
 # Android signing defaults used by package scripts for local release builds. Prefer the
 # environment variables RELEASE_KEYSTORE_FILE / RELEASE_KEYSTORE_PASSWORD /
 # RELEASE_KEYSTORE_ALIAS for secrets or CI.
+# Published APK updates must keep the original private key AND certificate;
+# another debug.keystore with the same alias/password is a different identity.
 android.release_keystore_file=${HOME}/.android/debug.keystore
 android.release_keystore_password=android
 android.release_keystore_alias=androiddebugkey
