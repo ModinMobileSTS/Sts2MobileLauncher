@@ -92,6 +92,8 @@ apply_build_info_patch() {
     "STS2AndroidPortCompat/Patches/MerchantLayoutPatches.cs" \
     "STS2AndroidPortCompat/Patches/CombatAnimationWarmupPatches.cs" \
     "STS2AndroidPortCompat/Patches/SpineWarmupPreview.cs" \
+    "STS2AndroidPortCompat/Patches/RenderReplicaWarmup.cs" \
+    "STS2AndroidPortCompat/Patches/RenderWarmupPatches.cs" \
     "STS2AndroidPortCompat/Patches/LifecycleAndPerformancePatches.cs" \
     "STS2AndroidPortCompat/Patches/AndroidAudioLifecyclePatches.cs" \
     "STS2AndroidPortCompat/Patches/ShaderCompatibilityPatches.cs" \

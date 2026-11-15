@@ -252,6 +252,7 @@ STS2Mobile.ModEntry
 
 7. intent animation、quick restart、lifecycle/performance。`QuickRestartPatches` 在 pause menu 提供 Android 内置“重打/Retry”按钮：快速重开会先等待当前 run save 任务，再读取 autosave；淡出后清理旧 run，并执行原版保存恢复入口（`RunManager.SetUpSavedSinglePlayer()`，`v0.107.0` 为 `SetUpSavedSingleplayer()`；返回 `Task` 的版本会等待完成）以完整初始化 `NetService` / `MapSelectionSynchronizer` 等同步器后才调用 `NGame.LoadRun()`，避免资源预加载关闭或 IO 较慢时新 `RunState` 提前进入地图初始化、触发 `MapSelectionSynchronizer.GetVote()` 越界；若淡出后任一步失败，会先尝试 `FadeIn()` 解除黑屏遮罩，再显示错误弹窗。`AndroidAssetCacheLifecyclePatches` 只修正 Android 资源释放生命周期：原版私有 `AssetCache.RemoveAndGetResource()` 仍照常从 cache 索引移除条目，原版 asset-set 选择、missed-set 清理和兼容层 protected-path 过滤均不变，但它的返回值会被置空，从而阻止 `UnloadAssets()` / `UnloadMissedCacheAssets()` 显式 `Dispose()` 仍可能被节点、对象池或异步任务持有的 Godot `Resource`。`LifecycleAndPerformancePatches` 保留默认预加载范围和 warm-cache 保护策略；关闭预加载只在内层 `LoadAssets` 阻止加载并返回已完成的空 session，外层 `LoadAssetSets` 仍执行原版 cache/missed-set 淘汰，不再因开关跳过整段维护：它在 `NMainMenu._Ready` 后启动安全 deferred preload，并在需要细分或额外 warmup 时接管原版 `LoadCommonAndMainMenuAssets()`：
    - `preload_enabled`：总开关，默认 `true`。
+   - `preload_render_warmup_enabled`：独立的实验性原生渲染替身预热，默认 `false`，只依赖上述总开关；不要求任何旧细分预热开启，改动在下次游戏启动生效。需要更新后的 full compat，offline bootstrap 不提供此功能。
    - `preload_startup_common_enabled`：主菜单后加载 `AssetSets.CommonAssets`，默认 `true`。
    - `preload_startup_main_menu_enabled`：主菜单后加载 `AssetSets.MainMenuSet`，默认 `true`。
    - `preload_runtime_enabled`：保留 run/act/room 资源预加载，默认 `true`。
@@ -287,6 +288,14 @@ STS2Mobile.ModEntry
 
    兼容层的通用/主菜单资源、学习缓存/实战补全资源与 VFX 启动预热已恢复为引入后台加载之前的同步路径：在 Godot 主线程调用 `ResourceLoader.Load`，通用资源和 warm cache 每处理 8 项让出一帧，VFX 每项加载、实例化和释放后让帧；开启实际播放预热时仍等待既定渲染帧数。保留原有 `Reuse` / `Ignore` 缓存语义、预加载范围、缓存保护和全部设置，不再通过共用的 `_loading` 标志等待后台请求。单个同步加载仍可能暂时阻塞主线程，分批让帧不是硬实时保证。此回退只改变启动预热，不撤销下面原版 `AssetLoadingSession` 的异步加载及其协作帧预算，也不撤销 Shader 节点处理优化。
 
+   **原生渲染副本预热（实验）**保留所有旧预热项，不自动改写它们。要单独比较新路径，保持总开关与新开关开启，手动关闭其余旧细分项，包括 Common/MainMenu、常用菜单、VFX 场景/进树/保留、战斗动画/命中/代码、shader 资源、运行时预加载、实战补全/学习及 warm cache 保护。不要使用“恢复默认”来关闭旧项：默认值仍会开启部分旧资源预加载。
+
+   新路径在启动阶段离树实例化静态 VFX 场景并提取绘制形状，在战斗阶段只读提取当前房间的活体视觉。源节点不进树，不调用其 `_Ready`、`_Process`、动画或 gameplay factory；但离树场景实例化仍可能执行构造器，不能称为零用户代码执行。只把纯原生替身按每批最多 8 个放到可渲染区域，在不透明遮罩后等待真实 post-draw 帧。支持 GPU/CPU 粒子、rect/sprite、mesh/multimesh、line/polygon、CanvasGroup、代表性 canvas blend 与一盏原生灯；缩减几何和粒子数量，骨骼绑定与运行时才生成的几何不伪造，输出跳过原因。材质/采样器继承按原生 Canvas 边界解析；需要 shader 替换时只处理副本，GPU 粒子 setter 的默认 3D 材质归一化也与原共享材质隔离。源节点的可见性、变换、粒子、动画、材质及 ownership 不变。
+
+   替身绘制所需的 shader/material/texture/mesh 等资源保持进程级引用，避免删掉临时节点后立刻丢失已建立的渲染资源；这会增加常驻资源内存，不是零开销。临时源树、粒子节点及其 buffers、遮罩随批次/会话清理，不保留原版场景树。摘要日志区分抽取、提交、复用、跳过、失败和 post-draw；**提交或 post-draw 计数不等于 GPU 完成、shader 编译成功或磁盘缓存落盘**。离房/关闭/失效上下文取消后续批次，不能继续扫描旧房间。
+
+   该路径不预热音频/FMOD、托管代码 JIT、所有 Spine clip 或所有动态 shader 组合，也不会遍历全部模型/效果工厂。桌面真实 GLES 像素验证仅证明被测替身提交了有效绘制，不能承诺 Android 新设备冷缓存零卡顿。真机比较时保持相同游戏、MOD、renderer 和旧开关组合；旧路径独立保留，不应把叠加运行的结果当作新路径单独效果。
+
    三项运行时优化默认随 full compat 生效，不新增设置或改变画质：
 
    - `CombatVfxPoolPatches` 在当前战斗房间内复用原版 `NDamageNumVfx`、`NHitSparkVfx`、`NShivThrowVfx`，并保守加入粒子型 `NBigSlashVfx` 与 `NFireBurstVfx`。只限制空闲保留数量（16/8/8/2/2），并发超出时继续正常创建，不丢弃特效。新增两族只接受已知 Node2D/GPUParticles2D 树与 Task 播放/CTS 复位合约；不扩充通用节点快照类型、不自动枚举其他 VFX、不复用卡牌/角色/Spine/动画播放器状态。原版工厂、Ready、动画、随机数、ScreenShake 与等待流程仍执行；正常结束后延后归还，停止粒子并关闭旧 CTS，重租恢复节点变换/颜色/可见性后重新 Ready、Restart 粒子并创建新 CTS。小刀仍复用实例独立的染色材质，斩击/火焰保持原版节点 SelfModulate 染色。每次播放携带独立租约，迟到的旧异步释放不能影响新播放；外部取消/移除不进入池，离房释放空闲实例。未知节点/子脚本、修改工厂/生命周期/ApplyTint/ModulateParticles 的其他 Harmony owner 保留原版分配和销毁。不改变特效数量、伤害/网络、预加载范围或 GC，也不承诺消除首次加载/首次 shader 编译卡顿。
@@ -295,15 +304,17 @@ STS2Mobile.ModEntry
 
    下述原生回归覆盖租约迟到、超额完整创建、空闲上限、材质隔离/复用、房间退出、外部移除、MOD 生命周期 opt-out、同帧重复调度、错误后完成，以及字号继承/幂等/恢复；新增斩击/火焰用例覆盖真实粒子重播、根/子节点状态与新 tint/scale、CTS、2 槽满溢、未知子脚本及 foreign tint opt-out，已观察新增前失败、新增后通过。可选环境变量 `STS2_FRAME_REFERENCE_DLLS` 接受分号分隔的本机原版 `sts2.dll` 路径，以 Cecil 只读验证各目标的出队 IL、五族 VFX 工厂及播放/复位字段；不加载或执行游戏类型，不携带商业 DLL。
 
-   原生回归 `port-mod/tests/FramePreparation.Tests` 使用 Godot 4.5.1 .NET 与实际打包 Harmony，只构造合成场景/损坏资源。覆盖 Shader 父 `_Ready`、重入树、释放、材质隔离和开关切换，以及前述 VFX 池、运行时资源队列错误恢复和字体缩放；旧启动后台加载器的单请求/取回测试已随该加载器删除。准备好官方 .NET 版 Godot 路径 `GODOT_BIN`，在仓库根加载 `.env` 后运行：
+   原生回归 `port-mod/tests/FramePreparation.Tests` 使用 Godot 4.5.1 .NET 与实际打包 Harmony，只构造合成场景/损坏资源。覆盖 Shader 父 `_Ready`、重入树、释放、材质隔离和开关切换、独立 shader 的真实替身像素、源回调隔离、材质/采样器继承边界、共享粒子材质、批次/取消/资源 pin，以及前述 VFX 池、运行时资源队列错误恢复和字体缩放。准备好官方 .NET 版 Godot 路径 `GODOT_BIN`，在仓库根加载 `.env` 后运行：
 
    ```bash
    "$DOTNET_BIN" build port-mod/tests/FramePreparation.Tests -p:HarmonyReferenceDir="$PWD/android/assets/dotnet_bcl"
-   # Linux: expose libgcc unwinding symbols to the embedded .NET/MonoMod host.
-   LD_PRELOAD=libgcc_s.so.1 DOTNET_ROOT="$(dirname "$(realpath "$DOTNET_BIN")")" "$GODOT_BIN" --headless --path port-mod/tests/FramePreparation.Tests
+   # Linux without a display: real GLES via Xvfb/Mesa, not the dummy headless renderer.
+   LD_PRELOAD=libgcc_s.so.1 DOTNET_ROOT="$(dirname "$(realpath "$DOTNET_BIN")")" LIBGL_ALWAYS_SOFTWARE=1 \
+     xvfb-run -a "$GODOT_BIN" --path port-mod/tests/FramePreparation.Tests \
+     --rendering-method gl_compatibility --rendering-driver opengl3_es --audio-driver Dummy
    ```
 
-   损坏资源用例会输出预期的 Godot Parse Error，最终必须看到 `PASS` 且进程成功退出。桌面 headless 回归不等于 Android GPU/帧率实测；高刷请求、原版 FPS 上限、VSync、画质和特效数量均未因这项优化而改变。
+   损坏资源用例会输出预期的 Godot Parse Error，最终必须看到 `PASS` 且进程成功退出。v113 新宝箱形状另以 `-p:Sts2Target1130=true -p:TreasureHolderLayoutShape=true` 构建后运行同一场景。不能用 `--headless` 替代像素检查；桌面原生 GLES 回归也不等于 Android GPU/帧率实测。高刷请求、原版 FPS 上限、VSync、画质和正式游戏特效数量均未因此改变。
 
 8. LAN bootstrap。`LanMultiplayerBootstrapPatches` 在主菜单就绪后才尝试应用本地 LAN 兼容补丁；若 `settings.save` 中 `lan_multiplayer_enabled=false`，或已加载 `sts2_lan_connect` / STS2 Game Lobby 大厅 MOD，`LanMultiplayerPatches` 会整组跳过，避免 Android LAN host/join、玩家 ID 等适配与大厅 MOD 自己的联机协议 profile 冲突。内置 LAN 补丁只处理 Android transport/UI/settings/player/save 兼容，不 patch `MessageTypes.ToId`、`MessageTypes.TryGetMessageType` 或 `NetMessageBus.TryDeserializeMessage`，也不维护固定消息表；消息类型发现、排序、ID 与序列化/反序列化始终由当前 payload 对应版本的原版实现负责，因此 Android 与未修改 PC 使用同一 wire protocol，普通 MOD 自定义 `INetMessage` 也继续按原版规则参与排序。v0.111.0 构造 host/client service 时额外传入 `PeerVersionInfo.LocalDefault()`，随后完全交给原版 transport-level `HandshakeManager` 在消息总线启用前校验游戏版本、ModelDb hash 和 gameplay/non-gameplay MOD；Android 不复制握手数据结构，也不回退旧 lobby-message 校验。启用本地 LAN patch 时，兼容层还会拦截多人读档 canonicalize 的本地玩家 ID：如果当前自定义平台/玩家 ID 不在 `current_run_mp.save` 的玩家列表中，会优先使用隐藏稳定字段 `lan_multiplayer_save_player_id`、旧自动 LAN ID 或单玩家存档中的唯一 `NetId`，避免用户修改自定义平台 ID 后旧多人存档被误判为不属于本机。`max_multiplayer_players` 只扩展 host/lobby 容量；超过四人的运行仍属实验模式，本次已覆盖宝箱和休息点的确定性四槽故障，但不能据此认定原版所有房间和任意配置人数都已兼容。
    v0.113.x 加入复用 `NJoinFriendScreen.JoinGameAsync`，由原版处理带 `SceneTree` 的 `JoinFlow.Begin`、取消与错误；新建 host 独立保留 `isCustom`，非自定义房间按 Standard/Daily/Blitz/Dread 进入原版 lobby，读档以 `SerializableRun.IsCustomGame` 判断自定义。不得退回兼容层手工复制 JoinFlow/模式路由。商店确认在一次性 allowance 内调用原版 `OnSelected()` 并等待实际购买任务，新旧 target 都不再依赖已删除的 slot `OnTryPurchase`。v0.113.0/v0.113.1 虽共享 Android variant，握手和普通 MOD 仍以实际 payload 版本为准，不承诺跨版本互联。

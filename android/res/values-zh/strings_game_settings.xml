@@ -1030,6 +1030,8 @@
     <string name="preload_advanced_master_note">打开或关闭总开关不会修改下面这些详细项目的值。</string>
     <string name="preload_restore_defaults">恢复默认</string>
     <string name="preload_defaults_restored">已恢复预加载默认值。</string>
+    <string name="preload_render_warmup_switch">原生渲染副本预热（实验）</string>
+    <string name="preload_render_warmup_hint">从静态 VFX 场景和当前战斗创建原生渲染副本。源节点不进树、不运行 _Ready()，但仍可能运行构造器。仅需开启预加载总开关；旧预热路径保持独立，不需要时请手动关闭。此项不预热音频或托管代码 JIT，也不保证完整覆盖或零卡顿。更改于下次启动游戏时生效。</string>
     <string name="preload_startup_common_switch">启动通用资源</string>
     <string name="preload_startup_common_hint">主菜单出现后加载原版 CommonAssets 缓存。</string>
     <string name="preload_startup_main_menu_switch">主菜单页面资源</string>

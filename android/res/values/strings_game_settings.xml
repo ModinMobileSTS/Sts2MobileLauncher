@@ -1030,6 +1030,8 @@
     <string name="preload_advanced_master_note">Turning the master switch on or off does not change these detailed values.</string>
     <string name="preload_restore_defaults">Restore defaults</string>
     <string name="preload_defaults_restored">Preload defaults restored.</string>
+    <string name="preload_render_warmup_switch">Native render-replica warmup (experimental)</string>
+    <string name="preload_render_warmup_hint">Warm native render replicas from static VFX scenes and the current combat. Source nodes never enter the tree or run _Ready(), but constructors may still run. Requires the preload master switch only; older warmup paths remain independent and must be disabled manually if unwanted. Does not warm audio or managed-code JIT, and cannot guarantee full coverage or hitch-free play. Changes take effect on the next game launch.</string>
     <string name="preload_startup_common_switch">Startup common resources</string>
     <string name="preload_startup_common_hint">Load the original CommonAssets cache after the main menu appears.</string>
     <string name="preload_startup_main_menu_switch">Main menu resources</string>

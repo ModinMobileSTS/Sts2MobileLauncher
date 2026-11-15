@@ -1247,6 +1247,7 @@ public final class SettingsPage {
 		addBottomSheetDismissHandle(content, dialog);
 		content.addView(ExtraSettingsUi.iconTitleRow(context, R.drawable.ic_bolt_24, R.string.preload_advanced_title, R.string.preload_advanced_subtitle, null));
 		ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.body(context, R.string.preload_advanced_master_note));
+		addSwitchRow(content, R.drawable.ic_auto_awesome_24, R.string.preload_render_warmup_switch, R.string.preload_render_warmup_hint, settings.optBoolean("preload_render_warmup_enabled", false), checked -> repository.saveSetting(root -> root.put("preload_render_warmup_enabled", checked)));
 		addSwitchRow(content, R.drawable.ic_layers_24, R.string.preload_startup_common_switch, R.string.preload_startup_common_hint, settings.optBoolean("preload_startup_common_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_startup_common_enabled", checked)));
 		addSwitchRow(content, R.drawable.ic_dashboard_24, R.string.preload_startup_main_menu_switch, R.string.preload_startup_main_menu_hint, settings.optBoolean("preload_startup_main_menu_enabled", true), checked -> repository.saveSetting(root -> root.put("preload_startup_main_menu_enabled", checked)));
 		addSwitchRow(content, R.drawable.ic_rocket_launch_24, R.string.preload_menu_hotspots_switch, R.string.preload_menu_hotspots_hint, settings.optBoolean("preload_menu_hotspots_enabled", false), checked -> repository.saveSetting(root -> root.put("preload_menu_hotspots_enabled", checked)));

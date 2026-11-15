@@ -907,6 +907,7 @@ final class DebugAutomationRunner {
 			ExtraSettingsRepository.KEY_PERFORMANCE_OVERLAY_ENABLED,
 			ExtraSettingsRepository.KEY_DISPLAY_REFRESH_RATE_MODE,
 			"preload_enabled",
+			"preload_render_warmup_enabled",
 			"preload_startup_common_enabled",
 			"preload_startup_main_menu_enabled",
 			"preload_menu_hotspots_enabled",

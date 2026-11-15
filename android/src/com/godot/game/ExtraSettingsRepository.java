@@ -163,6 +163,7 @@ public final class ExtraSettingsRepository {
 		putVector(settings, "window_size", 1920, 1080);
 		putVector(settings, "fullscreen_render_size", 0, 0);
 		settings.put("preload_enabled", true);
+		settings.put("preload_render_warmup_enabled", false);
 		settings.put("preload_startup_common_enabled", true);
 		settings.put("preload_startup_main_menu_enabled", true);
 		settings.put("preload_menu_hotspots_enabled", false);
@@ -227,6 +228,7 @@ public final class ExtraSettingsRepository {
 		changed |= putIfMissing(settings, "aspect_ratio", "auto");
 		changed |= putIfMissing(settings, "shader_compatibility_mode", false);
 		changed |= putIfMissing(settings, "preload_enabled", true);
+		changed |= putIfMissing(settings, "preload_render_warmup_enabled", false);
 		changed |= putIfMissing(settings, "preload_startup_common_enabled", true);
 		changed |= putIfMissing(settings, "preload_startup_main_menu_enabled", true);
 		changed |= putIfMissing(settings, "preload_menu_hotspots_enabled", false);
@@ -584,6 +586,7 @@ public final class ExtraSettingsRepository {
 
 	public void resetPreloadAdvancedDefaults() throws Exception {
 		saveSetting(settings -> {
+			settings.put("preload_render_warmup_enabled", false);
 			settings.put("preload_startup_common_enabled", true);
 			settings.put("preload_startup_main_menu_enabled", true);
 			settings.put("preload_menu_hotspots_enabled", false);
