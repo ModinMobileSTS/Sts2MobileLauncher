@@ -191,10 +191,8 @@ public class WebDavCloudActivity extends AppCompatActivity {
 		content.addView(username);
 		content.addView(password);
 		content.addView(slot);
-		new MaterialAlertDialogBuilder(this)
+		ExtraSettingsUi.scrollableDialog(this, getString(R.string.webdav_configure_message), content)
 			.setTitle(R.string.webdav_configure)
-			.setMessage(R.string.webdav_configure_message)
-			.setView(content)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(R.string.webdav_save_config, (dialog, which) -> {
 				WebDavSettings.saveConnection(this,

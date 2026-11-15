@@ -1307,9 +1307,8 @@ public class FileBrowserActivity extends AppCompatActivity {
 		EditText input = new EditText(this);
 		input.setSingleLine(true);
 		input.setHint(R.string.file_browser_name_hint);
-        new MaterialAlertDialogBuilder(this)
+        ExtraSettingsUi.scrollableDialog(this, input)
 			.setTitle(R.string.file_browser_create_folder_title)
-			.setView(input)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (dialog, which) -> {
 				String folderName = normalizeFileName(input.getText() == null ? "" : input.getText().toString());
@@ -1341,9 +1340,8 @@ public class FileBrowserActivity extends AppCompatActivity {
         input.setSingleLine(true);
         input.setText(selectedFile.getName());
         input.setSelection(input.getText().length());
-        new MaterialAlertDialogBuilder(this)
+        ExtraSettingsUi.scrollableDialog(this, input)
             .setTitle(R.string.file_browser_rename_title)
-            .setView(input)
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(android.R.string.ok, (dialog, which) -> {
                 String targetName = normalizeFileName(input.getText() == null ? "" : input.getText().toString());

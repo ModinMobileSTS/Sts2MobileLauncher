@@ -295,9 +295,8 @@ public class NexusModsStoreActivity extends AppCompatActivity {
 		inputParams.topMargin = ExtraSettingsUi.dp(this, 12);
 		content.addView(inputLayout, inputParams);
 
-		new MaterialAlertDialogBuilder(this)
+		ExtraSettingsUi.scrollableDialog(this, content)
 			.setTitle(R.string.nexus_mod_store_api_key_title)
-			.setView(content)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setNeutralButton(R.string.nexus_mod_store_open_api_key_page, (dialog, which) -> openUrl(API_KEY_TUTORIAL_URL))
 			.setPositiveButton(R.string.nexus_mod_store_save_api_key, (dialog, which) -> {
@@ -827,9 +826,8 @@ public class NexusModsStoreActivity extends AppCompatActivity {
 		params.topMargin = ExtraSettingsUi.dp(this, 12);
 		content.addView(inputLayout, params);
 
-		new MaterialAlertDialogBuilder(this)
+		ExtraSettingsUi.scrollableDialog(this, content)
 			.setTitle(R.string.nexus_mod_store_paste_nxm_link)
-			.setView(content)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(R.string.nexus_mod_store_download_and_import, (dialog, which) -> {
 				String raw = input.getText() == null ? "" : input.getText().toString();

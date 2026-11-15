@@ -34,6 +34,9 @@ import org.robolectric.annotation.LooperMode;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.shadows.ShadowDialog;
 
+import java.io.File;
+import java.nio.file.Files;
+import java.lang.reflect.Proxy;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -157,6 +160,171 @@ public class ModalScrollingTest {
 			}
 			dialog.dismiss();
 		}
+	}
+
+	@Test public void webDavConfigurationFieldsRemainReachableWithKeyboard() throws Exception {
+		try (ActivityController<WebDavCloudActivity> host = Robolectric.buildActivity(WebDavCloudActivity.class)) {
+			host.get().setTheme(R.style.Theme_Sts2ExtraSettings);
+			host.setup();
+			showModal(host.get(), "showConfigureDialog");
+			AlertDialog dialog = (AlertDialog) ShadowDialog.getLatestDialog();
+			List<EditText> inputs = findAll(dialog.getWindow().getDecorView(), EditText.class);
+			for (int height : new int[] {640, 340}) {
+				for (EditText input : inputs) assertReachable(dialog, input, 360, height);
+				assertReachable(dialog, dialog.getButton(DialogInterface.BUTTON_POSITIVE), 360, height);
+			}
+			dialog.dismiss();
+		}
+	}
+
+	@Test public void nexusKeyFieldRemainsReachableAfterLongInstructionsAndKeyboard() throws Exception {
+		try (ActivityController<NexusModsStoreActivity> host = Robolectric.buildActivity(NexusModsStoreActivity.class)) {
+			host.get().setTheme(R.style.Theme_Sts2ExtraSettings);
+			host.setup();
+			showModal(host.get(), "showApiKeyDialog");
+			AlertDialog dialog = (AlertDialog) ShadowDialog.getLatestDialog();
+			EditText input = find(dialog.getWindow().getDecorView(), EditText.class);
+			for (int height : new int[] {640, 380}) assertReachable(dialog, input, 360, height);
+			dialog.dismiss();
+		}
+	}
+
+	@Test public void lanCompatibilityListLastEntryRemainsReachable() throws Exception {
+		ExtraSettingsRepository repository = new ExtraSettingsRepository(activity);
+		List<String> names = new ArrayList<>();
+		for (int i = 0; i < 20; i++) names.add("Long compatibility library name " + i);
+		repository.saveLanCompatibilityModNames(names);
+		SettingsPage page = new SettingsPage(activity, repository, modalActions());
+		showModal(page, "showLanCompatibilityModListDialog");
+		AlertDialog dialog = (AlertDialog) ShadowDialog.getLatestDialog();
+		TextView last = findAll(dialog.getWindow().getDecorView(), TextView.class).stream()
+			.filter(view -> names.get(19).contentEquals(view.getText())).findFirst().get();
+		for (int[] size : new int[][] {{360, 640}, {640, 280}}) assertReachable(dialog, last, size[0], size[1]);
+		dialog.dismiss();
+	}
+
+	@Test public void modGroupPickerLastRowRemainsReachableWithKeyboard() throws Exception {
+		ExtraSettingsRepository repository = new ExtraSettingsRepository(activity);
+		repository.ensureAppDirectories();
+		for (int i = 0; i < 20; i++) {
+			String id = "modal_fixture_" + i;
+			Files.write(new File(repository.getModsRootDir(), id + ".json").toPath(),
+				("{\"id\":\"" + id + "\",\"name\":\"Long fixture mod name " + i + "\",\"has_dll\":false,\"has_pck\":false}").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		}
+		ModsPage page = new ModsPage(activity, repository, modalActions());
+		Method show = ModsPage.class.getDeclaredMethod("showPickModsForGroupDialog", String.class, BottomSheetDialog.class);
+		show.setAccessible(true);
+		show.invoke(page, "content", null);
+		AlertDialog dialog = (AlertDialog) ShadowDialog.getLatestDialog();
+		List<android.widget.CheckBox> rows = findAll(dialog.getWindow().getDecorView(), android.widget.CheckBox.class);
+		android.widget.CheckBox last = rows.get(rows.size() - 1);
+		assertReachable(dialog, last, 360, 340);
+		boolean selectedAfterToggle = !last.isChecked();
+		last.performClick();
+		EditText search = find(dialog.getWindow().getDecorView(), EditText.class);
+		search.setText(last.getText().toString().split("\\n")[0]);
+		List<android.widget.CheckBox> filtered = findAll(dialog.getWindow().getDecorView(), android.widget.CheckBox.class);
+		assertEquals("filtering must retain the toggled selection", selectedAfterToggle, filtered.get(0).isChecked());
+		dialog.dismiss();
+	}
+
+	@Config(qualifiers = "en-rUS-w640dp-h300dp-mdpi")
+	@Test public void inspectorLongPathAndMultilineCursorRemainReachable() throws Exception {
+		// Attach the actual DeviceDefault host without starting native Godot onCreate.
+		GodotApp godot = Robolectric.buildActivity(GodotApp.class).get();
+		godot.setTheme(android.R.style.Theme_DeviceDefault_NoActionBar_Fullscreen);
+		godot.setContentView(new FrameLayout(godot));
+		InGameOverlayController overlay = new InGameOverlayController(godot);
+		try {
+			StringBuilder path = new StringBuilder("root");
+			for (int i = 0; i < 30; i++) path.append(".LongNestedProperty");
+			Method edit = InGameOverlayController.class.getDeclaredMethod("promptEdit", String.class, String.class, String.class);
+			edit.setAccessible(true);
+			edit.invoke(overlay, path.toString(), "int", "123");
+			AlertDialog dialog = (AlertDialog) ShadowDialog.getLatestDialog();
+			assertReachable(dialog, find(dialog.getWindow().getDecorView(), EditText.class), 640, 300);
+			dialog.dismiss();
+			new ExtraSettingsRepository(godot).saveSetting(settings -> settings.put(ExtraSettingsRepository.KEY_DEV_INSPECTOR_WRITABLE, true));
+			showModal(overlay, "promptRunGdScript");
+			dialog = (AlertDialog) ShadowDialog.getLatestDialog();
+			org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+			EditText script = find(dialog.getWindow().getDecorView(), EditText.class);
+			StringBuilder source = new StringBuilder();
+			for (int i = 0; i < 30; i++) source.append("print(\"").append(i).append("\")\n");
+			script.setText(source);
+			script.setSelection(source.length());
+			measure(dialog.getWindow().getDecorView(), 640, 300);
+			script.requestFocus();
+			int line = script.getLayout().getLineForOffset(script.getSelectionStart());
+			Rect caret = new Rect(script.getPaddingLeft(), script.getTotalPaddingTop() + script.getLayout().getLineTop(line),
+				script.getPaddingLeft() + 2, script.getTotalPaddingTop() + script.getLayout().getLineBottom(line));
+			script.requestRectangleOnScreen(new Rect(caret), true);
+			int[] location = new int[2];
+			script.getLocationOnScreen(location);
+			caret.offset(location[0] - script.getScrollX(), location[1] - script.getScrollY());
+			Rect visible = new Rect();
+			assertTrue("script editor must remain visible", script.getGlobalVisibleRect(visible));
+			assertTrue("last-line caret " + caret + " must fit keyboard-resized viewport " + visible, visible.contains(caret));
+			assertReachable(dialog, dialog.getButton(DialogInterface.BUTTON_POSITIVE), 640, 300);
+			dialog.dismiss();
+		} finally {
+			overlay.detach();
+		}
+	}
+
+	@Test public void analysisConfigFinalFieldAndValidationRemainReachable() throws Exception {
+		try (ActivityController<com.godot.game.loganalysis.LogAnalysisActivity> host =
+			Robolectric.buildActivity(com.godot.game.loganalysis.LogAnalysisActivity.class)) {
+			host.get().setTheme(R.style.Theme_Sts2Tools);
+			host.get().setContentView(new FrameLayout(host.get()));
+			showModal(host.get(), "showConfig");
+			org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+			AlertDialog dialog = (AlertDialog) ShadowDialog.getLatestDialog();
+			List<EditText> inputs = findAll(dialog.getWindow().getDecorView(), EditText.class);
+			assertReachable(dialog, inputs.get(inputs.size() - 1), 360, 360);
+			java.util.Map<TextView, String> previous = new java.util.IdentityHashMap<>();
+			for (TextView text : findAll(dialog.getWindow().getDecorView(), TextView.class)) previous.put(text, text.getText().toString());
+			dialog.getButton(DialogInterface.BUTTON_POSITIVE).performClick();
+			TextView error = findAll(dialog.getWindow().getDecorView(), TextView.class).stream()
+				.filter(view -> !(view instanceof EditText) && !view.getText().toString().equals(previous.get(view)))
+				.findFirst().get();
+			assertReachable(dialog, error, 360, 360);
+			assertTrue("invalid settings keep the form open", dialog.isShowing());
+			dialog.dismiss();
+		}
+	}
+
+	private static ExtraSettingsActions modalActions() {
+		return (ExtraSettingsActions) Proxy.newProxyInstance(ExtraSettingsActions.class.getClassLoader(),
+			new Class<?>[] {ExtraSettingsActions.class}, (proxy, method, args) -> {
+				if (method.getName().equals("showError")) throw new AssertionError("Modal failed", (Exception) args[0]);
+				throw new AssertionError("Unexpected action: " + method.getName());
+			});
+	}
+
+	private static void showModal(Object target, String name) throws Exception {
+		Method method = target.getClass().getDeclaredMethod(name);
+		method.setAccessible(true);
+		method.invoke(target);
+	}
+
+	private static void assertReachable(AlertDialog dialog, View target, int width, int height) {
+		org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+		View decor = dialog.getWindow().getDecorView();
+		measure(decor, width, height);
+		if (target instanceof EditText) target.requestFocus();
+		target.requestRectangleOnScreen(new Rect(0, 0, target.getWidth(), target.getHeight()), true);
+		Rect visible = new Rect();
+		boolean isVisible = target.getGlobalVisibleRect(visible);
+		int[] location = new int[2];
+		target.getLocationOnScreen(location);
+		ScrollView scroll = find(decor, ScrollView.class);
+		String geometry = width + "x" + height + " target=" + target.getClass().getSimpleName()
+			+ "/" + target.getHeight() + " viewport=" + scroll.getHeight() + " scrollY=" + scroll.getScrollY()
+			+ " body=" + scroll.getChildAt(0).getHeight() + " visible=" + visible;
+		assertTrue("target must be visible at " + geometry, isVisible);
+		assertTrue("target must not be vertically clipped at " + geometry,
+			visible.top <= location[1] && visible.bottom >= location[1] + target.getHeight());
 	}
 
 	private void createSheet(boolean longContent) {

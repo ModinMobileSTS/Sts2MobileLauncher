@@ -658,9 +658,8 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		searchInput.setText(currentQuery);
 		searchInput.setSelectAllOnFocus(true);
 		searchLayout.addView(searchInput);
-		MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
+		MaterialAlertDialogBuilder builder = ExtraSettingsUi.scrollableDialog(this, searchLayout)
 			.setTitle(R.string.workshop_search)
-			.setView(searchLayout)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setNeutralButton(R.string.workshop_clear_search, (dialog, which) -> searchWorkshop("", 1))
 			.setPositiveButton(R.string.workshop_search, (dialog, which) -> submitSearchDialog());
@@ -702,9 +701,8 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		input.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
 		input.setHintTextColor(ExtraSettingsUi.COLOR_MUTED);
 		inputLayout.addView(input);
-		MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
+		MaterialAlertDialogBuilder builder = ExtraSettingsUi.scrollableDialog(this, inputLayout)
 			.setTitle(R.string.workshop_open_by_id_url)
-			.setView(inputLayout)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(R.string.workshop_open_item, null);
 		final androidx.appcompat.app.AlertDialog dialog = builder.create();
@@ -1956,9 +1954,8 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		deleteLocal.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
 		deleteLocal.setEnabled(canDeleteLocal);
 		content.addView(deleteLocal, fullWidthTopMargin(12));
-		new MaterialAlertDialogBuilder(this)
+		ExtraSettingsUi.scrollableDialog(this, content)
 			.setTitle(R.string.workshop_delete_record_title)
-			.setView(content)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(R.string.delete, (dialog, which) -> {
 				boolean deleteFiles = deleteLocal.isChecked() && canDeleteLocal;
@@ -3259,9 +3256,8 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		input.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
 		input.setText(SteamWorkshopPreferences.getCustomDownloadBranch(this));
 		inputLayout.addView(input);
-		new MaterialAlertDialogBuilder(this)
+		ExtraSettingsUi.scrollableDialog(this, inputLayout)
 			.setTitle(R.string.workshop_download_branch_custom)
-			.setView(inputLayout)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (dialog, which) -> {
 				String value = input.getText() == null ? "" : input.getText().toString();
@@ -3282,9 +3278,8 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		input.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
 		input.setText(SteamWorkshopPreferences.getDownloadGroup(this));
 		inputLayout.addView(input);
-		new MaterialAlertDialogBuilder(this)
+		ExtraSettingsUi.scrollableDialog(this, inputLayout)
 			.setTitle(R.string.workshop_download_group)
-			.setView(inputLayout)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (dialog, which) -> {
 				String value = input.getText() == null ? "" : input.getText().toString();
@@ -3305,9 +3300,8 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		input.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
 		input.setText(Integer.toString(SteamWorkshopPreferences.getConcurrentChunks(this)));
 		inputLayout.addView(input);
-		new MaterialAlertDialogBuilder(this)
+		ExtraSettingsUi.scrollableDialog(this, inputLayout)
 			.setTitle(R.string.workshop_concurrent_chunks)
-			.setView(inputLayout)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (dialog, which) -> {
 				int value = parseInt(input.getText() == null ? "" : input.getText().toString(), 4);

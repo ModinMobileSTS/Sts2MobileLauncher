@@ -9,7 +9,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.PathInterpolator;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -300,8 +299,7 @@ public final class LogAnalysisActivity extends AppCompatActivity {
 		TextView error = new TextView(this); error.setTextSize(16);
 		error.setTextColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorError, 0xFFFFB4AB));
 		form.addView(error);
-		ScrollView scroll = new ScrollView(this); scroll.addView(form);
-		AlertDialog dialog = new MaterialAlertDialogBuilder(this).setTitle(R.string.log_analysis_config).setView(scroll)
+		AlertDialog dialog = ExtraSettingsUi.scrollableDialog(this, form).setTitle(R.string.log_analysis_config)
 			.setNegativeButton(R.string.log_analysis_cancel, null).setPositiveButton(R.string.log_analysis_save, null).create();
 		dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
 			LlmConfig replacement = new LlmConfig(value(url), value(key), value(model), value(effort));

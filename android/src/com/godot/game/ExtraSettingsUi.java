@@ -12,6 +12,7 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -19,6 +20,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.appcompat.content.res.AppCompatResources;
+import androidx.appcompat.app.AlertDialog;
 
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
@@ -464,6 +466,45 @@ public final class ExtraSettingsUi {
 		if (view.getContext().getTheme().resolveAttribute(android.R.attr.selectableItemBackground, out, true) && out.resourceId != 0) {
 			view.setForeground(AppCompatResources.getDrawable(view.getContext(), out.resourceId));
 		}
+	}
+
+	/** Keeps custom form content scrollable above the IME; titles and actions remain outside. */
+	public static MaterialAlertDialogBuilder scrollableDialog(Context context, View content) {
+		return scrollableDialog(context, null, content);
+	}
+
+	public static MaterialAlertDialogBuilder scrollableDialog(Context context, CharSequence message, View content) {
+		MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(context) {
+			@Override public AlertDialog create() {
+				AlertDialog dialog = super.create();
+				if (dialog.getWindow() != null) {
+					dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+				}
+				return dialog;
+			}
+		};
+		// Material's default 80dp insets can consume the entire form viewport with a large font + IME.
+		builder.setBackgroundInsetTop(dp(context, 24));
+		builder.setBackgroundInsetBottom(dp(context, 24));
+		LinearLayout body = vertical(builder.getContext());
+		int padding = dp(context, 8);
+		body.setPadding(padding, padding, padding, padding);
+		if (message != null && message.length() > 0) {
+			TextView description = new TextView(builder.getContext(), null,
+				com.google.android.material.R.attr.materialAlertDialogBodyTextStyle);
+			description.setText(message);
+			LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+				ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+			params.bottomMargin = dp(context, 12);
+			body.addView(description, params);
+		}
+		body.addView(content, new LinearLayout.LayoutParams(
+			ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		ScrollView scroll = new ScrollView(builder.getContext());
+		scroll.setFillViewport(false);
+		scroll.addView(body, new ScrollView.LayoutParams(
+			ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		return builder.setView(scroll);
 	}
 
 	public static void showInfoDialog(Context context, int titleRes, int messageRes) {

@@ -1806,9 +1806,8 @@ public final class ModsPage {
 		input.setSingleLine(true);
 		input.setText(groupName);
 		input.setSelection(groupName.length());
-		new MaterialAlertDialogBuilder(context)
+		ExtraSettingsUi.scrollableDialog(context, input)
 			.setTitle(R.string.mod_group_rename_title)
-			.setView(input)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (d, which) -> {
 				String name = input.getText() == null ? "" : input.getText().toString();
@@ -1864,12 +1863,10 @@ public final class ModsPage {
 		search.setHintTextColor(ExtraSettingsUi.COLOR_MUTED);
 		root.addView(search, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-		ScrollView scrollView = new ScrollView(context);
 		LinearLayout list = ExtraSettingsUi.vertical(context);
-		scrollView.addView(list);
-		LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ExtraSettingsUi.dp(context, 360));
-		scrollParams.topMargin = ExtraSettingsUi.dp(context, 8);
-		root.addView(scrollView, scrollParams);
+		LinearLayout.LayoutParams listParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		listParams.topMargin = ExtraSettingsUi.dp(context, 8);
+		root.addView(list, listParams);
 
 		Runnable rebuild = () -> {
 			list.removeAllViews();
@@ -1901,9 +1898,8 @@ public final class ModsPage {
 		});
 		rebuild.run();
 
-		new MaterialAlertDialogBuilder(context)
+		ExtraSettingsUi.scrollableDialog(context, root)
 			.setTitle(context.getString(R.string.mod_group_move_mods_title, targetGroupName))
-			.setView(root)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (d, which) -> {
 				List<ExtraSettingsRepository.ModEntry> toMove = new ArrayList<>();
@@ -2767,10 +2763,8 @@ public final class ModsPage {
 		input.setSingleLine(true);
 		input.setText(noteFor(entry.modId));
 		input.setSelection(input.getText() == null ? 0 : input.getText().length());
-		new MaterialAlertDialogBuilder(context)
+		ExtraSettingsUi.scrollableDialog(context, entry.displayName + "\n" + entry.modId, input)
 			.setTitle(R.string.mod_note_title)
-			.setMessage(entry.displayName + "\n" + entry.modId)
-			.setView(input)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (dialog, which) -> {
 				try {
@@ -3471,9 +3465,8 @@ public final class ModsPage {
 		EditText input = new EditText(context);
 		input.setHint(R.string.mod_profile_name_hint);
 		input.setSingleLine(true);
-		new MaterialAlertDialogBuilder(context)
+		ExtraSettingsUi.scrollableDialog(context, input)
 			.setTitle(R.string.mod_profile_create_title)
-			.setView(input)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (dialog, which) -> {
 				try {

@@ -1755,10 +1755,8 @@ public final class InGameOverlayController {
 			input.setInputType(InputType.TYPE_CLASS_TEXT);
 			input.setHint("true / false");
 		}
-		new com.google.android.material.dialog.MaterialAlertDialogBuilder(dialogContext)
+		ExtraSettingsUi.scrollableDialog(dialogContext, path, input)
 			.setTitle(R.string.in_game_overlay_inspector_edit_title)
-			.setMessage(path)
-			.setView(input)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (d, w) -> {
 				try {
@@ -1812,10 +1810,9 @@ public final class InGameOverlayController {
 			input.setInputType(InputType.TYPE_CLASS_TEXT);
 			input.setHint("true / false");
 		}
-		new com.google.android.material.dialog.MaterialAlertDialogBuilder(dialogContext)
+		ExtraSettingsUi.scrollableDialog(dialogContext,
+			(TextUtils.isEmpty(nodePath) ? objectRef : nodePath) + "\n" + property, input)
 			.setTitle(R.string.in_game_overlay_inspector_edit_title)
-			.setMessage((TextUtils.isEmpty(nodePath) ? objectRef : nodePath) + "\n" + property)
-			.setView(input)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (d, w) -> {
 				try {
@@ -1880,18 +1877,12 @@ public final class InGameOverlayController {
 		input.setTextColor(COLOR_TEXT);
 		input.setHint(R.string.in_game_overlay_inspector_script_hint);
 		input.setSingleLine(false);
-		int editorMaxHeight = Math.max(dp(120), Math.min(dp(260), Math.round(
-			activity.getResources().getDisplayMetrics().heightPixels * 0.42f)));
-		input.setMinHeight(Math.min(dp(150), editorMaxHeight));
-		input.setMaxHeight(editorMaxHeight);
-		input.setVerticalScrollBarEnabled(true);
-		input.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+		input.setMinLines(4);
 		input.setPadding(dp(12), dp(10), dp(12), dp(10));
 		input.setGravity(Gravity.TOP | Gravity.START);
 		input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-		androidx.appcompat.app.AlertDialog dialog = new com.google.android.material.dialog.MaterialAlertDialogBuilder(dialogContext)
+		ExtraSettingsUi.scrollableDialog(dialogContext, input)
 			.setTitle(R.string.in_game_overlay_inspector_run_script)
-			.setView(input)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(R.string.in_game_overlay_inspector_run, (d, w) -> {
 				try {
@@ -1915,13 +1906,7 @@ public final class InGameOverlayController {
 					toast(exception.getMessage());
 				}
 			})
-			.create();
-		dialog.setOnShowListener(ignored -> {
-			if (dialog.getWindow() != null) {
-				dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-			}
-		});
-		dialog.show();
+			.show();
 	}
 
 	private void renderInspectorResult(JSONObject response) {
@@ -1960,23 +1945,13 @@ public final class InGameOverlayController {
 		content.setPadding(dp(14), dp(12), dp(14), dp(12));
 		content.setBackground(roundedBackground(Color.parseColor("#CC111820"), dp(12)));
 
-		ScrollView scroll = new ScrollView(dialogContext);
-		scroll.setFillViewport(true);
-		scroll.addView(content, new ScrollView.LayoutParams(
-			ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-		int maxHeight = Math.max(dp(120), Math.min(dp(320), Math.round(
-			activity.getResources().getDisplayMetrics().heightPixels * 0.48f)));
-		scroll.setLayoutParams(new ViewGroup.LayoutParams(
-			ViewGroup.LayoutParams.MATCH_PARENT, maxHeight));
-
 		String title = activity.getString(R.string.in_game_overlay_inspector_script_result);
 		if (!TextUtils.isEmpty(type)) {
 			title += " · " + simpleTypeName(type);
 		}
 		String copyValue = result == null ? "" : result;
-		new com.google.android.material.dialog.MaterialAlertDialogBuilder(dialogContext)
+		ExtraSettingsUi.scrollableDialog(dialogContext, content)
 			.setTitle(title)
-			.setView(scroll)
 			.setNegativeButton(R.string.in_game_overlay_inspector_close, null)
 			.setPositiveButton(R.string.in_game_overlay_inspector_copy, (dialog, which) ->
 				copyInspectorText(activity.getString(R.string.in_game_overlay_inspector_script_result), copyValue))

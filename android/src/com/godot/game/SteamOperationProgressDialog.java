@@ -15,7 +15,6 @@ import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.LifecycleEventObserver;
 import androidx.lifecycle.LifecycleOwner;
 
-import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 final class SteamOperationProgressDialog {
 	private final AlertDialog dialog;
@@ -83,9 +82,7 @@ final class SteamOperationProgressDialog {
 		hintParams.topMargin = ExtraSettingsUi.dp(context, 14);
 		content.addView(hintView, hintParams);
 
-		dialog = new MaterialAlertDialogBuilder(context)
-			.setView(content)
-			.create();
+		dialog = ExtraSettingsUi.scrollableDialog(context, content).create();
 		dialog.setCancelable(false);
 		dialog.setCanceledOnTouchOutside(false);
 		lifecycleOwner = context instanceof LifecycleOwner ? (LifecycleOwner) context : null;

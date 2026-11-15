@@ -1295,10 +1295,8 @@ public final class SettingsPage {
 		input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
 		input.setText(String.format(Locale.US, "%.2f", currentScale));
 		input.setSelection(input.getText().length());
-		new MaterialAlertDialogBuilder(context)
+		ExtraSettingsUi.scrollableDialog(context, context.getString(R.string.scale_custom_message), input)
 			.setTitle(R.string.scale_custom_title)
-			.setMessage(R.string.scale_custom_message)
-			.setView(input)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (dialog, which) -> {
 				try {
@@ -1336,9 +1334,8 @@ public final class SettingsPage {
 			ExtraSettingsUi.addSmallSpacing(content, add);
 			ExtraSettingsUi.addSmallSpacing(content, list);
 			refreshLanCompatibilityList(list, modNames);
-			new MaterialAlertDialogBuilder(context)
+			ExtraSettingsUi.scrollableDialog(context, content)
 				.setTitle(R.string.lan_compatibility_mod_list_dialog_title)
-				.setView(content)
 				.setPositiveButton(android.R.string.ok, null)
 				.show();
 		} catch (Exception exception) {
@@ -1392,9 +1389,8 @@ public final class SettingsPage {
 		input.setSingleLine(true);
 		input.setText(initialValue);
 		input.setSelection(input.getText().length());
-		AlertDialog dialog = new MaterialAlertDialogBuilder(context)
+		AlertDialog dialog = ExtraSettingsUi.scrollableDialog(context, input)
 			.setTitle(titleResId)
-			.setView(input)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, null)
 			.create();

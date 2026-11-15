@@ -2123,9 +2123,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			cancelParams.topMargin = ExtraSettingsUi.dp(GameSettingsActivity.this, 20);
 			content.addView(cancelButton, cancelParams);
 
-			dialog = new MaterialAlertDialogBuilder(GameSettingsActivity.this)
-				.setView(content)
-				.create();
+			dialog = ExtraSettingsUi.scrollableDialog(GameSettingsActivity.this, content).create();
 			dialog.setCancelable(false);
 			dialog.setCanceledOnTouchOutside(false);
 			cancelButton.setOnClickListener(v -> {
