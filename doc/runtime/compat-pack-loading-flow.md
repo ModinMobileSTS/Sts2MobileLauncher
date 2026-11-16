@@ -306,6 +306,8 @@ STS2Mobile.ModEntry
 
    原生回归 `port-mod/tests/FramePreparation.Tests` 使用 Godot 4.5.1 .NET 与实际打包 Harmony，只构造合成场景/损坏资源。覆盖 Shader 父 `_Ready`、重入树、释放、材质隔离和开关切换、独立 shader 的真实替身像素、源回调隔离、材质/采样器继承边界、共享粒子材质、批次/取消/资源 pin，以及前述 VFX 池、运行时资源队列错误恢复和字体缩放。准备好官方 .NET 版 Godot 路径 `GODOT_BIN`，在仓库根加载 `.env` 后运行：
 
+   水晶球占卜回归直接嵌入 overlay 的 `scry_reveal_compat.gdshader`，以真实像素检查入场前开启兼容、揭示后再开启、继续揭示和重复切换设置；已揭示格必须显示底层内容，未揭示格必须继续遮挡。原生运行时需使用打包 Harmony 支持的 .NET 9；若构建 SDK 为 .NET 10，运行下列命令时将 `DOTNET_ROOT` 指向单独的 .NET 9 安装目录。
+
    ```bash
    "$DOTNET_BIN" build port-mod/tests/FramePreparation.Tests -p:HarmonyReferenceDir="$PWD/android/assets/dotnet_bcl"
    # Linux without a display: real GLES via Xvfb/Mesa, not the dummy headless renderer.
@@ -357,6 +359,7 @@ OS.GetDataDir()/port_compat.pck
 - VisualShader 生成代码中的隐藏 sampler alias 属于 baked/generated texture 输入，不会因为 hash 命中而新增可写的 shader parameter key；variant 只复制原 material 可见的参数协议。
 - 通用 `SceneTree.NodeAdded` 路径只检查 CanvasItem 自身的 `Material`；每个命中节点获得独立的 `ShaderMaterial` 副本。Spine 的 material slots 不由这条 CanvasItem 自动路径覆盖，本补丁不改写 slots。
 - 旧 target 的缓存材质不依赖 NodeAdded 猜测：`NCard.Reload` 专门修复卡面 portrait/canvas-group blur，`NMainMenu._Ready` 修复主菜单 blur，`NEpochSlot._Ready` 修复时间线 blur，`NRadialBlurVfx._Ready` 修复径向 blur；`AssetCache.GetMaterial()` 对已知卡面 blur material 路径也返回替换材质的副本。v0.113.x 的卡面/时间线例外见下文。
+- 水晶球占卜的 `NCrystalSphereMask` 在延迟 NodeAdded 批次内走缓存材质修复：同时把 `_Ready` 缓存的 `_material` 和节点自身 `Material` 绑定到同一兼容材质副本，保留现有 `gridFadeParams` / `time`。这同时覆盖入场前开启与占卜中途开启；后续揭示不再写入已离开画面的旧材质。不关闭兼容开关、不跳过 scry variant，也不改变揭示规则或奖励。
 - 这些已知动态路径写回的是替代 `ShaderMaterial` 副本，而不是把原始共享材质换成新 shader；当前没有覆盖任意晚到 `CanvasItem.Material` 赋值的通用 helper。若后续集成 owner 暴露专用更新入口，调用方必须沿用这条替代材质路径；本兼容层当前不对不存在的 helper 或自动重写能力作承诺。
 
 **Maleoon OpenGL 回能粒子兼容**
