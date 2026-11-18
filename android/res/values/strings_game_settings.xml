@@ -71,15 +71,13 @@
     <string name="workshop_supply_station_hint">Use apricityx’s Spire Supply Station for anonymous downloads without signing in</string>
     <string name="workshop_supply_station_source">Spire Supply Station</string>
     <string name="workshop_supply_station_about">About Spire Supply Station</string>
-    <string name="workshop_supply_station_about_body">Spire Supply Station is a third-party Steam Workshop index and download service maintained by apricityx. When enabled, the launcher obtains a download descriptor and temporary authorization from the service, then downloads public MODs from Steam CDN. Your Steam account, password and login token are not sent to the service. This option is off by default; turning it off restores Steam downloads.\n\nThe service supplies default content without a verified public / public-beta branch. Compatibility with your game version is not guaranteed, and the Download branch setting does not change these files. Station downloads are recorded separately, not as matched Steam branches. Availability depends on the service and Steam; not every item is available anonymously.</string>
+    <string name="workshop_supply_station_about_body">Spire Supply Station is a third-party Steam Workshop index and download service maintained by apricityx. When enabled, the launcher obtains a download descriptor and temporary authorization from the service, then downloads public MODs from Steam CDN. Your Steam account, password and login token are not sent to the service. This option is off by default; turning it off restores Steam downloads. Availability depends on the service and Steam; not every item is available anonymously.</string>
     <string name="workshop_supply_station_credits">Acknowledgements</string>
     <string name="workshop_supply_station_credits_body">Thanks to apricityx for Spire Supply Station and its download protocol reference, to WorkshopAndroidDownloader for download implementation references, and to all MOD authors for their work. This launcher uses a native downloader; no browser extension or userscript is required.</string>
     <string name="workshop_supply_station_copyright">Copyright statement</string>
     <string name="workshop_supply_station_copyright_body">MOD content and attribution belong to their respective authors. Website names, pages and software belong to their rights holders. Steam / Valve and Mega Crit names and trademarks belong to their respective owners; neither this launcher nor the third-party service implies official authorization or affiliation.\n\nThis feature does not provide the game, grant a game or MOD license, or guarantee file safety or compatibility. Follow Steam and service terms and author licenses, preserve attribution, and do not bypass access restrictions or redistribute or sell content without permission. See the service links for its full statements and rights-holder contact information.</string>
     <string name="workshop_supply_station_visit">Visit Spire Supply Station</string>
     <string name="workshop_supply_station_terms">Terms of use</string>
-    <string name="workshop_supply_station_default_content">Site default content (branch unverified)</string>
-    <string name="workshop_supply_station_branch_notice">Source: Spire Supply Station · Site default content, game branch unverified</string>
     <string name="workshop_supply_station_failure">Spire Supply Station download failed: %1$s\n\nTry again later, or turn off Download with Spire Supply Station to use Steam. This error does not mean you need to sign in to Steam on the service.</string>
     <string name="workshop_supply_station_auth_hint">If you do not have a Steam account, or your account does not own the game, you can enable Download with Spire Supply Station in Workshop → Settings to try anonymous downloads through apricityx’s third-party service. Some items may remain unavailable. Read the About information and copyright statement beside the switch first.</string>
     <string name="workshop_supply_station_prerequisites_title">Prerequisite check incomplete</string>
@@ -174,7 +172,7 @@
     <string name="workshop_download_background_started">Downloading in background: %1$s</string>
     <string name="workshop_download_cancelled">Workshop download stopped.</string>
     <string name="workshop_branch_dialog_title">Choose Workshop content</string>
-    <string name="workshop_branch_dialog_message">Steam returned these downloadable variants for “%1$s”. Choose the branch snapshot to download.</string>
+    <string name="workshop_branch_dialog_message">Choose which branch to download for “%1$s”.</string>
     <string name="workshop_branch_dialog_empty">No downloadable Workshop content was found.</string>
     <string name="workshop_branch_source_author_snapshot">author snapshot</string>
     <string name="workshop_branch_source_cm_manifest">CM default manifest</string>

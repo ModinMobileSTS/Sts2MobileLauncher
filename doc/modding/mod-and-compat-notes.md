@@ -128,15 +128,15 @@ MOD 卡片默认折叠，只显示左侧拖拽手柄、名称、版本/作者和
 
 “创意工坊 → 设置”新增 **使用尖塔补给站下载**，说明为“使用apricityx的尖塔补给站实现不登录匿名下载”，默认关闭。开关左侧的“关于”图标可查看服务说明、鸣谢、版权声明，并跳转 [尖塔补给站](https://workshop.apricityx.top)、[关于页面](https://workshop.apricityx.top/about)、[版权声明](https://workshop.apricityx.top/legal/copyright) 和 [用户协议](https://workshop.apricityx.top/legal/terms)。
 
-- 开启后，新开始的下载直接通过 `SpireSupplyStationClient` 获取下载描述与短期 CDN 授权，不读取 Steam 登录令牌，不建立 Steam CM 会话，也不先解析 Steam 分支。UGC 文件仍经现有 Kotlin manifest/chunk 解密、解压、校验和 staging 导入流程；不安装或执行站点的浏览器脚本。关闭时保留原 Steam 下载路径，不自动回退或切源。
-- 站点目前提供默认内容，**游戏分支未验证**。“下载分支”偏好会保留，但不控制站点文件。安装命名空间固定为 `supply-station-default`，记录 `resolution_source=spire_supply_station` 和实际 manifest；这个名字不是 Steam 分支或版本兼容认证，已下载卡片会明确显示来源与限制。
-- Steam 源记录改用站点下载时仍进行同 ID 冲突确认，不把未知分支当作原记录直接覆盖；站点自身的更新沿用站点命名空间。开关关闭后，站点记录的更新会提示重新开启，或从条目页面改走 Steam 并选择分支。
+- 开启后，`SpireSupplyStationClient` 直接从站点获取下载描述和短期 CDN 授权，不读取 Steam 登录令牌，也不通过 Steam CM 解析下载分支。UGC 文件仍经现有 Kotlin manifest/chunk 解密、解压、校验和 staging 导入流程；不安装或执行站点的浏览器脚本。关闭时使用原 Steam 下载路径，下载失败不会自动切源。
+- **下载分支**设置两种下载源共用。自动模式仍优先使用本体记录的 Steam 分支，其次使用当前兼容包的分支；无法推断或设为“每次询问”时，补给站只列出 `/api/workshop/versions` 返回的 `MATCH` 候选。固定分支（含自定义）和用户选中的分支用 `gameBranch` 请求下载描述；站点无法匹配时会报错或提示没有候选，不会退回默认内容。选择候选后也会核对返回的 manifest。分支匹配不代表 MOD 可在 Android 上正常运行。
+- 补给站新下载按实际请求的分支安装，仍记录 `resolution_source=spire_supply_station` 和实际 manifest，已下载卡片显示分支与来源。旧 `supply-station-default` 记录保留原路径和来源，不冒充任何 Steam 分支。更新沿用已安装记录的分支；Steam 源记录改由站点下载时仍需同 ID 冲突确认。关闭站点开关不会自动用 Steam 更新站点记录。
 - 浏览、截图、前置 MOD 检查和常规更新检查仍沿用现有 Steam 公开元数据路径，此开关不是浏览目录换源。前置列表读取失败时，只有站点模式提供明确的“检查未完成”提示，用户确认后可只下载当前条目；不能把检查失败解释为无依赖。
 - Steam 下载的 401/403、`NoLicense`、`AccessDenied` 等授权错误会提示可在设置中开启该功能；普通网络或本地文件权限错误不添加该引导。站点自身授权失败不误报为用户需要登录 Steam。
 - CDN token、depot key、request code 与签名 URL 不写入安装 metadata 或下载日志；授权刷新时校验内容身份，不能在同一任务混用不同 manifest。站点及 CDN 的 TLS 校验保持开启。服务不保证所有条目可匿名下载；使用和分发仍需遵守 Steam、站点及 MOD 作者许可。
 - 站点下载描述或 CDN token 回应可能把 CDN origin 标为 `http://`；启动器仅把它当作同主机端点标识，校验主机/端口/路径后仍经 HTTPS 443 请求 manifest/chunk，站点专用 CDN transport 不跟随 HTTPS→HTTP 降级重定向。HTTPS 证书无效或主机不支持 TLS 时会尝试其他合法端点，不改用明文；普通 Steam 源的重定向策略不变。
 
-回归入口：`tools/android/gradle-with-s2-env.sh :steam-content:test`，覆盖关闭时不访问站点、开启时不访问 Steam CM、加密下载及凭证刷新、错误条目/内容变更拒绝、授权错误识别。
+回归入口：`tools/android/gradle-with-s2-env.sh :steam-content:test :testMonoReleaseUnitTest --tests 'com.godot.game.SteamWorkshop*'`，覆盖站点分支候选、描述与所选分支/manifest 不一致时拒绝下载、旧站点记录、CDN 授权刷新和下载队列中的分支/来源隔离。
 
 ## 5. NexusMods 商店导入
 

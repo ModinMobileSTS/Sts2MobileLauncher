@@ -27,7 +27,7 @@
 
 1. 按[本地配置文档](../build/local-configuration.md)准备 `.env` / `local.properties`，配置 .NET 9 SDK、original references 和打包所用 runtime。
 2. 准备匹配游戏版本的 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll` 及相邻依赖；不要混用其他版本游戏 DLL。Harmony 回归优先使用实际 APK 打包的 Ekyso Harmony / MonoMod 组合。
-3. 从用户提供的包、Steam 或尖塔补给站准备目标 MOD 和前置，保留 manifest、DLL、PCK。检查 `id`、`version`、`min_game_version`、`dependencies`，记录来源和实际内容版本。补给站默认内容的游戏分支未验证，不能把下载成功当作版本兼容证据。
+3. 从用户提供的包、Steam 或尖塔补给站准备目标 MOD 和前置，保留 manifest、DLL、PCK。检查 `id`、`version`、`min_game_version`、`dependencies`，记录来源、分支和实际内容版本。旧补给站默认内容记录没有已确认的分支；即使站点匹配到分支，下载成功也不能作为版本兼容证据。
 4. 私有输入、MOD 包、反编译输出和报告统一放在 ignored 的 `.agent/` 或仓库外，不提交商业游戏内容、第三方 MOD 二进制或账号材料。
 
 加载机器配置：

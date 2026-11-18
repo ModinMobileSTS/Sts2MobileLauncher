@@ -48,7 +48,7 @@ public class SteamWorkshopDownloadQueueTest {
 		for (int index = 1; index <= 5; index++) addActive("9000" + index);
 		SteamWorkshopDownloader.BranchOption installedBranch = option("public-beta", "18446744073709551614");
 		Object oldUpdate = pending("90006", installedBranch, true);
-		Object oldDownload = pending("90007", null, false);
+		Object oldDownload = pending("90007", option("", ""), false);
 		queue.add(oldUpdate);
 		queue.add(oldDownload);
 		List<SteamWorkshopCatalog.RequiredItem> required = Arrays.asList(required("90001"), required("90006"), required("90007"), required("90008"), required("90008"));
@@ -92,6 +92,22 @@ public class SteamWorkshopDownloadQueueTest {
 		assertEquals(Arrays.asList("90001"), queuedIds());
 		assertSame(otherBranch, queue.get(0));
 		assertEquals(1, tasks.size());
+	}
+
+	@Test public void activeSteamDownloadDoesNotDiscardTheSameBranchFromStation() throws Exception {
+		addActive("90001");
+		Field selectedOption = tasks.get("90001").getClass().getDeclaredField("selectedOption");
+		selectedOption.setAccessible(true);
+		selectedOption.set(tasks.get("90001"), option("public-beta", ""));
+		SteamWorkshopDownloader.BranchOption station = new SteamWorkshopDownloader.BranchOption("public-beta", "", "",
+			top.apricityx.workshop.workshop.SpireSupplyStationClient.SOURCE, "", "", "", 0L, "", 0L);
+		Object pendingStation = pending("90001", station, false);
+		queue.add(pendingStation);
+
+		invoke("pumpDownloadQueue", new Class<?>[0]);
+
+		assertEquals(Arrays.asList("90001"), queuedIds());
+		assertSame(pendingStation, queue.get(0));
 	}
 
 	private void merge(List<SteamWorkshopCatalog.RequiredItem> required, String currentId) throws Exception {
