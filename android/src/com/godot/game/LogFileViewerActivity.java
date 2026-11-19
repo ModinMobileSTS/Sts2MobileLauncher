@@ -1006,15 +1006,11 @@ public class LogFileViewerActivity extends AppCompatActivity {
 	private void showMoreMenu(View anchor) {
 		PopupMenu popup = new PopupMenu(this, anchor == null ? toolbar : anchor, Gravity.END);
 		popup.getMenu().add(Menu.NONE, MENU_ANALYZE, Menu.NONE, R.string.log_detail_analyze)
-				.setIcon(MaterialSymbols.drawable(this, "auto_awesome", COLOR_MUTED, 24)).setEnabled(sourceFile != null);
+				.setIcon(MaterialSymbols.drawable(this, "auto_awesome", COLOR_MUTED, 24));
 		popup.setForceShowIcon(true);
 		popup.setOnMenuItemClickListener(item -> {
 			if (item.getItemId() == MENU_ANALYZE) {
-				if (sourceFile == null || !sourceFile.isFile()) {
-					showError(new IOException(getString(R.string.log_file_viewer_missing)));
-				} else {
-					startActivity(LogAnalysisActivity.createIntent(this, sourceFile));
-				}
+				startActivity(LogAnalysisActivity.createIntent(this, sourceFile));
 				return true;
 			}
 			return false;

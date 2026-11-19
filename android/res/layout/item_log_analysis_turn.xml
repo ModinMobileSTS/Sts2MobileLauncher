@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical"
+    android:paddingTop="8dp" android:paddingBottom="20dp">
+    <com.google.android.material.card.MaterialCardView android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="end" android:layout_marginStart="32dp" app:cardCornerRadius="20dp"
+        app:cardBackgroundColor="?attr/colorPrimaryContainer" app:cardElevation="0dp" app:strokeWidth="0dp">
+        <TextView android:id="@+id/analysis_user_text" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:paddingHorizontal="16dp" android:paddingVertical="10dp" android:textSize="17sp" android:lineSpacingExtra="2dp"
+            android:textColor="?attr/colorOnPrimaryContainer" android:textIsSelectable="true" />
+    </com.google.android.material.card.MaterialCardView>
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="22dp"
+        android:gravity="center_vertical" android:drawableStart="@drawable/ic_ms_auto_awesome_24" android:drawablePadding="8dp"
+        android:drawableTint="?attr/colorPrimary" android:text="@string/log_analysis_assistant"
+        android:textAppearance="@style/TextAppearance.Material3.LabelLarge" android:textColor="?attr/colorPrimary" />
+    <TextView android:id="@+id/analysis_answer" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" android:textSize="17sp" android:lineSpacingExtra="3dp"
+        android:textColor="?attr/colorOnSurface" android:textColorLink="?attr/colorPrimary" android:textIsSelectable="true" />
+    <LinearLayout android:id="@+id/analysis_progress_row" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" android:orientation="horizontal" android:gravity="center_vertical">
+        <com.google.android.material.progressindicator.CircularProgressIndicator android:id="@+id/analysis_progress"
+            android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="8dp" android:indeterminate="true"
+            app:indicatorSize="16dp" app:indicatorInset="2dp" app:trackThickness="2dp" />
+        <TextView android:id="@+id/analysis_status" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.Material3.BodyMedium" android:textColor="?attr/colorOnSurfaceVariant" android:accessibilityLiveRegion="polite" />
+    </LinearLayout>
+    <com.google.android.material.button.MaterialButton android:id="@+id/analysis_retry"
+        style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:minHeight="48dp" android:text="@string/log_analysis_retry" app:icon="@drawable/ic_ms_restart_alt_24" />
+</LinearLayout>

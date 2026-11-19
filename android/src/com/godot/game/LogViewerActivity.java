@@ -31,6 +31,7 @@ import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.godot.game.loganalysis.LogAnalysisActivity;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.chip.Chip;
@@ -210,6 +211,8 @@ public class LogViewerActivity extends AppCompatActivity {
         int id = item.getItemId();
         if (id == R.id.action_refresh_logs) {
             refreshLogs();
+        } else if (id == R.id.action_analyze_logs) {
+            startActivity(LogAnalysisActivity.createIntent(this, null));
         } else if (id == R.id.action_select_all) {
             selectAllLogs();
         } else {

@@ -3,21 +3,26 @@ package com.godot.game.loganalysis;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.TextWatcher;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.animation.PathInterpolator;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.OneShotPreDrawListener;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.godot.game.ExtraSettingsUi;
 import com.godot.game.MaterialSymbols;
 import com.godot.game.R;
-import com.godot.game.RuntimeLogFiles;
 import com.godot.game.SystemBarInsetsHelper;
 import com.godot.game.llm.Cancellation;
 import com.godot.game.llm.ChatSession;
@@ -27,264 +32,238 @@ import com.godot.game.llm.OpenAiClient;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.color.MaterialColors;
-import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import java.io.File;
 import java.io.IOException;
-import java.io.InterruptedIOException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** UI owns consent and allowlist. All scans, encrypted preferences, and HTTP run off the main thread. */
 public final class LogAnalysisActivity extends AppCompatActivity {
 	private static final String EXTRA_CURRENT = "com.godot.game.loganalysis.CURRENT_LOG";
-	private static final int CONFIG = 1, FILES = 2, RESTART = 3, INFO = 4;
+	private static final int CONFIG = 1, NEW_CHAT = 2;
+	private final Handler main = new Handler(Looper.getMainLooper());
 	private final ExecutorService worker = Executors.newSingleThreadExecutor();
-	private final List<File> candidates = new ArrayList<>();
-	private final List<File> selected = new ArrayList<>();
-	private final List<Message> messages = new ArrayList<>();
-	private final MessageAdapter adapter = new MessageAdapter();
+	private ChatSession session; // Only the serial worker reads or changes conversation history.
 	private LlmConfig config = new LlmConfig("", "", "", "");
-	private Conversation conversation = new Conversation();
-	private Cancellation cancellation;
+	private Reply active;
 	private File currentFile;
-	private volatile int generation;
-	private boolean closed, ready, busy;
+	private boolean ready;
 	private MaterialToolbar toolbar;
 	private RecyclerView list;
-	private TextView fileText, status;
+	private LogChatAdapter chat;
+	private View welcome, connect;
 	private TextInputEditText question;
-	private MaterialButton send, stop;
-	private static final class Conversation { ChatSession session; boolean consent; }
-	private static final class Message {
-		final String title, text;
-		Message(String title, String text) { this.title = title; this.text = text; }
-	}
+	private MaterialButton send;
 
 	public static Intent createIntent(Context context, File currentLog) {
-		if (currentLog == null) throw new IllegalArgumentException("currentLog is required");
-		return new Intent(context, LogAnalysisActivity.class).putExtra(EXTRA_CURRENT, currentLog.getAbsolutePath());
+		Intent intent = new Intent(context, LogAnalysisActivity.class);
+		if (currentLog != null) intent.putExtra(EXTRA_CURRENT, currentLog.getAbsolutePath());
+		return intent;
 	}
 
 	@Override protected void onCreate(Bundle state) {
-		super.onCreate(state);
 		setTheme(R.style.Theme_Sts2Tools);
+		super.onCreate(state);
 		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
 		SystemBarInsetsHelper.enableEdgeToEdge(this);
 		setContentView(R.layout.activity_log_analysis);
 		View root = findViewById(R.id.analysis_root);
 		SystemBarInsetsHelper.applySystemBarPaddingWithIme(root, true, true, true, true);
+		View column = findViewById(R.id.analysis_column);
+		final int readingWidth = ExtraSettingsUi.dp(this, 720);
+		column.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+			int inset = Math.max(0, (r - l - readingWidth) / 2);
+			if (inset != v.getPaddingLeft()) v.setPadding(inset, 0, inset, 0);
+		});
+
+		String path = getIntent().getStringExtra(EXTRA_CURRENT);
+		currentFile = path == null ? null : new File(path);
 		toolbar = findViewById(R.id.analysis_toolbar);
-		fileText = findViewById(R.id.analysis_files);
-		status = findViewById(R.id.analysis_status);
-		question = findViewById(R.id.analysis_question);
-		question.setSaveEnabled(false);
-		send = findViewById(R.id.analysis_send);
-		stop = findViewById(R.id.analysis_stop);
-		list = findViewById(R.id.analysis_messages);
-		list.setLayoutManager(new LinearLayoutManager(this));
-		list.setAdapter(adapter);
-		int foreground = MaterialColors.getColor(this, com.google.android.material.R.attr.colorOnSurface, 0xFFFFFFFF);
-		toolbar.setNavigationIcon(MaterialSymbols.drawable(this, "arrow_back", foreground, 24));
-		toolbar.setNavigationContentDescription("返回");
+		int color = MaterialColors.getColor(toolbar, com.google.android.material.R.attr.colorOnSurface);
+		toolbar.setNavigationIcon(MaterialSymbols.drawable(this, "arrow_back", color, 24));
+		toolbar.setNavigationContentDescription(androidx.appcompat.R.string.abc_action_bar_up_description);
 		toolbar.setNavigationOnClickListener(v -> finish());
-		addMenu(CONFIG, R.string.log_analysis_config, "settings", MenuItem.SHOW_AS_ACTION_ALWAYS, foreground);
-		addMenu(FILES, R.string.log_analysis_files, "description", MenuItem.SHOW_AS_ACTION_IF_ROOM, foreground);
-		addMenu(RESTART, R.string.log_analysis_restart, "restart_alt", MenuItem.SHOW_AS_ACTION_NEVER, foreground);
-		addMenu(INFO, R.string.log_analysis_info, "info", MenuItem.SHOW_AS_ACTION_ALWAYS, foreground);
+		addMenu(CONFIG, R.string.log_analysis_config, "tune", color);
+		addMenu(NEW_CHAT, R.string.log_analysis_restart, "add", color);
 		toolbar.setOnMenuItemClickListener(item -> {
-			if (item.getItemId() == INFO) { showInfo(); return true; }
-			if (!ready) return true;
 			if (item.getItemId() == CONFIG) showConfig();
-			else if (item.getItemId() == FILES) showFiles();
-			else if (item.getItemId() == RESTART) resetConversation();
+			else if (item.getItemId() == NEW_CHAT) { question.setText(""); resetConversation(); }
 			return true;
 		});
-		MaterialSymbols.applyButtonIcon(send, "arrow_forward", send.getIconTint(), 24);
-		MaterialSymbols.applyButtonIcon(stop, "close", stop.getIconTint(), 24);
-		send.setOnClickListener(v -> requestSend());
-		stop.setOnClickListener(v -> stopRequest());
-		status.setText(R.string.log_analysis_loading);
-		updateControls();
-		String path = getIntent().getStringExtra(EXTRA_CURRENT);
-		final File current = path == null ? null : new File(path);
-		worker.execute(() -> {
-			List<File> discovered = new ArrayList<>();
-			if (current != null) addUnique(discovered, current);
-			final File defaultFile = discovered.isEmpty() ? null : discovered.get(0);
-			String failure = null;
-			try {
-				for (File file : RuntimeLogFiles.latest(getApplicationContext())) addUnique(discovered, file);
-			} catch (Exception e) { failure = "无法发现关联日志；仍可分析当前文件"; }
-			LlmConfig loaded;
-			try { loaded = LlmSettings.read(getApplicationContext()); }
-			catch (IOException e) { loaded = new LlmConfig("", "", "", ""); failure = getString(R.string.log_analysis_config_failed); }
-			final LlmConfig result = loaded;
-			final String notice = failure;
-			post(0, () -> {
-				config = result;
-				candidates.addAll(discovered);
-				currentFile = defaultFile;
-				if (defaultFile != null) selected.add(defaultFile);
-				ready = true;
-				updateFiles(); updateControls();
-				status.setText(R.string.log_analysis_ready);
-				if (notice != null) showNotice(notice);
+
+		welcome = findViewById(R.id.analysis_welcome);
+		connect = findViewById(R.id.analysis_connect);
+		connect.setOnClickListener(v -> showConfig());
+		for (int id : new int[]{R.id.analysis_prompt_crash, R.id.analysis_prompt_mods}) {
+			findViewById(id).setOnClickListener(v -> {
+				question.setText(((TextView) v).getText());
+				requestSend();
 			});
-		});
-	}
-
-	private void addMenu(int id, int text, String symbol, int mode, int color) {
-		MenuItem item = toolbar.getMenu().add(0, id, id, text);
-		item.setShowAsAction(mode);
-		MaterialSymbols.applyMenuIcon(this, item, symbol, color, 24);
-	}
-
-	private void showInfo() {
-		new MaterialAlertDialogBuilder(this).setTitle(R.string.log_analysis_info)
-			.setMessage(getString(R.string.log_analysis_privacy) + "\n\n" + getString(R.string.log_analysis_welcome)
-				+ "\n\n" + getString(R.string.log_analysis_select_notice))
-			.setPositiveButton(R.string.log_analysis_close, null).show();
-	}
-
-	private void showNotice(String message) {
-		new MaterialAlertDialogBuilder(this).setTitle(R.string.log_analysis_notice).setMessage(message)
-			.setPositiveButton(R.string.log_analysis_close, null).show();
-	}
-
-	private static void addUnique(List<File> files, File file) {
-		try {
-			File canonical = file.getCanonicalFile();
-			for (File existing : files) if (existing.equals(canonical)) return;
-			files.add(canonical);
-		} catch (IOException ignored) { /* An unreadable candidate is not eligible for authorization. */ }
-	}
-
-	private void post(int expected, Runnable runnable) {
-		runOnUiThread(() -> { if (!closed && expected == generation) runnable.run(); });
-	}
-
-	private void updateControls() {
-		send.setEnabled(ready && !busy);
-		stop.setEnabled(busy);
-		question.setEnabled(ready && !busy);
-	}
-
-	private String selectedNames() {
-		StringBuilder text = new StringBuilder();
-		for (int i = 0; i < selected.size(); i++) {
-			if (i > 0) text.append('\n');
-			text.append("log_").append(i + 1).append(" · ").append(selected.get(i).getName());
 		}
-		return text.toString();
-	}
+		list = findViewById(R.id.analysis_messages);
+		list.setLayoutManager(new LinearLayoutManager(this));
+		list.setItemAnimator(null);
+		chat = new LogChatAdapter(this, () -> {
+			if (ready && active == null) sendQuestion(chat.lastQuestion(), true);
+		});
+		list.setAdapter(chat);
 
-	private void updateFiles() {
-		fileText.setText(selected.isEmpty() ? getString(R.string.log_analysis_no_files) : selectedNames());
-	}
-
-	private void stopRequest() {
-		if (cancellation != null) cancellation.cancel();
-		generation++;
-		busy = false;
-		updateControls();
-		status.setText(R.string.log_analysis_stopped);
-	}
-
-	private void resetConversation() {
-		stopRequest();
-		conversation = new Conversation();
-		messages.clear(); adapter.notifyDataSetChanged();
-		status.setText(R.string.log_analysis_ready);
-	}
-
-	private void requestSend() {
-		String text = question.getText() == null ? "" : question.getText().toString().trim();
-		if (text.isEmpty() || busy || !ready) return;
-		if (selected.isEmpty()) { status.setText(R.string.log_analysis_no_files); return; }
-		try { config.validate(); }
-		catch (IllegalArgumentException e) { showConfig(); return; }
-		if (conversation.consent) { sendQuestion(text); return; }
-		final Conversation expected = conversation;
-		final int expectedGeneration = generation;
-		new MaterialAlertDialogBuilder(this).setTitle(R.string.log_analysis_consent_title)
-			.setMessage(getString(R.string.log_analysis_consent, config.endpoint().toString(), selectedNames()))
-			.setNegativeButton(R.string.log_analysis_cancel, null)
-			.setPositiveButton(R.string.log_analysis_agree, (dialog, which) -> {
-				if (expected == conversation && generation == expectedGeneration && !closed) {
-					expected.consent = true;
-					sendQuestion(text);
-				}
-			}).show();
-	}
-
-	private void sendQuestion(String text) {
-		final int expected = ++generation;
-		final Cancellation token = new Cancellation();
-		cancellation = token;
-		final Conversation turn = conversation;
-		final LlmConfig connection = config;
-		final List<File> allowed = new ArrayList<>(selected);
-		final List<String> toolFailures = new ArrayList<>();
-		busy = true; updateControls();
-		question.setText("");
-		addMessage(R.string.log_analysis_user, text);
-		status.setText(R.string.log_analysis_working);
+		question = findViewById(R.id.analysis_question);
+		send = findViewById(R.id.analysis_send);
+		send.setOnClickListener(v -> { if (active != null) stopRequest(); else requestSend(); });
+		question.setOnEditorActionListener((v, action, event) -> {
+			if (action != EditorInfo.IME_ACTION_SEND) return false;
+			requestSend();
+			return true;
+		});
+		question.addTextChangedListener(new TextWatcher() {
+			@Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+			@Override public void onTextChanged(CharSequence s, int start, int before, int count) { updateSendEnabled(); }
+			@Override public void afterTextChanged(Editable s) {}
+		});
+		updateScreen();
 		worker.execute(() -> {
 			try {
-				token.check();
-				if (turn.session == null) {
-					LogTools tools = new LogTools(allowed, token);
-					turn.session = new ChatSession(new OpenAiClient(connection), tools, tools.systemPrompt());
-				}
-				ChatSession.Result result = turn.session.ask(text, token, summary -> post(expected, () -> {
-					if (summary.startsWith("工具失败")) {
-						toolFailures.add(summary);
-						status.setText(R.string.log_analysis_tool_failed);
-					} else status.setText(summary);
-				}));
-				token.check();
-				post(expected, () -> {
-					busy = false; updateControls();
-					if (!result.budgetReached) addMessage(R.string.log_analysis_assistant, result.text);
-					status.setText(result.budgetReached ? R.string.log_analysis_budget : R.string.log_analysis_ready);
-					String failures = android.text.TextUtils.join("\n", toolFailures);
-					if (result.budgetReached) showNotice(result.text + (failures.isEmpty() ? "" : "\n\n" + failures));
-					else if (!failures.isEmpty()) showNotice(failures);
+				LlmConfig loaded = LlmSettings.read(getApplicationContext());
+				onScreen(() -> { config = loaded; ready = true; updateScreen(); });
+			} catch (IOException e) {
+				onScreen(() -> {
+					ready = true; updateScreen();
+					Snackbar.make(root, R.string.log_analysis_config_failed, Snackbar.LENGTH_LONG).show();
 				});
-			} catch (Exception e) {
-				String failure = e instanceof IOException ? e.getMessage() : getString(R.string.log_analysis_generic_error);
-				if (e instanceof InterruptedIOException) failure = getString(R.string.log_analysis_stopped);
-				final String visible = failure == null ? getString(R.string.log_analysis_generic_error) : failure;
-				post(expected, () -> { busy = false; updateControls(); status.setText(R.string.log_analysis_failed); showNotice(visible); });
 			}
 		});
 	}
 
-	private void showFiles() {
-		boolean[] checked = new boolean[candidates.size()];
-		String[] names = new String[candidates.size()];
-		for (int i = 0; i < candidates.size(); i++) {
-			checked[i] = selected.contains(candidates.get(i));
-			names[i] = candidates.get(i).getName() + (candidates.get(i).equals(currentFile) ? "（当前）" : "（最新关联）");
-		}
-		AlertDialog dialog = new MaterialAlertDialogBuilder(this).setTitle(R.string.log_analysis_files)
-			.setMultiChoiceItems(names, checked, (d, index, selectedValue) -> checked[index] = selectedValue)
-			.setNegativeButton(R.string.log_analysis_cancel, null)
-			.setPositiveButton(R.string.log_analysis_confirm, null).create();
-		dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-			List<File> allowed = new ArrayList<>();
-			for (int i = 0; i < checked.length; i++) if (checked[i]) allowed.add(candidates.get(i));
-			if (allowed.isEmpty()) { status.setText(R.string.log_analysis_no_files); return; }
-			resetConversation(); selected.clear(); selected.addAll(allowed); updateFiles(); dialog.dismiss();
-		}));
-		dialog.show();
+	private void addMenu(int id, int text, String symbol, int color) {
+		MenuItem item = toolbar.getMenu().add(0, id, id, text);
+		item.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
+		MaterialSymbols.applyMenuIcon(this, item, symbol, color, 24);
 	}
 
-	private void showConfig() {
+	private void onScreen(Runnable action) {
+		main.post(() -> { if (!isFinishing() && !isDestroyed()) action.run(); });
+	}
+
+	private void updateSendEnabled() {
+		send.setEnabled(ready && (active != null || question.length() > 0));
+	}
+
+	private void updateScreen() {
+		boolean empty = chat.getItemCount() == 0;
+		welcome.setVisibility(empty ? View.VISIBLE : View.GONE);
+		list.setVisibility(empty ? View.GONE : View.VISIBLE);
+		connect.setVisibility(ready && config.model.isEmpty() ? View.VISIBLE : View.GONE);
+		findViewById(R.id.analysis_prompt_crash).setEnabled(ready);
+		findViewById(R.id.analysis_prompt_mods).setEnabled(ready);
+		toolbar.setSubtitle(!ready ? getString(R.string.log_analysis_loading) : config.model.isEmpty()
+			? getString(R.string.log_analysis_unconfigured) : config.model);
+		toolbar.getMenu().findItem(CONFIG).setEnabled(ready);
+		toolbar.getMenu().findItem(NEW_CHAT).setVisible(!empty).setEnabled(ready);
+		send.setIconResource(active == null ? R.drawable.ic_ms_arrow_forward_24 : R.drawable.ic_ms_close_24);
+		send.setContentDescription(getString(active == null ? R.string.log_analysis_send : R.string.log_analysis_stop));
+		updateSendEnabled();
+	}
+
+	private void requestSend() {
+		String text = value(question).trim();
+		if (!ready || active != null || text.isEmpty()) return;
+		try { config.validate(); }
+		catch (IllegalArgumentException e) { showConfig(() -> sendQuestion(text, false)); return; }
+		sendQuestion(text, false);
+	}
+
+	private void sendQuestion(String text, boolean retry) {
+		LlmConfig connection = config;
+		Reply reply = new Reply();
+		active = reply;
+		if (!retry) question.setText("");
+		((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(question.getWindowToken(), 0);
+		chat.start(text, reply.status, retry);
+		updateScreen();
+		list.scrollToPosition(chat.getItemCount() - 1);
+		worker.execute(() -> {
+			try {
+				reply.token.check();
+				if (session == null) {
+					LogTools tools = new LogTools(getApplicationContext(), currentFile);
+					session = new ChatSession(new OpenAiClient(connection), tools, tools.systemPrompt());
+				}
+				String answer = session.ask(text, reply.token, reply);
+				onScreen(() -> finishReply(reply, answer, null));
+			} catch (Exception e) {
+				String error = e instanceof IOException && e.getMessage() != null ? e.getMessage() : getString(R.string.log_analysis_generic_error);
+				onScreen(() -> finishReply(reply, null, error));
+			}
+		});
+	}
+
+	/** Coalesce deltas before parsing Markdown; at most one pending repaint per reply. */
+	private final class Reply implements ChatSession.Observer, Runnable {
+		final Cancellation token = new Cancellation();
+		final StringBuilder draft = new StringBuilder();
+		final String writing = getString(R.string.log_analysis_writing);
+		String status = getString(R.string.log_analysis_working);
+		boolean scheduled, changed;
+
+		@Override public synchronized void onRoundStart() {
+			if (draft.length() == 0) return;
+			draft.setLength(0); changed = true; schedule();
+		}
+		@Override public synchronized void onText(String delta) {
+			draft.append(delta); changed = true; status = writing; schedule();
+		}
+		@Override public synchronized void toolStatus(String summary) { status = summary; schedule(); }
+		private void schedule() {
+			if (!scheduled) { scheduled = true; main.postDelayed(this, 80); }
+		}
+		@Override public void run() {
+			if (active != this) return;
+			String source, label;
+			synchronized (this) {
+				source = changed ? draft.toString() : null; label = status;
+				scheduled = changed = false;
+			}
+			updateAnswer(source, label, true);
+		}
+	}
+
+	private void updateAnswer(String markdown, String status, boolean working) {
+		boolean atEnd = !list.canScrollVertically(1) && list.getScrollState() == RecyclerView.SCROLL_STATE_IDLE;
+		chat.update(markdown, status, working);
+		// Follow a growing answer, but never pull the reader away from older evidence.
+		if (atEnd) OneShotPreDrawListener.add(list, () -> {
+			if (list.getScrollState() == RecyclerView.SCROLL_STATE_IDLE) list.scrollBy(0, list.computeVerticalScrollRange());
+		});
+	}
+
+	private void finishReply(Reply reply, String answer, String status) {
+		if (reply != active) return;
+		main.removeCallbacks(reply);
+		if (answer == null) synchronized (reply) { answer = reply.changed ? reply.draft.toString() : null; }
+		active = null;
+		updateAnswer(answer, status, false);
+		updateScreen();
+	}
+
+	private void stopRequest() {
+		if (active == null) return;
+		active.token.cancel();
+		finishReply(active, null, getString(R.string.log_analysis_stopped));
+	}
+
+	private void resetConversation() {
+		stopRequest();
+		worker.execute(() -> session = null);
+		chat.clear();
+		updateScreen();
+	}
+
+	private void showConfig() { showConfig(null); }
+
+	private void showConfig(Runnable afterSave) {
 		LinearLayout form = new LinearLayout(this);
 		form.setOrientation(LinearLayout.VERTICAL);
 		int padding = ExtraSettingsUi.dp(this, 20);
@@ -306,22 +285,23 @@ public final class LogAnalysisActivity extends AppCompatActivity {
 			try { replacement.validate(); }
 			catch (IllegalArgumentException e) { error.setText(e.getMessage()); return; }
 			stopRequest();
-			ready = false;
-			updateControls();
-			final int expected = generation;
+			ready = false; updateScreen();
 			dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
-			error.setText("正在加密保存…");
+			error.setText(R.string.log_analysis_saving);
 			worker.execute(() -> {
 				try {
 					LlmSettings.save(getApplicationContext(), replacement);
-					post(expected, () -> {
-						config = replacement;
-						ready = true;
-						resetConversation();
+					onScreen(() -> {
+						config = replacement; ready = true; resetConversation();
+						boolean resume = dialog.isShowing() && afterSave != null;
 						dialog.dismiss();
+						if (resume) afterSave.run();
 					});
 				} catch (IOException e) {
-					post(expected, () -> { ready = true; updateControls(); error.setText(e.getMessage()); dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true); });
+					onScreen(() -> {
+						ready = true; updateScreen(); error.setText(e.getMessage());
+						dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+					});
 				}
 			});
 		}));
@@ -344,44 +324,11 @@ public final class LogAnalysisActivity extends AppCompatActivity {
 
 	private static String value(TextInputEditText input) { return input.getText() == null ? "" : input.getText().toString(); }
 
-	private void addMessage(int title, String text) {
-		messages.add(new Message(getString(title), text));
-		adapter.notifyItemInserted(messages.size() - 1);
-		list.scrollToPosition(messages.size() - 1);
-	}
-
 	@Override protected void onDestroy() {
-		closed = true;
-		generation++;
-		if (cancellation != null) cancellation.cancel();
-		worker.shutdownNow();
+		if (active != null) active.token.cancel();
+		active = null;
+		main.removeCallbacksAndMessages(null);
+		worker.shutdown();
 		super.onDestroy();
-	}
-
-	private final class MessageAdapter extends RecyclerView.Adapter<MessageHolder> {
-		@Override public MessageHolder onCreateViewHolder(ViewGroup parent, int type) {
-			TextView text = new TextView(parent.getContext());
-			text.setTextSize(18); text.setTextIsSelectable(true);
-			text.setTextColor(MaterialColors.getColor(text, com.google.android.material.R.attr.colorOnSurface));
-			int padding = ExtraSettingsUi.dp(parent.getContext(), 16);
-			text.setPadding(padding, padding, padding, padding);
-			text.setBackgroundColor(MaterialColors.getColor(text, com.google.android.material.R.attr.colorSurfaceContainer));
-			RecyclerView.LayoutParams params = new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-			params.bottomMargin = ExtraSettingsUi.dp(parent.getContext(), 12);
-			text.setLayoutParams(params);
-			return new MessageHolder(text);
-		}
-		@Override public void onBindViewHolder(MessageHolder holder, int position) {
-			Message message = messages.get(position);
-			holder.text.setText(message.title + "\n\n" + message.text);
-			holder.text.animate().cancel();
-			holder.text.setAlpha(0.4f); holder.text.setTranslationY(ExtraSettingsUi.dp(LogAnalysisActivity.this, 12));
-			holder.text.animate().alpha(1).translationY(0).setDuration(240).setInterpolator(new PathInterpolator(0.2f, 0, 0, 1)).start();
-		}
-		@Override public int getItemCount() { return messages.size(); }
-	}
-	private static final class MessageHolder extends RecyclerView.ViewHolder {
-		final TextView text;
-		MessageHolder(TextView text) { super(text); this.text = text; }
 	}
 }

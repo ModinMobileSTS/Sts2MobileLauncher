@@ -45,6 +45,7 @@
 | --- | --- | --- |
 | AndroidX Fragment / RecyclerView / DocumentFile / Core SplashScreen / Security Crypto | Android UI、文件访问、加密 SharedPreferences。 | Apache-2.0 |
 | Material Components for Android | Material 3 UI 组件。 | Apache-2.0 |
+| [Markwon](https://github.com/noties/Markwon) 4.6.2（core、ext-tables） / [commonmark-java](https://github.com/commonmark/commonmark-java) 0.13.0 | 日志助手的原生 Markdown 文本与表格渲染。 | [Apache-2.0](https://github.com/noties/Markwon/blob/v4.6.2/LICENSE) / [BSD-2-Clause](https://github.com/commonmark/commonmark-java/blob/commonmark-parent-0.13.0/LICENSE.txt) |
 | CustomActivityOnCrash (`cat.ereza:customactivityoncrash`) | 崩溃页入口。 | Apache-2.0 |
 | OkHttp / Okio / MockWebServer | Steam CM WebSocket、HTTP/CDN 请求、NexusMods 请求，以及不打入 APK 的 Steam CDN 重定向回归测试。 | Apache-2.0 |
 | Protocol Buffers / protobuf Gradle plugin | Steam protobuf 消息编解码与生成。 | BSD-3-Clause |

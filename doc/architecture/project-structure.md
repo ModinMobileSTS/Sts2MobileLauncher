@@ -45,7 +45,7 @@ s2_re/
 - `FileBrowserActivity` / `LogViewerActivity` / `LogFileViewerActivity`：启动器工具页使用独立 `Theme.Sts2Tools`，统一顶栏、Bottom Sheet、对话框和列表点击的深色 Material 3 样式；选择模式标题为白色。文件页固定在应用私有 `files` 根目录内，用面包屑、剪贴板横幅、名称/时间/大小排序、底部新增/导入抽屉和选择模式底栏承载复制、导入、导出、重命名、删除与文本编辑；关闭选择模式立即取消底栏动画并移除底栏。日志列表多选仅提供分享和导出，右下角“一键打包最新”独立选择修改时间最新的 live `godot.log` 和 `sts2.log`，不打包归档。详情页保留行号、等级筛选、菜单搜索和跳尾；未选择时底栏为复制全部、分享、导出、所在位置，选择时改为复制、分享片段和上下各扩展 20 行。换行约束实际内容宽度，关闭后允许横向滚动；双指连续调整字号为 10–30sp，并保留阅读锚点、筛选、搜索和行范围。创意工坊页面不随工具页改造变更。
 - 日志列表扫描在后台使用无排序迭代遍历，优先已知日志目录但不排除任意其他目录中的 `.log`，以及 `logs/` / `sentry/reports/` 内的无扩展名文件；首条结果立即发布，后续按批次/时间输出，UI 最多每 150ms 合并刷新一次。未发现条目时在内容区居中显示圆形加载动画和扫描文字，发现任意条目后隐藏居中加载态并紧贴顶栏（ActionBar）下方显示 4dp 横向不确定进度条；即使搜索或来源筛选没有可见结果也保持顶栏进度条，扫描完成或失败时隐藏所有加载指示器。扫描中可搜索、按来源过滤或打开已发现日志，多选与“一键打包最新”待扫描完成后可用；最新 live 文件选择也在后台完成。页面销毁时取消扫描和待投递批次，旧结果不能污染新页面。
 - `llm/`：通用 OpenAI-compatible Chat Completions 连接、加密配置、可取消 HTTP 与内存多轮工具会话，不依赖日志页面或 Steam 账号。
-- `loganalysis/`：独立 `LogAnalysisActivity` 与只读 `LogTools`；日志详情仅打开入口，不持有分析流程。文件发现复用 `RuntimeLogFiles`。
+- `loganalysis/`：独立 `LogAnalysisActivity` 与只读 `LogTools`，日志列表、详情都可打开。文件发现复用列表的 `LogFileScanner`，不使用打包分享的 latest-only 规则。
 - `SteamAccountActivity`：Steam 中心，负责展示 Steam 登录/Guard/refresh token 状态、SteamPipe 下载 STS2 payload，以及当前 launch profile account root 的 Steam Cloud 手动/自动同步。游戏本体下载可选择 1 / 2 / 4 个 chunk worker，默认 2；该设置只改变有界下载 worker 数，不改变单 writer 落盘和完整性校验。credential auth 的网络生命周期不再由 Activity 持有：Activity 只绑定并观察认证服务，切到 Steam App 时触发的 `onStop()` 只解绑，不取消事务。
 - `Sts2SteamCloudClient`：Steam Cloud 的 CM 端点构造保留独立 host/port，支持 IPv4 与 IPv6/NAT64；不得将 IP 拼成字符串后交给 JavaSteam 1.6.0 的 `createWebSocketServer(String)`，该方法会把 `64:ff9b:...` 的 `ff9b` 误当端口并抛 `NumberFormatException`。最后成功端点继续以 `[IPv6]:port` 或 `IPv4:port` 保存，读取时用 URI 解析 authority 后调用 `createServer(host, port, WEB_SOCKET)`，兼容无显式端口的默认端点（443）。服务器列表、最后成功缓存、默认端点的选择顺序及存档上传/冲突策略不变；回归入口为 `SteamCloudEndpointTest`。
 - `Sts2SteamPayloadDownloader`：下载页“自定义”卡片展开后支持分支名或指定 Manifest；Manifest 模式可读取 Steam 可见分支的当前 Windows x64 depot `2868841` 清单，也可手动输入无符号 64 位 ManifestID。列表不是历史目录，查询失败仍可手动输入。精确模式不查询最新版来替换目标、不用其他清单补齐缺失文件，继续复用 prepared manifest、稳定任务目录与 payload 安装流程。来源记录的 `selection_mode` 为 `branch` / `manifest`，`request_branch` 仅表示授权请求分支；手动输入时 `source.steam.branch` 留空，防止 Workshop 把请求参数误当内容归属，按原逻辑回落到兼容包 target 分支或询问用户。
@@ -69,16 +69,16 @@ s2_re/
 
 ### 3.1 日志分析模块
 
-日志详情右上角菜单选择“LLM 分析”，在分析页配置 Base URL、API Key、Model ID 与可选 Thinking Effort。Base URL 可填写服务根地址、带 `/v1` 的地址或完整 `/chat/completions` endpoint；自定义前缀按输入保留。Thinking Effort 原样发送为 `reasoning_effort`，留空时不发送。服务必须支持标准 Chat Completions `tools` / `tool_calls`，不支持时显示失败，不自动改为上传全文或静默去掉参数。
+在日志列表右上角打开“日志助手”，或在某个文件的详情菜单选择“LLM 分析”。配置支持 Chat Completions 工具调用的服务后直接提问，不必勾选文件。Base URL 支持服务根地址、带 `/v1` 的基址或完整 `/chat/completions`；可选 Thinking Effort 原样发送为 `reasoning_effort`。
 
-- 默认只授权当前文件；文件按钮可勾选最新关联的 `godot.log` / `sts2.log`，最多三个文件。首次提问前展示目标服务与授权列表并要求明确同意。建议使用可信 HTTPS 服务；问题、文件名和工具按需返回的片段仍可能包含隐私数据。
+- 从居中引导页点示例或输入问题即可开始。提供方会收到问题及按需检索的文件信息和日志片段，因此应使用可信服务。助手不能写文件、执行命令或读取日志范围以外的文件；打开页面本身不会传输日志。
 - `LlmSettings` 使用 `EncryptedSharedPreferences` 保存配置，不明文回退、不清除读取失败的既有配置；密钥不进入 Intent、日志或模型消息。问题、回答与工具会话只在内存中持有，页面销毁结束会话。
-- 首轮只包含用户问题、文件名、大小与行数等元数据，不带日志正文。`LogTools` 把授权文件映射为 `log_1` 等 ID，模型只能请求 `read_lines(file_id,start_line,end_line)` 或 `search_logs(file_id,keyword,start_line?,limit?)`；不能指定路径、执行命令或访问未授权文件。
-- 行段采用原文件从 1 开始的闭区间；关键词为大小写敏感的单行字面字符串，不是正则。每次最多返回 60 行、12,000 个转义后文本字符，每行保留前 1,200 字符；搜索最多 20 处，提供邻近上下文、`next_line` 和截断标记。日志大小或修改时间变化时拒绝继续读取，需重新开始会话。
-- `ChatSession` 通过通用 `Transport` / `Tools` 接口复用，不依赖日志文件或 Android 页面；保留工具 ID 关联，支持多轮探索和后续追问。每个问题最多 24 轮、每轮最多 8 个工具，总上下文最多 256 Ki 字符；到达轮数边界明确提示尚未完成，取消/异常回滚本轮不完整历史。
-- HTTP、日志扫描与加密配置读写在后台执行。停止、配置/授权列表变更和页面销毁会取消请求并使迟到 UI 回调失效。HTTP 不跟随重定向，也不使用 Steam 凭证或 Workshop 兼容代理。
+- `search_logs({})` 实时列出日志元数据：当前打开的文件优先，其余按修改时间由新到旧。用 `query` 匹配相对路径或文件名（不分大小写），用 `next_offset` 翻页；包括当前及历史启动配置的日志、轮转文件与崩溃报告。列目录不扫描正文或统计行数。
+- `search_logs({file_id, keyword, start_line?, limit?})` 类似 `grep -Fn`，从指定行按大小写敏感的单行字面词定位。`read_lines({file_id, start_line?, end_line?})` 按原文件 1-based 闭区间读取；`file_id` 是带存储根的相对 ID（如 `internal/logs/sts2.log`）。每次重新打开文件；追加、截短和轮转不使会话失效，文件被移走时可再查目录。单次只返回一页，用 `next_line` 继续；长行片段标注起始列与截断情况。
+- `ChatSession` 关联标准 `tool_call_id` 并保留追问历史。`OpenAiClient` 发送 `stream: true`，按 SSE 增量消费文本和工具参数；仍能接收服务直接返回的完整 JSON 消息。助手使用 Markwon 渲染 Markdown，等待工具、生成中、错误和停止都在对话内显示。
+- HTTP、日志扫描与加密配置读写在后台执行。停止、打开新对话、保存新配置或离开都会取消当前请求；旧回调不会写入新回答，失败或中断的提问不会污染后续请求。HTTP 不跟随重定向，不复用 Steam 凭证或 Workshop 代理。
 
-边界回归：`tools/android/gradle-with-s2-env.sh testMonoReleaseUnitTest --tests com.godot.game.loganalysis.LogToolsTest --tests com.godot.game.llm.OpenAiSessionTest --tests com.godot.game.llm.ChatSessionTest`。这些回归覆盖只读文件授权、行段/搜索分页、标准多轮协议、隐私首轮与 HTTP 取消，不代表真实模型的分析质量或商业游戏崩溃已经实测。
+回归：`tools/android/gradle-with-s2-env.sh testMonoReleaseUnitTest --tests com.godot.game.loganalysis.LogToolsTest --tests com.godot.game.llm.OpenAiSessionTest --tests com.godot.game.llm.ChatSessionTest`。覆盖活跃日志、轮转、目录范围、分页以及流式工具调用、取消和追问；使用合成日志和本地 HTTP 服务，不评估真实模型的诊断质量。
 
 ## 4. 版本矩阵
 

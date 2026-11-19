@@ -42,6 +42,8 @@ dependencies {
     implementation "androidx.documentfile:documentfile:1.0.1"
     implementation "cat.ereza:customactivityoncrash:2.4.0"
     implementation "com.google.android.material:material:1.12.0"
+    implementation 'io.noties.markwon:core:4.6.2'
+    implementation 'io.noties.markwon:ext-tables:4.6.2'
     implementation project(':steam-protocol')
     implementation project(':steam-content')
     implementation platform('com.squareup.okhttp3:okhttp-bom:5.3.2')
