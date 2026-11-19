@@ -55,13 +55,15 @@ STS2_ORIGINAL_V1080_REFERENCE_DIR=/path/to/v0.108.0/bin/Debug
 STS2_ORIGINAL_V1090_REFERENCE_DIR=/path/to/v0.109.1/bin/Debug
 # Historical V1100 flavor; shared v0.110.x gate uses v0.110.1.
 STS2_ORIGINAL_V1100_REFERENCE_DIR=/path/to/v0.110.1/bin/Debug
-# Older v0.111.0 public-beta target.
+# Separate v0.111.1 stable/public and v0.111.0 beta/public-beta targets reuse this existing gate.
 STS2_ORIGINAL_V1110_REFERENCE_DIR=/path/to/v0.111.0/bin/Debug
 # Historical V1130 flavor; shared v0.113.x gate uses the latest v0.113.1 reference.
 STS2_ORIGINAL_V1130_REFERENCE_DIR=/path/to/v0.113.1/data_sts2_windows_x86_64
 ```
 
 `STS2_ORIGINAL_*_REFERENCE_DIR` 目录需包含 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll`。这些是 compile gate 引用，不提交到仓库。
+
+v0.111.1 与 v0.111.0 复用现有 V1110 引用、`ReferenceFlavor=original-v0.111.0` 和 `STS2_TARGET_1110`；无需新增 flavor 或 V1111 环境变量。这里只共享 compile gate/托管实现，实际本体导出仍必须使用同版本的原版 ZIP 与源码/反导出工程。
 
 如果你有统一的参考工程根目录，也可以设置 `STS2_REFERENCE_ROOT` / `STS2_LAUNCHER_REFERENCE_ROOT`，让脚本派生默认子路径；详见 `.env.example`。
 
@@ -239,13 +241,13 @@ android/assets/port_compat.pck
 默认 `ReferenceFlavor` 来自 `local.properties` 的 `compat.default_reference_flavor`（示例为 `original-v0.113.0`）。可临时覆盖：
 
 ```bash
-# 当前稳定版 v0.108.0
+# 保留的旧稳定版 v0.108.0
 REFERENCE_FLAVOR=original-v0.108.0 tools/android/build-port-mod.sh
 
 # 当前 public-beta v0.113.x（历史 flavor，引用使用 v0.113.1）
 REFERENCE_FLAVOR=original-v0.113.0 tools/android/build-port-mod.sh
 
-# 旧 public-beta v0.111.0
+# 当前 stable/public v0.111.1 与旧 beta/public-beta v0.111.0（共享现有 V1110 引用）
 REFERENCE_FLAVOR=original-v0.111.0 tools/android/build-port-mod.sh
 
 # 旧 public-beta v0.110.x（历史 flavor 名称）
@@ -279,7 +281,7 @@ android/assets/compat_packs/sts2-android-compat.zip
 android/assets/compat_packs/sts2-android-offline-bootstrap.zip
 ```
 
-`sts2-android-compat.zip` 是 full compatibility family 包。它默认使用 flat matrix 模式：脚本读取 `port-mod/targets/active/*/target.json`，从当前 checkout 依次用各目标的 `ReferenceFlavor` 编译，输出一个 schema 2 family 兼容包：
+`sts2-android-compat.zip` 是 full compatibility family 包，当前 `compat_version=0.7.2-dev`。它默认使用 flat matrix 模式：脚本读取 `port-mod/targets/active/*/target.json`，从当前 checkout 依次用各目标的 `ReferenceFlavor` 编译，输出一个 schema 2 family 兼容包：
 
 ```text
 android/assets/compat_packs/sts2-android-compat.zip
@@ -305,19 +307,22 @@ offline-bootstrap/tools/test-offline-contract.sh
 tools/android/stage-bundled-compat-packs.sh
 ```
 
-当前 active targets：
+当前 10 个 active metadata target：
 
 - `v0.103.x`（支持 `v0.103.2` / `v0.103.3`，`ReferenceFlavor=original`）
 - `v0.106.1-beta`（旧 beta，`ReferenceFlavor=original-v0.106.1`）
 - `v0.107.0-beta`（旧 beta，`ReferenceFlavor=original-v0.107.0`）
 - `v0.107.1`（stable，`ReferenceFlavor=original-v0.107.1`）
-- `v0.108.0`（当前稳定版，`ReferenceFlavor=original-v0.108.0`）
+- `v0.108.0`（保留的旧稳定版，`ReferenceFlavor=original-v0.108.0`）
 - `v0.109.0`（稳定 target id，显示为 v0.109.x，同时支持 v0.109.0/v0.109.1；历史 `ReferenceFlavor=original-v0.109.0` 指向最新 v0.109.1 引用）
 - `v0.110.0` / `v0.110.1`（旧 public beta，共享 API/protocol target id `v0.110.0`，历史 `ReferenceFlavor=original-v0.110.0` 使用 v0.110.1 引用）
 - `v0.111.0`（旧 public beta，独立 API/transport-handshake target，`ReferenceFlavor=original-v0.111.0`）
+- `v0.111.1`（当前 stable / `public`，独立 metadata target，复用 `ReferenceFlavor=original-v0.111.0`、现有 V1110 引用与 `STS2_TARGET_1110`）
 - `v0.113.0` / `v0.113.1`（当前 public beta，共享稳定 target id `v0.113.0`、显示 v0.113.x；历史 `ReferenceFlavor=original-v0.113.0` 与 `STS2_TARGET_1130` 保留，引用使用 v0.113.1）
 
 同一 variant 覆盖多个 API-compatible 原版 DLL 时，target 的 `sts2_dll_sha256` 可声明为字符串数组；构建脚本会原样写入 schema 2 manifest，启动器会遍历全部元素做精确 SHA 匹配。旧单字符串 manifest 继续兼容。
+
+v0.111.1 的 `versions=["v0.111.1"]`、`channel=stable`、`steam_branch=public`、`source=original_pc_reference_v0.111.1`，原版 `sts2.dll` SHA-256 为 `3fb1fa1bf0249087b706a5d0f062a60579e2f5b08df4ee477ddd6f2607f654d5`。旧 v0.111.0 beta / `public-beta` 记录不变。两版托管 API、运行时 IL 和依赖等价，因此不改 Java/C# 或编译映射；但归档导入没有 Steam 来源分支时，Workshop `auto` 会回落到 target 的 `steam_branch`，必须分开 .1/public 与 .0/public-beta 元数据，不能合并成 beta variant 的版本/SHA 列表。已有 Steam 来源分支仍优先。桌面审计和 native/headless ModelDb 初始化不是 Android UI/玩法、普通 MOD 或 LAN 认证，不承诺 .0/.1 跨版本联机。
 
 输出到：
 
@@ -341,6 +346,7 @@ legacy 模式读取 `tools/android/bundled-compat-packs.json`（或 `local.prope
 
 ```bash
 cd port-mod
+./tools/build-compat-matrix.sh --target v0.111.1
 ./tools/build-compat-matrix.sh --target v0.113.0
 ./tools/build-compat-matrix.sh
 ```
@@ -472,7 +478,7 @@ tools/package/build_android_body_zip.sh \
   --source-dir "/path/to/s201033" \
   --out "dist/payload/sts2-v0.103.3-android-body.zip"
 
-# v0.108.0 当前稳定版：PC zip + 对应源码/反导出工程
+# v0.108.0 保留的旧稳定版：PC zip + 对应源码/反导出工程
 tools/package/build_android_body_zip.sh \
   --pc-zip "/path/to/sts2-v0.108.0.zip" \
   --source-dir "/path/to/s201080" \
@@ -484,12 +490,20 @@ tools/package/build_android_body_zip.sh \
   --source-dir "/path/to/s201091" \
   --out "dist/payload/sts2-v0.109.1-android-body.zip"
 
+# v0.111.1 当前 stable/public（必须使用匹配的 .1 原版 ZIP 与 s201111，不能用 .0 本体替代）
+tools/package/build_android_body_zip.sh \
+  --pc-zip "/path/to/sts2-v0.111.1.zip" \
+  --source-dir "/path/to/s201111" \
+  --out "dist/payload/sts2-v0.111.1-android-body.zip"
+
 # v0.113.1 当前 public beta（本体与源码必须同版本，不能复用 v0.113.0 PCK）
 tools/package/build_android_body_zip.sh \
   --pc-zip "/path/to/sts2-v0.113.1.zip" \
   --source-dir "/path/to/s201131" \
   --out "dist/payload/sts2-v0.113.1-android-body.zip"
 ```
+
+v0.111.1 的优化本体 ZIP 保留该版本原版 DLL 与 release 身份，并使用匹配的 .1 资源工程导出 PCK；复用 .0 compile gate 不允许混用 .0 ZIP/PCK。导出成功只证明构建/归档流程完成，不是 Android UI、玩法、普通 MOD 或联机实测通过。
 
 临时工程和 Godot 日志默认写入 `.agent/tmp/android-body-build/`，该目录不入库；生成的 zip 应留在 `dist/` 或其他本地输出目录，不要提交。
 

@@ -1,7 +1,7 @@
 # AGENTS.md
 
 面向后续编码代理/维护者的项目速览与操作约定。当前目录为本仓库根目录。
-最后同步：2026-11-15。
+最后同步：2026-11-17。
 
 ## 0. 总原则
 
@@ -56,9 +56,12 @@ Android 侧拆成三层维护：
 | Beta 旧测试 | `v0.109.0` / `v0.109.1` | `public-beta` | `.env`: `STS2_ORIGINAL_V1090_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1090_ROOT`（历史变量名，指向最新 v0.109.1 引用） | — | `original-v0.109.0` | `v0.109.0`（稳定 id，显示为 v0.109.x） | — |
 | Beta 旧测试 | `v0.110.0` / `v0.110.1` | `public-beta` | `.env`: `STS2_ORIGINAL_V1100_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1100_ROOT`（历史变量名，指向 v0.110.1） | — | `original-v0.110.0` | `v0.110.0`（显示 v0.110.x） | — |
 | Beta 旧测试 | `v0.111.0` | `public-beta` | `.env`: `STS2_ORIGINAL_V1110_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1110_ROOT` | — | `original-v0.111.0` | `v0.111.0` | — |
+| 正式/稳定（当前） | `v0.111.1` | `public` | `.env`: `STS2_ORIGINAL_V1110_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1110_ROOT`（复用现有 v0.111.0 引用） | — | `original-v0.111.0` | `v0.111.1` | — |
 | Beta 当前测试 | `v0.113.0` / `v0.113.1` | `public-beta` | `.env`: `STS2_ORIGINAL_V1130_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1130_ROOT`（历史名，指向最新 v0.113.1） | — | `original-v0.113.0` | `v0.113.0`（稳定 id，显示 v0.113.x） | — |
 
-v0.113.x 共享 target 保留 `v0.113.0` id、`original-v0.113.0` flavor 和 `STS2_TARGET_1130`，full family `compat_version=0.7.1-dev`；v0.113.0 / v0.113.1 原版 DLL SHA-256 分别为 `a6cc282c52b96ad2e01d5692b1144b33aa8e3ba4e969582f648ecb13b2f751d7` / `62ecbe91093e1fa862de4329aac865209dcb297804caf0f0520d92d8c0b4a9c3`，V1130 引用使用最新 v0.113.1。两版并非 API/IL 全等：v0.113.1 删除 `HoverTipAlignment.Center`、新增 `NHoverTipSet.SetAlignmentBelow` 并修改药水、玩法及存档逻辑，但 compat 所用合约和所有 scene/material/shader 条目不变，因此共用 variant，不改运行时补丁；不承诺普通 MOD API 等价或跨版本 LAN。仍不能追加到 v0.111.0 variant：v113 新模式与独立 `isCustom`、商店 `OnSelected()` 任务、宝箱 holder 布局及 atlas-aware blur 均需独立适配。LAN 直接复用原版 `NJoinFriendScreen.JoinGameAsync`，host/读档保留模式语义及 `IsCustomGame`，不重建 JoinFlow、握手或消息表。v113 所有 resolver/节点/缓存边界保留原版 `uv_region/radius_scale` blur，不注册旧 `NCard.Reload` / `NEpochSlot._blurShader` 修复；其他 target 维持原替换。商店通过单次 allowance 回放原版 `OnSelected()` 并等待实际购买 Task，不得恢复反射调用已删除的 slot `OnTryPurchase`。宝箱保留 1–6 预置布局和 Large reveal，只为更大容量补布局。
+当前 full family 使用 `compat_version=0.7.2-dev`，包含 10 个 active metadata target。`v0.111.1` 的 `versions=["v0.111.1"]`、`channel=stable`、`steam_branch=public`、`source=original_pc_reference_v0.111.1`，原版 `sts2.dll` SHA-256 为 `3fb1fa1bf0249087b706a5d0f062a60579e2f5b08df4ee477ddd6f2607f654d5`。它复用现有 `original-v0.111.0` flavor、V1110 引用配置与 `STS2_TARGET_1110`，不新增 flavor / V1111 环境变量或运行时补丁；旧 `v0.111.0` beta / `public-beta` 记录保持不变。两版托管 API、运行时 IL 与依赖等价，差异为构建身份、release 元数据及一项 patch-notes PCK 资源；仍需拆开 metadata target，因为归档导入没有 Steam 来源分支时，Workshop `auto` 会回落到 target 的 `steam_branch`，合并到旧 beta 记录会误选 `public-beta`。已有 Steam 来源分支仍优先。桌面审计及原版 ModelDb native/headless 初始化证据不代表 Android UI/玩法、普通 MOD 或 LAN 通过，也不承诺 v0.111.0/v0.111.1 跨版本联机。
+
+v0.113.x 共享 target 保留 `v0.113.0` id、`original-v0.113.0` flavor 和 `STS2_TARGET_1130`；v0.113.0 / v0.113.1 原版 DLL SHA-256 分别为 `a6cc282c52b96ad2e01d5692b1144b33aa8e3ba4e969582f648ecb13b2f751d7` / `62ecbe91093e1fa862de4329aac865209dcb297804caf0f0520d92d8c0b4a9c3`，V1130 引用使用最新 v0.113.1。两版并非 API/IL 全等：v0.113.1 删除 `HoverTipAlignment.Center`、新增 `NHoverTipSet.SetAlignmentBelow` 并修改药水、玩法及存档逻辑，但 compat 所用合约和所有 scene/material/shader 条目不变，因此共用 variant，不改运行时补丁；不承诺普通 MOD API 等价或跨版本 LAN。仍不能追加到 v0.111.0 variant：v113 新模式与独立 `isCustom`、商店 `OnSelected()` 任务、宝箱 holder 布局及 atlas-aware blur 均需独立适配。LAN 直接复用原版 `NJoinFriendScreen.JoinGameAsync`，host/读档保留模式语义及 `IsCustomGame`，不重建 JoinFlow、握手或消息表。v113 所有 resolver/节点/缓存边界保留原版 `uv_region/radius_scale` blur，不注册旧 `NCard.Reload` / `NEpochSlot._blurShader` 修复；其他 target 维持原替换。商店通过单次 allowance 回放原版 `OnSelected()` 并等待实际购买 Task，不得恢复反射调用已删除的 slot `OnTryPurchase`。宝箱保留 1–6 预置布局和 Large reveal，只为更大容量补布局。
 
 关键文件：
 
@@ -99,7 +102,7 @@ cp local.properties.example local.properties
 - `JAVA_HOME`、`ANDROID_HOME`/`ANDROID_SDK_ROOT`、`DOTNET_BIN`。
 - `STS2_ANDROID_RUNTIME_REFERENCE_ROOT`：参考 Android template/runtime，包含 `libs/`、`assets/dotnet_bcl/`、Gradle wrapper jar。
 - `STS2_FMOD_PLUGIN_AAR`、可选 `STS2_FMOD_ANDROID_LIBS_DIR`（默认从 AAR 旁的 `arm64/` 读取经 SHA 校验的 FMOD 2.03.06 native 三件套）、`STS2_CRYPTO_NATIVE_JAR`。
-- `STS2_ORIGINAL_V103_REFERENCE_DIR` / `STS2_ORIGINAL_V1061_REFERENCE_DIR` / `STS2_ORIGINAL_V1070_REFERENCE_DIR` / `STS2_ORIGINAL_V1071_REFERENCE_DIR` / `STS2_ORIGINAL_V1080_REFERENCE_DIR` / `STS2_ORIGINAL_V1090_REFERENCE_DIR` / `STS2_ORIGINAL_V1100_REFERENCE_DIR` / `STS2_ORIGINAL_V1110_REFERENCE_DIR` / `STS2_ORIGINAL_V1130_REFERENCE_DIR`（或对应 `*_ROOT`）：original compile gate 引用目录，需包含 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll`；`V1090` / `V1100` / `V1130` 是共享 target 保留的历史变量名，分别指向最新 v0.109.1 / v0.110.1 / v0.113.1；`V1110` 对应独立旧 v0.111.0 target。
+- `STS2_ORIGINAL_V103_REFERENCE_DIR` / `STS2_ORIGINAL_V1061_REFERENCE_DIR` / `STS2_ORIGINAL_V1070_REFERENCE_DIR` / `STS2_ORIGINAL_V1071_REFERENCE_DIR` / `STS2_ORIGINAL_V1080_REFERENCE_DIR` / `STS2_ORIGINAL_V1090_REFERENCE_DIR` / `STS2_ORIGINAL_V1100_REFERENCE_DIR` / `STS2_ORIGINAL_V1110_REFERENCE_DIR` / `STS2_ORIGINAL_V1130_REFERENCE_DIR`（或对应 `*_ROOT`）：original compile gate 引用目录，需包含 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll`；`V1090` / `V1100` / `V1130` 是共享 target 保留的历史变量名，分别指向最新 v0.109.1 / v0.110.1 / v0.113.1；`V1110` 保留现有 v0.111.0 引用，同时供独立 v0.111.1 stable/public 与 v0.111.0 beta/public-beta metadata target 使用。
 - `RELEASE_KEYSTORE_*`、可选 `STS2_PAYLOAD_ZIP`、可选 `STS2_EXTERNAL_PROJECTS_ROOT`。
 
 `local.properties` 保存非 secret 的本地构建选项，例如 Gradle task、dist 输出路径、compat pack staging 目录、默认 `ReferenceFlavor`、外部 GitHub 参考项目 clone 目录。完整说明见 `doc/build/local-configuration.md`。
@@ -360,7 +363,7 @@ tools/git/report-heads.sh
 tools/android/build-port-mod.sh
 ```
 
-默认 `REFERENCE_FLAVOR=original-v0.113.0` 为共享 v0.113.x 的历史 flavor，引用使用最新 v0.113.1；旧 v0.111.0 / 共享 v0.110.x / v0.109.x 仍可分别用对应历史 flavor 显式构建，后两者使用 v0.110.1 / v0.109.1 引用。脚本会：
+默认 `REFERENCE_FLAVOR=original-v0.113.0` 为共享 v0.113.x 的历史 flavor，引用使用最新 v0.113.1；v0.111.1 / v0.111.0 共用 `original-v0.111.0` 与现有 V1110 引用，旧共享 v0.110.x / v0.109.x 分别使用对应历史 flavor 和 v0.110.1 / v0.109.1 引用。脚本会：
 
 1. 使用 `.env` 中的 `DOTNET_BIN` 编译 `port-mod/STS2AndroidPortCompat/STS2Mobile.csproj`，并按 `ReferenceFlavor` 传入对应 `CompatReferenceDir`。
 2. 写入 build metadata（branch/commit/dirty/timestamp）。
@@ -413,13 +416,13 @@ REFERENCE_FLAVOR=original tools/android/build-port-mod.sh
 # v0.106.1 beta（旧测试）
 REFERENCE_FLAVOR=original-v0.106.1 tools/android/build-port-mod.sh
 
-# v0.108.0 正式/稳定（当前稳定版）
+# v0.108.0 正式/稳定（保留的旧版本）
 REFERENCE_FLAVOR=original-v0.108.0 tools/android/build-port-mod.sh
 
 # v0.113.x 当前 beta（历史 flavor，引用使用 v0.113.1）
 REFERENCE_FLAVOR=original-v0.113.0 tools/android/build-port-mod.sh
 
-# v0.111.0 旧 beta
+# v0.111.1 当前 stable/public 与 v0.111.0 旧 beta/public-beta（共享现有 V1110 引用）
 REFERENCE_FLAVOR=original-v0.111.0 tools/android/build-port-mod.sh
 
 # v0.110.x 旧 beta（稳定 target id 仍为 v0.110.0）
@@ -730,7 +733,7 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 重点 smoke test：
 
 1. 首次打开进入欢迎向导/附加设置，而不是直接进游戏。
-2. “版本”页能安装/显示内置兼容包，至少包含当前共享 `v0.113.x`（v0.113.0/v0.113.1，稳定 id `v0.113.0`）、旧 `v0.111.0`、正式 `v0.103.x` / `v0.107.1` / `v0.108.0`、共享 `v0.109.x` / `v0.110.x` target，以及旧 beta `v0.106.1` / `v0.107.0`。
+2. “版本”页能安装/显示 full family `0.7.2-dev` 的 10 个 active target，包含当前 stable/public `v0.111.1`、当前共享 `v0.113.x` beta（v0.113.0/v0.113.1，稳定 id `v0.113.0`）、旧 beta/public-beta `v0.111.0`、正式 `v0.103.x` / `v0.107.1` / `v0.108.0`、共享 `v0.109.x` / `v0.110.x` target，以及旧 beta `v0.106.1` / `v0.107.0`。
 3. 导入版选择 PC zip 或 Steam 下载后，`files/payloads/<payload_id>/game/.payload_manifest.json` 存在，`files/payloads/<payload_id>/game/SlayTheSpire2.pck` 存在，并创建/选择 `files/instances/<profile_id>/instance.json`；切换版本不应复制回 `files/game/`。Steam 下载来源应在 manifest 中记录 `source.kind=steam_depot`。
 4. 新建启动配置时按 payload 版本填入匹配兼容包；之后不再有全局选中包。删除 payload 或 compat pack 后，相关启动配置仍保留并在列表中显示缺失；当前 profile 无可用兼容包时启动会弹推荐 Bottom Sheet，优先给出内置/已安装 full 匹配，无 full 匹配才给出离线通用包，并允许“使用推荐并继续”或直接打开兼容包管理。
 5. 点击启动后 logcat / 当前 profile 的 `files/instances/<profile_id>/logs/android-launch.log` 能看到 selected compatibility pack 和 `Loading imported game PCK`；全局 `files/logs/sts2.log` 应包含应用内采集到的 Android logcat（如 `Sts2Re` / `GODOT` / `[STS2Mobile]`）。
@@ -739,7 +742,7 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
    竖屏回归：选择“竖屏（需配合竖屏 MOD）”后保存 `android_screen_rotation_mode=portrait` 和 `android_flip_screen_180=false`；新设置仍默认为 `user_landscape`。重进设置须保留竖屏选择；实际游戏 Activity 使用 portrait，full compat 在固定横屏比例已保存时仍使用竖屏逻辑画布，切回横屏恢复比例/UI scale。回归：`ScreenRotationSettingsTest`；原生 Godot smoke 还应覆盖 resize/resume、渲染预设切换后的输入映射和迟到的 MOD 横屏画布恢复。
 8. 从游戏内打开附加设置、退出回设置、crash/log/file browser 页面不崩溃。
 9. MOD master switch / 单 MOD disable 能在启动日志或游戏内 MOD 状态中反映；普通 MOD 从当前 profile 的 MOD 目录扫描（全局 `files/mods` 或隔离 `files/instances/<profile_id>/mods`），不走 Steam Workshop。
-10. `v0.113.0` / `v0.113.1` payload 应按各自 DLL SHA（`a6cc282c...` / `62ecbe91...`）精确使用 `sts2-android-compat` / `v0.113.0`（显示 v0.113.x）；`v0.111.0` 按 SHA `0861bfa1...` 使用旧 `v0.111.0` target；`v0.110.0` / `v0.110.1` 按各自 SHA（`7a259236...` / `7c446efa...`）使用共享 `v0.110.0` target；`v0.109.0` / `v0.109.1` 使用共享 `v0.109.0`，其他历史 payload 继续按各自 target 匹配。v0.113.x LAN 仍需同版本 Android/未修改 PC 的 host/join/load/rejoin、Standard/Daily/Blitz/Dread/custom 路由、MOD mismatch、ModelDb hash mismatch 和失败提示真机验证；共享 target 不代表 .0/.1 跨版本互联，桌面本机验证不能替代真机。
+10. `v0.113.0` / `v0.113.1` payload 应按各自 DLL SHA（`a6cc282c...` / `62ecbe91...`）精确使用 `sts2-android-compat` / `v0.113.0`（显示 v0.113.x）；`v0.111.1` 按 SHA `3fb1fa1b...` 使用独立 stable/public `v0.111.1` target，`v0.111.0` 按 SHA `0861bfa1...` 保留 beta/public-beta `v0.111.0` target。归档导入未记录 Steam 来源分支时，Workshop `auto` 应分别回落为 `public` / `public-beta`；有来源分支时仍优先使用来源记录。`v0.110.0` / `v0.110.1` 按各自 SHA（`7a259236...` / `7c446efa...`）使用共享 `v0.110.0` target；`v0.109.0` / `v0.109.1` 使用共享 `v0.109.0`，其他历史 payload 继续按各自 target 匹配。v0.113.x LAN 仍需同版本 Android/未修改 PC 的 host/join/load/rejoin、Standard/Daily/Blitz/Dread/custom 路由、MOD mismatch、ModelDb hash mismatch 和失败提示真机验证；v0.111.1 也仍需 Android UI/玩法、普通 MOD 与同版本 LAN 验证，不承诺 v0.111.0/v0.111.1 或 v0.113.0/v0.113.1 跨版本互联，桌面本机验证不能替代真机。
 11. Steam 中心可登录/验证 refresh token；手机确认出现后应立即存在认证前台通知并已经轮询，切到 Steam App 批准再返回即可完成，不需要小窗或额外点击“已批准”。至少实测普通切后台、Activity 重建、CM 断线后重连、未过期事务的进程恢复、Guard 动态码、取消与 4 分钟超时；确认密码/本次 Guard code 不落盘或进入日志、取消/过期清除 pending handle、旧事务迟到结果不能覆盖新事务。Steam Cloud 手动刷新/拉取/上传使用当前 launch profile 的 account root，拉取前在 `files/steam/cloud/<profile_id>/backups/` 创建备份。WebDAV 中心可配置 URL/用户名/密码/槽位、测试连接，并把同一 account root 的白名单存档同步到远端 `SlayTheSpire2/saves/<slot>/`；拉取前在 `files/webdav/cloud/<slot>/backups/` 创建备份。本地存档快照在 `files/save-snapshots/profiles/<profile_id>/` 默认保留最近 5 个，启动前/干净退出后会自动创建，设置页可手动创建和恢复。
 
 ## 12. 维护提醒
@@ -760,7 +763,7 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 - Steam Cloud 的 DNS 预解析结果必须通过 `ServerRecord.createServer(host, port, WEB_SOCKET)` 分开传递地址和端口；禁止重新使用 JavaSteam 1.6.0 的 `createWebSocketServer(String)`，其冒号拆分会在 IPv6/NAT64 网络中把 `ff9b` 当成端口。`last-websocket-cm-endpoint.txt` 保留现有 `[IPv6]:port` / `IPv4:port` 格式，缓存与默认端点由 URI authority 解析后构造；不得改变服务器优先级或为此强制关闭 IPv6。回归：`SteamCloudEndpointTest`（IPv6 候选、缓存重载、IPv4 优先级及无端口 fallback）。
 - 多版本兼容包的长期方向是 manifest 化、可安装、可诊断，并作为启动配置属性选择；不要把某一游戏版本的兼容 patch 直接写死到 Android shell，也不要恢复全局兼容包 fallback 选择。
 - 已绑定兼容包的 manifest/target 存在但 DLL 或 overlay 缺失时，按缺失依赖走推荐 Sheet；复制前和 Godot 入口都须重新校验，不能用版本风险确认或 `launch_prepared=true` 绕过。兼容开关关闭的显式无兼容层路径保留。回归：`CompatLaunchReadinessTest`。
-- 对当前共享 `v0.113.x` target（稳定 id `v0.113.0`）改动时务必用历史 `ReferenceFlavor=original-v0.113.0` 与 `STS2_ORIGINAL_V1130_*` 指向最新 v0.113.1 原版引用，并保留 v0.113.0 编译/运行时验证；旧独立 v0.111.0 仍用 `original-v0.111.0` / `STS2_ORIGINAL_V1110_*`；共享 v0.110.x / v0.109.x 分别用历史 flavor 和 v0.110.1 / v0.109.1 引用。默认验证路径是 `port-mod/tools/build-compat-matrix.sh` 的所有 active target compile gate。新版原生形状验证使用 `FramePreparation.Tests` 的 `-p:Sts2Target1130=true -p:TreasureHolderLayoutShape=true`，配合 `STS2_FRAME_REFERENCE_DLLS` 同时对 v0.113.0/v0.113.1 原版 DLL 做只读合约检查；普通旧形状也必须继续通过。
+- 对当前共享 `v0.113.x` target（稳定 id `v0.113.0`）改动时务必用历史 `ReferenceFlavor=original-v0.113.0` 与 `STS2_ORIGINAL_V1130_*` 指向最新 v0.113.1 原版引用，并保留 v0.113.0 编译/运行时验证；独立 v0.111.1 stable/public 与旧 v0.111.0 beta/public-beta 记录共用 `original-v0.111.0` / `STS2_ORIGINAL_V1110_*` 的现有 v0.111.0 引用和 `STS2_TARGET_1110`，不得为了 .1 新增 flavor/变量或合并两者 Steam 分支元数据；共享 v0.110.x / v0.109.x 分别用历史 flavor 和 v0.110.1 / v0.109.1 引用。默认验证路径是 `port-mod/tools/build-compat-matrix.sh` 的所有 active target compile gate。新版原生形状验证使用 `FramePreparation.Tests` 的 `-p:Sts2Target1130=true -p:TreasureHolderLayoutShape=true`，配合 `STS2_FRAME_REFERENCE_DLLS` 同时对 v0.113.0/v0.113.1 原版 DLL 做只读合约检查；普通旧形状也必须继续通过。
 - 新增兼容 target 时需要同时增加：`.env.example` 中的 original reference 配置说明或 `ReferenceFlavor` 映射、`port-mod/targets/active/<target_id>/target.json`、必要的 target adapter/capability 或条件编译、文档版本矩阵、至少一次 importer APK 构建验证。只有需要保留 schema 1 旧发布包对照时，才额外新增/维护 `compat/*` legacy 分支、`compat_manifest.*.json` 与 `tools/android/bundled-compat-packs.json` 条目。
 - 性能维护：Workshop 搜索列表用 RecyclerView 回收卡片；图片按字节限制为 4–16 MiB LRU，最多 3 个加载任务，同 URL/尺寸合并并按目标尺寸采样，离屏取消、回收后阻止迟到结果。安装索引/目录扫描只在后台刷新 generation 快照；前置检查和详情操作仍后台检查真实文件，不能用 UI 缓存替代安全判断。`SteamWorkshopLibrary.recordInstall` 的内容 hash 不得放回索引锁内。
 - Workshop 图片取消必须使用 `Call.cancel()` + 图片线程池 `shutdown()`，不可用 `shutdownNow()` 中断 OkHttp 5.3.2 的 fast-fallback 建连等待。`SteamWorkshopDirectAccess` 用公开 `EventListener.canceled` + 每 Call 私有 tag 将取消传到当前内部请求，逐重定向 attach，并在成功返回后继续支持 body 取消；发布 child 后复查 parent cancellation，禁止在 listener factory 创建期间访问尚未初始化的 Call tags。保留配置的 listener、普通 IOException/连接超时的原域名回退及所有 Host/重定向协议；取消/中断不触发回退，兼容访问建连的原始 `InterruptedException` 恢复中断标记后转 `InterruptedIOException`。列表/查看器退出后不再重试或交付迟到图片。回归：`SteamWorkshopDirectAccessTest`、`WorkshopImageCancellationTest`，均沿用 `AndroidLinuxTestShadow`，避免 Robolectric 缓存的 Linux 对象污染全量环境/日志测试。

@@ -196,7 +196,10 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 | `v0.109.0` / `v0.109.1` beta（旧测试） | `v0.109.0`（稳定 id，显示 v0.109.x） | `.env`: `STS2_ORIGINAL_V1090_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1090_ROOT`（历史名，指向最新 v0.109.1） | `original-v0.109.0` |
 | `v0.110.0` / `v0.110.1` public beta（旧测试） | `v0.110.0`（显示 v0.110.x） | `.env`: `STS2_ORIGINAL_V1100_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1100_ROOT`（指向 v0.110.1） | `original-v0.110.0` |
 | `v0.111.0` public beta（旧测试） | `v0.111.0` | `.env`: `STS2_ORIGINAL_V1110_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1110_ROOT` | `original-v0.111.0` |
+| `v0.111.1` stable / `public`（当前） | `v0.111.1` | `.env`: `STS2_ORIGINAL_V1110_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1110_ROOT`（复用现有 v0.111.0 引用） | `original-v0.111.0` |
 | `v0.113.0` / `v0.113.1` public beta（当前） | `v0.113.0`（稳定 id，显示 v0.113.x） | `.env`: `STS2_ORIGINAL_V1130_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1130_ROOT`（历史名，指向最新 v0.113.1） | `original-v0.113.0` |
+
+当前 full family `compat_version=0.7.2-dev` 包含 10 个 active metadata target。新 `v0.111.1` 记录的 `versions=["v0.111.1"]`、`channel=stable`、`steam_branch=public`、`source=original_pc_reference_v0.111.1`，原版 DLL SHA-256 为 `3fb1fa1bf0249087b706a5d0f062a60579e2f5b08df4ee477ddd6f2607f654d5`。它复用现有 V1110 引用、`original-v0.111.0` 与 `STS2_TARGET_1110`，不新增 flavor 或 V1111 环境变量；v0.111.0 beta / `public-beta` 记录保持不变。Workshop `auto` 优先使用 payload 的 Steam 来源分支，归档导入没有该字段时才回落到兼容 target 的 `steam_branch`；因此必须分开 .1/public 与 .0/public-beta 元数据，不能只给旧 beta variant 追加版本/SHA。
 
 开发步骤建议：
 
@@ -219,9 +222,11 @@ tools/android/stage-bundled-compat-packs.sh
 tools/package/build_importer_apk.sh
 ```
 
-只调试当前 target 时可运行 `(cd port-mod && ./tools/build-compat-matrix.sh --target v0.113.0)`；共享 v0.109.x 的稳定 target id `v0.109.0` 仍同时覆盖 v0.109.0/v0.109.1，历史 `original-v0.109.0` flavor 应指向最新 v0.109.1 引用；稳定 target id `v0.110.0` 同时覆盖 v0.110.0/v0.110.1，历史 `original-v0.110.0` flavor 应指向 v0.110.1 引用。legacy schema 1 诊断包仍用 `REFERENCE_FLAVOR=original` / `original-v0.106.1` / `original-v0.107.0` 指定对应原版 gate，单独调试 `v0.107.1` / `v0.108.0` / `v0.109.x` / `v0.110.x` / `v0.111.0` / `v0.113.0` 可分别使用对应 `original-v*` flavor。
+只调试当前 target 时可运行 `(cd port-mod && ./tools/build-compat-matrix.sh --target v0.113.0)`；单独构建当前 stable/public v0.111.1 时使用 `--target v0.111.1`，compile gate 仍为 `original-v0.111.0` / V1110 / `STS2_TARGET_1110`，并保留独立的旧 beta `--target v0.111.0`。共享 v0.109.x 的稳定 target id `v0.109.0` 仍同时覆盖 v0.109.0/v0.109.1，历史 `original-v0.109.0` flavor 应指向最新 v0.109.1 引用；稳定 target id `v0.110.0` 同时覆盖 v0.110.0/v0.110.1，历史 `original-v0.110.0` flavor 应指向 v0.110.1 引用。legacy schema 1 诊断包仍用 `REFERENCE_FLAVOR=original` / `original-v0.106.1` / `original-v0.107.0` 指定对应原版 gate，单独调试 `v0.107.1` / `v0.108.0` / `v0.109.x` / `v0.110.x` / `v0.111.0` / `v0.113.0` 可分别使用对应 `original-v*` flavor。
 
 v0.110.0 是游戏 MOD API 更新，不只是 Android target 更新；v0.110.1 仅包含不触达 Android compat 的 AutoSlay/lobby 实现修复，继续共用 v0.110.x target。该 API 线移除了 `Scare`、`OutbreakPower`、旧 `LobbyPlayer`、`JoinFlow.MockInfo`、`MegaInput.accept/releaseCard` 与旧 controller/keyboard mapping API。v0.111.0 再次使用独立 target：原版新增 transport-level `HandshakeManager`，`NetClientGameService` / `NetHostGameService` 构造时必须传入 `PeerVersionInfo`，版本、ModelDb hash 与 MOD 校验在消息总线启用前完成；Android LAN 只传入 `PeerVersionInfo.LocalDefault()` 并继续使用原版握手与 wire protocol。`AnimState` 同时把 trigger branch 字段改名并增加条件 next-state graph，compat 动画预热会读取两种字段形状。直接静态引用这些变化成员的普通 MOD 必须发布匹配 v0.111.0 的版本；full compat 不会向 `sts2.dll` 伪造已删除成员。
+
+v0.111.1 与 v0.111.0 的托管 API、运行时 IL 和依赖等价，差异为构建身份、release 元数据及新增的一项 patch-notes PCK 资源，所以共享上述实现而不新增 Java/C# 补丁。兼容层继续让实际 payload 的原版 `HandshakeManager` 检查版本、ModelDb hash 和 MOD，不增加协议绕过，不承诺 .0/.1 跨版本 LAN。桌面差异审计及原版 ModelDb native/headless 初始化不能替代 Android UI/玩法、普通 MOD 初始化与实际同版本联机验证；历史 .0 MOD 回归结果不能改写为 .1 或 Android 认证。
 
 v0.113.0 是独立 target，使用 `STS2_TARGET_1130`，不与 v0.111.0 共用 variant。LAN 加入直接走原版 `NJoinFriendScreen.JoinGameAsync`，让 payload 管理 `JoinFlow.Begin(SceneTree)`、取消、错误和模式路由；host 保留 `isCustom` 与 Standard/Daily/Blitz/Dread 的原版入口，读档使用 `IsCustomGame`。商店确认在一次性 allowance 内重放原版 `OnSelected()` 并等待实际任务，不再反射调用已删除的 `OnTryPurchase`；旧 target 也回到各自原版购买流程。新版宝箱保留预置 1–6 个遗物布局及 Large icon reveal，仅为更大容量补充布局。atlas-aware blur 的 `uv_region/radius_scale` 实例参数与旧 shader 不兼容，因此只在 v113 保留原版卡面 blur，不再安装已删除的 `NEpochSlot._blurShader` 修复；其他已审计 shader variants 不变。普通 MOD 仍须自行匹配该版本 API，compat 不补造已删除成员；桌面回归不等于 Android GPU/触控/跨设备认证。
 
@@ -231,14 +236,14 @@ v0.113.1 与 v0.113.0 共用上述 variant，保留 target id `v0.113.0`、flavo
 
 新增一个目标游戏版本时，至少需要：
 
-1. 准备对应 PC 原版/解包目录或 DLL 引用目录，并在 `.env.example` / 文档中增加对应 `STS2_ORIGINAL_*_REFERENCE_DIR` 说明。
-2. 为新版本定义 `ReferenceFlavor` 到 `CompatReferenceDir` 的解析方式（脚本映射或显式环境变量），不要提交指向个人 workspace 的 symlink。
-3. 在 `port-mod/targets/active/<target_id>/target.json` 新增 target 描述，包含 `target_id`、`versions`、`reference_flavor`、`source`、可选 `sts2_dll_sha256` 与 compile constants；同一 API-compatible variant 支持多个原版 DLL 时，`sts2_dll_sha256` 可写去重后的字符串数组。
+1. 准备对应 PC 原版/解包目录或 DLL 引用目录；若 API/运行时 IL 与依赖经审计等价，可复用现有 compile gate，并在 `.env.example` / 文档说明，不必新建 reference 变量。实际本体、资源与运行时验证输入仍需匹配各自版本。
+2. 明确 `ReferenceFlavor` 到 `CompatReferenceDir` 的解析方式；优先复用等价的既有映射，只有需要新引用合约时才新增 flavor/变量，不要提交指向个人 workspace 的 symlink。v0.111.1 保留 `original-v0.111.0` / V1110 即为复用示例。
+3. 在 `port-mod/targets/active/<target_id>/target.json` 新增 target 描述，包含 `target_id`、`versions`、`channel`、`steam_branch`、`reference_flavor`、`source`、可选 `sts2_dll_sha256` 与 compile constants；同一 API-compatible variant 且分支等元数据相同的多个原版 DLL 可使用去重 SHA 字符串数组。若 Steam 分支不同，即使共享实现也应保留独立 metadata target。
 4. 若源码需要版本差异，优先新增 target adapter/capability；只有无法避免时才使用少量条件编译。
 5. 用对应 `ReferenceFlavor` 做 compile gate，并运行 `port-mod/tools/build-compat-matrix.sh` 覆盖所有 active target。
 6. 运行 `tools/android/stage-bundled-compat-packs.sh`。
-7. 更新 `AGENTS.md`、`doc/architecture/project-structure.md`、本文件，并在 `.agent/agent-docs/changelog/` 写 agent changelog。
-8. 构建 `tools/package/build_importer_apk.sh` 并做至少一次导入/启动 smoke test。
+7. 更新 `AGENTS.md`、`doc/architecture/project-structure.md`、本文件及相关构建/加载文档。
+8. 构建 `tools/package/build_importer_apk.sh` 并做导入/启动 smoke test；完成后据实在 `.agent/agent-docs/changelog/` 记录实际证据与未验证项，不提前宣称通过。
 9. 只有需要 legacy schema 1 对照包时，才额外新建 `compat/vX.Y.Z` 分支、新增/更新 `compat_manifest.*.json`，并更新 `tools/android/bundled-compat-packs.json`。
 
 ## 9. patch 开发注意事项
@@ -300,16 +305,28 @@ schema 1 legacy 单目标 manifest：
 }
 ```
 
-schema 2 family manifest：
+schema 2 family manifest（节选；完整包包含上表 10 个 target）：
 
 ```json
 {
   "schema": 2,
   "pack_id": "sts2-android-compat",
   "display_name": "STS2 Android Compatibility",
-  "compat_version": "0.7.1-dev",
+  "compat_version": "0.7.2-dev",
   "channel": "mixed",
   "targets": [
+    {
+      "target_id": "v0.111.1",
+      "versions": ["v0.111.1"],
+      "channel": "stable",
+      "source": "original_pc_reference_v0.111.1",
+      "steam_branch": "public",
+      "sts2_dll_sha256": "3fb1fa1bf0249087b706a5d0f062a60579e2f5b08df4ee477ddd6f2607f654d5",
+      "artifacts": {
+        "dll": "variants/v0.111.1/STS2Mobile.dll",
+        "overlay_pck": "variants/v0.111.1/port_compat.pck"
+      }
+    },
     {
       "target_id": "v0.113.0",
       "versions": ["v0.113.0", "v0.113.1"],

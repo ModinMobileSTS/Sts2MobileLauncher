@@ -39,14 +39,19 @@ sts2_load_dotenv
 
 `sts2_load_dotenv` 会把 `.env` 中相对仓库的工具链/reference 路径规范化。已有脚本会自行加载配置；裸跑本地 probe 时需要上面的步骤。
 
-以下四个常用 target 的映射来自 `port-mod/targets/active/*/target.json`；其他版本也以对应 target 文件为准：
+以下常用 target 的映射来自 `port-mod/targets/active/*/target.json`；其他版本也以对应 target 文件为准：
 
 | 游戏引用 | `ReferenceFlavor` | `.env` reference 变量 | compile constant |
 | --- | --- | --- | --- |
 | v0.113.x，共享 target 使用最新 v0.113.1 引用 | `original-v0.113.0` | `STS2_ORIGINAL_V1130_REFERENCE_DIR` | `STS2_TARGET_1130` |
-| v0.111.0 | `original-v0.111.0` | `STS2_ORIGINAL_V1110_REFERENCE_DIR` | `STS2_TARGET_1110` |
+| v0.111.1 stable/public，独立 metadata target，构建复用现有 v0.111.0 引用 | `original-v0.111.0` | `STS2_ORIGINAL_V1110_REFERENCE_DIR` | `STS2_TARGET_1110` |
+| v0.111.0 beta/public-beta，原有 target 保留 | `original-v0.111.0` | `STS2_ORIGINAL_V1110_REFERENCE_DIR` | `STS2_TARGET_1110` |
 | v0.110.x，共享 target 使用 v0.110.1 引用 | `original-v0.110.0` | `STS2_ORIGINAL_V1100_REFERENCE_DIR` | `STS2_TARGET_1100` |
 | v0.109.x，共享 target 使用 v0.109.1 引用 | `original-v0.109.0` | `STS2_ORIGINAL_V1090_REFERENCE_DIR` | `STS2_TARGET_1090` |
+
+full family `compat_version=0.7.2-dev` 中，v0.111.1 与 v0.111.0 仅共享实现和 compile gate，不合并 target：.1 按原版 DLL SHA `3fb1fa1bf0249087b706a5d0f062a60579e2f5b08df4ee477ddd6f2607f654d5` 选择 stable/public `v0.111.1`，.0 保留 beta/public-beta `v0.111.0`。归档导入缺少 Steam 来源分支时，Workshop `auto` 需按各自 target 回落到 `public` / `public-beta`，不能因 API/运行时 IL 等价而合并分支元数据。不新增 flavor 或 V1111 环境变量，也不把共享实现视为 .0/.1 跨版本 LAN 保证。
+
+下文 BaseLib/Loadout 的已验证输入与结果仍是原记录中的 v0.111.0，不能重标为 v0.111.1 成功。验证 .1 的实际运行时行为时，应在 probe 中显式使用匹配的 .1 原版程序集目录，并继续指定 `original-v0.111.0` 和 `STS2_TARGET_1110`；这不要求修改现有 V1110 构建引用配置。桌面审计或原版 ModelDb native/headless 初始化不证明 Android UI/玩法、普通 MOD 或同版本 LAN 已通过。
 
 本地 `Loadout` probe 依赖现代 `ModManager.State` API，不能只替换 flavor 就声称支持所有旧游戏版本；需要先检查 runner 本身触达的 API。
 
@@ -76,7 +81,7 @@ fixture 中有故意失败的 patch 用于验证隔离，不能只因日志出�
 
 ### 3.2 原版 ModelDb shadow 回归
 
-`test-modeldb-shadow-placeholder.sh` 只传 `CompatReferenceDir`，不传 target 编译常量。针对 v0.111.0，直接运行同一个 runner，显式指定 flavor、引用目录与编译常量；仅把 helper 的 `--reference-dir` 换成新版本目录，会因选用旧 API 分支而编译失败。`ReferenceFlavor` 本身也不会自动设置 `DefineConstants`。
+`test-modeldb-shadow-placeholder.sh` 只传 `CompatReferenceDir`，不传 target 编译常量。针对 v0.111.0 / v0.111.1 的共享实现，直接运行同一个 runner，显式指定历史 flavor、引用目录与 `STS2_TARGET_1110`；下例仍使用已配置的 v0.111.0 构建引用。仅把 helper 的 `--reference-dir` 换成新版本目录，会因选用旧 API 分支而编译失败。`ReferenceFlavor` 本身也不会自动设置 `DefineConstants`。
 
 ```bash
 env LD_PRELOAD=libgcc_s.so.1 \

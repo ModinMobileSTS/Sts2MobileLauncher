@@ -92,9 +92,12 @@ s2_re/
 | Beta（旧测试） | `v0.109.0` / `v0.109.1` | `.env` 的 `STS2_ORIGINAL_V1090_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1090_ROOT`（历史名，指向最新 v0.109.1） | — | `original-v0.109.0` | `v0.109.0`（稳定 id，显示 v0.109.x） | — |
 | Beta 旧测试 | `v0.110.0` / `v0.110.1` | `.env` 的 `STS2_ORIGINAL_V1100_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1100_ROOT`（历史变量名，指向 v0.110.1） | — | `original-v0.110.0` | `v0.110.0`（显示 v0.110.x） | — |
 | Beta 旧测试 | `v0.111.0` | `.env` 的 `STS2_ORIGINAL_V1110_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1110_ROOT` | — | `original-v0.111.0` | `v0.111.0` | — |
+| 正式/稳定（当前） | `v0.111.1` | `.env` 的 `STS2_ORIGINAL_V1110_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1110_ROOT`（复用现有 v0.111.0 引用） | — | `original-v0.111.0` | `v0.111.1` | — |
 | Beta 当前测试 | `v0.113.0` / `v0.113.1` | `.env` 的 `STS2_ORIGINAL_V1130_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1130_ROOT`（历史名，指向最新 v0.113.1） | — | `original-v0.113.0` | `v0.113.0`（稳定 id，显示 v0.113.x） | — |
 
 v0.109.1 与 v0.109.0 的托管 API/方法 IL 相同，资源变化仅为繁体中文本地化，因此共用同一个 variant；保留 target id 与 ReferenceFlavor 历史名称可避免已有 launch profile 失效。v0.110.0 修改了输入、联机版本信息、存档与部分玩法 API，因此使用独立 target；v0.110.1 的 compat 源码 IL 与 v0.110.0 等价，因此复用 `v0.110.0` target id 并显示为 v0.110.x。v0.111.0 再次使用独立 target：它把版本、ModelDb hash 与 MOD 校验移到 transport-level handshake，并要求构造 host/client service 时提供 `PeerVersionInfo`；其原版 DLL SHA-256 为 `0861bfa1df347538d932f22d580e75420f08082792eb914e53b4882764acdbe9`。
+
+v0.111.1 作为单独的 stable / `public` metadata target 加入 full family `compat_version=0.7.2-dev`（共 10 个 active target），`versions=["v0.111.1"]`、`source=original_pc_reference_v0.111.1`，原版 DLL SHA-256 为 `3fb1fa1bf0249087b706a5d0f062a60579e2f5b08df4ee477ddd6f2607f654d5`。v0.111.0 beta / `public-beta` 记录保持不变；两者共用托管实现、现有 V1110 引用、`original-v0.111.0` 和 `STS2_TARGET_1110`，不引入 V1111 配置或新 flavor。API、运行时 IL 与依赖等价不意味着应合并记录：归档导入缺少 `source.steam.branch` 时，Workshop `auto` 会按所选 target 的 `steam_branch` 回落，分开记录才能为 .1 选择 `public`、为 .0 保留 `public-beta`；有 Steam 来源分支时仍优先来源。构建身份、release 元数据和新增 patch-notes PCK 资源仍属于各自本体；桌面审计/ModelDb 初始化不能证明 Android UI、玩法、普通 MOD 或 LAN 已通过，也不承诺 .0/.1 跨版本 LAN。
 
 v0.113.x 使用独立于 v0.111.0 的共享 target（稳定 id `v0.113.0`、`STS2_TARGET_1130`）：v0.113.0 新增 Blitz/Dread 模式与独立自定义标记，改变商店购买入口、宝箱 holder 布局与 atlas-aware blur；v0.113.1 虽修改玩法、存档及 tooltip 对齐 API，但兼容层使用的合约与所有 scene/material/shader 条目不变，因此两版共用 variant，不改运行时补丁。两版 DLL SHA-256 分别为 `a6cc282c52b96ad2e01d5692b1144b33aa8e3ba4e969582f648ecb13b2f751d7` / `62ecbe91093e1fa862de4329aac865209dcb297804caf0f0520d92d8c0b4a9c3`。编译引用使用 v0.113.1，保留历史 V1130 变量/flavor 和既有 profile；LAN 始终使用各自 payload 的原版握手与消息表，共享 target 不代表两版可互联或普通 MOD API 完全相同。
 

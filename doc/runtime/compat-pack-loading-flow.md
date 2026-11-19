@@ -1,6 +1,8 @@
 # MOD 与兼容包加载流程
 
-本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。当前说明适用于内置的 `v0.103.x` / `v0.107.1` / `v0.108.0` 正式/稳定兼容 target、共享 `v0.109.x`（v0.109.0/v0.109.1，稳定 id `v0.109.0`）、共享 `v0.110.x`（v0.110.0/v0.110.1，稳定 id `v0.110.0`）、独立 `v0.111.0`、当前共享 `v0.113.x`（v0.113.0/v0.113.1，稳定 id `v0.113.0`）public-beta target，以及旧 `v0.106.1` / `v0.107.0` beta target。
+本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。当前说明适用于内置的 `v0.103.x` / `v0.107.1` / `v0.108.0` / `v0.111.1` 正式/稳定兼容 target、共享 `v0.109.x`（v0.109.0/v0.109.1，稳定 id `v0.109.0`）、共享 `v0.110.x`（v0.110.0/v0.110.1，稳定 id `v0.110.0`）、独立 `v0.111.0`、当前共享 `v0.113.x`（v0.113.0/v0.113.1，稳定 id `v0.113.0`）public-beta target，以及旧 `v0.106.1` / `v0.107.0` beta target。
+
+当前 full family `compat_version=0.7.2-dev` 包含 10 个 metadata target。v0.111.1 stable / `public` 与保留的 v0.111.0 beta / `public-beta` 是两个独立记录，但共享 `original-v0.111.0`、现有 v0.111.0 V1110 引用与 `STS2_TARGET_1110`，没有新增 flavor/环境变量或 Java/C# 运行时分支。两版 API、运行时 IL 与依赖等价，仍须分别保留版本、DLL SHA、release 身份和 Steam 分支；桌面审计及 native/headless ModelDb 初始化不代表 Android UI/玩法、普通 MOD 或 LAN 认证，也不承诺 .0/.1 跨版本 LAN。
 
 ## 1. 术语
 
@@ -101,6 +103,7 @@ offline bootstrap:
    - 只有当前绑定是 offline wildcard、来源明确为 `auto`、且现有 SHA/version 评分能找到完整可用的 full target 时，才自动升级该绑定，并同步 `launcher/selected_instance.json` 与兼容包诊断记录。内置包安装完成、外部包导入、重新选择配置、复用同一 payload 的默认配置及启动前都会重查；没有 full 命中或候选缺少 DLL/overlay 时不改写。已绑定 full 包不会因新候选出现而重新选择。
    - 手动选择不自动覆盖。旧配置缺少来源字段或来源值未知时按 `unknown` 处理，不能根据 offline 包 ID 猜测用户意图，因此也不自动升级；用户可在启动配置中手动选用匹配 full target。旧 bundled schema 1 pack id 到 flat family pack 的既有迁移规则保持不变。
    - Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot`、`source.steam.depots[]` 与 `source.steam.concurrent_chunks` 中记录。v0.109.0/v0.109.1 的 DLL SHA 都由稳定 id `v0.109.0` 的共享 variant 精确匹配；v0.110.0/v0.110.1 按各自 DLL SHA 精确匹配共享 `compat_target_id=v0.110.0`；v0.111.0 的 SHA `0861bfa1...` 精确匹配独立 `compat_target_id=v0.111.0`。
+   - v0.111.1 的原版 DLL SHA `3fb1fa1bf0249087b706a5d0f062a60579e2f5b08df4ee477ddd6f2607f654d5` 精确匹配单独的 `compat_target_id=v0.111.1`（`versions=["v0.111.1"]`、`channel=stable`、`source=original_pc_reference_v0.111.1`），而不是把它加进旧 beta target。Workshop `auto` 优先使用 `source.steam.branch`；归档导入未记录该字段时才回落到所选 compat target 的 `steam_branch`。因此 .1 使用 `public`、.0 保留 `public-beta`，共享托管实现不应合并这两个 metadata target。
 8. 旧安装中的 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制。
 
 ## 5. 启动前检查
@@ -322,6 +325,7 @@ STS2Mobile.ModEntry
 
 8. LAN bootstrap。`LanMultiplayerBootstrapPatches` 在主菜单就绪后才尝试应用本地 LAN 兼容补丁；若 `settings.save` 中 `lan_multiplayer_enabled=false`，或已加载 `sts2_lan_connect` / STS2 Game Lobby 大厅 MOD，`LanMultiplayerPatches` 会整组跳过，避免 Android LAN host/join、玩家 ID 等适配与大厅 MOD 自己的联机协议 profile 冲突。内置 LAN 补丁只处理 Android transport/UI/settings/player/save 兼容，不 patch `MessageTypes.ToId`、`MessageTypes.TryGetMessageType` 或 `NetMessageBus.TryDeserializeMessage`，也不维护固定消息表；消息类型发现、排序、ID 与序列化/反序列化始终由当前 payload 对应版本的原版实现负责，因此 Android 与未修改 PC 使用同一 wire protocol，普通 MOD 自定义 `INetMessage` 也继续按原版规则参与排序。v0.111.0 构造 host/client service 时额外传入 `PeerVersionInfo.LocalDefault()`，随后完全交给原版 transport-level `HandshakeManager` 在消息总线启用前校验游戏版本、ModelDb hash 和 gameplay/non-gameplay MOD；Android 不复制握手数据结构，也不回退旧 lobby-message 校验。启用本地 LAN patch 时，兼容层还会拦截多人读档 canonicalize 的本地玩家 ID：如果当前自定义平台/玩家 ID 不在 `current_run_mp.save` 的玩家列表中，会优先使用隐藏稳定字段 `lan_multiplayer_save_player_id`、旧自动 LAN ID 或单玩家存档中的唯一 `NetId`，避免用户修改自定义平台 ID 后旧多人存档被误判为不属于本机。`max_multiplayer_players` 只扩展 host/lobby 容量；超过四人的运行仍属实验模式，本次已覆盖宝箱和休息点的确定性四槽故障，但不能据此认定原版所有房间和任意配置人数都已兼容。
    v0.113.x 加入复用 `NJoinFriendScreen.JoinGameAsync`，由原版处理带 `SceneTree` 的 `JoinFlow.Begin`、取消与错误；新建 host 独立保留 `isCustom`，非自定义房间按 Standard/Daily/Blitz/Dread 进入原版 lobby，读档以 `SerializableRun.IsCustomGame` 判断自定义。不得退回兼容层手工复制 JoinFlow/模式路由。商店确认在一次性 allowance 内调用原版 `OnSelected()` 并等待实际购买任务，新旧 target 都不再依赖已删除的 slot `OnTryPurchase`。v0.113.0/v0.113.1 虽共享 Android variant，握手和普通 MOD 仍以实际 payload 版本为准，不承诺跨版本互联。
+   v0.111.1 复用 v0.111.0 的 service 构造与握手适配；版本、ModelDb hash 和 MOD 校验仍由当前 payload 的原版 `HandshakeManager` 负责，不增加协议绕过，也不把 .0/.1 实现等价当作跨版本 LAN 保证。
 9. `ModLoaderPatches`。
 10. save diagnostic。
 11. `RenderDiagnosticPatches` 后置调度；它只用于设备/渲染信息采集，调度异常会记录但不阻断 Steam 跳过和存档路径重定向等核心 patch。
@@ -382,7 +386,7 @@ v0.113.x 的 `Blur.gdshader` 使用 atlas-clamped `uv_region/radius_scale` insta
 
 `TransitionMaterialPatches` 会在 `NTransition._Ready` 后复制场景默认 `ShaderMaterial`，并在原版 `AssetCache.GetMaterial()` 返回 `fade_transition_mat.tres` / `fight_transition_mat.tres` 时返回缓存材质的副本。全局 disposal guard 已阻止 cache cleanup 显式释放资源；该补丁仍作为纵深保护，隔离 transition tween 对共享材质状态的修改并兼容旧兼容包行为。
 
-`v0.107.0-beta`、`v0.107.1`、`v0.108.0`、共享 `v0.109.x` / `v0.110.x` 与独立 `v0.111.0` target 的 `MapDrawingSceneCachePatches` 同样作为资源 owner 纵深保护：它拦截 `NMapDrawings.CreateLineForPlayer()`，让地图画笔绘制/橡皮线条从 Android 兼容层自持有的 `PackedScene` 实例化，避免长期字段依赖已经离开 cache 索引的场景；橡皮线条会同步刷新 `_eraserMaterial`，保留原版保存时通过材质判断 eraser line 的行为。
+`v0.107.0-beta`、`v0.107.1`、`v0.108.0`、共享 `v0.109.x` / `v0.110.x` 与独立 `v0.111.0` / `v0.111.1` target 的 `MapDrawingSceneCachePatches` 同样作为资源 owner 纵深保护：它拦截 `NMapDrawings.CreateLineForPlayer()`，让地图画笔绘制/橡皮线条从 Android 兼容层自持有的 `PackedScene` 实例化，避免长期字段依赖已经离开 cache 索引的场景；橡皮线条会同步刷新 `_eraserMaterial`，保留原版保存时通过材质判断 eraser line 的行为。
 
 关闭 `shader_compatibility_mode` 时会退订节点监听并停止后续替换，但已经写入节点或缓存字段的替换材质（包括上述粒子材质副本）不会反向恢复为原版；要还原本进程中已替换的材质，必须退出并重启游戏。重启后开关关闭的进程才不会重新应用这些 shader variants 或粒子降级。
 
