@@ -24,9 +24,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /** Private, root-scoped ownership receipts and write-ahead rollback journal. */
 final class ModInstallStore {
+	// Closing a second channel for the same file can release the process's OS lock on Android.
+	// Refuse overlapping local attempts before opening another descriptor.
+	private static final Set<File> HELD_LOCK_FILES = ConcurrentHashMap.newKeySet();
 	private final File filesRoot;
 	private final File modsRoot;
 	private final File lexicalAppRoot;
@@ -70,6 +74,10 @@ final class ModInstallStore {
 			preservedPaths = immutable(plan.preserved);
 			untrackedModIds = immutable(plan.untracked);
 		}
+	}
+
+	static final class BusyException extends IOException {
+		BusyException(Throwable cause) { super("MOD installation is already busy", cause); }
 	}
 
 	static final class OverwriteException extends IOException {
@@ -164,9 +172,14 @@ final class ModInstallStore {
 	}
 
 	void recover() throws IOException {
+		recover(null);
+	}
+
+	void recover(Runnable afterRecovery) throws IOException {
 		try (Lease ignored = lock()) {
 			recoverLocked();
 			readState(index);
+			if (afterRecovery != null) afterRecovery.run();
 		}
 	}
 
@@ -942,32 +955,42 @@ final class ModInstallStore {
 	private Lease lock() throws IOException {
 		checkPath(registry);
 		File lockFile = new File(registry, "lock");
-		checkPath(lockFile);
-		RandomAccessFile file = new RandomAccessFile(lockFile, "rw");
+		if (!HELD_LOCK_FILES.add(lockFile)) throw new BusyException(null);
+		RandomAccessFile file = null;
 		try {
+			checkPath(lockFile);
+			file = new RandomAccessFile(lockFile, "rw");
 			FileLock lock;
 			try { lock = file.getChannel().tryLock(); }
-			catch (OverlappingFileLockException e) { throw new IOException("MOD installation is already busy", e); }
-			if (lock == null) throw new IOException("MOD installation is already busy");
+			catch (OverlappingFileLockException e) { throw new BusyException(e); }
+			if (lock == null) throw new BusyException(null);
 			checkTree(registry);
-			return new Lease(file, lock);
-		} catch (IOException | RuntimeException e) {
-			try { file.close(); } catch (IOException close) { e.addSuppressed(close); }
+			return new Lease(lockFile, file, lock);
+		} catch (IOException | RuntimeException | Error e) {
+			try { if (file != null) file.close(); } catch (IOException close) { e.addSuppressed(close); }
+			finally { HELD_LOCK_FILES.remove(lockFile); }
 			throw e;
 		}
 	}
 
 	private static final class Lease implements AutoCloseable {
+		private final File lockFile;
 		private final RandomAccessFile file;
 		private final FileLock lock;
 		private boolean closed;
 
-		Lease(RandomAccessFile file, FileLock lock) { this.file = file; this.lock = lock; }
+		Lease(File lockFile, RandomAccessFile file, FileLock lock) {
+			this.lockFile = lockFile;
+			this.file = file;
+			this.lock = lock;
+		}
 
 		@Override public void close() throws IOException {
 			if (closed) return;
 			closed = true;
-			try { lock.release(); } finally { file.close(); }
+			try {
+				try { lock.release(); } finally { file.close(); }
+			} finally { HELD_LOCK_FILES.remove(lockFile); }
 		}
 	}
 }

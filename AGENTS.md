@@ -271,6 +271,7 @@ s2_re/
   3. 如果兼容包开关启用，只读取当前启动配置的 `compat_pack_id` / `compat_target_id`；未选择、包已删除或 schema 2 target 缺失时先等待 bundled 安装 bootstrap，再弹出推荐 Bottom Sheet。推荐严格按“命中的内置/已安装 full target → 无 full 命中时的可用 offline wildcard”分层；用户点“使用推荐”后才写回当前 profile 并继续启动，也可进入兼容包管理。版本不匹配仍弹窗提示。
   4. 后台执行 `GameLaunchPreparationManager.prepareForLaunch()`。
   5. 以 `launch_prepared=true` 启动 `GodotApp`；`GodotApp` 仍保留 fallback 准备路径防止直接启动遗漏，但同样尊重兼容包开关，关闭时不会 fallback 复制 `STS2Mobile.dll`。
+  - 只有 `ModInstallStore.BusyException` 触发可取消的后台重试；不要在主线程等待文件锁或跳过恢复。`GodotApp` 在同步创建引擎时持有当前 MOD 目录的锁；直接启动遇忙走私有 `GodotLaunchRetryActivity`。升级 Godot Android 模板后用 `ModInstallReadinessTest` 及设备上的直接启动验证等待页之前未创建引擎。
 
 ## 7. Payload / 版本管理
 

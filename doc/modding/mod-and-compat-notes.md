@@ -82,8 +82,9 @@ MOD 卡片默认折叠，只显示左侧拖拽手柄、名称、版本/作者和
 - **升级前已有的 MOD**：没有记录时只处理 manifest、`id` / `pck_name` 对应 DLL/PCK 等已知主文件，并提示无法推断旧辅助文件。首次更新不会凭目录位置清空历史文件；有历史残留时仍需手工确认清理。新导入内容从本次开始建立记录。
 - **Workshop**：整 item 替换继续移除 item 内旧内容（包括没有记录的内容）；同 ID 安装位于 item 外时，按普通完整更新规则清理已记录旧文件。item 目录与目录外清理共用文件/安装记录回滚事务，不退化为逐文件叠加。
 - **中断与安全边界**：文件和安装记录由独占锁及写前回滚日志保护；未提交的事务在后续恢复时还原，已提交事务只清理日志，启动游戏前必须恢复成功。路径穿越、符号链接、文件/目录类型冲突和损坏记录拒绝继续，不按“没有记录”处理。这里验证的是进程中断恢复，不承诺突然断电时的文件系统持久性。
+- **MOD 操作进行中**：打开启动器、Steam 创意工坊或 Nexus 商店时，如果当前 MOD 目录还在安装或更新，页面会提示等待；事务结束后自动进入。等待启动游戏时可取消，取消的只是本次启动，不会中断正在写入的事务。无需删除 `lock` 文件或清数据。损坏的安装记录不会自动重试，也不会被当成空记录放行。
 
-回归：`ModInstallReplacementTest`、`ModInstallStoreTest` 与 `ModImportSafetyTest`。宿主真实 ZIP/文件系统回归和跨 JVM 进程中断恢复 smoke 不代替 Android 真机更新、取消及导入 Dialog 验证。
+回归：`ModInstallReplacementTest`、`ModInstallStoreTest`、`ModImportSafetyTest`、`ModInstallReadinessTest`。宿主真实 ZIP/文件系统回归和跨 JVM 进程中断恢复 smoke 不代替 Android 真机更新、取消及导入 Dialog 验证。
 
 别名安全边界：manifest 的 `id` / `mod_id` / `modId` / `ID` 与 `pck_name` 的受支持拼写只能提供文件基名，不能含目录分隔符、控制字符、Windows 路径特殊字符或单独的 `.` / `..`；不改变合法 Unicode、点号、连字符名称。导入在别名生成和冲突确认前拒绝不安全名称；启动器清单扫描及 full compat 别名扫描不跟随符号链接，Java 与 full compat 的文件别名创建/删除再次校验同目录约束。该规则只限制导入与别名文件操作，不把普通 C# MOD 变成沙箱代码。运行时回归入口为 `port-mod/tests/ModManifestAlias.Tests`。
 

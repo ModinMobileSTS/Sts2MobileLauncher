@@ -120,6 +120,8 @@ offline bootstrap:
 4. 启动后台线程执行 `GameLaunchPreparationManager.prepareForLaunch()`。
 5. 准备完成后启动 `GodotApp` 并附加 `launch_prepared=true`。
 
+如果当前 MOD 目录被安装事务占用，启动器在前台显示等待提示，在工作线程重试；取消不会中断安装。如果在准备完成之后才发生竞争，或从快捷方式直接进入 `GodotApp`，引擎不会先行启动：等待页重新准备当前配置，通过最终 MOD 事务检查后才创建引擎。记录损坏等 I/O 失败不作锁竞争处理。
+
 准备复制兼容程序集/overlay 前再次校验已绑定包的两个 artifact；Godot Activity 也不信任单独的 `launch_prepared=true` 标记。缺文件或准备失败会终止启动，不静默进入半兼容状态；用户显式关闭兼容包时仍清理 staged DLL/overlay 并保留无兼容层启动路径。
 
 Steam Cloud 与 WebDAV 的非强制同步使用逐文件的共同基线：仅本地变化时拉取会保留本地文件，仅远端变化时可以拉取，两端分叉或没有共同基线而内容不同时要求用户明确选择。强制拉取/上传仍可按用户选择覆盖。空操作和部分同步都只为 SHA-1 与长度确认一致的文件推进基线；未同步、缺失或分叉文件保留最后共同基线。旧版曾记录的 `local_sha1 != remote_sha1` 条目不再被当作共同祖先，升级后可能需要先确认一次保留哪端，不能静默推断胜方。

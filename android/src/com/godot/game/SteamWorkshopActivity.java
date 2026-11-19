@@ -168,7 +168,10 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
 		SystemBarInsetsHelper.enableEdgeToEdge(this);
 		repository = new ExtraSettingsRepository(this);
-		repository.ensureAppDirectories();
+		ModInstallReadiness.open(this, repository::ensureAppDirectories, this::openWorkshop);
+	}
+
+	private void openWorkshop() {
 		catalog = new SteamWorkshopCatalog(this);
 		library = new SteamWorkshopLibrary(this);
 		SteamWorkshopDownloadCleaner.maybeRunDailyCleanup(this);
@@ -178,20 +181,20 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		refreshSteamStatus();
 		refreshSettingsSummary();
 		refreshFilterLabels();
-		if (screenHost != null) {
-			screenHost.post(() -> searchWorkshop("", 1));
-		}
+		// Loading the initial list also requests the first library refresh. onResume may have already run.
+		searchWorkshop("", 1);
 	}
 
 	@Override
 	protected void onResume() {
 		super.onResume();
+		if (library == null) return;
 		refreshSteamAccount();
-		if (library != null) requestLibraryRefresh();
+		requestLibraryRefresh();
 	}
 
 	private void requestLibraryRefresh() {
-		if (destroyed) return;
+		if (library == null || isUiUnavailable()) return;
 		int generation = libraryGeneration.incrementAndGet();
 		libraryExecutor.execute(() -> {
 			if (generation != libraryGeneration.get()) return;
@@ -808,7 +811,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private void loadWorkshopList(String query, boolean subscriptions) {
-		if (busy) return;
+		if (catalog == null || busy || isUiUnavailable()) return;
 		final String accountKey = subscriptions ? steamAccountKey() : "";
 		if (subscriptions && TextUtils.isEmpty(accountKey)) {
 			refreshSteamAccount();
@@ -3464,6 +3467,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 	}
 
 	private String userFacingErrorMessage(Exception exception) {
+		if (exception instanceof ModInstallStore.BusyException) return getString(R.string.mod_install_busy);
 		String message = exception == null || exception.getMessage() == null ? String.valueOf(exception) : exception.getMessage();
 		if (exception instanceof SteamWorkshopDownloader.SupplyStationDownloadException) {
 			return message;

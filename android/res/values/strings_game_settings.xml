@@ -28,6 +28,10 @@
     <string name="status_mod_save_transfer_no_source">No transferable saves were found in “%1$s”.</string>
     <string name="section_mod">MOD</string>
     <string name="mod_list_loading">Scanning installed MODs…</string>
+    <string name="mod_install_waiting">Waiting for another MOD operation to finish. This check will retry automatically.</string>
+    <string name="mod_install_busy">Another MOD operation is in progress. Try again when it finishes.</string>
+    <string name="mod_install_retry">Retry</string>
+    <string name="mod_install_back">Back</string>
     <string name="mod_master_switch">Allow loading MODs</string>
     <string name="import_mod">Import MOD</string>
     <string name="workshop_open">Workshop</string>

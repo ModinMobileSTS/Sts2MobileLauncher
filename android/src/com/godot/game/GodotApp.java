@@ -32,6 +32,7 @@ package com.godot.game;
 
 import org.godotengine.godot.Godot;
 import org.godotengine.godot.GodotActivity;
+import org.godotengine.godot.GodotFragment;
 import org.godotengine.godot.plugin.GodotPlugin;
 
 import org.fmod.FMOD;
@@ -48,6 +49,7 @@ import org.json.JSONObject;
 
 import androidx.activity.EdgeToEdge;
 import androidx.core.splashscreen.SplashScreen;
+import androidx.lifecycle.Lifecycle;
 
 import com.godot.game.steam.cloud.SteamCleanExitTracker;
 
@@ -83,6 +85,7 @@ public class GodotApp extends GodotActivity {
 	private static volatile boolean currentWindowFocused;
 	private static volatile boolean currentResumed;
 	private File gameDir;
+	private boolean redirectingBeforeEngine;
 	private android.view.OrientationEventListener orientationEventListener;
 	private InGameOverlayController inGameOverlayController;
 	private final HighRefreshRateController highRefreshRateController = new HighRefreshRateController();
@@ -128,29 +131,48 @@ public class GodotApp extends GodotActivity {
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		Log.i(TAG, "DIAG GodotApp.onCreate begin savedInstanceState=" + (savedInstanceState != null) + " intent=" + describeIntent(getIntent()));
+		if (!ExtraSettingsPreferences.isFirstRunSetupCompleted(this)) {
+			Log.i("GODOT", "First-run setup is incomplete; redirecting GodotApp launch to GameSettingsActivity.");
+			Intent settingsIntent = new Intent(this, GameSettingsActivity.class);
+			redirectBeforeGodot(settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP));
+			return;
+		}
+
+		boolean launchPrepared = getIntent().getBooleanExtra("launch_prepared", false);
+		try {
+			ensureLaunchPreparedBeforeGodot(launchPrepared);
+			// Preparation (including the cold fallback) takes its own locks. Only after it has
+			// returned, revalidate this profile and hold the lease across synchronous engine init.
+			File modsRoot = new ExtraSettingsRepository(this).getModsRootDir();
+			new ModInstallStore(getFilesDir(), modsRoot).recover(() -> {
+				configureGameBeforeGodot();
+				super.onCreate(savedInstanceState);
+			});
+		} catch (ModInstallStore.BusyException busy) {
+			Log.i(TAG, "MOD installation still in progress; deferring Godot startup.");
+			redirectBeforeGodot(copyRetryArguments(getIntent(), new Intent(this, GodotLaunchRetryActivity.class)));
+			return;
+		} catch (IOException exception) {
+			throw new IllegalStateException("Cannot start Godot before MOD installation recovery succeeds.", exception);
+		}
+		applyConfiguredScreenOrientation();
+		currentInstance = this;
+		currentWindowFocused = hasWindowFocus();
+		logGodotAppLaunchSnapshot("onCreate_after_super");
+		requestDisplayRefreshRate("onCreate_after_super");
+		scheduleInGameOverlayAttach("onCreate_after_super");
+		floatingMouseInputController = new FloatingMouseInputController(this);
+		builtinKeyboardController = new BuiltinKeyboardController(this);
+		Log.i(TAG, "DIAG GodotApp.onCreate end windowFocused=" + currentWindowFocused);
+	}
+
+	private void configureGameBeforeGodot() {
 		AndroidRuntimeEnvironment.configure(this, TAG);
 		Sts2LogcatCollector.startForSelectedProfile(this);
 		gameDir = new LaunchProfileManager(this).getSelectedGameDir();
 		logGodotAppLaunchSnapshot("onCreate_after_logcat_start");
 		SplashScreen.installSplashScreen(this);
-		if (!ExtraSettingsPreferences.isFirstRunSetupCompleted(this)) {
-			// Even when redirecting away from the game activity, Android requires every
-			// Activity.onCreate() override to call through to super.onCreate(). Skipping
-			// it triggers SuperNotCalledException during ActivityThread.performLaunchActivity.
-			super.onCreate(savedInstanceState);
-			Log.i("GODOT", "First-run setup is incomplete; redirecting GodotApp launch to GameSettingsActivity.");
-			Intent settingsIntent = new Intent(this, GameSettingsActivity.class);
-			settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-			startActivity(settingsIntent);
-			finish();
-			return;
-		}
 		StartupHealthTracker.markGameLaunchStarted(this);
-		try {
-			new ExtraSettingsRepository(this).ensureAppDirectories();
-		} catch (Throwable throwable) {
-			Log.w(TAG, "Unable to normalize extra-settings directories before launch.", throwable);
-		}
 		applyConfiguredScreenOrientation();
 		EdgeToEdge.enable(this);
 		boolean audioCompatibilityMode = false;
@@ -166,20 +188,31 @@ public class GodotApp extends GodotActivity {
 		} catch (Throwable throwable) {
 			Log.w(TAG, "FMOD init failed; continuing so launcher diagnostics remain available.", throwable);
 		}
-		boolean launchPrepared = getIntent().getBooleanExtra("launch_prepared", false);
-		Log.e(TAG, "DIAG_FORCE GodotApp.onCreate launch_prepared=" + launchPrepared + " forcing_pre_super_prepare=true");
-		ensureLaunchPreparedBeforeGodot(launchPrepared);
 		logGodotAppLaunchSnapshot("onCreate_before_super");
-		super.onCreate(savedInstanceState);
-		applyConfiguredScreenOrientation();
-		currentInstance = this;
-		currentWindowFocused = hasWindowFocus();
-		logGodotAppLaunchSnapshot("onCreate_after_super");
-		requestDisplayRefreshRate("onCreate_after_super");
-		scheduleInGameOverlayAttach("onCreate_after_super");
-		floatingMouseInputController = new FloatingMouseInputController(this);
-		builtinKeyboardController = new BuiltinKeyboardController(this);
-		Log.i(TAG, "DIAG GodotApp.onCreate end windowFocused=" + currentWindowFocused);
+	}
+
+	private void redirectBeforeGodot(Intent target) {
+		redirectingBeforeEngine = true;
+		// Never restore a saved engine fragment on a denied launch. setContentView below
+		// provides the fragment GodotActivity requires without letting it reach onCreate.
+		super.onCreate(null);
+		startActivity(target);
+		finish();
+	}
+
+	@Override
+	public void setContentView(int layoutResId) {
+		super.setContentView(layoutResId);
+		if (redirectingBeforeEngine) {
+			// The 4.5.1 template reuses a GodotFragment already in this container. Cap it
+			// in the *same* transaction as add: even a transient CREATED starts the engine.
+			GodotFragment dormant = new GodotFragment();
+			getSupportFragmentManager().beginTransaction()
+				.setReorderingAllowed(true)
+				.add(org.godotengine.godot.R.id.godot_fragment_container, dormant)
+				.setMaxLifecycle(dormant, Lifecycle.State.INITIALIZED)
+				.commitNow();
+		}
 	}
 
 	private void scheduleInGameOverlayAttach(String reason) {
@@ -536,13 +569,8 @@ public class GodotApp extends GodotActivity {
 		return gameDir;
 	}
 
-	private void ensureLaunchPreparedBeforeGodot(boolean launchPrepared) {
-		try {
-			ExtraSettingsRepository repository = new ExtraSettingsRepository(this);
-			new ModInstallStore(getFilesDir(), repository.getModsRootDir()).recover();
-		} catch (IOException exception) {
-			throw new IllegalStateException("Cannot start Godot before MOD installation recovery succeeds.", exception);
-		}
+	private void ensureLaunchPreparedBeforeGodot(boolean launchPrepared) throws IOException {
+		new ExtraSettingsRepository(this).ensureAppDirectories();
 		CompatPackManager compatPackManager = new CompatPackManager(this);
 		try {
 			compatPackManager.requireSelectedPackReady();
@@ -563,10 +591,12 @@ public class GodotApp extends GodotActivity {
 		Log.e(TAG, "DIAG_FORCE GodotApp.ensureLaunchPrepared after entry=" + describeFile(entryDll) + " game_dll=" + describeFile(gameDll) + " publish=" + describeFile(publishDir));
 	}
 
-	private void prepareLaunchFallback() {
+	private void prepareLaunchFallback() throws ModInstallStore.BusyException {
 		try {
 			new GameLaunchPreparationManager(this).prepareForLaunch();
 			Log.e(TAG, "DIAG_FORCE Launch preparation complete via Activity pre-super fallback.");
+		} catch (ModInstallStore.BusyException busy) {
+			throw busy;
 		} catch (Exception exception) {
 			Log.e(TAG, "DIAG_FORCE Failed to prepare launch before Godot startup.", exception);
 			throw new IllegalStateException("Cannot start Godot before launch preparation succeeds.", exception);
@@ -697,6 +727,17 @@ public class GodotApp extends GodotActivity {
 		return intent;
 	}
 
+	static Intent copyRetryArguments(Intent source, Intent target) {
+		if (source.getBooleanExtra(getEXTRA_NEW_LAUNCH(), false)) {
+			target.putExtra(getEXTRA_NEW_LAUNCH(), true);
+		}
+		String[] args = source.getStringArrayExtra(getEXTRA_COMMAND_LINE_PARAMS());
+		if (args != null) target.putExtra(getEXTRA_COMMAND_LINE_PARAMS(), args);
+		// A wait can span a profile/compatibility change. Do not forward launch_prepared,
+		// task/grant flags, data or arbitrary extras from the exported component.
+		return target;
+	}
+
 	private void requestDisplayRefreshRate(String reason) {
 		String mode = new ExtraSettingsRepository(this).getDisplayRefreshRateModeForLaunch();
 		HighRefreshRateController.RefreshRateMode requestMode = switch (mode) {
@@ -710,6 +751,7 @@ public class GodotApp extends GodotActivity {
 	@Override
 	public void onResume() {
 		super.onResume();
+		if (redirectingBeforeEngine) return;
 		currentInstance = this;
 		currentResumed = true;
 		currentWindowFocused = hasWindowFocus();
@@ -733,6 +775,10 @@ public class GodotApp extends GodotActivity {
 
 	@Override
 	public void onPause() {
+		if (redirectingBeforeEngine) {
+			super.onPause();
+			return;
+		}
 		disableOrientationEventListener();
 		currentResumed = false;
 		currentWindowFocused = false;
@@ -985,6 +1031,7 @@ public class GodotApp extends GodotActivity {
 	@Override
 	public void onWindowFocusChanged(boolean hasFocus) {
 		super.onWindowFocusChanged(hasFocus);
+		if (redirectingBeforeEngine) return;
 		currentWindowFocused = hasFocus;
 		if (inputSourceHostPlugin != null) {
 			inputSourceHostPlugin.onWindowFocusChanged(hasFocus);
@@ -1000,6 +1047,12 @@ public class GodotApp extends GodotActivity {
 
 	@Override
 	public void onDestroy() {
+		if (redirectingBeforeEngine) {
+			// No game was started by this Activity. In particular FMOD and the static
+			// interaction state may belong to a different instance.
+			super.onDestroy();
+			return;
+		}
 		if (inGameOverlayController != null) {
 			try {
 				inGameOverlayController.detach();
