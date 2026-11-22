@@ -194,9 +194,12 @@ Steam Cloud 与 WebDAV 的非强制同步使用逐文件的共同基线：仅本
 
 ```text
 --main-pack <files>/payloads/<payload_id>/game/SlayTheSpire2.pck
+--main-pack=<files>/payloads/<payload_id>/game/SlayTheSpire2.pck
 ```
 
-- 否则解压并使用 `bootstrap.pck`。
+  Godot 4.5.1 使用第一行的两个参数加载本体，不会把它们留在 `OS.GetCmdlineArgs()` 中。第二行是单个参数，供 MOD 读取同一主 PCK 的绝对路径，不替代第一行。
+
+- 否则解压并使用 `bootstrap.pck`，不传供 MOD 读取的 `--main-pack=…`。
 
 patched Godot/.NET runtime 随后在 Mono publish 目录中寻找并加载：
 

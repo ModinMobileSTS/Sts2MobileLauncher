@@ -40,6 +40,8 @@ mod_manifest.json
 
 并添加 `android_generated_manifest_alias=true`，必要时删除重复的 `mod_manifest.json`。
 
+需要直接打开游戏主 PCK 的 MOD，可以从 `OS.GetCmdlineArgs()` 查找以 `--main-pack=` 开头的参数，取前缀后的完整路径。该路径指向当前启动配置的游戏本体；不要从 `OS.GetExecutablePath()` 推算，也不要把 PCK 所在目录当作 MOD 根目录。
+
 ### 2.1 原生用户目录与 MOD 自有配置
 
 启动器在 `Sts2Application.onCreate()`、Godot/Mono 启动之前，通过 `AndroidRuntimeEnvironment` 将原生进程环境变量 `HOME` 设为应用私有 `<files>`，先创建并写探测 `<files>/.config/`；现有 `TMPDIR` / `TMP` / `TEMP` 继续指向 `<files>/tmp/`。HOME 与 temp 分别初始化，HOME 失败不会阻止 temp 配置，后续启动准备或 Godot Activity 入口可重试未完成的部分。成功配置在同一进程内复用，不跟随启动配置切换。

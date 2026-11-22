@@ -415,10 +415,13 @@ public class GodotApp extends GodotActivity {
 		appendSts2LogLevelCommandLineArgs(commandLine);
 		File pckFile = new File(getGameDir(), PCK_FILE_NAME);
 		if (pckFile.isFile()) {
+			String pckPath = pckFile.getAbsolutePath();
 			commandLine.add("--main-pack");
-			commandLine.add(pckFile.getAbsolutePath());
-			Log.i(TAG, "Loading imported game PCK: " + pckFile.getAbsolutePath());
-			appendAndroidLaunchLog("Loading imported game PCK: " + pckFile.getAbsolutePath());
+			commandLine.add(pckPath);
+			// Godot 4.5 consumes the two arguments above. Mods can read this form via OS.GetCmdlineArgs().
+			commandLine.add("--main-pack=" + pckPath);
+			Log.i(TAG, "Loading imported game PCK: " + pckPath);
+			appendAndroidLaunchLog("Loading imported game PCK: " + pckPath);
 		} else {
 			String bootstrapPck = extractBootstrapPck();
 			if (bootstrapPck != null) {
