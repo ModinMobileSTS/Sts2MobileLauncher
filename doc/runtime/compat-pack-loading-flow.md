@@ -71,6 +71,10 @@ offline bootstrap:
 1. Android 默认启动 `GameSettingsActivity`。设置页内部使用“画面 / 操作 / 存档 / 系统”顶部 Segmented Button 分区，较长的单选设置（如渲染器、分辨率、旋转模式、日志等级、桌面图标启动后）通过 Bottom Sheet 单选列表修改；预加载详细 BottomSheet 刚打开时可通过内容区上滑完整展开，完整展开后内容滚动区不参与降下/关闭，只能下拉顶部手柄关闭。首次安装和新建隔离档案首次生成设置时，推荐图形默认写入 `msaa=0`、`vsync=off`。画面高级里的“旋转模式”写入 `android_screen_rotation_mode`，默认 `user_landscape`（跟随系统旋转锁定设置，仅在两向横屏间受系统开关约束旋转）；也可选 `auto`（强制自动旋转，即使系统关闭旋转锁定，游戏内也支持双向重力感应旋转）；此外还可固定为 `landscape`（不旋转）或 `reverse_landscape`（翻转 180°）。桌面图标名称/图标使用主应用资源；“设置 → 系统 → 桌面图标启动后”默认打开附加设置，也可切换为向导完成后自动走 `GameSettingsActivity.launchGame()` 直接启动游戏。设置页快捷方式和游戏内返回设置不触发自动直启。
 
    同一“旋转模式”列表还提供 `portrait`（“竖屏，需配合竖屏 MOD”），默认不启用；请自行安装并启用兼容的竖屏 UI MOD。Java 使用 `SCREEN_ORIENTATION_PORTRAIT`，并停止横屏重力强转；更新后的 full compat 同步 Godot portrait 方向与下述竖屏逻辑画布。启动器不内置、检测或自动启用竖屏 MOD；offline bootstrap 不包含显示布局补丁。
+
+   **禁用 OpenGL 着色器缓存**位于“设置 → 画面 → 画面细项”的“着色器兼容”下方。点击后可选择“关闭（默认）”“仅粒子”或“全部着色器”。使用 OpenGL ES 的 PowerVR 设备若在第二次启动或第二场战斗闪退，优先试“仅粒子”；若无效再试“全部着色器”，后者每次启动都需重新编译更多着色器，可能增加卡顿。完全退出游戏再启动生效，无需重装或清数据。
+
+   这是设备上的启动器偏好，不修改存档、预加载或着色器兼容设置。“仅粒子”只隔离 `shader_cache/ParticlesShaderGLES3`，不关闭粒子效果；“全部着色器”让 Godot 跳过本次 OpenGL ES 磁盘缓存。已有缓存目录仅暂存，切回关闭或启动 Vulkan 时恢复。先前手动放置的同名空文件不会被启动器删除。
 2. 设置页可在后台调用 `CompatPackManager.installBundledCompatPacks()`：
    - 枚举 APK assets `compat_packs/*.zip`。
    - 复制到私有临时目录。

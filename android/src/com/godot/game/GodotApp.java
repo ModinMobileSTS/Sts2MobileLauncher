@@ -171,6 +171,14 @@ public class GodotApp extends GodotActivity {
 		Sts2LogcatCollector.startForSelectedProfile(this);
 		gameDir = new LaunchProfileManager(this).getSelectedGameDir();
 		logGodotAppLaunchSnapshot("onCreate_after_logcat_start");
+		GlesShaderCache.Mode cacheMode = RendererPreference.getShaderCacheMode(this);
+		String renderer = RendererPreference.getSelectedRenderer(this);
+		try {
+			GlesShaderCache.apply(getFilesDir(), renderer, cacheMode);
+			Log.i(TAG, "GLES shader cache policy: renderer=" + renderer + " requested=" + cacheMode.value);
+		} catch (IOException exception) {
+			Log.w(TAG, "Could not apply GLES shader cache policy: renderer=" + renderer + " requested=" + cacheMode.value, exception);
+		}
 		SplashScreen.installSplashScreen(this);
 		StartupHealthTracker.markGameLaunchStarted(this);
 		applyConfiguredScreenOrientation();

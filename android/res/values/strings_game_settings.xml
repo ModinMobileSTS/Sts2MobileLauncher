@@ -888,6 +888,13 @@
     <string name="font_scale">Font size</string>
     <string name="shader_compatibility_switch">Shader compatibility</string>
     <string name="shader_compatibility_hint">Use simpler mobile-safe shader variants where available.</string>
+    <string name="gles_cache_disable_title">Disable OpenGL shader cache</string>
+    <string name="gles_cache_off">Off (default)</string>
+    <string name="gles_cache_particles">Particles only</string>
+    <string name="gles_cache_all">All shaders</string>
+    <string name="gles_cache_off_desc">Use the normal disk cache. Changes take effect on the next game start and do not affect Vulkan.</string>
+    <string name="gles_cache_particles_desc">Try this first if a PowerVR device crashes on the second launch or fight. Other shaders stay cached.</string>
+    <string name="gles_cache_all_desc">Bypass the entire OpenGL ES shader disk cache. Shaders must compile again each session, which may cause stutter.</string>
     <string name="settings_save_subtitle">Import, export, unlock and transfer save slots.</string>
     <string name="local_save_snapshot_title">Local save snapshots</string>
     <string name="local_save_snapshot_subtitle">Automatically keeps the latest 5 save snapshots before launch and after clean exit.</string>

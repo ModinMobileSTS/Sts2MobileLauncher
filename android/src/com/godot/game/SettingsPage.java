@@ -72,6 +72,7 @@ public final class SettingsPage {
 	private static final String[] VSYNC_VALUES = new String[] { "off", "on", "adaptive" };
 	private static final String[] ASPECT_VALUES = new String[] { "auto", "sixteen_by_nine", "sixteen_by_ten", "twenty_one_by_nine", "four_by_three" };
 	private static final String[] RENDERER_VALUES = new String[] { RendererPreference.RENDERER_OPENGL_ES3, RendererPreference.RENDERER_VULKAN };
+	private static final GlesShaderCache.Mode[] GLES_CACHE_MODES = GlesShaderCache.Mode.values();
 	private static final String[] LOG_LEVEL_VALUES = new String[] { ExtraSettingsRepository.LOG_LEVEL_OFF, ExtraSettingsRepository.LOG_LEVEL_INFO, ExtraSettingsRepository.LOG_LEVEL_DEBUG, ExtraSettingsRepository.LOG_LEVEL_VERY_DEBUG };
 	private static final String[] LAUNCHER_STARTUP_VALUES = new String[] { ExtraSettingsPreferences.LAUNCHER_STARTUP_SETTINGS, ExtraSettingsPreferences.LAUNCHER_STARTUP_GAME };
 	private static final String[] DISPLAY_REFRESH_RATE_VALUES = new String[] {
@@ -424,6 +425,9 @@ public final class SettingsPage {
 		});
 		addSpinnerRow(content, R.drawable.ic_text_fields_24, R.string.font_scale, buildFontScaleLabels(), findIntIndex(FONT_SCALE_OPTIONS, settings.optInt("ui_font_scale_percent", 100)), position -> repository.saveSetting(root -> root.put("ui_font_scale_percent", FONT_SCALE_OPTIONS[position])));
 		addSwitchRow(content, R.drawable.ic_build_24, R.string.shader_compatibility_switch, R.string.shader_compatibility_hint, settings.optBoolean("shader_compatibility_mode", false), checked -> repository.saveSetting(root -> root.put("shader_compatibility_mode", checked)));
+		addSpinnerRow(content, R.drawable.ic_layers_24, R.string.gles_cache_disable_title,
+			Arrays.asList(context.getString(R.string.gles_cache_off), context.getString(R.string.gles_cache_particles), context.getString(R.string.gles_cache_all)),
+			RendererPreference.getShaderCacheMode(context).ordinal(), position -> RendererPreference.setShaderCacheMode(context, GLES_CACHE_MODES[position]));
 		return card;
 	}
 
@@ -770,6 +774,13 @@ public final class SettingsPage {
 			return Arrays.asList(
 				new ChoiceOption(labels.get(0), context.getString(R.string.choice_sheet_renderer_opengl_desc), R.drawable.ic_layers_24),
 				new ChoiceOption(labels.get(1), context.getString(R.string.choice_sheet_renderer_vulkan_desc), R.drawable.ic_speed_24)
+			);
+		}
+		if (labelRes == R.string.gles_cache_disable_title) {
+			return Arrays.asList(
+				new ChoiceOption(labels.get(0), context.getString(R.string.gles_cache_off_desc), R.drawable.ic_close_24),
+				new ChoiceOption(labels.get(1), context.getString(R.string.gles_cache_particles_desc), R.drawable.ic_build_24),
+				new ChoiceOption(labels.get(2), context.getString(R.string.gles_cache_all_desc), R.drawable.ic_layers_24)
 			);
 		}
 		if (labelRes == R.string.launcher_startup_behavior_title && labels.size() >= 2) {

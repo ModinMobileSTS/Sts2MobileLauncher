@@ -888,6 +888,13 @@
     <string name="font_scale">字型大小</string>
     <string name="shader_compatibility_switch">著色器相容</string>
     <string name="shader_compatibility_hint">儘量使用更保守的行動版相容著色器。</string>
+    <string name="gles_cache_disable_title">停用 OpenGL 著色器快取</string>
+    <string name="gles_cache_off">關閉（預設）</string>
+    <string name="gles_cache_particles">僅粒子</string>
+    <string name="gles_cache_all">全部著色器</string>
+    <string name="gles_cache_off_desc">正常使用磁碟快取。變更後下次啟動遊戲生效，不影響 Vulkan。</string>
+    <string name="gles_cache_particles_desc">PowerVR 裝置第二次啟動或第二場戰鬥閃退時，建議先試這一項。其他著色器仍使用快取。</string>
+    <string name="gles_cache_all_desc">停用全部 OpenGL ES 著色器磁碟快取。每次啟動後都需要重新編譯，可能出現卡頓。</string>
     <string name="settings_save_subtitle">匯入、匯出、解鎖與轉移存檔。</string>
     <string name="local_save_snapshot_title">本機存檔快照</string>
     <string name="local_save_snapshot_subtitle">啟動前與正常結束遊戲後自動保留最近 5 個存檔快照。</string>

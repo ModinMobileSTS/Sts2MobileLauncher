@@ -888,6 +888,13 @@
     <string name="font_scale">字体大小</string>
     <string name="shader_compatibility_switch">着色器兼容</string>
     <string name="shader_compatibility_hint">尽量使用更保守的移动端兼容着色器。</string>
+    <string name="gles_cache_disable_title">禁用 OpenGL 着色器缓存</string>
+    <string name="gles_cache_off">关闭（默认）</string>
+    <string name="gles_cache_particles">仅粒子</string>
+    <string name="gles_cache_all">全部着色器</string>
+    <string name="gles_cache_off_desc">正常使用磁盘缓存。修改后下次启动游戏生效，不影响 Vulkan。</string>
+    <string name="gles_cache_particles_desc">PowerVR 设备第二次启动或第二场战斗闪退时，建议先试这一项。其他着色器仍使用缓存。</string>
+    <string name="gles_cache_all_desc">禁用全部 OpenGL ES 着色器磁盘缓存。每次启动后都需要重新编译，可能出现卡顿。</string>
     <string name="settings_save_subtitle">导入、导出、解锁与转移存档。</string>
     <string name="local_save_snapshot_title">本地存档快照</string>
     <string name="local_save_snapshot_subtitle">启动前与干净退出后自动保留最近 5 个存档快照。</string>
