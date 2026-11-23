@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sts2_crash_activity_name">當機復原</string>
+    <string name="sts2_crash_toolbar_title">當機復原</string>
+    <string name="sts2_crash_toolbar_subtitle">遊戲意外中斷</string>
+    <string name="sts2_crash_title_line">已記錄當機資訊</string>
+    <string name="sts2_crash_summary_fallback">Android 版遊戲執行時發生未預期的錯誤。</string>
+    <string name="sts2_crash_hint">如果遊戲每次啟動都閃退，請先開啟復原設定。下方的錯誤訊息可複製，也可以用長截圖保留完整內容。</string>
+    <string name="sts2_crash_badge_renderer">渲染器 · %1$s</string>
+    <string name="sts2_crash_badge_android">Android · %1$s（SDK %2$d）</string>
+    <string name="sts2_crash_badge_build">組建版本 · %1$s（%2$s/%3$s）</string>
+    <string name="sts2_crash_section_actions">快速操作</string>
+    <string name="sts2_crash_section_actions_body">可以直接重試，或先到復原設定切換渲染器、停用 MOD，再重新啟動遊戲。</string>
+    <string name="sts2_crash_action_open_settings">開啟復原設定</string>
+    <string name="sts2_crash_action_retry_game">重新啟動遊戲</string>
+    <string name="sts2_crash_action_copy">複製錯誤訊息</string>
+    <string name="sts2_crash_action_close">關閉應用程式</string>
+    <string name="sts2_crash_section_details">當機報告</string>
+    <string name="sts2_crash_section_details_body">下方以較小的等寬字型顯示完整錯誤訊息，方便擷取長截圖。</string>
+    <string name="sts2_crash_detail_fallback">目前無法取得完整的當機報告。請複製畫面上的訊息，並說明當機前的最後一個操作。</string>
+    <string name="sts2_crash_copied">已將當機報告複製到剪貼簿。</string>
+</resources>

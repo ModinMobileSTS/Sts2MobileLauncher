@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="log_analysis_title">記錄小幫手</string>
+    <string name="log_analysis_assistant">記錄小幫手</string>
+    <string name="log_analysis_welcome_title">想從記錄中查什麼？</string>
+    <string name="log_analysis_welcome">輸入問題或點選範例，模型會搜尋遊戲記錄，並引用相關片段與行號作答。</string>
+    <string name="log_analysis_prompt_crash">上次啟動遊戲當機是什麼原因？</string>
+    <string name="log_analysis_prompt_mods">最近有哪些 MOD 載入失敗？</string>
+    <string name="log_analysis_question">輸入關於記錄的問題，或接著追問…</string>
+    <string name="log_analysis_send">送出問題並查詢記錄</string>
+    <string name="log_analysis_stop">停止回答</string>
+    <string name="log_analysis_restart">新對話</string>
+    <string name="log_analysis_retry">重新提問</string>
+    <string name="log_analysis_loading">正在讀取模型設定…</string>
+    <string name="log_analysis_unconfigured">尚未設定模型服務</string>
+    <string name="log_analysis_working">正在分析…</string>
+    <string name="log_analysis_writing">正在回答…</string>
+    <string name="log_analysis_stopped">回答已停止</string>
+    <string name="log_analysis_generic_error">未能完成回答，請檢查模型服務後重試。</string>
+    <string name="log_analysis_config">設定模型服務</string>
+    <string name="log_analysis_config_notice">使用支援工具呼叫的 OpenAI 相容服務。啟用後，你可以讓此服務檢索全部應用程式記錄；只會傳送問題和用到的記錄片段。更換服務會開始新對話。</string>
+    <string name="log_analysis_base_url">服務網址（基底網址或完整端點）</string>
+    <string name="log_analysis_api_key">API 金鑰（選填）</string>
+    <string name="log_analysis_model">模型 ID</string>
+    <string name="log_analysis_effort">推理強度（選填）</string>
+    <string name="log_analysis_save">儲存並啟用</string>
+    <string name="log_analysis_saving">正在儲存…</string>
+    <string name="log_analysis_cancel">取消</string>
+    <string name="log_analysis_config_failed">未能讀取模型設定，請重新設定服務。原有設定沒有被清除。</string>
+</resources>
