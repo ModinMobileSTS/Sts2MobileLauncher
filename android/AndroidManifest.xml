@@ -85,6 +85,12 @@
         </activity>
 
         <activity
+            android:name=".GodotLaunchRetryActivity"
+            android:label="@string/godot_project_name_string"
+            android:theme="@style/Theme.Sts2ExtraSettings"
+            android:exported="false" />
+
+        <activity
             android:name=".Sts2CrashActivity"
             android:label="@string/sts2_crash_activity_name"
             android:theme="@style/Theme.Sts2Crash"

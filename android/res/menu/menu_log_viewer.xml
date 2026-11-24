@@ -3,6 +3,12 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/action_analyze_logs"
+        android:icon="@drawable/ic_ms_auto_awesome_24"
+        android:title="@string/log_analysis_title"
+        app:showAsAction="always" />
+
+    <item
         android:id="@+id/action_refresh_logs"
         android:title="@string/log_viewer_refresh"
         app:showAsAction="always" />

@@ -88,14 +88,20 @@ class SteamWorkshopDownloader(private val context: Context) {
 
     class SupplyStationDownloadException(message: String) : IOException(message)
 
-    fun supplyStationOption(): BranchOption = BranchOption(
-        SpireSupplyStationClient.BRANCH, "", "", SpireSupplyStationClient.SOURCE,
-        context.getString(R.string.workshop_supply_station_branch_notice), "", "", 0L, "", 0L,
-    )
-
-    fun loadBranchOptions(item: SteamWorkshopCatalog.Item): List<BranchOption> = runBlocking {
-        loadBranchOptions(item, emptyList())
+    fun loadBranchOptions(item: SteamWorkshopCatalog.Item, useSupplyStation: Boolean): List<BranchOption> = runBlocking {
+        if (!useSupplyStation) return@runBlocking loadBranchOptions(item, emptyList())
+        val publishedFileId = item.publishedFileId.toULongOrNull()
+            ?: throw IOException("Invalid Steam Workshop file id: ${item.publishedFileId}")
+        val client = SpireSupplyStationClient(createWorkshopNetworkClient(context.applicationContext))
+        try {
+            client.loadBranchOptions(resolveAppId(item), publishedFileId).map { it.toBranchOption() }
+        } catch (error: IOException) {
+            throw supplyStationFailure(error.message.orEmpty())
+        }
     }
+
+    private fun supplyStationFailure(message: String) =
+        SupplyStationDownloadException(context.getString(R.string.workshop_supply_station_failure, message))
 
     fun loadBranchOption(item: SteamWorkshopCatalog.Item, branch: String): BranchOption = runBlocking {
         val normalizedBranch = normalizeWorkshopBranch(branch).ifBlank { "public" }
@@ -140,19 +146,12 @@ class SteamWorkshopDownloader(private val context: Context) {
 
     fun download(
         item: SteamWorkshopCatalog.Item,
-        listener: ((Progress) -> Unit)? = null,
-        cancellationToken: CancellationToken? = null,
-    ): Result = download(item, null, listener, cancellationToken)
-
-    fun download(
-        item: SteamWorkshopCatalog.Item,
-        selectedOption: BranchOption?,
+        selectedOption: BranchOption,
         listener: ((Progress) -> Unit)? = null,
         cancellationToken: CancellationToken? = null,
     ): Result = runBlocking {
         val appContext = context.applicationContext
-        val useSupplyStation = selectedOption?.source == SpireSupplyStationClient.SOURCE ||
-            (selectedOption == null && SteamWorkshopPreferences.isSupplyStationEnabled(appContext))
+        val useSupplyStation = selectedOption.source == SpireSupplyStationClient.SOURCE
         cancellationToken?.bind(currentCoroutineContext()[Job])
         val identity = SteamClientIdentity(appContext)
         val client = createWorkshopNetworkClient(appContext)
@@ -173,9 +172,8 @@ class SteamWorkshopDownloader(private val context: Context) {
             allowPublicCdnFallbackOnSessionFailure = true,
             publishedFileLanguage = "schinese",
         )
-        val selectedVariant = selectedOption?.toResolvedVariant()
-        val branch = if (useSupplyStation) SpireSupplyStationClient.BRANCH else
-            normalizeWorkshopBranch(selectedOption?.branch ?: selectedVariant?.branch ?: "public")
+        val selectedVariant = selectedOption.toResolvedVariant()
+        val branch = selectedVariant.branch
         var resolvedResolution: WorkshopItemResolution? = null
         var sawDeterminateProgress = false
         var lastPercent = 0
@@ -231,8 +229,7 @@ class SteamWorkshopDownloader(private val context: Context) {
                     emit(listener, Progress(100, "Workshop download complete."))
                 }
                 is DownloadEvent.Failed -> {
-                    if (useSupplyStation) throw SupplyStationDownloadException(
-                        context.getString(R.string.workshop_supply_station_failure, event.message))
+                    if (useSupplyStation) throw supplyStationFailure(event.message)
                     throw IOException(event.message)
                 }
                 is DownloadEvent.LogAppended -> Unit
@@ -243,12 +240,12 @@ class SteamWorkshopDownloader(private val context: Context) {
             item = item,
             outputDir = outputDir,
             branch = branch,
-            manifestId = finalResolution?.manifestId?.toString() ?: selectedOption?.manifestId.orEmpty(),
-            depotId = finalResolution?.depotId?.toString() ?: selectedOption?.depotId.orEmpty(),
-            resolutionSource = finalResolution?.source ?: selectedOption?.source.orEmpty(),
-            fallbackReason = finalResolution?.fallbackReason ?: selectedOption?.fallbackReason.orEmpty(),
-            matchedBranchMin = finalResolution?.matchedBranchMin ?: selectedOption?.matchedBranchMin.orEmpty(),
-            matchedBranchMax = finalResolution?.matchedBranchMax ?: selectedOption?.matchedBranchMax.orEmpty(),
+            manifestId = finalResolution?.manifestId?.toString() ?: selectedOption.manifestId,
+            depotId = finalResolution?.depotId?.toString() ?: selectedOption.depotId,
+            resolutionSource = finalResolution?.source ?: selectedOption.source,
+            fallbackReason = finalResolution?.fallbackReason ?: selectedOption.fallbackReason,
+            matchedBranchMin = finalResolution?.matchedBranchMin ?: selectedOption.matchedBranchMin,
+            matchedBranchMax = finalResolution?.matchedBranchMax ?: selectedOption.matchedBranchMax,
         )
     }
 

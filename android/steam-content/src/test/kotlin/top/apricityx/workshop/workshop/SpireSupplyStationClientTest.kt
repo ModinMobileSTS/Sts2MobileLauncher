@@ -38,10 +38,16 @@ class SpireSupplyStationClientTest {
         var tokenCalls = 0
         val client = client { request ->
             requests += request
+            if (request.url.host == "workshop.apricityx.top" && request.url.queryParameter("gameBranch") != "public-beta") {
+                return@client response(request, "no matching version", 409)
+            }
             when {
                 request.url.encodedPath.endsWith("/descriptor") ->
                     response(request, fixture.descriptor(origin = "http://cdn.example"))
                 request.url.encodedPath.endsWith("/cdn/token") -> {
+                    if (request.url.queryParameter("versionId") != "manifest:42") {
+                        return@client response(request, "no authorization for this version", 409)
+                    }
                     tokenCalls++
                     response(
                         request,
@@ -67,10 +73,10 @@ class SpireSupplyStationClientTest {
             assertTrue(events.last() is DownloadEvent.Completed, events.toString())
             assertContentEquals(fixture.content, File(output, "Fixture.json").readBytes())
             val resolution = events.filterIsInstance<DownloadEvent.Resolved>().single().resolution
-            assertEquals(SpireSupplyStationClient.BRANCH, resolution.requestedBranch)
-            assertTrue(
-                resolution.matchedBranchMin.isEmpty() && resolution.matchedBranchMax.isEmpty()
-            )
+            assertEquals("public-beta", resolution.requestedBranch)
+            assertEquals(42uL, resolution.manifestId)
+            assertEquals(SpireSupplyStationClient.SOURCE, resolution.source)
+            assertEquals("", resolution.fallbackReason)
             val persisted =
                 File(output, "metadata.json").readText() + File(output, "download.log").readText()
             assertFalse(persisted.contains("credential-"))
@@ -89,6 +95,68 @@ class SpireSupplyStationClientTest {
             requests.all { it.header("Authorization") == null && it.header("Cookie") == null }
         )
         assertTrue(requests.filter { it.url.host == "cdn.example" }.all { it.url.isHttps })
+    }
+
+    @Test
+    fun listsOnlyMatchedDownloadableBranches() = runBlocking {
+        val client = client { request ->
+            response(request, """{
+                "enabled":true,"branchSourceAvailable":true,"choices":[
+                    {"gameBranch":"public","status":"NO_MATCH"},
+                    {"gameBranch":"public-beta","status":"MATCH","manifestId":"42","minBranch":"public-beta","maxBranch":"public-beta"}
+                ]
+            }""")
+        }
+
+        val options = SpireSupplyStationClient(client).loadBranchOptions(2868840u, 7uL)
+
+        assertEquals(listOf("public-beta" to 42uL), options.map { it.branch to it.manifestId })
+    }
+
+    @Test
+    fun refusesDefaultContentForAnExplicitBranch() = runBlocking {
+        val fixture = Fixture()
+        val client = client { request ->
+            assertTrue(request.url.encodedPath.endsWith("/descriptor"))
+            response(request, fixture.descriptor(gameBranch = null))
+        }
+        withOutput { output ->
+            val events = engine(client).download(request(output)).toList()
+            assertTrue(events.last() is DownloadEvent.Failed)
+            assertFalse(File(output, "metadata.json").exists())
+        }
+    }
+
+    @Test
+    fun refusesDifferentManifestAfterChoosingABranchSnapshot() = runBlocking {
+        val fixture = Fixture()
+        val client = client { request ->
+            assertTrue(request.url.encodedPath.endsWith("/descriptor"))
+            response(request, fixture.descriptor())
+        }
+        withOutput { output ->
+            val selection = WorkshopResolvedVariant("public-beta", 43uL, null, SpireSupplyStationClient.SOURCE)
+            val events = engine(client).download(request(output).copy(selectedVariant = selection)).toList()
+            assertTrue(events.last() is DownloadEvent.Failed)
+            assertFalse(File(output, "metadata.json").exists())
+        }
+    }
+
+    @Test
+    fun stillResolvesExistingStationDefaultInstallsWithoutRelabelingThem() = runBlocking {
+        val fixture = Fixture()
+        val client = client { request ->
+            if (request.url.queryParameter("gameBranch") != null) response(request, "no matching version", 409)
+            else response(request, fixture.descriptor(gameBranch = null))
+        }
+        withOutput { output ->
+            val download = SpireSupplyStationClient(client).resolve(request(output).copy(
+                branch = SpireSupplyStationClient.LEGACY_DEFAULT_BRANCH,
+                selectedVariant = null,
+            ))
+            assertEquals(42uL, download.item.resolution.manifestId)
+            assertEquals(SpireSupplyStationClient.LEGACY_DEFAULT_BRANCH, download.item.resolution.requestedBranch)
+        }
     }
 
     @Test
@@ -134,7 +202,10 @@ class SpireSupplyStationClientTest {
         val client = client { request ->
             when {
                 request.url.encodedPath.endsWith("/descriptor") ->
-                    response(
+                    if (request.url.queryParameter("refresh") == "true" &&
+                        request.url.queryParameter("versionId") != "manifest:42") {
+                        error("Descriptor refresh must pin the previously resolved version")
+                    } else response(
                         request,
                         fixture.descriptor(
                             manifestId =
@@ -282,10 +353,16 @@ class SpireSupplyStationClientTest {
             manifest = zip(bytes.toByteArray())
         }
 
-        fun descriptor(publishedFileId: String = "7", manifestId: String = "42", origin: String = "https://cdn.example") =
+        fun descriptor(
+            publishedFileId: String = "7",
+            manifestId: String = "42",
+            origin: String = "https://cdn.example",
+            gameBranch: String? = "public-beta",
+        ) =
             """{
             "mode":"UGC","appId":2868840,"publishedFileId":"$publishedFileId","title":"fixture",
             "fileName":"fixture.zip","fileSizeBytes":${content.size},"contentVersion":"fixture-v1",
+            "gameBranch":${gameBranch?.let { "\"$it\"" } ?: "null"},"versionId":"manifest:$manifestId",
             "manifestId":"$manifestId","depotId":2868840,"requestCode":"18446744073709551614",
             "endpoints":[{"origin":"$origin","query":null}],"depotKeyBase64":"$keyBase64",
             "expiresAt":"2100-01-01T00:00:00Z"} """

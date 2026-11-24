@@ -107,13 +107,14 @@ public final class ExtraSettingsRepository {
 		this.context = context;
 	}
 
-	public void ensureAppDirectories() {
+	public void ensureAppDirectories() throws IOException {
 		ensureDirectory(getAccountRootDir());
 		File modsRoot = getModsRootDir();
 		ensureDirectory(modsRoot);
-		recoverModInstallTransactions(modsRoot);
-		recoverWorkshopInstallTransactions(modsRoot);
-		normalizeRuntimeModAliases(modsRoot);
+		new ModInstallStore(context.getFilesDir(), modsRoot).recover(() -> {
+			recoverWorkshopInstallTransactions(modsRoot);
+			normalizeRuntimeModAliases(modsRoot);
+		});
 	}
 
 	public void saveSetting(JsonMutator mutator) throws Exception {
@@ -901,14 +902,6 @@ public final class ExtraSettingsRepository {
 	public void discardPreparedModImport(PreparedModImport preparedImport) {
 		if (preparedImport != null) {
 			deleteRecursively(preparedImport.stagingRoot);
-		}
-	}
-
-	private void recoverModInstallTransactions(File modsRoot) {
-		try {
-			new ModInstallStore(context.getFilesDir(), modsRoot).recover();
-		} catch (IOException exception) {
-			throw new IllegalStateException("Unable to recover MOD installation; files have not been accepted for launch.", exception);
 		}
 	}
 

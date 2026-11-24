@@ -54,7 +54,10 @@ public class NexusModsStoreActivity extends AppCompatActivity {
 		ExtraSettingsUi.applyPhonePortraitTabletFreeOrientation(this);
 		SystemBarInsetsHelper.enableEdgeToEdge(this);
 		repository = new ExtraSettingsRepository(this);
-		repository.ensureAppDirectories();
+		ModInstallReadiness.open(this, repository::ensureAppDirectories, this::openStore);
+	}
+
+	private void openStore() {
 		setContentView(buildContent());
 		refreshApiStatus();
 		if (NexusModsStorePreferences.hasPersonalApiKey(this)) {
@@ -907,7 +910,7 @@ public class NexusModsStoreActivity extends AppCompatActivity {
 	}
 
 	private void showError(Exception exception) {
-		String detail = exception.getMessage();
+		String detail = exception instanceof ModInstallStore.BusyException ? getString(R.string.mod_install_busy) : exception.getMessage();
 		if (TextUtils.isEmpty(detail)) {
 			detail = exception.getClass().getSimpleName();
 		}

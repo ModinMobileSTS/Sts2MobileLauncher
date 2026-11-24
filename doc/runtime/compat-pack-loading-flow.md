@@ -1,6 +1,8 @@
 # MOD 与兼容包加载流程
 
-本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。当前说明适用于内置的 `v0.103.x` / `v0.107.1` / `v0.108.0` 正式/稳定兼容 target、共享 `v0.109.x`（v0.109.0/v0.109.1，稳定 id `v0.109.0`）、共享 `v0.110.x`（v0.110.0/v0.110.1，稳定 id `v0.110.0`）、独立 `v0.111.0`、当前共享 `v0.113.x`（v0.113.0/v0.113.1，稳定 id `v0.113.0`）public-beta target，以及旧 `v0.106.1` / `v0.107.0` beta target。
+本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的详细加载顺序。当前说明适用于内置的 `v0.103.x` / `v0.107.1` / `v0.108.0` / `v0.111.1` 正式/稳定兼容 target、共享 `v0.109.x`（v0.109.0/v0.109.1，稳定 id `v0.109.0`）、共享 `v0.110.x`（v0.110.0/v0.110.1，稳定 id `v0.110.0`）、独立 `v0.111.0`、当前共享 `v0.113.x`（v0.113.0/v0.113.1，稳定 id `v0.113.0`）public-beta target，以及旧 `v0.106.1` / `v0.107.0` beta target。
+
+当前 full family `compat_version=0.7.2-dev` 包含 10 个 metadata target。v0.111.1 stable / `public` 与保留的 v0.111.0 beta / `public-beta` 是两个独立记录，但共享 `original-v0.111.0`、现有 v0.111.0 V1110 引用与 `STS2_TARGET_1110`，没有新增 flavor/环境变量或 Java/C# 运行时分支。两版 API、运行时 IL 与依赖等价，仍须分别保留版本、DLL SHA、release 身份和 Steam 分支；桌面审计及 native/headless ModelDb 初始化不代表 Android UI/玩法、普通 MOD 或 LAN 认证，也不承诺 .0/.1 跨版本 LAN。
 
 ## 1. 术语
 
@@ -69,6 +71,10 @@ offline bootstrap:
 1. Android 默认启动 `GameSettingsActivity`。设置页内部使用“画面 / 操作 / 存档 / 系统”顶部 Segmented Button 分区，较长的单选设置（如渲染器、分辨率、旋转模式、日志等级、桌面图标启动后）通过 Bottom Sheet 单选列表修改；预加载详细 BottomSheet 刚打开时可通过内容区上滑完整展开，完整展开后内容滚动区不参与降下/关闭，只能下拉顶部手柄关闭。首次安装和新建隔离档案首次生成设置时，推荐图形默认写入 `msaa=0`、`vsync=off`。画面高级里的“旋转模式”写入 `android_screen_rotation_mode`，默认 `user_landscape`（跟随系统旋转锁定设置，仅在两向横屏间受系统开关约束旋转）；也可选 `auto`（强制自动旋转，即使系统关闭旋转锁定，游戏内也支持双向重力感应旋转）；此外还可固定为 `landscape`（不旋转）或 `reverse_landscape`（翻转 180°）。桌面图标名称/图标使用主应用资源；“设置 → 系统 → 桌面图标启动后”默认打开附加设置，也可切换为向导完成后自动走 `GameSettingsActivity.launchGame()` 直接启动游戏。设置页快捷方式和游戏内返回设置不触发自动直启。
 
    同一“旋转模式”列表还提供 `portrait`（“竖屏，需配合竖屏 MOD”），默认不启用；请自行安装并启用兼容的竖屏 UI MOD。Java 使用 `SCREEN_ORIENTATION_PORTRAIT`，并停止横屏重力强转；更新后的 full compat 同步 Godot portrait 方向与下述竖屏逻辑画布。启动器不内置、检测或自动启用竖屏 MOD；offline bootstrap 不包含显示布局补丁。
+
+   **禁用 OpenGL 着色器缓存**位于“设置 → 画面 → 画面细项”的“着色器兼容”下方。点击后可选择“关闭（默认）”“仅粒子”或“全部着色器”。使用 OpenGL ES 的 PowerVR 设备若在第二次启动或第二场战斗闪退，优先试“仅粒子”；若无效再试“全部着色器”，后者每次启动都需重新编译更多着色器，可能增加卡顿。完全退出游戏再启动生效，无需重装或清数据。
+
+   这是设备上的启动器偏好，不修改存档、预加载或着色器兼容设置。“仅粒子”只隔离 `shader_cache/ParticlesShaderGLES3`，不关闭粒子效果；“全部着色器”让 Godot 跳过本次 OpenGL ES 磁盘缓存。已有缓存目录仅暂存，切回关闭或启动 Vulkan 时恢复。先前手动放置的同名空文件不会被启动器删除。
 2. 设置页可在后台调用 `CompatPackManager.installBundledCompatPacks()`：
    - 枚举 APK assets `compat_packs/*.zip`。
    - 复制到私有临时目录。
@@ -101,6 +107,7 @@ offline bootstrap:
    - 只有当前绑定是 offline wildcard、来源明确为 `auto`、且现有 SHA/version 评分能找到完整可用的 full target 时，才自动升级该绑定，并同步 `launcher/selected_instance.json` 与兼容包诊断记录。内置包安装完成、外部包导入、重新选择配置、复用同一 payload 的默认配置及启动前都会重查；没有 full 命中或候选缺少 DLL/overlay 时不改写。已绑定 full 包不会因新候选出现而重新选择。
    - 手动选择不自动覆盖。旧配置缺少来源字段或来源值未知时按 `unknown` 处理，不能根据 offline 包 ID 猜测用户意图，因此也不自动升级；用户可在启动配置中手动选用匹配 full target。旧 bundled schema 1 pack id 到 flat family pack 的既有迁移规则保持不变。
    - Steam 来源会在 `.payload_manifest.json` 的 `source.kind=steam_depot`、`source.steam.depots[]` 与 `source.steam.concurrent_chunks` 中记录。v0.109.0/v0.109.1 的 DLL SHA 都由稳定 id `v0.109.0` 的共享 variant 精确匹配；v0.110.0/v0.110.1 按各自 DLL SHA 精确匹配共享 `compat_target_id=v0.110.0`；v0.111.0 的 SHA `0861bfa1...` 精确匹配独立 `compat_target_id=v0.111.0`。
+   - v0.111.1 的原版 DLL SHA `3fb1fa1bf0249087b706a5d0f062a60579e2f5b08df4ee477ddd6f2607f654d5` 精确匹配单独的 `compat_target_id=v0.111.1`（`versions=["v0.111.1"]`、`channel=stable`、`source=original_pc_reference_v0.111.1`），而不是把它加进旧 beta target。Workshop `auto` 优先使用 `source.steam.branch`；归档导入未记录该字段时才回落到所选 compat target 的 `steam_branch`。因此 .1 使用 `public`、.0 保留 `public-beta`，共享托管实现不应合并这两个 metadata target。
 8. 旧安装中的 `<files>/game/` 与 `<files>/game-versions/<id>/game/` 会在启动器 bootstrap 时尽量通过 rename 迁移到 payload store，避免大文件复制。
 
 ## 5. 启动前检查
@@ -119,6 +126,8 @@ offline bootstrap:
 3. 启动前 launcher 会为当前 launch profile account root 创建一份本地 `before-launch` 存档快照（默认只保留最近 5 个）。若 Steam Cloud 模式配置为“启动前拉取”或“完整自动”，且已保存 Steam refresh token，则随后拉取当前 account root 的 Steam Cloud 文件；若 WebDAV 模式配置为“启动前拉取”或“完整自动”，且已配置 WebDAV URL，则继续拉取同一 account root 的 WebDAV 文件。任一同步失败时会弹窗允许取消、打开对应云存档中心或跳过同步继续启动。
 4. 启动后台线程执行 `GameLaunchPreparationManager.prepareForLaunch()`。
 5. 准备完成后启动 `GodotApp` 并附加 `launch_prepared=true`。
+
+如果当前 MOD 目录被安装事务占用，启动器在前台显示等待提示，在工作线程重试；取消不会中断安装。如果在准备完成之后才发生竞争，或从快捷方式直接进入 `GodotApp`，引擎不会先行启动：等待页重新准备当前配置，通过最终 MOD 事务检查后才创建引擎。记录损坏等 I/O 失败不作锁竞争处理。
 
 准备复制兼容程序集/overlay 前再次校验已绑定包的两个 artifact；Godot Activity 也不信任单独的 `launch_prepared=true` 标记。缺文件或准备失败会终止启动，不静默进入半兼容状态；用户显式关闭兼容包时仍清理 staged DLL/overlay 并保留无兼容层启动路径。
 
@@ -189,9 +198,12 @@ Steam Cloud 与 WebDAV 的非强制同步使用逐文件的共同基线：仅本
 
 ```text
 --main-pack <files>/payloads/<payload_id>/game/SlayTheSpire2.pck
+--main-pack=<files>/payloads/<payload_id>/game/SlayTheSpire2.pck
 ```
 
-- 否则解压并使用 `bootstrap.pck`。
+  Godot 4.5.1 使用第一行的两个参数加载本体，不会把它们留在 `OS.GetCmdlineArgs()` 中。第二行是单个参数，供 MOD 读取同一主 PCK 的绝对路径，不替代第一行。
+
+- 否则解压并使用 `bootstrap.pck`，不传供 MOD 读取的 `--main-pack=…`。
 
 patched Godot/.NET runtime 随后在 Mono publish 目录中寻找并加载：
 
@@ -211,8 +223,8 @@ STS2Mobile.ModEntry
 
 当前 full compat `ModEntry.Apply()` 主要顺序：
 
-1. temp 目录配置、build info 日志与 `HarmonyAndroidCompat` 后端准备。Android 上默认贴近 `../s2` 的 minimal bootstrap：不启用旧 native resolver / `DMDType=cecil` override，但会在真正的 `MonoMod.Utils` / `MonoMod.Core` 程序集上强制 MonoMod 使用 Android/Mono 后端，避免 HarmonyOS 等 ROM 被误判为 Posix/Linux 后在 `HarmonyLib.PatchFunctions.UpdateWrapper()` 中抛 `NotImplementedException`；`monomod_android_libc_shim` 仍由 AndroidSystem 按需提供指令缓存刷新和 `/proc/self/mem` executable-page patch fallback。`HarmonyMethodReferenceImporterShim` 会在后续大量 Harmony patch 前自检 `MMReflectionImporter` 是否丢失 STS2 方法引用上的 required/optional custom modifiers，必要时用极窄 postfix 原地修正带 modifiers 的 `sts2` 方法导入，避免普通 MOD patch 原方法体时生成无法绑定的动态 `MemberRef`。`EarlyLocalizationFallbackPatches` 会在普通 MOD 加载前保护 `LocString.GetFormattedText()`：Android/Mono 若在 MOD initializer 的 `PatchAll` 阶段提前运行游戏 UI 类型静态构造、而 `LocManager.Initialize()` 尚未执行，只临时返回 `locTable.locEntryKey` fallback；`LocManager.Initialize()` 正常结束后该 fallback 失效，后续本地化异常仍按原样抛出。`DeferredModPatchQueue` 会在普通 MOD initializer 窗口同时拦截 direct `PatchProcessor.Patch()` 与 Ekyso Harmony `Harmony.PatchAll()` 实际使用的逐目标 `PatchClassProcessor.ProcessPatchJob()`。对目标为 `sts2` 程序集 Godot/UI 类型（`MegaCrit.Sts2.Core.Nodes.*`、`MegaCrit.Sts2.addons.*` 或 `Godot.Node`/`Control` 派生类，且存在静态初始化器）的用户 MOD patch/job 排队，等 `ExecuteEssential` 完成 `LocManager.Initialize()`、`ModelDb.Init()`、`ModelIdSerializationCache.Init()`、`ModelDb.InitIds()` 以及原版网络 `MessageTypes.Initialize()` / `ActionTypes.Initialize()` 后按统一入队顺序重放。PatchAll 路径保留原始 `PatchClassProcessor` 和它生成的 job 再交还 Harmony 执行，而不是只重建单个 prefix，因此 Harmony ID、prefix/postfix/transpiler/finalizer/inner patch、优先级以及逐目标 `HarmonyPrepare` / `HarmonyCleanup` 都能保留；同一个 patch class 中不危险的模型/普通 target 仍在 initializer 立即安装且不会在 replay 重复。单个 deferred job 失败会记录并继续后续队列，队列只 flush 一次。`ModelDb.Init` 和安全注册 patch 不进入该队列，带危险静态初始化的模型/resource target 则按上述规则延迟，也不能漏掉原版网络类型表初始化，否则单人战斗结束写 `CombatReplay` 时也会因 `INetAction` 无法映射 ID 而失败。若 MOD 在 `ModelIdSerializationCache.Init()` 前误调用 `AbstractModel.InitId()`，兼容层只跳过该早调用，后续 `ModelDb.InitIds()` 仍会统一完成排序 ID 初始化。早期初始化不得调用 Godot C# API（例如 `OS.GetName()` / `ProjectSettings.GlobalizePath()`），避免 Godot `StringName`/JNI 尚未稳定时崩溃；静态/虚方法 Harmony self-test 默认跳过，仅在 `<files>/launcher/enable_harmony_selftest.flag` 存在时运行，旧 bootstrap 仅在 `<files>/launcher/enable_old_harmony_compat_bootstrap.flag` 存在时作为诊断启用。
-   - custom modifier 修复同时覆盖 `MMReflectionImporter.ImportReference(MethodBase, ...)` 与 `CecilILGenerator` 实际发射使用的 `MethodBase -> MethodReference` helper；后者是 importer hook 在特定 Android/Mono 组合上未进入时的兜底。修复只重新包裹 Cecil return/parameter type 上缺失的 required/optional modifier，保留原 `MethodInfo`、`call` / `callvirt` opcode、instance/struct calling convention 和已有 generic parameter，不把 setter 换成运行期反射 helper，也不为每次游戏属性写入新增装箱/数组分配。合成回归 `port-mod/tools/test-harmony-method-reference-importer.sh` 会先确认打包 importer 可复现修饰符丢失，再覆盖 direct import、独立 emitter fallback、class/struct、closed generic 和最终可执行调用。
+1. temp 目录配置、build info 日志与 `HarmonyAndroidCompat` 后端准备。Android 上默认贴近 `../s2` 的 minimal bootstrap：不启用旧 native resolver / `DMDType=cecil` override，但会在真正的 `MonoMod.Utils` / `MonoMod.Core` 程序集上强制 MonoMod 使用 Android/Mono 后端，避免 HarmonyOS 等 ROM 被误判为 Posix/Linux 后在 `HarmonyLib.PatchFunctions.UpdateWrapper()` 中抛 `NotImplementedException`；`monomod_android_libc_shim` 仍由 AndroidSystem 按需提供指令缓存刷新和 `/proc/self/mem` executable-page patch fallback。`HarmonyMethodReferenceImporterShim` 在后续大量 Harmony patch 前分别探测 `DamageResult.set_UnblockedDamage` 和 `JsonPropertyInfoValues<T>.set_IsProperty`；任一探针发现 `MMReflectionImporter` 丢失 custom modifier，就启用 postfix 原地修复带 modifiers 的 `sts2` 和 `System.Text.Json` 方法引用，避免生成无法绑定的动态 `MemberRef`。`EarlyLocalizationFallbackPatches` 会在普通 MOD 加载前保护 `LocString.GetFormattedText()`：Android/Mono 若在 MOD initializer 的 `PatchAll` 阶段提前运行游戏 UI 类型静态构造、而 `LocManager.Initialize()` 尚未执行，只临时返回 `locTable.locEntryKey` fallback；`LocManager.Initialize()` 正常结束后该 fallback 失效，后续本地化异常仍按原样抛出。`DeferredModPatchQueue` 会在普通 MOD initializer 窗口同时拦截 direct `PatchProcessor.Patch()` 与 Ekyso Harmony `Harmony.PatchAll()` 实际使用的逐目标 `PatchClassProcessor.ProcessPatchJob()`。对目标为 `sts2` 程序集 Godot/UI 类型（`MegaCrit.Sts2.Core.Nodes.*`、`MegaCrit.Sts2.addons.*` 或 `Godot.Node`/`Control` 派生类，且存在静态初始化器）的用户 MOD patch/job 排队，等 `ExecuteEssential` 完成 `LocManager.Initialize()`、`ModelDb.Init()`、`ModelIdSerializationCache.Init()`、`ModelDb.InitIds()` 以及原版网络 `MessageTypes.Initialize()` / `ActionTypes.Initialize()` 后按统一入队顺序重放。PatchAll 路径保留原始 `PatchClassProcessor` 和它生成的 job 再交还 Harmony 执行，而不是只重建单个 prefix，因此 Harmony ID、prefix/postfix/transpiler/finalizer/inner patch、优先级以及逐目标 `HarmonyPrepare` / `HarmonyCleanup` 都能保留；同一个 patch class 中不危险的模型/普通 target 仍在 initializer 立即安装且不会在 replay 重复。单个 deferred job 失败会记录并继续后续队列，队列只 flush 一次。`ModelDb.Init` 和安全注册 patch 不进入该队列，带危险静态初始化的模型/resource target 则按上述规则延迟，也不能漏掉原版网络类型表初始化，否则单人战斗结束写 `CombatReplay` 时也会因 `INetAction` 无法映射 ID 而失败。若 MOD 在 `ModelIdSerializationCache.Init()` 前误调用 `AbstractModel.InitId()`，兼容层只跳过该早调用，后续 `ModelDb.InitIds()` 仍会统一完成排序 ID 初始化。早期初始化不得调用 Godot C# API（例如 `OS.GetName()` / `ProjectSettings.GlobalizePath()`），避免 Godot `StringName`/JNI 尚未稳定时崩溃；静态/虚方法 Harmony self-test 默认跳过，仅在 `<files>/launcher/enable_harmony_selftest.flag` 存在时运行，旧 bootstrap 仅在 `<files>/launcher/enable_old_harmony_compat_bootstrap.flag` 存在时作为诊断启用。
+   - custom modifier 修复同时覆盖 `MMReflectionImporter.ImportReference(MethodBase, ...)` 与 `CecilILGenerator` 实际发射使用的 `MethodBase -> MethodReference` helper；后者是 importer hook 在特定 Android/Mono 组合上未进入时的兜底。修复只重新包裹 Cecil return/parameter type 上缺失的 required/optional modifier，保留原 `MethodInfo`、`call` / `callvirt` opcode、instance/struct calling convention 和已有 generic parameter，不把 setter 换成运行期反射 helper，也不为每次游戏属性写入新增装箱/数组分配。[#130](https://github.com/ModinMobileSTS/Sts2MobileLauncher/issues/130) 的 BaseLib JSON 问题由此恢复 `set_IsProperty(bool)` 的 `modreq(IsExternalInit)`，无需替换 BCL、修改 MOD 或禁用 BaseLib 扩展存档。宿主回归 `port-mod/tools/test-harmony-method-reference-importer.sh` 保留 `sts2` 的 class/struct、closed generic 和参数 modifier 覆盖，并在游戏探针无需修复时，通过直接导入和独立 Cecil emitter fallback 分别实际写入 `IsProperty=True`。这不是 Android 完整玩法验证。
    - 私有 temp 优先使用 Java 已配置环境和标准 Mono publish 路径；两者及 HOME/ANDROID_DATA 全部不可用时，最后才惰性读取 `AppPaths.DataDir/tmp` 并做创建、写入、删除探测。该兜底不得提前缓存 `AppPaths.DataDir` 或覆盖已经可用的 `TMPDIR`。
 
 2. `PlatformPatches` 与 `SavePathPatches` 作为保命 patch 最先独立应用；前者跳过桌面 Steam 初始化，后者重定向当前 launch profile 的存档/设置路径。两组 patch 分别捕获异常，避免后续诊断或 UI patch 在特定 ROM 上失败时导致原版 `steam_api64` 路径重新执行。PC / Steam Cloud 带来的历史记录仍保留原始 `PlatformType.Steam` 元数据；早期本地化保护安装后，`RunHistoryPatches` 只把历史详情 `DisplayRun`、玩家切换 `SelectPlayer` 和玩家图标 `LoadRun` 中的身份查询替换为安全 wrapper：桌面 Steamworks 未初始化或原生库不可用时，本地 ID 回落到 Android/null-platform ID（多人未命中时沿用原版“选择第一个玩家”逻辑），名称回落到 null-platform 已缓存名称或稳定 ID 文本。该补丁不改写历史文件，也不改变 Steam transport、邀请或大厅协议。
@@ -320,6 +332,7 @@ STS2Mobile.ModEntry
 
 8. LAN bootstrap。`LanMultiplayerBootstrapPatches` 在主菜单就绪后才尝试应用本地 LAN 兼容补丁；若 `settings.save` 中 `lan_multiplayer_enabled=false`，或已加载 `sts2_lan_connect` / STS2 Game Lobby 大厅 MOD，`LanMultiplayerPatches` 会整组跳过，避免 Android LAN host/join、玩家 ID 等适配与大厅 MOD 自己的联机协议 profile 冲突。内置 LAN 补丁只处理 Android transport/UI/settings/player/save 兼容，不 patch `MessageTypes.ToId`、`MessageTypes.TryGetMessageType` 或 `NetMessageBus.TryDeserializeMessage`，也不维护固定消息表；消息类型发现、排序、ID 与序列化/反序列化始终由当前 payload 对应版本的原版实现负责，因此 Android 与未修改 PC 使用同一 wire protocol，普通 MOD 自定义 `INetMessage` 也继续按原版规则参与排序。v0.111.0 构造 host/client service 时额外传入 `PeerVersionInfo.LocalDefault()`，随后完全交给原版 transport-level `HandshakeManager` 在消息总线启用前校验游戏版本、ModelDb hash 和 gameplay/non-gameplay MOD；Android 不复制握手数据结构，也不回退旧 lobby-message 校验。启用本地 LAN patch 时，兼容层还会拦截多人读档 canonicalize 的本地玩家 ID：如果当前自定义平台/玩家 ID 不在 `current_run_mp.save` 的玩家列表中，会优先使用隐藏稳定字段 `lan_multiplayer_save_player_id`、旧自动 LAN ID 或单玩家存档中的唯一 `NetId`，避免用户修改自定义平台 ID 后旧多人存档被误判为不属于本机。`max_multiplayer_players` 只扩展 host/lobby 容量；超过四人的运行仍属实验模式，本次已覆盖宝箱和休息点的确定性四槽故障，但不能据此认定原版所有房间和任意配置人数都已兼容。
    v0.113.x 加入复用 `NJoinFriendScreen.JoinGameAsync`，由原版处理带 `SceneTree` 的 `JoinFlow.Begin`、取消与错误；新建 host 独立保留 `isCustom`，非自定义房间按 Standard/Daily/Blitz/Dread 进入原版 lobby，读档以 `SerializableRun.IsCustomGame` 判断自定义。不得退回兼容层手工复制 JoinFlow/模式路由。商店确认在一次性 allowance 内调用原版 `OnSelected()` 并等待实际购买任务，新旧 target 都不再依赖已删除的 slot `OnTryPurchase`。v0.113.0/v0.113.1 虽共享 Android variant，握手和普通 MOD 仍以实际 payload 版本为准，不承诺跨版本互联。
+   v0.111.1 复用 v0.111.0 的 service 构造与握手适配；版本、ModelDb hash 和 MOD 校验仍由当前 payload 的原版 `HandshakeManager` 负责，不增加协议绕过，也不把 .0/.1 实现等价当作跨版本 LAN 保证。
 9. `ModLoaderPatches`。
 10. save diagnostic。
 11. `RenderDiagnosticPatches` 后置调度；它只用于设备/渲染信息采集，调度异常会记录但不阻断 Steam 跳过和存档路径重定向等核心 patch。
@@ -380,7 +393,7 @@ v0.113.x 的 `Blur.gdshader` 使用 atlas-clamped `uv_region/radius_scale` insta
 
 `TransitionMaterialPatches` 会在 `NTransition._Ready` 后复制场景默认 `ShaderMaterial`，并在原版 `AssetCache.GetMaterial()` 返回 `fade_transition_mat.tres` / `fight_transition_mat.tres` 时返回缓存材质的副本。全局 disposal guard 已阻止 cache cleanup 显式释放资源；该补丁仍作为纵深保护，隔离 transition tween 对共享材质状态的修改并兼容旧兼容包行为。
 
-`v0.107.0-beta`、`v0.107.1`、`v0.108.0`、共享 `v0.109.x` / `v0.110.x` 与独立 `v0.111.0` target 的 `MapDrawingSceneCachePatches` 同样作为资源 owner 纵深保护：它拦截 `NMapDrawings.CreateLineForPlayer()`，让地图画笔绘制/橡皮线条从 Android 兼容层自持有的 `PackedScene` 实例化，避免长期字段依赖已经离开 cache 索引的场景；橡皮线条会同步刷新 `_eraserMaterial`，保留原版保存时通过材质判断 eraser line 的行为。
+`v0.107.0-beta`、`v0.107.1`、`v0.108.0`、共享 `v0.109.x` / `v0.110.x` 与独立 `v0.111.0` / `v0.111.1` target 的 `MapDrawingSceneCachePatches` 同样作为资源 owner 纵深保护：它拦截 `NMapDrawings.CreateLineForPlayer()`，让地图画笔绘制/橡皮线条从 Android 兼容层自持有的 `PackedScene` 实例化，避免长期字段依赖已经离开 cache 索引的场景；橡皮线条会同步刷新 `_eraserMaterial`，保留原版保存时通过材质判断 eraser line 的行为。
 
 关闭 `shader_compatibility_mode` 时会退订节点监听并停止后续替换，但已经写入节点或缓存字段的替换材质（包括上述粒子材质副本）不会反向恢复为原版；要还原本进程中已替换的材质，必须退出并重启游戏。重启后开关关闭的进程才不会重新应用这些 shader variants 或粒子降级。
 

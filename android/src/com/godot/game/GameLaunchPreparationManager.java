@@ -53,10 +53,10 @@ public final class GameLaunchPreparationManager {
 
 	public void prepareForLaunch() throws Exception {
 		long startedAt = System.currentTimeMillis();
-		Log.i(TAG, "DIAG prepareForLaunch begin versionCode=" + BuildConfig.VERSION_CODE + " versionName=" + BuildConfig.VERSION_NAME + " flavor=" + BuildConfig.FLAVOR + " filesDir=" + context.getFilesDir().getAbsolutePath() + " thread=" + Thread.currentThread().getName());
 		AndroidRuntimeEnvironment.configure(context, TAG);
 		ExtraSettingsRepository repository = new ExtraSettingsRepository(context);
 		new ModInstallStore(context.getFilesDir(), repository.getModsRootDir()).recover();
+		Log.i(TAG, "DIAG prepareForLaunch begin versionCode=" + BuildConfig.VERSION_CODE + " versionName=" + BuildConfig.VERSION_NAME + " flavor=" + BuildConfig.FLAVOR + " filesDir=" + context.getFilesDir().getAbsolutePath() + " thread=" + Thread.currentThread().getName());
 		Sts2LogcatCollector.startNewLaunchForSelectedProfile(context);
 		logLaunchStateSnapshot("after_logcat_start");
 		logStepBegin("normalize_saved_language");

@@ -23,8 +23,10 @@ Important variables in `.env`:
   (or their `*_ROOT` shortcuts) — original PC compile-gate DLL directories. The
   historical `V1090` name identifies the shared v0.109.x target and should point
   to the latest verified v0.109.1 reference; `V1100` is the historical flavor for
-  the shared v0.110.x target and should point to v0.110.1; `V1110` identifies the
-  current independent v0.111.0 public-beta target.
+  the shared v0.110.x target and should point to v0.110.1; `V1110` supplies the
+  existing v0.111.0 references for both the separate v0.111.1 stable/public and
+  v0.111.0 beta/public-beta metadata targets. Both reuse `original-v0.111.0` and
+  `STS2_TARGET_1110`; no new flavor or V1111 variable is required.
 
 Use:
 

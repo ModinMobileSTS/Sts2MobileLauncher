@@ -40,6 +40,8 @@ mod_manifest.json
 
 并添加 `android_generated_manifest_alias=true`，必要时删除重复的 `mod_manifest.json`。
 
+需要直接打开游戏主 PCK 的 MOD，可以从 `OS.GetCmdlineArgs()` 查找以 `--main-pack=` 开头的参数，取前缀后的完整路径。该路径指向当前启动配置的游戏本体；不要从 `OS.GetExecutablePath()` 推算，也不要把 PCK 所在目录当作 MOD 根目录。
+
 ### 2.1 原生用户目录与 MOD 自有配置
 
 启动器在 `Sts2Application.onCreate()`、Godot/Mono 启动之前，通过 `AndroidRuntimeEnvironment` 将原生进程环境变量 `HOME` 设为应用私有 `<files>`，先创建并写探测 `<files>/.config/`；现有 `TMPDIR` / `TMP` / `TEMP` 继续指向 `<files>/tmp/`。HOME 与 temp 分别初始化，HOME 失败不会阻止 temp 配置，后续启动准备或 Godot Activity 入口可重试未完成的部分。成功配置在同一进程内复用，不跟随启动配置切换。
@@ -82,8 +84,9 @@ MOD 卡片默认折叠，只显示左侧拖拽手柄、名称、版本/作者和
 - **升级前已有的 MOD**：没有记录时只处理 manifest、`id` / `pck_name` 对应 DLL/PCK 等已知主文件，并提示无法推断旧辅助文件。首次更新不会凭目录位置清空历史文件；有历史残留时仍需手工确认清理。新导入内容从本次开始建立记录。
 - **Workshop**：整 item 替换继续移除 item 内旧内容（包括没有记录的内容）；同 ID 安装位于 item 外时，按普通完整更新规则清理已记录旧文件。item 目录与目录外清理共用文件/安装记录回滚事务，不退化为逐文件叠加。
 - **中断与安全边界**：文件和安装记录由独占锁及写前回滚日志保护；未提交的事务在后续恢复时还原，已提交事务只清理日志，启动游戏前必须恢复成功。路径穿越、符号链接、文件/目录类型冲突和损坏记录拒绝继续，不按“没有记录”处理。这里验证的是进程中断恢复，不承诺突然断电时的文件系统持久性。
+- **MOD 操作进行中**：打开启动器、Steam 创意工坊或 Nexus 商店时，如果当前 MOD 目录还在安装或更新，页面会提示等待；事务结束后自动进入。等待启动游戏时可取消，取消的只是本次启动，不会中断正在写入的事务。无需删除 `lock` 文件或清数据。损坏的安装记录不会自动重试，也不会被当成空记录放行。
 
-回归：`ModInstallReplacementTest`、`ModInstallStoreTest` 与 `ModImportSafetyTest`。宿主真实 ZIP/文件系统回归和跨 JVM 进程中断恢复 smoke 不代替 Android 真机更新、取消及导入 Dialog 验证。
+回归：`ModInstallReplacementTest`、`ModInstallStoreTest`、`ModImportSafetyTest`、`ModInstallReadinessTest`。宿主真实 ZIP/文件系统回归和跨 JVM 进程中断恢复 smoke 不代替 Android 真机更新、取消及导入 Dialog 验证。
 
 别名安全边界：manifest 的 `id` / `mod_id` / `modId` / `ID` 与 `pck_name` 的受支持拼写只能提供文件基名，不能含目录分隔符、控制字符、Windows 路径特殊字符或单独的 `.` / `..`；不改变合法 Unicode、点号、连字符名称。导入在别名生成和冲突确认前拒绝不安全名称；启动器清单扫描及 full compat 别名扫描不跟随符号链接，Java 与 full compat 的文件别名创建/删除再次校验同目录约束。该规则只限制导入与别名文件操作，不把普通 C# MOD 变成沙箱代码。运行时回归入口为 `port-mod/tests/ModManifestAlias.Tests`。
 
@@ -128,15 +131,15 @@ MOD 卡片默认折叠，只显示左侧拖拽手柄、名称、版本/作者和
 
 “创意工坊 → 设置”新增 **使用尖塔补给站下载**，说明为“使用apricityx的尖塔补给站实现不登录匿名下载”，默认关闭。开关左侧的“关于”图标可查看服务说明、鸣谢、版权声明，并跳转 [尖塔补给站](https://workshop.apricityx.top)、[关于页面](https://workshop.apricityx.top/about)、[版权声明](https://workshop.apricityx.top/legal/copyright) 和 [用户协议](https://workshop.apricityx.top/legal/terms)。
 
-- 开启后，新开始的下载直接通过 `SpireSupplyStationClient` 获取下载描述与短期 CDN 授权，不读取 Steam 登录令牌，不建立 Steam CM 会话，也不先解析 Steam 分支。UGC 文件仍经现有 Kotlin manifest/chunk 解密、解压、校验和 staging 导入流程；不安装或执行站点的浏览器脚本。关闭时保留原 Steam 下载路径，不自动回退或切源。
-- 站点目前提供默认内容，**游戏分支未验证**。“下载分支”偏好会保留，但不控制站点文件。安装命名空间固定为 `supply-station-default`，记录 `resolution_source=spire_supply_station` 和实际 manifest；这个名字不是 Steam 分支或版本兼容认证，已下载卡片会明确显示来源与限制。
-- Steam 源记录改用站点下载时仍进行同 ID 冲突确认，不把未知分支当作原记录直接覆盖；站点自身的更新沿用站点命名空间。开关关闭后，站点记录的更新会提示重新开启，或从条目页面改走 Steam 并选择分支。
+- 开启后，`SpireSupplyStationClient` 直接从站点获取下载描述和短期 CDN 授权，不读取 Steam 登录令牌，也不通过 Steam CM 解析下载分支。UGC 文件仍经现有 Kotlin manifest/chunk 解密、解压、校验和 staging 导入流程；不安装或执行站点的浏览器脚本。关闭时使用原 Steam 下载路径，下载失败不会自动切源。
+- **下载分支**设置两种下载源共用。自动模式仍优先使用本体记录的 Steam 分支，其次使用当前兼容包的分支；无法推断或设为“每次询问”时，补给站只列出 `/api/workshop/versions` 返回的 `MATCH` 候选。固定分支（含自定义）和用户选中的分支用 `gameBranch` 请求下载描述；站点无法匹配时会报错或提示没有候选，不会退回默认内容。选择候选后也会核对返回的 manifest。分支匹配不代表 MOD 可在 Android 上正常运行。
+- 补给站新下载按实际请求的分支安装，仍记录 `resolution_source=spire_supply_station` 和实际 manifest，已下载卡片显示分支与来源。旧 `supply-station-default` 记录保留原路径和来源，不冒充任何 Steam 分支。更新沿用已安装记录的分支；Steam 源记录改由站点下载时仍需同 ID 冲突确认。关闭站点开关不会自动用 Steam 更新站点记录。
 - 浏览、截图、前置 MOD 检查和常规更新检查仍沿用现有 Steam 公开元数据路径，此开关不是浏览目录换源。前置列表读取失败时，只有站点模式提供明确的“检查未完成”提示，用户确认后可只下载当前条目；不能把检查失败解释为无依赖。
 - Steam 下载的 401/403、`NoLicense`、`AccessDenied` 等授权错误会提示可在设置中开启该功能；普通网络或本地文件权限错误不添加该引导。站点自身授权失败不误报为用户需要登录 Steam。
 - CDN token、depot key、request code 与签名 URL 不写入安装 metadata 或下载日志；授权刷新时校验内容身份，不能在同一任务混用不同 manifest。站点及 CDN 的 TLS 校验保持开启。服务不保证所有条目可匿名下载；使用和分发仍需遵守 Steam、站点及 MOD 作者许可。
 - 站点下载描述或 CDN token 回应可能把 CDN origin 标为 `http://`；启动器仅把它当作同主机端点标识，校验主机/端口/路径后仍经 HTTPS 443 请求 manifest/chunk，站点专用 CDN transport 不跟随 HTTPS→HTTP 降级重定向。HTTPS 证书无效或主机不支持 TLS 时会尝试其他合法端点，不改用明文；普通 Steam 源的重定向策略不变。
 
-回归入口：`tools/android/gradle-with-s2-env.sh :steam-content:test`，覆盖关闭时不访问站点、开启时不访问 Steam CM、加密下载及凭证刷新、错误条目/内容变更拒绝、授权错误识别。
+回归入口：`tools/android/gradle-with-s2-env.sh :steam-content:test :testMonoReleaseUnitTest --tests 'com.godot.game.SteamWorkshop*'`，覆盖站点分支候选、描述与所选分支/manifest 不一致时拒绝下载、旧站点记录、CDN 授权刷新和下载队列中的分支/来源隔离。
 
 ## 5. NexusMods 商店导入
 
@@ -195,7 +198,10 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 | `v0.109.0` / `v0.109.1` beta（旧测试） | `v0.109.0`（稳定 id，显示 v0.109.x） | `.env`: `STS2_ORIGINAL_V1090_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1090_ROOT`（历史名，指向最新 v0.109.1） | `original-v0.109.0` |
 | `v0.110.0` / `v0.110.1` public beta（旧测试） | `v0.110.0`（显示 v0.110.x） | `.env`: `STS2_ORIGINAL_V1100_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1100_ROOT`（指向 v0.110.1） | `original-v0.110.0` |
 | `v0.111.0` public beta（旧测试） | `v0.111.0` | `.env`: `STS2_ORIGINAL_V1110_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1110_ROOT` | `original-v0.111.0` |
+| `v0.111.1` stable / `public`（当前） | `v0.111.1` | `.env`: `STS2_ORIGINAL_V1110_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1110_ROOT`（复用现有 v0.111.0 引用） | `original-v0.111.0` |
 | `v0.113.0` / `v0.113.1` public beta（当前） | `v0.113.0`（稳定 id，显示 v0.113.x） | `.env`: `STS2_ORIGINAL_V1130_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1130_ROOT`（历史名，指向最新 v0.113.1） | `original-v0.113.0` |
+
+当前 full family `compat_version=0.7.2-dev` 包含 10 个 active metadata target。新 `v0.111.1` 记录的 `versions=["v0.111.1"]`、`channel=stable`、`steam_branch=public`、`source=original_pc_reference_v0.111.1`，原版 DLL SHA-256 为 `3fb1fa1bf0249087b706a5d0f062a60579e2f5b08df4ee477ddd6f2607f654d5`。它复用现有 V1110 引用、`original-v0.111.0` 与 `STS2_TARGET_1110`，不新增 flavor 或 V1111 环境变量；v0.111.0 beta / `public-beta` 记录保持不变。Workshop `auto` 优先使用 payload 的 Steam 来源分支，归档导入没有该字段时才回落到兼容 target 的 `steam_branch`；因此必须分开 .1/public 与 .0/public-beta 元数据，不能只给旧 beta variant 追加版本/SHA。
 
 开发步骤建议：
 
@@ -218,9 +224,11 @@ tools/android/stage-bundled-compat-packs.sh
 tools/package/build_importer_apk.sh
 ```
 
-只调试当前 target 时可运行 `(cd port-mod && ./tools/build-compat-matrix.sh --target v0.113.0)`；共享 v0.109.x 的稳定 target id `v0.109.0` 仍同时覆盖 v0.109.0/v0.109.1，历史 `original-v0.109.0` flavor 应指向最新 v0.109.1 引用；稳定 target id `v0.110.0` 同时覆盖 v0.110.0/v0.110.1，历史 `original-v0.110.0` flavor 应指向 v0.110.1 引用。legacy schema 1 诊断包仍用 `REFERENCE_FLAVOR=original` / `original-v0.106.1` / `original-v0.107.0` 指定对应原版 gate，单独调试 `v0.107.1` / `v0.108.0` / `v0.109.x` / `v0.110.x` / `v0.111.0` / `v0.113.0` 可分别使用对应 `original-v*` flavor。
+只调试当前 target 时可运行 `(cd port-mod && ./tools/build-compat-matrix.sh --target v0.113.0)`；单独构建当前 stable/public v0.111.1 时使用 `--target v0.111.1`，compile gate 仍为 `original-v0.111.0` / V1110 / `STS2_TARGET_1110`，并保留独立的旧 beta `--target v0.111.0`。共享 v0.109.x 的稳定 target id `v0.109.0` 仍同时覆盖 v0.109.0/v0.109.1，历史 `original-v0.109.0` flavor 应指向最新 v0.109.1 引用；稳定 target id `v0.110.0` 同时覆盖 v0.110.0/v0.110.1，历史 `original-v0.110.0` flavor 应指向 v0.110.1 引用。legacy schema 1 诊断包仍用 `REFERENCE_FLAVOR=original` / `original-v0.106.1` / `original-v0.107.0` 指定对应原版 gate，单独调试 `v0.107.1` / `v0.108.0` / `v0.109.x` / `v0.110.x` / `v0.111.0` / `v0.113.0` 可分别使用对应 `original-v*` flavor。
 
 v0.110.0 是游戏 MOD API 更新，不只是 Android target 更新；v0.110.1 仅包含不触达 Android compat 的 AutoSlay/lobby 实现修复，继续共用 v0.110.x target。该 API 线移除了 `Scare`、`OutbreakPower`、旧 `LobbyPlayer`、`JoinFlow.MockInfo`、`MegaInput.accept/releaseCard` 与旧 controller/keyboard mapping API。v0.111.0 再次使用独立 target：原版新增 transport-level `HandshakeManager`，`NetClientGameService` / `NetHostGameService` 构造时必须传入 `PeerVersionInfo`，版本、ModelDb hash 与 MOD 校验在消息总线启用前完成；Android LAN 只传入 `PeerVersionInfo.LocalDefault()` 并继续使用原版握手与 wire protocol。`AnimState` 同时把 trigger branch 字段改名并增加条件 next-state graph，compat 动画预热会读取两种字段形状。直接静态引用这些变化成员的普通 MOD 必须发布匹配 v0.111.0 的版本；full compat 不会向 `sts2.dll` 伪造已删除成员。
+
+v0.111.1 与 v0.111.0 的托管 API、运行时 IL 和依赖等价，差异为构建身份、release 元数据及新增的一项 patch-notes PCK 资源，所以共享上述实现而不新增 Java/C# 补丁。兼容层继续让实际 payload 的原版 `HandshakeManager` 检查版本、ModelDb hash 和 MOD，不增加协议绕过，不承诺 .0/.1 跨版本 LAN。桌面差异审计及原版 ModelDb native/headless 初始化不能替代 Android UI/玩法、普通 MOD 初始化与实际同版本联机验证；历史 .0 MOD 回归结果不能改写为 .1 或 Android 认证。
 
 v0.113.0 是独立 target，使用 `STS2_TARGET_1130`，不与 v0.111.0 共用 variant。LAN 加入直接走原版 `NJoinFriendScreen.JoinGameAsync`，让 payload 管理 `JoinFlow.Begin(SceneTree)`、取消、错误和模式路由；host 保留 `isCustom` 与 Standard/Daily/Blitz/Dread 的原版入口，读档使用 `IsCustomGame`。商店确认在一次性 allowance 内重放原版 `OnSelected()` 并等待实际任务，不再反射调用已删除的 `OnTryPurchase`；旧 target 也回到各自原版购买流程。新版宝箱保留预置 1–6 个遗物布局及 Large icon reveal，仅为更大容量补充布局。atlas-aware blur 的 `uv_region/radius_scale` 实例参数与旧 shader 不兼容，因此只在 v113 保留原版卡面 blur，不再安装已删除的 `NEpochSlot._blurShader` 修复；其他已审计 shader variants 不变。普通 MOD 仍须自行匹配该版本 API，compat 不补造已删除成员；桌面回归不等于 Android GPU/触控/跨设备认证。
 
@@ -230,14 +238,14 @@ v0.113.1 与 v0.113.0 共用上述 variant，保留 target id `v0.113.0`、flavo
 
 新增一个目标游戏版本时，至少需要：
 
-1. 准备对应 PC 原版/解包目录或 DLL 引用目录，并在 `.env.example` / 文档中增加对应 `STS2_ORIGINAL_*_REFERENCE_DIR` 说明。
-2. 为新版本定义 `ReferenceFlavor` 到 `CompatReferenceDir` 的解析方式（脚本映射或显式环境变量），不要提交指向个人 workspace 的 symlink。
-3. 在 `port-mod/targets/active/<target_id>/target.json` 新增 target 描述，包含 `target_id`、`versions`、`reference_flavor`、`source`、可选 `sts2_dll_sha256` 与 compile constants；同一 API-compatible variant 支持多个原版 DLL 时，`sts2_dll_sha256` 可写去重后的字符串数组。
+1. 准备对应 PC 原版/解包目录或 DLL 引用目录；若 API/运行时 IL 与依赖经审计等价，可复用现有 compile gate，并在 `.env.example` / 文档说明，不必新建 reference 变量。实际本体、资源与运行时验证输入仍需匹配各自版本。
+2. 明确 `ReferenceFlavor` 到 `CompatReferenceDir` 的解析方式；优先复用等价的既有映射，只有需要新引用合约时才新增 flavor/变量，不要提交指向个人 workspace 的 symlink。v0.111.1 保留 `original-v0.111.0` / V1110 即为复用示例。
+3. 在 `port-mod/targets/active/<target_id>/target.json` 新增 target 描述，包含 `target_id`、`versions`、`channel`、`steam_branch`、`reference_flavor`、`source`、可选 `sts2_dll_sha256` 与 compile constants；同一 API-compatible variant 且分支等元数据相同的多个原版 DLL 可使用去重 SHA 字符串数组。若 Steam 分支不同，即使共享实现也应保留独立 metadata target。
 4. 若源码需要版本差异，优先新增 target adapter/capability；只有无法避免时才使用少量条件编译。
 5. 用对应 `ReferenceFlavor` 做 compile gate，并运行 `port-mod/tools/build-compat-matrix.sh` 覆盖所有 active target。
 6. 运行 `tools/android/stage-bundled-compat-packs.sh`。
-7. 更新 `AGENTS.md`、`doc/architecture/project-structure.md`、本文件，并在 `.agent/agent-docs/changelog/` 写 agent changelog。
-8. 构建 `tools/package/build_importer_apk.sh` 并做至少一次导入/启动 smoke test。
+7. 更新 `AGENTS.md`、`doc/architecture/project-structure.md`、本文件及相关构建/加载文档。
+8. 构建 `tools/package/build_importer_apk.sh` 并做导入/启动 smoke test；完成后据实在 `.agent/agent-docs/changelog/` 记录实际证据与未验证项，不提前宣称通过。
 9. 只有需要 legacy schema 1 对照包时，才额外新建 `compat/vX.Y.Z` 分支、新增/更新 `compat_manifest.*.json`，并更新 `tools/android/bundled-compat-packs.json`。
 
 ## 9. patch 开发注意事项
@@ -299,16 +307,28 @@ schema 1 legacy 单目标 manifest：
 }
 ```
 
-schema 2 family manifest：
+schema 2 family manifest（节选；完整包包含上表 10 个 target）：
 
 ```json
 {
   "schema": 2,
   "pack_id": "sts2-android-compat",
   "display_name": "STS2 Android Compatibility",
-  "compat_version": "0.7.1-dev",
+  "compat_version": "0.7.2-dev",
   "channel": "mixed",
   "targets": [
+    {
+      "target_id": "v0.111.1",
+      "versions": ["v0.111.1"],
+      "channel": "stable",
+      "source": "original_pc_reference_v0.111.1",
+      "steam_branch": "public",
+      "sts2_dll_sha256": "3fb1fa1bf0249087b706a5d0f062a60579e2f5b08df4ee477ddd6f2607f654d5",
+      "artifacts": {
+        "dll": "variants/v0.111.1/STS2Mobile.dll",
+        "overlay_pck": "variants/v0.111.1/port_compat.pck"
+      }
+    },
     {
       "target_id": "v0.113.0",
       "versions": ["v0.113.0", "v0.113.1"],

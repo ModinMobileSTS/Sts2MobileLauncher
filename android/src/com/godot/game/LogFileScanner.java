@@ -2,6 +2,7 @@ package com.godot.game;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -12,8 +13,13 @@ import java.util.Set;
  * Iterative, unsorted log tree traversal. Call from a worker thread; the caller sorts the result.
  * Only log-named files and files below a logs or sentry/reports directory are candidates.
  */
-final class LogFileScanner {
+public final class LogFileScanner {
     static final int BATCH_SIZE = 32;
+
+    @FunctionalInterface
+    public interface Checkpoint {
+        void check() throws InterruptedIOException;
+    }
 
     interface BatchConsumer {
         void onBatch(List<Entry> entries);
@@ -31,21 +37,25 @@ final class LogFileScanner {
         }
     }
 
-    static final class Entry {
-        final File file;
-        final String relativePath;
+    public static final class Entry {
+        public final File file;
+        public final String relativePath;
         final String displayPath;
-        final String archivePath;
-        final String storageLabel;
-        final long lastModified;
-        final long size;
+        public final String archivePath;
+        public final String storageLabel;
+        public final long lastModified;
+        public final long size;
+        /** Verified at discovery. Recheck when opening a previously listed file. */
+        public final String canonicalPath;
 
-        Entry(File file, String relativePath, String displayPath, String archivePath, String storageLabel) {
+        private Entry(File file, String relativePath, String displayPath, String archivePath,
+                      String storageLabel, String canonicalPath) {
             this.file = file;
             this.relativePath = relativePath;
             this.displayPath = displayPath;
             this.archivePath = archivePath;
             this.storageLabel = storageLabel;
+            this.canonicalPath = canonicalPath;
             this.lastModified = file.lastModified();
             this.size = file.length();
         }
@@ -55,57 +65,83 @@ final class LogFileScanner {
     }
 
     static void scan(BatchConsumer consumer, Root... roots) {
-        Scan scan = new Scan(consumer);
+        try {
+            scan(consumer, () -> {
+                if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException();
+            }, roots);
+        } catch (InterruptedIOException ignored) {
+            // The viewer cancels by interrupting its worker. Leave the flag set.
+        }
+    }
+
+    /** A fresh, metadata-only traversal with stable, storage-qualified archive paths. */
+    public static List<Entry> discover(File internal, File external, Checkpoint checkpoint) throws InterruptedIOException {
+        List<Entry> entries = new ArrayList<>();
+        scan(entries::addAll, checkpoint, new Root(internal, "internal", "internal"),
+                new Root(external, "external", "external"));
+        return entries;
+    }
+
+    private static void scan(BatchConsumer consumer, Checkpoint checkpoint, Root... roots) throws InterruptedIOException {
+        Scan scan = new Scan(consumer, checkpoint);
         for (Root root : roots) {
-            if (Thread.currentThread().isInterrupted()) {
-                break;
-            }
+            checkpoint.check();
             if (root != null && root.directory != null && root.directory.isDirectory()) {
                 scan.collect(root);
             }
         }
+        checkpoint.check();
         scan.publish();
     }
 
     private static final class Scan {
         private static final long MAX_BATCH_DELAY_NANOS = 150_000_000L;
         final BatchConsumer consumer;
+        final Checkpoint checkpoint;
         final Set<String> seenPaths = new HashSet<>();
         List<Entry> batch = new ArrayList<>(BATCH_SIZE);
         long lastPublishNanos;
         boolean published;
 
-        Scan(BatchConsumer consumer) {
+        Scan(BatchConsumer consumer, Checkpoint checkpoint) {
             this.consumer = consumer;
+            this.checkpoint = checkpoint;
         }
 
-        void collect(Root root) {
+        void collect(Root root) throws InterruptedIOException {
             String canonicalRoot = canonicalPath(root.directory);
+            if (canonicalRoot == null) return;
+            File absoluteRoot = root.directory.getAbsoluteFile();
+            File parent = absoluteRoot.getParentFile();
+            if (parent != null) {
+                // OS-provided parents can have aliases, but the root itself must not be a link.
+                String parentPath = canonicalPath(parent);
+                if (parentPath == null || !new File(parentPath, absoluteRoot.getName()).getPath().equals(canonicalRoot)) return;
+            }
             Set<String> visitedDirectories = new HashSet<>();
             visitedDirectories.add(canonicalRoot);
             ArrayDeque<DirectoryState> preferred = new ArrayDeque<>();
             ArrayDeque<DirectoryState> pending = new ArrayDeque<>();
             preferred.addLast(new DirectoryState(root.directory, "", false));
 
-            while ((!preferred.isEmpty() || !pending.isEmpty()) && !Thread.currentThread().isInterrupted()) {
+            while (!preferred.isEmpty() || !pending.isEmpty()) {
+                checkpoint.check();
                 DirectoryState current = preferred.isEmpty() ? pending.removeLast() : preferred.removeLast();
                 File[] children = current.directory.listFiles();
                 if (children == null) {
                     continue;
                 }
                 for (File child : children) {
-                    if (Thread.currentThread().isInterrupted()) {
-                        break;
-                    }
+                    checkpoint.check();
                     if (!batch.isEmpty() && System.nanoTime() - lastPublishNanos >= MAX_BATCH_DELAY_NANOS) {
                         publish();
                     }
                     if (child.isDirectory()) {
-                        String childCanonical = canonicalPath(child);
-                        if (!isWithinRoot(canonicalRoot, childCanonical) || !visitedDirectories.add(childCanonical)) {
+                        String relativePath = appendPath(current.relativePath, child.getName());
+                        String expected = new File(canonicalRoot, relativePath).getPath();
+                        if (!expected.equals(canonicalPath(child)) || !visitedDirectories.add(expected)) {
                             continue;
                         }
-                        String relativePath = appendPath(current.relativePath, child.getName());
                         boolean allFilesRelevant = current.allFilesRelevant || isLogDirectory(relativePath);
                         DirectoryState next = new DirectoryState(child, relativePath, allFilesRelevant);
                         // Prefer known log locations without excluding any other subtree.
@@ -120,16 +156,20 @@ final class LogFileScanner {
                     if ((!current.allFilesRelevant && !isLogFileName(fileName)) || !child.isFile()) {
                         continue;
                     }
-                    if (!seenPaths.add(canonicalPath(child))) {
+                    String relativePath = appendPath(current.relativePath, fileName);
+                    String expected = new File(canonicalRoot, relativePath).getPath();
+                    // Even an in-root link can turn a non-log (e.g. a private setting) into a log.
+                    if (!expected.equals(canonicalPath(child)) || !seenPaths.add(expected)) {
                         continue;
                     }
-                    String relativePath = appendPath(current.relativePath, fileName);
+                    String archivePath = appendPath(root.archiveRootName, relativePath);
                     batch.add(new Entry(
                             child,
                             relativePath,
-                            appendPath(root.displayRootName, relativePath),
-                            appendPath(root.archiveRootName, relativePath),
-                            root.displayRootName));
+                            root.displayRootName.equals(root.archiveRootName) ? archivePath : appendPath(root.displayRootName, relativePath),
+                            archivePath,
+                            root.displayRootName,
+                            expected));
                     // A handful of logs must not wait for a full batch or a huge unrelated tree.
                     if (!published || batch.size() >= BATCH_SIZE) {
                         publish();
@@ -151,9 +191,21 @@ final class LogFileScanner {
     }
 
     private static boolean isLogFileName(String name) {
-        return name != null
-                && name.length() >= 4
-                && name.regionMatches(true, name.length() - 4, ".log", 0, 4);
+        int dot = name.lastIndexOf('.');
+        if (dot < 0) return false;
+        if (dot == name.length() - 4 && name.regionMatches(true, dot, ".log", 0, 4)) return true;
+        // Plain-text rotations outside logs/: foo.log.1, foo.log.YYYY-MM-DD, foo.log.old/bak.
+        if (dot < 4 || !name.regionMatches(true, dot - 4, ".log", 0, 4)) return false;
+        if (dot == name.length() - 4 && (name.regionMatches(true, dot, ".old", 0, 4)
+                || name.regionMatches(true, dot, ".bak", 0, 4))) return true;
+        boolean digit = false;
+        for (int i = dot + 1; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (c == '-' && digit) digit = false;
+            else if (c >= '0' && c <= '9') digit = true;
+            else return false;
+        }
+        return digit;
     }
 
     private static boolean isLogDirectory(String path) {
@@ -178,16 +230,8 @@ final class LogFileScanner {
         try {
             return file.getCanonicalPath();
         } catch (IOException ignored) {
-            return file.getAbsolutePath();
+            return null;
         }
-    }
-
-    private static boolean isWithinRoot(String root, String candidate) {
-        if (root.equals(candidate)) {
-            return true;
-        }
-        String prefix = root.endsWith(File.separator) ? root : root + File.separator;
-        return candidate.startsWith(prefix);
     }
 
     private static final class DirectoryState {

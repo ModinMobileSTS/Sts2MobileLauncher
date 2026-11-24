@@ -29,10 +29,37 @@ class SpireSupplyStationClient(private val client: OkHttpClient) {
         client.newBuilder().followRedirects(false).followSslRedirects(false).build()
     private val json = Json { ignoreUnknownKeys = true }
 
+    suspend fun loadBranchOptions(appId: UInt, publishedFileId: ULong): List<WorkshopVariantCandidate> {
+        val url = itemUrl("/api/workshop/versions", appId, publishedFileId).build()
+        val versions = try {
+            json.decodeFromString<BranchVersions>(getJson(url))
+        } catch (_: kotlinx.serialization.SerializationException) {
+            throw IOException("Invalid supply station version list")
+        }
+        if (!versions.enabled) return emptyList()
+        return versions.choices.mapNotNull { choice ->
+            if (choice.status != "MATCH" || choice.gameBranch.isBlank() || choice.gameBranch == LEGACY_DEFAULT_BRANCH) {
+                return@mapNotNull null
+            }
+            WorkshopVariantCandidate(
+                branch = choice.gameBranch,
+                manifestId = choice.manifestId?.toULongOrNull(),
+                depotId = null,
+                title = "",
+                source = SOURCE,
+                matchedBranchMin = choice.minBranch.orEmpty(),
+                matchedBranchMax = choice.maxBranch.orEmpty(),
+                timestampEpochSeconds = choice.publishedAt?.let {
+                    runCatching { Instant.parse(it).epochSecond }.getOrNull()
+                } ?: 0L,
+            )
+        }
+    }
+
     internal suspend fun resolve(request: WorkshopDownloadRequest): Download {
         var descriptor = loadDescriptor(request, refresh = false)
         if (!Instant.parse(descriptor.expiresAt).isAfter(Instant.now())) {
-            descriptor = loadDescriptor(request, refresh = true)
+            descriptor = loadDescriptor(request, refresh = true, versionId = descriptor.versionId)
         }
         require(Instant.parse(descriptor.expiresAt).isAfter(Instant.now())) {
             "Supply station authorization has expired"
@@ -52,13 +79,18 @@ class SpireSupplyStationClient(private val client: OkHttpClient) {
         val item: ResolvedWorkshopItem
 
         init {
+            val selected = request.selectedVariant?.takeIf { it.source == SOURCE }
             val resolution =
                 WorkshopItemResolution(
-                    requestedBranch = BRANCH,
+                    requestedBranch = request.branch,
+                    matchedBranchMin = selected?.matchedBranchMin.orEmpty(),
+                    matchedBranchMax = selected?.matchedBranchMax.orEmpty(),
                     manifestId = original.manifestId?.toULongOrNull(),
                     depotId = original.depotId,
                     source = SOURCE,
-                    fallbackReason = "site_default_content; game_branch_not_verified",
+                    fallbackReason = if (request.branch == LEGACY_DEFAULT_BRANCH) {
+                        "site_default_content; game_branch_not_verified"
+                    } else "",
                 )
             // Persist identity only, never the key, request code, signed URLs or CDN tokens.
             val metadata =
@@ -67,7 +99,7 @@ class SpireSupplyStationClient(private val client: OkHttpClient) {
                         put("appId", request.appId.toLong())
                         put("publishedFileId", request.publishedFileId.toString())
                         put("contentVersion", original.contentVersion)
-                        put("branch", BRANCH)
+                        put("branch", request.branch)
                         put("manifestId", original.manifestId)
                         put("depotId", original.depotId?.toLong())
                     }
@@ -131,12 +163,13 @@ class SpireSupplyStationClient(private val client: OkHttpClient) {
         private suspend fun refreshDescriptor(observed: Descriptor): Descriptor =
             refreshLock.withLock {
                 if (current !== observed) return@withLock current
-                val replacement = loadDescriptor(request, refresh = true)
+                val replacement = loadDescriptor(request, refresh = true, versionId = original.versionId)
                 require(
                     replacement.mode == original.mode &&
                         replacement.manifestId == original.manifestId &&
                         replacement.depotId == original.depotId &&
                         replacement.contentVersion == original.contentVersion &&
+                        replacement.versionId == original.versionId &&
                         replacement.depotKeyBase64 == original.depotKeyBase64
                 ) {
                     "Supply station content changed during download; start a new download"
@@ -192,8 +225,7 @@ class SpireSupplyStationClient(private val client: OkHttpClient) {
                 val endpoint =
                     requireNotNull(endpoints[host]) { "Unrecognized supply station CDN host" }
                 val url =
-                    apiUrl("cdn/token", request)
-                        .newBuilder()
+                    browserApiUrl("cdn/token", request, original.versionId)
                         .addQueryParameter("host", host)
                         .apply { if (rejected != null) addQueryParameter("refresh", "true") }
                         .build()
@@ -220,10 +252,10 @@ class SpireSupplyStationClient(private val client: OkHttpClient) {
     private suspend fun loadDescriptor(
         request: WorkshopDownloadRequest,
         refresh: Boolean,
+        versionId: String? = null,
     ): Descriptor {
         val url =
-            apiUrl("descriptor", request)
-                .newBuilder()
+            browserApiUrl("descriptor", request, versionId)
                 .apply { if (refresh) addQueryParameter("refresh", "true") }
                 .build()
         val descriptor = json.decodeFromString<Descriptor>(getJson(url))
@@ -233,17 +265,32 @@ class SpireSupplyStationClient(private val client: OkHttpClient) {
         ) {
             "Supply station returned a different Workshop item"
         }
+        require(descriptor.gameBranch == request.gameBranch()) {
+            "Supply station did not return content for the requested branch"
+        }
+        val selectedManifest = request.selectedVariant?.takeIf { it.source == SOURCE }?.manifestId
+        require(selectedManifest == null || descriptor.manifestId?.toULongOrNull() == selectedManifest) {
+            "Supply station version changed; select a branch again"
+        }
         descriptor.endpoints.forEach { checkedOrigin(it.origin) }
         return descriptor
     }
 
-    private fun apiUrl(path: String, request: WorkshopDownloadRequest): HttpUrl =
-        "$BASE_URL/api/downloads/browser/$path"
+    private fun WorkshopDownloadRequest.gameBranch(): String? = branch.takeUnless { it == LEGACY_DEFAULT_BRANCH }
+
+    private fun browserApiUrl(path: String, request: WorkshopDownloadRequest, versionId: String?): HttpUrl.Builder =
+        itemUrl("/api/downloads/browser/$path", request.appId, request.publishedFileId).apply {
+            request.gameBranch()?.let { addQueryParameter("gameBranch", it) }
+            // Pin only an identity resolved by the station for this branch; versionId overrides branch matching.
+            versionId?.let { addQueryParameter("versionId", it) }
+        }
+
+    private fun itemUrl(path: String, appId: UInt, publishedFileId: ULong): HttpUrl.Builder =
+        "$BASE_URL$path"
             .toHttpUrl()
             .newBuilder()
-            .addQueryParameter("appId", request.appId.toString())
-            .addQueryParameter("publishedFileId", request.publishedFileId.toString())
-            .build()
+            .addQueryParameter("appId", appId.toString())
+            .addQueryParameter("publishedFileId", publishedFileId.toString())
 
     private suspend fun getJson(url: HttpUrl): String =
         suspendCancellableCoroutine { continuation ->
@@ -330,6 +377,19 @@ class SpireSupplyStationClient(private val client: OkHttpClient) {
             }
 
     @Serializable
+    private data class BranchVersions(val enabled: Boolean, val choices: List<BranchChoice> = emptyList())
+
+    @Serializable
+    private data class BranchChoice(
+        val gameBranch: String,
+        val status: String,
+        val manifestId: String? = null,
+        val publishedAt: String? = null,
+        val minBranch: String? = null,
+        val maxBranch: String? = null,
+    )
+
+    @Serializable
     internal data class Descriptor(
         val mode: String,
         val appId: UInt,
@@ -338,6 +398,8 @@ class SpireSupplyStationClient(private val client: OkHttpClient) {
         val fileName: String,
         val fileSizeBytes: Long? = null,
         val contentVersion: String,
+        val gameBranch: String? = null,
+        val versionId: String? = null,
         val directUrl: String? = null,
         val manifestId: String? = null,
         val depotId: UInt? = null,
@@ -354,8 +416,8 @@ class SpireSupplyStationClient(private val client: OkHttpClient) {
     companion object {
         const val BASE_URL = "https://workshop.apricityx.top"
         const val SOURCE = "spire_supply_station"
-        // This is an installation namespace, NOT a claimed Steam/game branch.
-        const val BRANCH = "supply-station-default"
+        // Installed records made before branch matching retain their original namespace.
+        const val LEGACY_DEFAULT_BRANCH = "supply-station-default"
         private const val MAX_JSON_BYTES = 1024L * 1024L
     }
 }

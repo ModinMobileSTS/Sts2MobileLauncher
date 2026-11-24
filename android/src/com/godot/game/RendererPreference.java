@@ -11,6 +11,7 @@ public final class RendererPreference {
 
 	private static final String PREFERENCES_NAME = "sts2_extra_settings";
 	private static final String KEY_RENDERER = "preferred_renderer";
+	private static final String KEY_GLES_CACHE_MODE = "gles_shader_cache_disable_mode";
 
 	private RendererPreference() {
 	}
@@ -23,6 +24,15 @@ public final class RendererPreference {
 	public static void setSelectedRenderer(Context context, String renderer) {
 		SharedPreferences preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE);
 		preferences.edit().putString(KEY_RENDERER, normalizeRenderer(renderer)).apply();
+	}
+
+	static GlesShaderCache.Mode getShaderCacheMode(Context context) {
+		String value = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE).getString(KEY_GLES_CACHE_MODE, null);
+		return GlesShaderCache.Mode.fromValue(value);
+	}
+
+	static void setShaderCacheMode(Context context, GlesShaderCache.Mode mode) {
+		context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE).edit().putString(KEY_GLES_CACHE_MODE, mode.value).apply();
 	}
 
 	public static String[] buildGodotCommandLineArgs(Context context) {

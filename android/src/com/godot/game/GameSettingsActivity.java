@@ -83,6 +83,10 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	private List<ExtraSettingsRepository.PreparedModImport> activeModImports = new ArrayList<>();
 	private final List<String> modImportNotices = new ArrayList<>();
 	private AlertDialog modImportDialog;
+	private boolean directoriesReady;
+	private int pendingPickerRequest;
+	private Intent pendingPickerResult;
+	private Runnable cancelLaunchPreparation;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -95,7 +99,15 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		gameBodyVersionManager = new GameBodyVersionManager(this);
 		launchProfileManager = new LaunchProfileManager(this);
 		launchProfileManager.bootstrapIfNeeded();
-		repository.ensureAppDirectories();
+		if (savedInstanceState != null) {
+			pendingPickerRequest = savedInstanceState.getInt("pending_picker_request");
+			pendingPickerResult = savedInstanceState.getParcelable("pending_picker_result");
+		}
+		ModInstallReadiness.open(this, repository::ensureAppDirectories, () -> openSettings(savedInstanceState));
+	}
+
+	private void openSettings(Bundle savedInstanceState) {
+		directoriesReady = true;
 		SteamWorkshopDownloadCleaner.maybeRunDailyCleanup(this);
 		installBundledCompatPacksInBackground(false);
 		if (!ExtraSettingsPreferences.isFirstRunSetupCompleted(this)) {
@@ -103,6 +115,19 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		} else {
 			showMainShell();
 			maybeLaunchGameFromLauncherIntent(savedInstanceState);
+		}
+		if (pendingPickerResult != null) {
+			handlePickerResult(pendingPickerRequest, pendingPickerResult);
+			pendingPickerResult = null;
+		}
+	}
+
+	@Override
+	protected void onSaveInstanceState(Bundle outState) {
+		super.onSaveInstanceState(outState);
+		if (pendingPickerResult != null) {
+			outState.putInt("pending_picker_request", pendingPickerRequest);
+			outState.putParcelable("pending_picker_result", pendingPickerResult);
 		}
 	}
 
@@ -365,6 +390,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 	@Override
 	public void launchGame() {
+		if (busy) return;
 		preLaunchLocalSnapshotCreated = false;
 		try {
 			LaunchProfileManager.LaunchProfile selectedProfile = launchProfileManager.getSelectedProfile();
@@ -967,6 +993,16 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		if (resultCode != RESULT_OK || data == null) {
 			return;
 		}
+		// Android can redeliver the picker's result to a recreated Activity before it resumes.
+		if (!directoriesReady) {
+			pendingPickerRequest = requestCode;
+			pendingPickerResult = data;
+			return;
+		}
+		handlePickerResult(requestCode, data);
+	}
+
+	private void handlePickerResult(int requestCode, Intent data) {
 		if (requestCode == REQUEST_EXPORT_SAVE && data.getData() != null) {
 			Uri uri = data.getData();
 			runAsyncOperation(getString(R.string.status_busy_export_save), () -> {
@@ -2034,24 +2070,27 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		}
 		busy = true;
 		showMessage(getString(R.string.status_busy_prepare_launch));
-		new Thread(() -> {
-			try {
-				createPreLaunchLocalSaveSnapshotIfNeeded();
-				new GameLaunchPreparationManager(this).prepareForLaunch();
-				runOnUiThread(() -> {
-					busy = false;
-					Intent intent = GodotApp.createLaunchIntent(this, true);
-					intent.putExtra("launch_prepared", true);
-					startActivity(intent);
-					finish();
-				});
-			} catch (Exception exception) {
-				runOnUiThread(() -> {
-					busy = false;
-					showError(exception);
-				});
-			}
-		}, "sts2-launch-prepare").start();
+		GameLaunchPreparationManager preparation = new GameLaunchPreparationManager(this);
+		cancelLaunchPreparation = ModInstallReadiness.run(this, () -> {
+			createPreLaunchLocalSaveSnapshotIfNeeded();
+			preparation.prepareForLaunch();
+		}, () -> Snackbar.make(findViewById(android.R.id.content), R.string.mod_install_waiting, Snackbar.LENGTH_INDEFINITE)
+			.setAction(android.R.string.cancel, v -> {
+				if (cancelLaunchPreparation != null) cancelLaunchPreparation.run();
+				cancelLaunchPreparation = null;
+				busy = false;
+			}).show(), () -> {
+			cancelLaunchPreparation = null;
+			busy = false;
+			Intent intent = GodotApp.createLaunchIntent(this, true);
+			intent.putExtra("launch_prepared", true);
+			startActivity(intent);
+			finish();
+		}, exception -> {
+			cancelLaunchPreparation = null;
+			busy = false;
+			showError(exception);
+		});
 	}
 
 	private void installBundledCompatPacksInBackground(boolean showResult) {
@@ -2369,6 +2408,10 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 	@Override
 	public void showError(Exception exception) {
+		if (exception instanceof ModInstallStore.BusyException) {
+			showMessage(getString(R.string.mod_install_busy));
+			return;
+		}
 		String message = getString(R.string.error_operation_failed) + ": " + (exception.getMessage() == null ? exception.toString() : exception.getMessage());
 		showSnackbar(message, Snackbar.LENGTH_LONG);
 		refreshCurrentScreen();
@@ -2446,6 +2489,10 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 	@Override
 	public void onBackPressed() {
+		if (!directoriesReady) {
+			finish();
+			return;
+		}
 		if (!ExtraSettingsPreferences.isFirstRunSetupCompleted(this)) {
 			new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.welcome_exit_title)
