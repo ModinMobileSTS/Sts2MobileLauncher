@@ -341,7 +341,11 @@ public final class LaunchProfileManager {
 			return;
 		}
 		File dir = new File(getProfilesRootDir(), sanitizeId(profileId));
-		FileBrowserSupport.deleteRecursively(dir);
+		try {
+			FileBrowserSupport.deleteRecursively(dir);
+		} finally {
+			ModManifestCache.invalidatePath(dir);
+		}
 		if (sanitizeId(profileId).equals(getSelectedProfileId())) {
 			prefs().edit().remove(KEY_SELECTED_LAUNCH_PROFILE_ID).apply();
 			ensureSelectedProfileIfPossible();

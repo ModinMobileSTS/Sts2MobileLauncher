@@ -18,7 +18,7 @@ import java.util.zip.ZipOutputStream;
 import static org.junit.Assert.*;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(manifest = Config.NONE, sdk = 35)
+@Config(manifest = Config.NONE, sdk = 35, shadows = AndroidLinuxTestShadow.class)
 public class ModImportSafetyTest {
 	private Context context;
 	private ExtraSettingsRepository repository;
@@ -68,10 +68,25 @@ public class ModImportSafetyTest {
 		Files.write(outside.toPath(), ("private-bytes").getBytes(java.nio.charset.StandardCharsets.UTF_8));
 		Files.write(new File(mods, "mod_manifest.json").toPath(), (new JSONObject().put("id", "SafeMod").put("pck_name", "payload").toString()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
 		Files.createSymbolicLink(new File(mods, "payload.dll").toPath(), outside.toPath());
-		repository.ensureAppDirectories();
+		assertThrows(IOException.class, () -> repository.prepareModsForLaunch());
 		assertFalse(new File(mods, "SafeMod.dll").exists());
 		assertEquals("private-bytes", new String(Files.readAllBytes(outside.toPath()), java.nio.charset.StandardCharsets.UTF_8));
 		assertTrue(new File(mods, "mod_manifest.json").isFile());
+	}
+
+	@Test public void danglingAliasTargetCannotCreateAFileOutsideMods() throws Exception {
+		File mods = repository.getModsRootDir();
+		Files.createDirectories(mods.toPath());
+		File missing = new File(context.getCacheDir(), "never-created.dll");
+		Files.write(new File(mods, "manifest.json").toPath(), new JSONObject().put("id", "Alias")
+			.put("pck_name", "payload").toString().getBytes(StandardCharsets.UTF_8));
+		Files.write(new File(mods, "payload.dll").toPath(), new byte[] {1});
+		File alias = new File(mods, "Alias.dll");
+		Files.createSymbolicLink(alias.toPath(), missing.toPath());
+		assertThrows(IOException.class, repository::prepareModsForLaunch);
+		assertFalse(missing.exists());
+		assertTrue(Files.isSymbolicLink(alias.toPath()));
+		assertTrue(new File(mods, "manifest.json").isFile());
 	}
 
 	private File archive(JSONObject manifest) throws Exception {

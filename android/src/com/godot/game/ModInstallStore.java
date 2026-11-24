@@ -1,5 +1,9 @@
 package com.godot.game;
 
+import android.system.ErrnoException;
+import android.system.Os;
+import android.system.OsConstants;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -25,12 +29,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 /** Private, root-scoped ownership receipts and write-ahead rollback journal. */
 final class ModInstallStore {
 	// Closing a second channel for the same file can release the process's OS lock on Android.
 	// Refuse overlapping local attempts before opening another descriptor.
 	private static final Set<File> HELD_LOCK_FILES = ConcurrentHashMap.newKeySet();
+	private static final Pattern SHA256_HEX = Pattern.compile("[0-9a-f]{64}");
 	private final File filesRoot;
 	private final File modsRoot;
 	private final File lexicalAppRoot;
@@ -98,11 +104,12 @@ final class ModInstallStore {
 		if (!lexicalMods.getPath().startsWith(base)) throw new IOException("MOD root is outside application files");
 		scope = lexicalMods.getPath().substring(base.length()).replace(File.separatorChar, '/');
 		path(scope, false);
-		this.filesRoot = lexicalFiles.getCanonicalFile();
-		this.modsRoot = new File(this.filesRoot, scope);
+		// Only the app boundary, not a symlink at files/ or below it, is trusted.
 		lexicalAppRoot = lexicalFiles.getParentFile();
 		if (lexicalAppRoot == null) throw new IOException("Invalid application files root");
 		trustedAppRoot = lexicalAppRoot.getCanonicalFile();
+		this.filesRoot = new File(trustedAppRoot, lexicalFiles.getName());
+		this.modsRoot = new File(this.filesRoot, scope);
 		checkPath(this.filesRoot);
 		if (!this.filesRoot.isDirectory()) throw new IOException("Missing application files root");
 		checkPath(this.modsRoot);
@@ -116,12 +123,7 @@ final class ModInstallStore {
 		try (Lease ignored = lock()) {
 			File binding = new File(registry, "scope.json");
 			if (exists(binding)) {
-				JSONObject object = json(binding);
-				try {
-					if (object.getInt("schema") != 1 || !scope.equals(object.getString("scope"))) {
-						throw new IOException("Receipt scope mismatch");
-					}
-				} catch (JSONException e) { throw corrupt("scope", e); }
+				validateBinding(binding);
 			} else {
 				if (exists(index) || exists(journal)) throw new IOException("Missing MOD receipt scope binding");
 				try {
@@ -133,6 +135,15 @@ final class ModInstallStore {
 				} catch (JSONException e) { throw corrupt("scope", e); }
 			}
 		}
+	}
+
+	private void validateBinding(File binding) throws IOException {
+		JSONObject object = json(binding);
+		try {
+			if (object.getInt("schema") != 1 || !scope.equals(object.getString("scope"))) {
+				throw new IOException("Receipt scope mismatch");
+			}
+		} catch (JSONException e) { throw corrupt("scope", e); }
 	}
 
 	Review review(File stagingRoot, String targetPrefix, List<Module> incoming,
@@ -155,6 +166,8 @@ final class ModInstallStore {
 		} catch (IOException | RuntimeException e) {
 			try { lease.close(); } catch (IOException close) { e.addSuppressed(close); }
 			throw e;
+		} finally {
+			ModManifestCache.invalidatePath(modsRoot);
 		}
 	}
 
@@ -168,6 +181,8 @@ final class ModInstallStore {
 		} catch (IOException | RuntimeException e) {
 			try { lease.close(); } catch (IOException close) { e.addSuppressed(close); }
 			throw e;
+		} finally {
+			ModManifestCache.invalidatePath(modsRoot);
 		}
 	}
 
@@ -175,11 +190,31 @@ final class ModInstallStore {
 		recover(null);
 	}
 
-	void recover(Runnable afterRecovery) throws IOException {
+	interface Maintenance {
+		void run() throws IOException;
+	}
+
+	void recover(Maintenance afterRecovery) throws IOException {
 		try (Lease ignored = lock()) {
 			recoverLocked();
 			readState(index);
+			ensureDirectory(modsRoot);
 			if (afterRecovery != null) afterRecovery.run();
+		}
+	}
+
+	/** Final non-blocking launch handoff. Recovery (possibly a large copy) belongs on the worker. */
+	boolean withCleanRoot(Runnable whileLocked) throws IOException {
+		try (Lease ignored = lock()) {
+			validateBinding(new File(registry, "scope.json"));
+			if (!OsConstants.S_ISDIR(checkPath(modsRoot))) throw new IOException("Missing MOD directory: " + modsRoot);
+			if (exists(journal)) {
+				if (!journal.isDirectory()) throw new IOException("Invalid MOD transaction directory");
+				return false;
+			}
+			readState(index);
+			whileLocked.run();
+			return true;
 		}
 	}
 
@@ -202,8 +237,12 @@ final class ModInstallStore {
 			if (committed) return;
 			if (rolledBack || lease == null) throw new IOException("Transaction is no longer active");
 			// Until this atomic, synced marker succeeds, close/rollback can still restore everything.
-			atomicWrite(new File(journal, "phase"), bytes("COMMITTED"));
-			committed = true;
+			try {
+				atomicWrite(new File(journal, "phase"), bytes("COMMITTED"));
+				committed = true;
+			} finally {
+				ModManifestCache.invalidatePath(modsRoot);
+			}
 			IOException failure = null;
 			try { cleanupJournal(); } catch (IOException ignored) { /* Recovery finishes committed cleanup. */ }
 			try { lease.close(); } catch (IOException e) { failure = e; }
@@ -220,6 +259,7 @@ final class ModInstallStore {
 				rolledBack = true;
 			} catch (IOException e) { failure = e; }
 			finally {
+				ModManifestCache.invalidatePath(modsRoot);
 				try { lease.close(); } catch (IOException e) {
 					if (failure == null) failure = e; else failure.addSuppressed(e);
 				}
@@ -308,7 +348,6 @@ final class ModInstallStore {
 		}
 		if (!removal) {
 			if (plan.staging == null || !plan.staging.isDirectory()) throw new IOException("Missing MOD staging directory");
-			checkTree(plan.staging);
 			if (within(plan.staging, modsRoot) || within(modsRoot, plan.staging)
 				|| within(plan.staging, registry) || within(registry, plan.staging)) {
 				throw new IOException("Staging overlaps live files or receipts");
@@ -503,7 +542,21 @@ final class ModInstallStore {
 	}
 
 	private void recoverLocked() throws IOException {
-		if (!exists(journal)) return;
+		try {
+			if (!exists(journal)) return;
+		} catch (IOException e) {
+			ModManifestCache.invalidatePath(modsRoot);
+			throw e;
+		}
+		try {
+			recoverJournal();
+		} finally {
+			ModManifestCache.invalidatePath(modsRoot);
+		}
+	}
+
+	private void recoverJournal() throws IOException {
+		if (!journal.isDirectory()) throw new IOException("Invalid MOD transaction directory");
 		checkTree(journal);
 		File phase = new File(journal, "phase");
 		if (!exists(phase)) { cleanupJournal(); return; }
@@ -616,7 +669,7 @@ final class ModInstallStore {
 				String name = path(record.getString("path"), false);
 				long length = record.getLong("length");
 				String hash = record.getString("sha256");
-				if (length < 0 || !hash.matches("[0-9a-f]{64}")) throw new IOException("Invalid receipt fingerprint");
+				if (length < 0 || !SHA256_HEX.matcher(hash).matches()) throw new IOException("Invalid receipt fingerprint");
 				LinkedHashSet<String> owners = new LinkedHashSet<>();
 				JSONArray ownerArray = record.getJSONArray("owners");
 				for (int o = 0; o < ownerArray.length(); o++) {
@@ -841,21 +894,33 @@ final class ModInstallStore {
 	private static IOException corrupt(String what, Exception cause) { return new IOException("Corrupt MOD " + what, cause); }
 	private static byte[] bytes(String text) { return text.getBytes(StandardCharsets.UTF_8); }
 
-	/** Reject symlinks in every ancestor, including dangling directory entries. */
-	private static void checkPath(File file) throws IOException {
-		File absolute = file.getAbsoluteFile();
-		File parent = absolute.getParentFile();
-		if (parent != null) checkPath(parent);
-		if (!absolute.getCanonicalFile().equals(absolute)) throw new IOException("Symlink or non-normal path: " + absolute);
-		if (!absolute.exists() && parent != null && parent.isDirectory()) {
-			String[] names = parent.list();
-			if (names == null) throw new IOException("Unable to inspect path: " + parent);
-			for (String name : names) if (name.equals(absolute.getName())) throw new IOException("Dangling or inaccessible path: " + absolute);
+	/** lstat never follows the final component; absence is distinct from a dangling link or I/O error. */
+	static int modeNoFollow(File file) throws IOException {
+		try {
+			return Os.lstat(file.getPath()).st_mode;
+		} catch (ErrnoException e) {
+			if (e.errno == OsConstants.ENOENT) return 0;
+			throw new IOException("Unable to inspect path: " + file, e);
 		}
-		if (absolute.exists() && !absolute.isFile() && !absolute.isDirectory()) throw new IOException("Unsupported filesystem entry: " + absolute);
 	}
 
-	private static boolean exists(File file) throws IOException { checkPath(file); return file.exists(); }
+	/** Reject symlinks in every ancestor, including dangling directory entries. */
+	private static int checkPath(File file) throws IOException {
+		File absolute = file.getAbsoluteFile();
+		File parent = absolute.getParentFile();
+		if (parent != null) {
+			int parentMode = checkPath(parent);
+			if (parentMode != 0 && !OsConstants.S_ISDIR(parentMode)) throw new IOException("Not a directory: " + parent);
+		}
+		if (".".equals(absolute.getName()) || "..".equals(absolute.getName())) throw new IOException("Non-normal path: " + file);
+		int mode = modeNoFollow(absolute);
+		if (mode != 0 && !OsConstants.S_ISREG(mode) && !OsConstants.S_ISDIR(mode)) {
+			throw new IOException("Symlink or unsupported filesystem entry: " + file);
+		}
+		return mode;
+	}
+
+	private static boolean exists(File file) throws IOException { return checkPath(file) != 0; }
 
 	private static void checkTree(File file) throws IOException {
 		checkPath(file);
@@ -964,7 +1029,8 @@ final class ModInstallStore {
 			try { lock = file.getChannel().tryLock(); }
 			catch (OverlappingFileLockException e) { throw new BusyException(e); }
 			if (lock == null) throw new BusyException(null);
-			checkTree(registry);
+			// Each metadata/backup path is validated before use. Do not walk unrelated
+			// preserved assets (or a pending journal) just to acquire a clean readiness lease.
 			return new Lease(lockFile, file, lock);
 		} catch (IOException | RuntimeException | Error e) {
 			try { if (file != null) file.close(); } catch (IOException close) { e.addSuppressed(close); }

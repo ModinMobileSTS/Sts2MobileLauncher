@@ -22,6 +22,8 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -30,6 +32,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.*;
 
@@ -272,6 +276,62 @@ public class ModsPageOrderingTest {
 		select("L2", "C2");
 		selectRange();
 		assertSelected("L2", "C2");
+	}
+
+	@Test public void selectionUsesTheDisplayedGenerationAndNeverFallsBackToDiskWhileLoading() throws Exception {
+		load(mods("A", "B")); // These entries deliberately exist only in the loaded snapshot.
+		select("B");
+		assertEquals(Collections.singletonList(entries.get("B")), call(page, "selectedEntries", new Class<?>[0]));
+		call(page, "showLoading", new Class<?>[]{int.class}, R.string.mod_list_loading);
+		assertEquals(Collections.emptyList(), call(page, "selectedEntries", new Class<?>[0]));
+	}
+
+	@Test public void rescanFindsOutOfBandNestedEditsAndColdActionsWaitForTheWorker() throws Exception {
+		File root = repository.getModsRootDir();
+		File manifest = new File(root, "workshop/public/item/wrapper/fixture.json");
+		Files.createDirectories(manifest.getParentFile().toPath());
+		Files.write(manifest.toPath(), "{\"id\":\"Before\"}".getBytes(StandardCharsets.UTF_8));
+		page.build();
+		View profiles = field(page, "profilesChip");
+		View groups = field(page, "groupsChip");
+		assertFalse(profiles.isEnabled());
+		assertFalse(groups.isEnabled());
+		finishScan();
+		assertTrue(profiles.isEnabled());
+		assertTrue(groups.isEnabled());
+		assertEquals(Collections.singletonList("Before"), displayedIds());
+
+		// Simulate ADB, not the private editor. Editing bytes does not update the root directory mtime.
+		Files.write(manifest.toPath(), "{\"id\":\"After\"}".getBytes(StandardCharsets.UTF_8));
+		call(page, "refreshList", new Class<?>[0]);
+		finishScan();
+		assertEquals(Collections.singletonList("Before"), displayedIds());
+		ModsPageOrderingTest.<View>field(page, "rescanChip").performClick();
+		finishScan();
+		assertEquals(Collections.singletonList("After"), displayedIds());
+	}
+
+	@Test public void replacedSelectionIsRejectedRatherThanDeletingTheNewManifest() throws Exception {
+		File manifest = new File(repository.getModsRootDir(), "nested/A.json");
+		Files.createDirectories(manifest.getParentFile().toPath());
+		Files.write(manifest.toPath(), "{\"id\":\"A\",\"pck_name\":\"original\"}".getBytes(StandardCharsets.UTF_8));
+		List<ExtraSettingsRepository.ModEntry> before = repository.listInstalledModManifestsForDisplay();
+		assertEquals(1, before.size());
+		load(before);
+		Files.write(manifest.toPath(), "{\"id\":\"A\",\"pck_name\":\"replacement\"}".getBytes(StandardCharsets.UTF_8));
+		// Call the very same revalidation used by single- and multi-delete. A mismatched entry
+		// aborts the entire selection before opening an install-store transaction.
+		java.lang.reflect.InvocationTargetException error = assertThrows(java.lang.reflect.InvocationTargetException.class,
+			() -> call(page, "requireCurrentEntries", new Class<?>[]{List.class}, before));
+		assertTrue(error.getCause() instanceof IllegalStateException);
+		assertEquals("replacement", repository.listInstalledModManifestsForDisplay().get(0).pckName);
+	}
+
+	private void finishScan() throws Exception {
+		Field worker = ModsPage.class.getDeclaredField("MOD_SCAN_EXECUTOR");
+		worker.setAccessible(true);
+		((ExecutorService) worker.get(null)).submit(() -> {}).get(10, TimeUnit.SECONDS);
+		org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
 	}
 
 	private void loadWithMiddleGroup() throws Exception {

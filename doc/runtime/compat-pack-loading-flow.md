@@ -125,7 +125,7 @@ offline bootstrap:
    - 离线风险确认和失败详情对话框只说明当前配置仍绑定离线兜底，不再声称当前一定没有匹配的完整包。若按上述 SHA/version 评分找到 DLL 与 overlay 均完整的 full target，正文下方显示“发现匹配兼容包：<支持版本> / 切换并继续启动”按钮；无 full 匹配时不显示。点击后复用“使用推荐并继续”流程，写回当前 profile 的 `compat_pack_id` / `compat_target_id` 与 `compat_selection_source=auto`，同步启动上下文并重新执行完整启动校验，不为离线包写入确认。旧配置来源为 `unknown` 或用户手选为 `manual` 时，也可通过此显式操作切换；不点击则不改写绑定，原有取消、启动配置和继续离线/诊断重试入口保持可用，既有离线确认频率与 probe 规则不变。
 3. 启动前 launcher 会为当前 launch profile account root 创建一份本地 `before-launch` 存档快照（默认只保留最近 5 个）。若 Steam Cloud 模式配置为“启动前拉取”或“完整自动”，且已保存 Steam refresh token，则随后拉取当前 account root 的 Steam Cloud 文件；若 WebDAV 模式配置为“启动前拉取”或“完整自动”，且已配置 WebDAV URL，则继续拉取同一 account root 的 WebDAV 文件。任一同步失败时会弹窗允许取消、打开对应云存档中心或跳过同步继续启动。
 4. 启动后台线程执行 `GameLaunchPreparationManager.prepareForLaunch()`。
-5. 准备完成后启动 `GodotApp` 并附加 `launch_prepared=true`。
+5. 准备完成后，启动器向 `GodotApp` 交付一次性的进程内准备凭据，绑定本次配置及实际 MOD 根目录。
 
 如果当前 MOD 目录被安装事务占用，启动器在前台显示等待提示，在工作线程重试；取消不会中断安装。如果在准备完成之后才发生竞争，或从快捷方式直接进入 `GodotApp`，引擎不会先行启动：等待页重新准备当前配置，通过最终 MOD 事务检查后才创建引擎。记录损坏等 I/O 失败不作锁竞争处理。
 
@@ -142,6 +142,7 @@ Steam Cloud 与 WebDAV 的非强制同步使用逐文件的共同基线：仅本
 `GameLaunchPreparationManager.prepareForLaunch()` 顺序：
 
 1. 补齐 Android 私有 HOME/temp 环境，避免普通 MOD 使用 `/data/.config`、Harmony/MonoMod 使用不可写 `/tmp`。
+   在同一后台准备流程中，持当前 MOD 根目录的锁恢复事务、处理旧工坊残留并规范化手工复制的 MOD 别名。普通页面不承担这次全树维护。
 2. 规范化 Android locale 到游戏支持的语言 key，避免厂商 locale 字符串污染 `settings.save`。
 3. 刷新内置 compat packs（如果开关启用）。
 4. 输出当前 selected compat pack 的诊断日志：pack id、target、source zip sha、build branch/commit/dirty、notes。
@@ -159,7 +160,7 @@ Steam Cloud 与 WebDAV 的非强制同步使用逐文件的共同基线：仅本
    - 复制当前 profile payload 目录中 `data_*/*` 的游戏 assemblies，跳过 `.so`，并保护 BCL/System/GodotSharp 等 runtime DLL。
    - 使用 SharedPreferences stamp 避免不必要的大文件重复复制；compat stamp 包含已安装来源 zip SHA-256，用于识别 compat 包内容更新。payload/profile 变化时强制刷新游戏 assemblies，并清理 publish 目录里旧 payload 遗留的游戏 DLL/JSON。
 
-`GodotApp` 仍保留 fallback：如果不是从设置页 prepared 启动，会自己调用同一准备流程；该 fallback 同样尊重兼容包开关，关闭时不会补回 `STS2Mobile.dll`。游戏通过 Android 兼容层的退出回设置路径触发 `GodotApp.restartToSettingsFromGame()` 时，会写入 `<files>/launcher/expected_clean_game_exit.json`；下次设置页启动时会创建一份本地 `clean-exit` 存档快照，如 Steam Cloud 或 WebDAV 模式为完整自动，还会尝试上传当前 launch profile account root 的本地变化。
+直接启动 `GodotApp`、进程重建、准备凭据已用过或与当前配置不符时，进入私有 `GodotLaunchRetryActivity`，在后台完成相同准备；最终仍需持有当前 MOD 根目录的锁才能同步创建引擎。缺少凭据不在引擎主线程上补做全树扫描。游戏通过 `GodotApp.restartToSettingsFromGame()` 正常退出时，仍写入 `<files>/launcher/expected_clean_game_exit.json`；下次设置页启动创建 `clean-exit` 快照，并按配置上传本地变化。
 
 设置页因方向或其他配置变化重建时，旧实例的进度弹窗在 Activity 销毁时调用 `Dialog.dismiss()` 关闭，即使 DecorView 已不再报告为 attached 也不能跳过关闭，否则可能留下 `WindowLeaked`；已开始的 `clean-exit` 快照和云上传继续完成。旧实例不会再弹出完成/失败提示，新实例也不会重复消费同一退出标记。
 

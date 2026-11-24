@@ -45,7 +45,7 @@ import static org.junit.Assert.*;
 
 /** Actual view measurement and touch boundaries, including window shrink while editing. */
 @RunWith(RobolectricTestRunner.class)
-@Config(application = Application.class, sdk = 35, qualifiers = "en-rUS-w360dp-h640dp-mdpi", shadows = AndroidLinuxTestShadow.class)
+@Config(application = Application.class, sdk = 35, qualifiers = "en-rUS-w360dp-h640dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class ModalScrollingTest {
@@ -212,6 +212,13 @@ public class ModalScrollingTest {
 				("{\"id\":\"" + id + "\",\"name\":\"Long fixture mod name " + i + "\",\"has_dll\":false,\"has_pck\":false}").getBytes(java.nio.charset.StandardCharsets.UTF_8));
 		}
 		ModsPage page = new ModsPage(activity, repository, modalActions());
+		activity.setContentView(page.build());
+		// Without a loaded generation the picker is deliberately unavailable. Drain the real
+		// serial scan and then deliver its UI callback before exercising the modal.
+		java.lang.reflect.Field worker = ModsPage.class.getDeclaredField("MOD_SCAN_EXECUTOR");
+		worker.setAccessible(true);
+		((java.util.concurrent.ExecutorService) worker.get(null)).submit(() -> {}).get(10, java.util.concurrent.TimeUnit.SECONDS);
+		org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
 		Method show = ModsPage.class.getDeclaredMethod("showPickModsForGroupDialog", String.class, BottomSheetDialog.class);
 		show.setAccessible(true);
 		show.invoke(page, "content", null);

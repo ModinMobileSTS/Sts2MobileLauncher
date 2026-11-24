@@ -69,6 +69,7 @@ final class DebugAutomationRunner {
 	});
 
 	private final Context context;
+	private GameLaunchPreparationManager preparation;
 	private final Intent intent;
 	private final String runId;
 	private final File runDir;
@@ -793,8 +794,12 @@ final class DebugAutomationRunner {
 		if (clearItems.contains("mods")) {
 			ExtraSettingsRepository repository = new ExtraSettingsRepository(context);
 			File modsRoot = repository.getModsRootDir();
-			FileBrowserSupport.deleteRecursively(modsRoot);
-			FileBrowserSupport.ensureDirectory(modsRoot);
+			try {
+				FileBrowserSupport.deleteRecursively(modsRoot);
+				FileBrowserSupport.ensureDirectory(modsRoot);
+			} finally {
+				ModManifestCache.invalidatePath(modsRoot);
+			}
 			cleared.put("mods");
 		}
 		if (clearItems.contains("compat")) {
@@ -805,7 +810,12 @@ final class DebugAutomationRunner {
 		if (clearItems.contains("payloads")) {
 			LaunchProfileManager manager = new LaunchProfileManager(context);
 			FileBrowserSupport.deleteRecursively(manager.getPayloadsRootDir());
-			FileBrowserSupport.deleteRecursively(manager.getProfilesRootDir());
+			File profiles = manager.getProfilesRootDir();
+			try {
+				FileBrowserSupport.deleteRecursively(profiles);
+			} finally {
+				ModManifestCache.invalidatePath(profiles);
+			}
 			manager.bootstrapIfNeeded();
 			cleared.put("payloads");
 		}
@@ -851,7 +861,8 @@ final class DebugAutomationRunner {
 
 	private void prepareLaunch(JSONObject details) throws Exception {
 		long started = SystemClock.uptimeMillis();
-		new GameLaunchPreparationManager(context).prepareForLaunch();
+		preparation = new GameLaunchPreparationManager(context);
+		preparation.prepareForLaunch();
 		long elapsed = SystemClock.uptimeMillis() - started;
 		details.put("prepare_elapsed_ms", elapsed);
 		putEvent("prepare", elapsed + "ms");
@@ -860,7 +871,7 @@ final class DebugAutomationRunner {
 	private void startGameActivity(JSONObject details, boolean launchPrepared) throws Exception {
 		Intent gameIntent = new Intent(context, GodotApp.class);
 		gameIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-		gameIntent.putExtra("launch_prepared", launchPrepared);
+		if (launchPrepared && preparation != null) preparation.preparedIntent(gameIntent);
 		context.startActivity(gameIntent);
 		details.put("started_activity", "GodotApp");
 		details.put("launch_prepared", launchPrepared);

@@ -138,19 +138,33 @@ public class GodotApp extends GodotActivity {
 			return;
 		}
 
-		boolean launchPrepared = getIntent().getBooleanExtra("launch_prepared", false);
+		GameLaunchPreparationManager preparation = new GameLaunchPreparationManager(this);
+		File modsRoot = preparation.takePreparedRoot(getIntent());
+		if (modsRoot == null) {
+			deferLaunch();
+			return;
+		}
 		try {
-			ensureLaunchPreparedBeforeGodot(launchPrepared);
-			// Preparation (including the cold fallback) takes its own locks. Only after it has
-			// returned, revalidate this profile and hold the lease across synchronous engine init.
-			File modsRoot = new ExtraSettingsRepository(this).getModsRootDir();
-			new ModInstallStore(getFilesDir(), modsRoot).recover(() -> {
+			preparation.verifyPreparedFiles();
+		} catch (IOException changed) {
+			Log.w(TAG, "Prepared artifacts changed; returning to background preparation.", changed);
+			deferLaunch();
+			return;
+		}
+		try {
+			// Never roll back an interrupted install on the UI thread. A clean lease is held
+			// through native creation so an installer cannot slip in after the final check.
+			boolean started = new ModInstallStore(getFilesDir(), modsRoot).withCleanRoot(() -> {
 				configureGameBeforeGodot();
 				super.onCreate(savedInstanceState);
 			});
+			if (!started) {
+				deferLaunch();
+				return;
+			}
 		} catch (ModInstallStore.BusyException busy) {
 			Log.i(TAG, "MOD installation still in progress; deferring Godot startup.");
-			redirectBeforeGodot(copyRetryArguments(getIntent(), new Intent(this, GodotLaunchRetryActivity.class)));
+			deferLaunch();
 			return;
 		} catch (IOException exception) {
 			throw new IllegalStateException("Cannot start Godot before MOD installation recovery succeeds.", exception);
@@ -164,6 +178,10 @@ public class GodotApp extends GodotActivity {
 		floatingMouseInputController = new FloatingMouseInputController(this);
 		builtinKeyboardController = new BuiltinKeyboardController(this);
 		Log.i(TAG, "DIAG GodotApp.onCreate end windowFocused=" + currentWindowFocused);
+	}
+
+	private void deferLaunch() {
+		redirectBeforeGodot(copyRetryArguments(getIntent(), new Intent(this, GodotLaunchRetryActivity.class)));
 	}
 
 	private void configureGameBeforeGodot() {
@@ -580,84 +598,6 @@ public class GodotApp extends GodotActivity {
 		return gameDir;
 	}
 
-	private void ensureLaunchPreparedBeforeGodot(boolean launchPrepared) throws IOException {
-		new ExtraSettingsRepository(this).ensureAppDirectories();
-		CompatPackManager compatPackManager = new CompatPackManager(this);
-		try {
-			compatPackManager.requireSelectedPackReady();
-		} catch (IOException exception) {
-			throw new IllegalStateException("Cannot start Godot with an incomplete compatibility pack.", exception);
-		}
-		File publishDir = new File(getFilesDir(), ".godot/mono/publish/arm64");
-		File entryDll = new File(publishDir, "STS2Mobile.dll");
-		File gameDll = new File(publishDir, "sts2.dll");
-		File overlay = new File(getFilesDir(), "port_compat.pck");
-		boolean compatEnabled = compatPackManager.isCompatPackEnabled();
-		boolean needsPrepare = !launchPrepared || (compatEnabled && (!entryDll.isFile() || !overlay.isFile())) || !gameDll.isFile();
-		Log.e(TAG, "DIAG_FORCE GodotApp.ensureLaunchPrepared before launch_prepared=" + launchPrepared + " compat_enabled=" + compatEnabled + " needs_prepare=" + needsPrepare + " entry=" + describeFile(entryDll) + " game_dll=" + describeFile(gameDll));
-		if (needsPrepare) {
-			prepareLaunchFallback();
-		}
-		forceStageCompatEntryDllIfMissing(publishDir, entryDll);
-		Log.e(TAG, "DIAG_FORCE GodotApp.ensureLaunchPrepared after entry=" + describeFile(entryDll) + " game_dll=" + describeFile(gameDll) + " publish=" + describeFile(publishDir));
-	}
-
-	private void prepareLaunchFallback() throws ModInstallStore.BusyException {
-		try {
-			new GameLaunchPreparationManager(this).prepareForLaunch();
-			Log.e(TAG, "DIAG_FORCE Launch preparation complete via Activity pre-super fallback.");
-		} catch (ModInstallStore.BusyException busy) {
-			throw busy;
-		} catch (Exception exception) {
-			Log.e(TAG, "DIAG_FORCE Failed to prepare launch before Godot startup.", exception);
-			throw new IllegalStateException("Cannot start Godot before launch preparation succeeds.", exception);
-		}
-	}
-
-	private void forceStageCompatEntryDllIfMissing(File publishDir, File entryDll) {
-		CompatPackManager compatPackManager = new CompatPackManager(this);
-		if (!compatPackManager.isCompatPackEnabled()) {
-			File overlay = new File(getFilesDir(), "port_compat.pck");
-			deleteFileQuietly(entryDll);
-			deleteFileQuietly(overlay);
-			Log.e(TAG, "DIAG_FORCE forceStageCompatEntryDll skipped_because_disabled dest=" + describeFile(entryDll) + " overlay=" + describeFile(overlay));
-			return;
-		}
-		if (entryDll != null && entryDll.isFile()) {
-			return;
-		}
-		try {
-			ensureDirectory(publishDir);
-			File selected = compatPackManager.getSelectedCompatDll();
-			if (selected != null && selected.isFile()) {
-				copyFile(selected, entryDll);
-				Log.e(TAG, "DIAG_FORCE forceStageCompatEntryDll selected_pack source=" + describeFile(selected) + " dest=" + describeFile(entryDll));
-				return;
-			}
-			String requestedPackId = compatPackManager.getSelectedPackIdIgnoringEnabled();
-			if (requestedPackId != null && !requestedPackId.trim().isEmpty()) {
-				deleteFileQuietly(entryDll);
-				Log.e(TAG, "DIAG_FORCE forceStageCompatEntryDll refused_asset_fallback requested_pack=" + requestedPackId + " dest=" + describeFile(entryDll));
-				return;
-			}
-			try (InputStream inputStream = getAssets().open("dotnet_bcl/STS2Mobile.dll")) {
-				copyStreamToFile(inputStream, entryDll);
-				Log.e(TAG, "DIAG_FORCE forceStageCompatEntryDll asset_fallback dest=" + describeFile(entryDll));
-			}
-		} catch (Exception exception) {
-			Log.e(TAG, "DIAG_FORCE forceStageCompatEntryDll failed dest=" + describeFile(entryDll), exception);
-		}
-	}
-
-	private void deleteFileQuietly(File file) {
-		if (file == null || !file.exists()) {
-			return;
-		}
-		if (!file.delete() && file.exists()) {
-			Log.w(TAG, "Unable to delete file: " + file.getAbsolutePath());
-		}
-	}
-
 	private String extractBootstrapPck() {
 		File dest = new File(getFilesDir(), "bootstrap.pck");
 		if (dest.isFile()) {
@@ -700,26 +640,6 @@ public class GodotApp extends GodotActivity {
 		}
 	}
 
-	private void copyFile(File src, File dest) throws IOException {
-		try (InputStream inputStream = new FileInputStream(src)) {
-			copyStreamToFile(inputStream, dest);
-		}
-	}
-
-	private void copyStreamToFile(InputStream inputStream, File dest) throws IOException {
-		File parent = dest.getParentFile();
-		if (parent != null) {
-			ensureDirectory(parent);
-		}
-		try (OutputStream outputStream = new FileOutputStream(dest)) {
-			byte[] buffer = new byte[8192];
-			int read;
-			while ((read = inputStream.read(buffer)) != -1) {
-				outputStream.write(buffer, 0, read);
-			}
-		}
-	}
-
 	private void ensureDirectory(File directory) throws IOException {
 		if (directory.isDirectory()) {
 			return;
@@ -744,7 +664,7 @@ public class GodotApp extends GodotActivity {
 		}
 		String[] args = source.getStringArrayExtra(getEXTRA_COMMAND_LINE_PARAMS());
 		if (args != null) target.putExtra(getEXTRA_COMMAND_LINE_PARAMS(), args);
-		// A wait can span a profile/compatibility change. Do not forward launch_prepared,
+		// A wait can span a profile/compatibility change. Do not forward the handoff,
 		// task/grant flags, data or arbitrary extras from the exported component.
 		return target;
 	}
@@ -1251,7 +1171,6 @@ public class GodotApp extends GodotActivity {
 			Log.i("GODOT", "[AndroidRestart] Restarting GodotApp and exiting process to clear Godot/Mono/NativeDetour state.");
 			Intent intent = new Intent(this, GodotApp.class);
 			intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-			intent.putExtra("launch_prepared", false);
 			startActivity(intent);
 			Runtime.getRuntime().exit(0);
 		} catch (Exception exception) {

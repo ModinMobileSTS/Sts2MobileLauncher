@@ -60,6 +60,15 @@ final class FileBrowserSupport {
 		}
 	}
 
+	static void saveEditedText(File file, String content) throws IOException {
+		try {
+			writeTextFile(file, content);
+		} finally {
+			// Opening a destination can truncate it even if the write or close fails.
+			ModManifestCache.invalidatePath(file);
+		}
+	}
+
 	static void writeTextFile(File file, String content) throws IOException {
 		File parent = file.getParentFile();
 		if (parent != null) {
@@ -98,6 +107,15 @@ final class FileBrowserSupport {
 		}
 	}
 
+	static void pasteEntry(File source, File destination) throws IOException {
+		try {
+			copyEntryRecursively(source, destination);
+		} finally {
+			// One invalidation per pasted tree, including partially copied trees.
+			ModManifestCache.invalidatePath(destination);
+		}
+	}
+
 	static void copyEntryRecursively(File source, File destination) throws IOException {
 		if (source.isDirectory()) {
 			ensureDirectory(destination);
@@ -111,6 +129,14 @@ final class FileBrowserSupport {
 			return;
 		}
 		copyFile(source, destination);
+	}
+
+	static void deleteEntry(File file) throws IOException {
+		try {
+			ExtraSettingsRepository.deleteTreeNoFollow(file);
+		} finally {
+			ModManifestCache.invalidatePath(file);
+		}
 	}
 
 	static void deleteRecursively(File file) {
@@ -128,6 +154,15 @@ final class FileBrowserSupport {
 		if (!file.delete() && file.exists()) {
 			throw new IllegalStateException("Unable to delete: " + file.getAbsolutePath());
 		}
+	}
+
+	static boolean renameEntry(File source, File destination) {
+		if (!source.renameTo(destination)) {
+			return false;
+		}
+		ModManifestCache.invalidatePath(source);
+		ModManifestCache.invalidatePath(destination);
+		return true;
 	}
 
 	static File buildUniqueChild(File parent, String desiredName) {
@@ -184,7 +219,8 @@ final class FileBrowserSupport {
 		return probablyText ? "text/plain" : "application/octet-stream";
 	}
 
-	static void openFileInExternalApp(Activity activity, File file, boolean preferEdit, CharSequence chooserTitle) throws Exception {
+	/** Returns whether the launched app was granted write access to the private file. */
+	static boolean openFileInExternalApp(Activity activity, File file, boolean preferEdit, CharSequence chooserTitle) throws Exception {
 		if (file == null || !file.isFile()) {
 			throw new IOException("Missing file: " + (file == null ? "null" : file.getAbsolutePath()));
 		}
@@ -201,8 +237,11 @@ final class FileBrowserSupport {
 		if (!canHandleIntent(activity, baseIntent)) {
 			throw new IllegalStateException(activity.getString(R.string.file_browser_no_app_found));
 		}
+		boolean writable = (baseIntent.getFlags() & Intent.FLAG_GRANT_WRITE_URI_PERMISSION) != 0;
+		if (writable) ModManifestCache.invalidatePath(file);
 		grantUriPermissions(activity, baseIntent, uri, baseIntent.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION));
 		activity.startActivity(Intent.createChooser(baseIntent, chooserTitle));
+		return writable;
 	}
 
 	private static Intent buildIntent(File file, Uri uri, String action, String mimeType, int permissionFlags) {

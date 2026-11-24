@@ -33,6 +33,7 @@ public class SteamWorkshopDownloadQueueTest {
 		activity = Robolectric.buildActivity(SteamWorkshopActivity.class).get();
 		activity.setTheme(R.style.Theme_Sts2ExtraSettings);
 		activity.setContentView(new FrameLayout(activity));
+		setLibraryReady(true); // The merge tests exercise an admitted, populated local library.
 		SteamWorkshopPreferences.setDownloadBranchMode(activity, SteamWorkshopPreferences.BRANCH_MODE_ASK);
 		SteamWorkshopPreferences.setSupplyStationEnabled(activity, false);
 		queue = (List<Object>) field(activity, "pendingDownloadQueue");
@@ -108,6 +109,25 @@ public class SteamWorkshopDownloadQueueTest {
 
 		assertEquals(Arrays.asList("90001"), queuedIds());
 		assertSame(pendingStation, queue.get(0));
+	}
+
+	@Test public void unreadyQueueNeitherAcceptsPrerequisitesNorStartsExistingWork() throws Exception {
+		setLibraryReady(false);
+		Object existing = pending("90001", option("public-beta", "41"), true);
+		queue.add(existing);
+
+		merge(Arrays.asList(required("90002")), "90003");
+		invoke("pumpDownloadQueue", new Class<?>[0]);
+
+		assertEquals(Arrays.asList("90001"), queuedIds());
+		assertSame(existing, queue.get(0));
+		assertTrue(tasks.isEmpty());
+	}
+
+	private void setLibraryReady(boolean ready) throws Exception {
+		Field state = SteamWorkshopActivity.class.getDeclaredField("libraryReady");
+		state.setAccessible(true);
+		state.setBoolean(activity, ready);
 	}
 
 	private void merge(List<SteamWorkshopCatalog.RequiredItem> required, String currentId) throws Exception {

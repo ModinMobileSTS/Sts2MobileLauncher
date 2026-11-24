@@ -28,6 +28,8 @@
     <string name="status_mod_save_transfer_no_source">No transferable saves were found in “%1$s”.</string>
     <string name="section_mod">MOD</string>
     <string name="mod_list_loading">Scanning installed MODs…</string>
+    <string name="mod_rescan">Rescan installed MODs</string>
+    <string name="mod_selection_changed">The installation at %1$s has changed. Review the refreshed list and select it again.</string>
     <string name="mod_install_waiting">Waiting for another MOD operation to finish. This check will retry automatically.</string>
     <string name="mod_install_busy">Another MOD operation is in progress. Try again when it finishes.</string>
     <string name="mod_install_retry">Retry</string>
@@ -679,6 +681,8 @@
     <string name="welcome_exit_message">You can enter the main settings screen now. The recommended defaults will remain applied.</string>
     <string name="game_page_subtitle">A friendly overview for launch, saves and current mobile status.</string>
     <string name="game_home_title">STS2 Launcher</string>
+    <string name="game_hero_checking">Checking game payload…</string>
+    <string name="game_dashboard_loading">Loading…</string>
     <string name="game_steam_login">Log in Steam</string>
     <string name="game_steam_logged_in_fallback">Steam</string>
     <string name="game_hero_ready_title_format">%1$s Ready</string>

@@ -14,6 +14,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Parcelable;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.text.Editable;
@@ -125,7 +126,6 @@ public final class ModsPage {
 	private final Set<String> expandedModIds = new HashSet<>();
 	private final Set<String> fullDescriptionModIds = new HashSet<>();
 	private final Set<String> collapsedGroupIds = new HashSet<>();
-	private final List<ExtraSettingsRepository.ModEntry> currentAllMods = new ArrayList<>();
 	private final List<ModGroupBucket> currentBuckets = new ArrayList<>();
 	private final List<ListItem> listItems = new ArrayList<>();
 	private final Map<String, List<ModIssue>> issuesByModId = new LinkedHashMap<>();
@@ -141,6 +141,11 @@ public final class ModsPage {
 	private HorizontalScrollView chipScrollView;
 	private View warningAction;
 	private TextView warningCountView;
+	private MaterialSwitch masterSwitch;
+	private MaterialButton profilesChip;
+	private MaterialButton groupsChip;
+	private MaterialButton rescanChip;
+	private Parcelable pendingListState;
 	private int chipScrollX;
 	private boolean suppressChipScrollCapture;
 	private String filter = "all";
@@ -149,13 +154,13 @@ public final class ModsPage {
 	private boolean bottomPanelCollapsed;
 	private JSONObject cachedSettings;
 	private Runnable pendingSearchRefresh;
-	private boolean dataLoaded;
-	private boolean deletionRunning;
+	private boolean mutationRunning;
 	private LoadedMods loadedSnapshot;
 	private String dragGhostGroupId;
 	private int dragGhostIndex = -1;
 	private boolean dragGhostForGroup;
 	private BottomSheetDialog groupManageSheet;
+	private LinearLayout groupManageList;
 	private BottomSheetDialog issuesSheet;
 	private String currentGameVersion = "";
 
@@ -195,6 +200,9 @@ public final class ModsPage {
 
 			@Override public void onViewDetachedFromWindow(View view) {
 				scanGeneration.incrementAndGet();
+				loadedSnapshot = null;
+				if (groupManageSheet != null) groupManageSheet.dismiss();
+				if (issuesSheet != null) issuesSheet.dismiss();
 				if (pendingSearchRefresh != null) {
 					mainHandler.removeCallbacks(pendingSearchRefresh);
 				}
@@ -247,33 +255,28 @@ public final class ModsPage {
 		titleCluster.addView(warningChip, warningParams);
 
 		row.addView(titleCluster, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-		try {
-			JSONObject settings = repository.loadSettingsJson();
-			TextView label = ExtraSettingsUi.text(context, context.getString(R.string.mod_master_switch), 16, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
-			label.setSingleLine(true);
-			label.setEllipsize(TextUtils.TruncateAt.END);
-			LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-			labelParams.setMarginStart(ExtraSettingsUi.dp(context, 12));
-			labelParams.setMarginEnd(ExtraSettingsUi.dp(context, 8));
-			row.addView(label, labelParams);
-			MaterialSwitch master = new MaterialSwitch(context);
-			master.setChecked(repository.isModLoadingEnabled(settings));
-			master.setMinWidth(ExtraSettingsUi.dp(context, 52));
-			master.setScaleX(1.08f);
-			master.setScaleY(1.08f);
-			master.setOnCheckedChangeListener((buttonView, isChecked) -> {
-				try {
-					repository.saveSetting(root -> repository.ensureModSettings(root).put("mods_enabled", isChecked));
-					cachedSettings = repository.loadSettingsJson();
-				} catch (Exception exception) {
-					buttonView.setChecked(!isChecked);
-					actions.showError(exception);
-				}
-			});
-			row.addView(master);
-		} catch (Exception exception) {
-			actions.showError(exception);
-		}
+		TextView label = ExtraSettingsUi.text(context, context.getString(R.string.mod_master_switch), 16, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
+		label.setSingleLine(true);
+		label.setEllipsize(TextUtils.TruncateAt.END);
+		LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		labelParams.setMarginStart(ExtraSettingsUi.dp(context, 12));
+		labelParams.setMarginEnd(ExtraSettingsUi.dp(context, 8));
+		row.addView(label, labelParams);
+		masterSwitch = new MaterialSwitch(context);
+		masterSwitch.setMinWidth(ExtraSettingsUi.dp(context, 52));
+		masterSwitch.setScaleX(1.08f);
+		masterSwitch.setScaleY(1.08f);
+		masterSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+			if (loadedSnapshot == null || isChecked == repository.isModLoadingEnabled(cachedSettings)) return;
+			try {
+				repository.saveSetting(root -> repository.ensureModSettings(root).put("mods_enabled", isChecked));
+				cachedSettings = repository.loadSettingsJson();
+			} catch (Exception exception) {
+				buttonView.setChecked(!isChecked);
+				actions.showError(exception);
+			}
+		});
+		row.addView(masterSwitch);
 		return row;
 	}
 
@@ -327,13 +330,18 @@ public final class ModsPage {
 		addChipGap(chips);
 		chips.addView(actionChip(R.string.workshop_open, R.drawable.ic_steam_24, v -> actions.openSteamWorkshop()));
 		addChipGap(chips);
-		chips.addView(actionChip(R.string.mod_group_manage, R.drawable.ic_folder_24, v -> showGroupManageSheet()));
+		groupsChip = actionChip(R.string.mod_group_manage, R.drawable.ic_folder_24, v -> showGroupManageSheet());
+		chips.addView(groupsChip);
 		addChipGap(chips);
-		chips.addView(actionChip(R.string.mod_profiles_title, R.drawable.ic_layers_24, this::showProfilesMenu));
+		profilesChip = actionChip(R.string.mod_profiles_title, R.drawable.ic_layers_24, this::showProfilesMenu);
+		chips.addView(profilesChip);
 		addChipGap(chips);
 		chips.addView(actionChip(R.string.mod_sort_menu_title, R.drawable.ic_sort_24, this::showSortMenu));
 		addChipGap(chips);
 		chips.addView(actionChip(R.string.mod_filter_menu_title, R.drawable.ic_tune_24, this::showFilterMenu));
+		addChipGap(chips);
+		rescanChip = actionChip(R.string.mod_rescan, R.drawable.ic_sync_24, v -> refreshList(true));
+		chips.addView(rescanChip);
 
 		LinearLayout.LayoutParams chipScrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
 		chipScrollParams.topMargin = ExtraSettingsUi.dp(context, 12);
@@ -525,10 +533,9 @@ public final class ModsPage {
 	}
 
 	private void showProfilesMenu(View anchor) {
+		if (loadedSnapshot == null) return;
 		try {
-			JSONObject settings = repository.loadSettingsJson();
-			List<ExtraSettingsRepository.ModEntry> mods = repository.listInstalledModManifests();
-			ExtraSettingsRepository.ModProfileState state = repository.loadModProfileState(settings, mods);
+			ExtraSettingsRepository.ModProfileState state = repository.loadModProfileStateForDisplay(cachedSettings, loadedSnapshot.mods);
 			Map<Integer, ExtraSettingsRepository.ModProfile> profileItems = new LinkedHashMap<>();
 			ExtraSettingsRepository.ModProfile activeProfile = null;
 			rememberChipScroll();
@@ -578,14 +585,10 @@ public final class ModsPage {
 	}
 
 	private void applyProfile(String profileId) {
-		try {
+		runModMutation(R.string.mod_list_loading, () -> {
 			repository.applyModProfile(profileId);
-			selectedModIds.clear();
-			rememberChipScroll();
-			refreshList();
-		} catch (Exception exception) {
-			actions.showError(exception);
-		}
+			return context.getString(R.string.status_settings_saved);
+		});
 	}
 
 	private void setFilter(String value) {
@@ -600,7 +603,7 @@ public final class ModsPage {
 			return;
 		}
 		bottomPanelContent.removeAllViews();
-		if (selectedModIds.isEmpty()) {
+		if (loadedSnapshot == null || selectedModIds.isEmpty()) {
 			bottomPanelCollapsed = false;
 			hideBottomPanel();
 			return;
@@ -706,16 +709,21 @@ public final class ModsPage {
 	}
 
 	private void refreshList() {
+		refreshList(false);
+	}
+
+	private void refreshList(boolean forceRescan) {
+		if (mutationRunning) return;
 		int expectedGeneration = scanGeneration.incrementAndGet();
-		if (!dataLoaded && adapter != null) {
-			adapter.submit(Collections.singletonList(ListItem.empty(R.string.mod_list_loading)));
-		}
+		showLoading(R.string.mod_list_loading);
 		MOD_SCAN_EXECUTOR.execute(() -> {
 			try {
+				if (forceRescan) ModManifestCache.invalidatePath(repository.getModsRootDir());
+				if (expectedGeneration != scanGeneration.get()) return;
 				JSONObject settings = repository.loadSettingsJson();
 				Map<String, String> notes = repository.loadAllModNotes();
 				String gameVersion = resolveCurrentGameVersion();
-				List<ExtraSettingsRepository.ModEntry> allMods = repository.listInstalledModManifests();
+				List<ExtraSettingsRepository.ModEntry> allMods = repository.listInstalledModManifestsForDisplay();
 				LoadedMods loaded = new LoadedMods(settings, notes, gameVersion, allMods);
 				loaded.userGroups.addAll(repository.listModGroups());
 				loaded.groupAssignments.putAll(repository.loadModGroupAssignments());
@@ -736,6 +744,28 @@ public final class ModsPage {
 		});
 	}
 
+	private void showLoading(int messageRes) {
+		if (loadedSnapshot != null && recyclerView != null && recyclerView.getLayoutManager() != null) {
+			pendingListState = recyclerView.getLayoutManager().onSaveInstanceState();
+		}
+		loadedSnapshot = null;
+		currentBuckets.clear();
+		listItems.clear();
+		if (adapter != null) adapter.submit(Collections.singletonList(ListItem.empty(messageRes)));
+		updateManifestControls();
+		updateSelectionActionsPanel();
+		updateWarningBadge();
+		if (groupManageList != null) populateGroupManageList(groupManageList, groupManageSheet);
+	}
+
+	private void updateManifestControls() {
+		boolean ready = loadedSnapshot != null;
+		if (masterSwitch != null) masterSwitch.setEnabled(ready);
+		if (profilesChip != null) profilesChip.setEnabled(ready);
+		if (groupsChip != null) groupsChip.setEnabled(ready);
+		if (rescanChip != null) rescanChip.setEnabled(!mutationRunning);
+	}
+
 	private void applyLoadedMods(int expectedGeneration, LoadedMods loaded) {
 		if (expectedGeneration != scanGeneration.get() || adapter == null) {
 			return;
@@ -745,23 +775,24 @@ public final class ModsPage {
 		modNotesById.clear();
 		modNotesById.putAll(loaded.notes);
 		currentGameVersion = loaded.gameVersion;
-		currentAllMods.clear();
-		currentAllMods.addAll(loaded.mods);
-		dataLoaded = true;
-		rebuildModIssues(currentAllMods);
+		if (masterSwitch != null) masterSwitch.setChecked(repository.isModLoadingEnabled(cachedSettings));
+		updateManifestControls();
+		rebuildModIssues(loaded.mods);
 		Set<String> installedIds = new HashSet<>();
-		for (ExtraSettingsRepository.ModEntry entry : currentAllMods) installedIds.add(entry.modId);
+		for (ExtraSettingsRepository.ModEntry entry : loaded.mods) installedIds.add(entry.modId);
 		selectedModIds.retainAll(installedIds);
 		expandedModIds.retainAll(installedIds);
 		rebuildFilteredList();
+		if (groupManageList != null) populateGroupManageList(groupManageList, groupManageSheet);
 	}
 
 	private void applyLoadFailure(int expectedGeneration, Exception exception) {
 		if (expectedGeneration != scanGeneration.get() || adapter == null) {
 			return;
 		}
-		dataLoaded = false;
-		currentAllMods.clear();
+		loadedSnapshot = null;
+		updateManifestControls();
+		if (groupManageSheet != null) groupManageSheet.dismiss();
 		currentBuckets.clear();
 		listItems.clear();
 		listItems.add(ListItem.error(exception));
@@ -773,16 +804,16 @@ public final class ModsPage {
 	}
 
 	private void rebuildFilteredList() {
-		if (!dataLoaded || cachedSettings == null || adapter == null) {
+		if (loadedSnapshot == null || cachedSettings == null || adapter == null) {
 			return;
 		}
 		clearDragGhost(false);
 		currentBuckets.clear();
 		listItems.clear();
 		try {
-			List<ExtraSettingsRepository.ModEntry> filtered = filterMods(cachedSettings, currentAllMods);
+			List<ExtraSettingsRepository.ModEntry> filtered = filterMods(cachedSettings, loadedSnapshot.mods);
 			sortMods(filtered);
-			if (currentAllMods.isEmpty()) {
+			if (loadedSnapshot.mods.isEmpty()) {
 				listItems.add(ListItem.empty(R.string.status_no_mods));
 			} else if (filtered.isEmpty()) {
 				listItems.add(ListItem.empty(R.string.mod_no_filter_results));
@@ -834,6 +865,12 @@ public final class ModsPage {
 
 	private void submitListPreservingScroll(List<ListItem> items) {
 		if (adapter == null) {
+			return;
+		}
+		if (pendingListState != null && recyclerView != null && recyclerView.getLayoutManager() != null) {
+			adapter.submit(items);
+			recyclerView.getLayoutManager().onRestoreInstanceState(pendingListState);
+			pendingListState = null;
 			return;
 		}
 		int firstPos = RecyclerView.NO_POSITION;
@@ -1010,12 +1047,13 @@ public final class ModsPage {
 	}
 
 	private void toggleGroupCollapsed(String groupId) {
+		if (loadedSnapshot == null) return;
 		if (collapsedGroupIds.contains(groupId)) {
 			collapsedGroupIds.remove(groupId);
 		} else {
 			collapsedGroupIds.add(groupId);
 		}
-		refreshList();
+		rebuildListItemsFromBuckets();
 	}
 
 	private void collapseAllGroupsForReorder() {
@@ -1028,12 +1066,13 @@ public final class ModsPage {
 				collapsedGroupIds.add(item.bucket.id);
 			}
 		}
-		refreshList();
+		rebuildListItemsFromBuckets();
 	}
 
 	// region Drag
 
 	private boolean handleRecyclerDrag(DragEvent event) {
+		if (loadedSnapshot == null) return false;
 		DragState state = asDragState(event.getLocalState());
 		if (state != null && !selectedModIds.isEmpty()) {
 			return event.getAction() == DragEvent.ACTION_DRAG_STARTED;
@@ -1067,8 +1106,10 @@ public final class ModsPage {
 				clearDragGhost(true);
 				if (target != null) {
 					ModGroupBucket bucket = findBucket(target.groupId);
-					ModGroupBucket source = state.sourceBucket;
-					moveModToGroup(state.entry, source, bucket, target.index);
+					ModGroupBucket source = findBucket(state.sourceBucket.id);
+					if (source != null && source.entries.contains(state.entry)) {
+						moveModToGroup(state.entry, source, bucket, target.index);
+					}
 				}
 				return true;
 			}
@@ -1361,7 +1402,6 @@ public final class ModsPage {
 			}
 			targetOrder.add(insertionIndex, entry.modId);
 			repository.saveModOrder(targetBucket.id, targetOrder);
-			scanGeneration.incrementAndGet();
 			loadedSnapshot.modOrder.put(targetBucket.id, orderRanks(targetOrder));
 			if (!sameGroup) {
 				repository.saveModOrder(sourceBucket.id, sourceOrder);
@@ -1385,7 +1425,7 @@ public final class ModsPage {
 	private List<String> fullModOrderForGroup(ModGroupBucket bucket) {
 		ModGroupBucket fullBucket = new ModGroupBucket(bucket.id, bucket.label, bucket.userCreated);
 		Set<String> userGroups = new HashSet<>(loadedSnapshot.userGroups);
-		for (ExtraSettingsRepository.ModEntry mod : currentAllMods) {
+		for (ExtraSettingsRepository.ModEntry mod : loadedSnapshot.mods) {
 			if (bucket.id.equals(groupIdForEntry(mod, userGroups, loadedSnapshot.groupAssignments))) {
 				fullBucket.entries.add(mod);
 			}
@@ -1450,7 +1490,6 @@ public final class ModsPage {
 			order.add(bucket.id);
 		}
 		repository.saveModGroupOrder(order);
-		scanGeneration.incrementAndGet();
 		loadedSnapshot.groupOrder.clear();
 		loadedSnapshot.groupOrder.putAll(orderRanks(order));
 
@@ -1478,7 +1517,7 @@ public final class ModsPage {
 	}
 
 	private boolean startModDrag(View handle, View card, ModGroupBucket bucket, ExtraSettingsRepository.ModEntry entry) {
-		if (!selectedModIds.isEmpty()) {
+		if (loadedSnapshot == null || !selectedModIds.isEmpty()) {
 			return false;
 		}
 		if (expandedModIds.contains(entry.modId)) {
@@ -1499,7 +1538,7 @@ public final class ModsPage {
 	}
 
 	private boolean startGroupDrag(View handle, View headerView, ModGroupBucket bucket) {
-		if (!selectedModIds.isEmpty()) {
+		if (loadedSnapshot == null || !selectedModIds.isEmpty()) {
 			return false;
 		}
 		performDragHaptic(handle);
@@ -1546,6 +1585,7 @@ public final class ModsPage {
 	// region Selection
 
 	private void toggleSelected(String modId) {
+		if (loadedSnapshot == null) return;
 		boolean wasEmpty = selectedModIds.isEmpty();
 		if (selectedModIds.contains(modId)) {
 			selectedModIds.remove(modId);
@@ -1663,6 +1703,7 @@ public final class ModsPage {
 	// region Group manage + move dialogs
 
 	private void showGroupManageSheet() {
+		if (loadedSnapshot == null) return;
 		if (groupManageSheet != null) {
 			try {
 				groupManageSheet.dismiss();
@@ -1677,6 +1718,12 @@ public final class ModsPage {
 			}
 		});
 		groupManageSheet = dialog;
+		dialog.setOnDismissListener(unused -> {
+			if (groupManageSheet == dialog) {
+				groupManageSheet = null;
+				groupManageList = null;
+			}
+		});
 		ScrollableBottomSheet.setContent(dialog, buildGroupManageContent(dialog));
 		dialog.show();
 	}
@@ -1705,8 +1752,9 @@ public final class ModsPage {
 		LinearLayout list = ExtraSettingsUi.vertical(context);
 		root.addView(list, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-		Runnable rebuildList = () -> populateGroupManageList(list, dialog);
+		groupManageList = list;
 		createBtn.setOnClickListener(v -> {
+			if (loadedSnapshot == null) return;
 			try {
 				String name = nameInput.getText() == null ? "" : nameInput.getText().toString();
 				if (TextUtils.isEmpty(name.trim())) {
@@ -1715,36 +1763,36 @@ public final class ModsPage {
 				}
 				repository.createModGroup(name);
 				nameInput.setText("");
-				rebuildList.run();
 				refreshList();
 			} catch (Exception exception) {
 				actions.showError(exception);
 			}
 		});
-		rebuildList.run();
+		populateGroupManageList(list, dialog);
 		return root;
 	}
 
 	private void populateGroupManageList(LinearLayout list, BottomSheetDialog dialog) {
 		list.removeAllViews();
-		List<String> groups = repository.listModGroups();
-		List<ExtraSettingsRepository.ModEntry> allMods = repository.listInstalledModManifests();
+		if (loadedSnapshot == null) {
+			list.addView(ExtraSettingsUi.body(context, R.string.mod_list_loading));
+			return;
+		}
+		List<String> groups = loadedSnapshot.userGroups;
 		Set<String> userGroupNames = new LinkedHashSet<>(groups);
-		Map<String, String> groupAssignments = repository.loadModGroupAssignments();
 		if (groups.isEmpty()) {
 			TextView empty = ExtraSettingsUi.body(context, R.string.mod_group_empty_manage);
 			empty.setPadding(0, ExtraSettingsUi.dp(context, 12), 0, 0);
 			list.addView(empty);
 			return;
 		}
+		Map<String, Integer> counts = new HashMap<>();
+		for (ExtraSettingsRepository.ModEntry entry : loadedSnapshot.mods) {
+			String group = groupIdForEntry(entry, userGroupNames, loadedSnapshot.groupAssignments);
+			counts.put(group, counts.getOrDefault(group, 0) + 1);
+		}
 		for (String groupName : groups) {
-			int count = 0;
-			for (ExtraSettingsRepository.ModEntry entry : allMods) {
-				if (groupName.equals(groupIdForEntry(entry, userGroupNames, groupAssignments))) {
-					count++;
-				}
-			}
-			list.addView(buildGroupManageCard(groupName, count, dialog), groupCardParams(list));
+			list.addView(buildGroupManageCard(groupName, counts.getOrDefault(groupName, 0), dialog), groupCardParams(list));
 		}
 	}
 
@@ -1815,7 +1863,7 @@ public final class ModsPage {
 					actions.showMessage(context.getString(R.string.mod_group_name_required));
 					return;
 				}
-				actions.runAsyncOperation(context.getString(R.string.status_busy_rename_mod_group), () -> {
+				runModMutation(R.string.status_busy_rename_mod_group, () -> {
 					String renamed = repository.renameModGroup(groupName, name);
 					return context.getString(R.string.status_rename_mod_group_done, renamed);
 				});
@@ -1832,7 +1880,7 @@ public final class ModsPage {
 			.setMessage(context.getString(R.string.mod_group_delete_message, groupName))
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (d, which) -> {
-				actions.runAsyncOperation(context.getString(R.string.status_busy_delete_mod_group), () -> {
+				runModMutation(R.string.status_busy_delete_mod_group, () -> {
 					repository.deleteModGroup(groupName);
 					return context.getString(R.string.status_delete_mod_group_done);
 				});
@@ -1844,9 +1892,10 @@ public final class ModsPage {
 	}
 
 	private void showPickModsForGroupDialog(String targetGroupName, BottomSheetDialog parentSheet) {
-		List<ExtraSettingsRepository.ModEntry> allMods = repository.listInstalledModManifests();
-		Set<String> userGroups = new LinkedHashSet<>(repository.listModGroups());
-		Map<String, String> groupAssignments = repository.loadModGroupAssignments();
+		if (loadedSnapshot == null) return;
+		List<ExtraSettingsRepository.ModEntry> allMods = loadedSnapshot.mods;
+		Set<String> userGroups = new LinkedHashSet<>(loadedSnapshot.userGroups);
+		Map<String, String> groupAssignments = loadedSnapshot.groupAssignments;
 		Set<String> checked = new HashSet<>();
 		for (ExtraSettingsRepository.ModEntry entry : allMods) {
 			if (targetGroupName.equals(groupIdForEntry(entry, userGroups, groupAssignments))) {
@@ -1928,7 +1977,7 @@ public final class ModsPage {
 		}
 		List<String> targets = new ArrayList<>();
 		targets.add(MOD_GROUP_UNGROUPED);
-		targets.addAll(repository.listModGroups());
+		targets.addAll(loadedSnapshot.userGroups);
 		if (targets.isEmpty()) {
 			actions.showMessage(context.getString(R.string.mod_group_no_targets));
 			return;
@@ -1958,23 +2007,18 @@ public final class ModsPage {
 			actions.showMessage(context.getString(R.string.mod_group_move_none_selected));
 			return;
 		}
-		try {
+		runModMutation(R.string.status_busy_batch_move_mods, () -> {
 			String label = groupLabel(targetGroupId, targetGroupId);
-			int count = entries.size();
+			List<ExtraSettingsRepository.ModEntry> current = requireCurrentEntries(entries);
 			List<String> order = new ArrayList<>(repository.loadModOrder(targetGroupId));
-			for (ExtraSettingsRepository.ModEntry entry : entries) {
+			for (ExtraSettingsRepository.ModEntry entry : current) {
 				order.remove(entry.modId);
 				order.add(entry.modId);
 				repository.moveModToGroup(entry, targetGroupId);
 			}
 			repository.saveModOrder(targetGroupId, order);
-			actions.showMessage(context.getString(R.string.status_batch_move_mods_done, count, label));
-			rememberChipScroll();
-			refreshList();
-		} catch (Exception exception) {
-			actions.showError(exception);
-			refreshList();
-		}
+			return context.getString(R.string.status_batch_move_mods_done, current.size(), label);
+		});
 	}
 
 	// endregion
@@ -2215,6 +2259,7 @@ public final class ModsPage {
 		void bind(String groupId, ExtraSettingsRepository.ModEntry entry) {
 			boundGroupId = groupId;
 			boundEntry = entry;
+			detailsBuiltForModId = null;
 			if (entry == null) {
 				return;
 			}
@@ -2229,14 +2274,16 @@ public final class ModsPage {
 			switchView.setOnCheckedChangeListener(null);
 			switchView.setChecked(enabled);
 			switchView.setEnabled(selectedModIds.isEmpty());
+			int boundGeneration = scanGeneration.get();
 			switchView.setOnCheckedChangeListener((buttonView, isChecked) -> {
+				if (loadedSnapshot == null || scanGeneration.get() != boundGeneration) return;
 				try {
 					repository.saveSetting(root -> repository.setModDisabled(root, entry.modId, !isChecked));
 					cachedSettings = repository.loadSettingsJson();
 					enabledState[0] = isChecked;
 					applyModCardStyle(card, isChecked, selectedModIds.contains(entry.modId), issuesByModId.containsKey(entry.modId));
 					// Re-evaluate dependency disabled issues when toggles change.
-					rebuildModIssues(currentAllMods.isEmpty() ? repository.listInstalledModManifests() : currentAllMods);
+					rebuildModIssues(loadedSnapshot.mods);
 					updateWarningBadge();
 					if (adapter != null) {
 						adapter.notifyItemRangeChanged(0, adapter.getItemCount(), PAYLOAD_SELECTION);
@@ -2805,7 +2852,7 @@ public final class ModsPage {
 			return;
 		}
 		int problemModCount = issuesByModId.size();
-		if (problemModCount <= 0) {
+		if (loadedSnapshot == null || problemModCount <= 0) {
 			warningAction.setVisibility(View.GONE);
 			return;
 		}
@@ -2850,7 +2897,7 @@ public final class ModsPage {
 
 		// Check only the flat ModSettings.ModList order saved for the game.
 		// Missing entries have no explicit manual order, and UI groups must not imply one.
-		Map<String, Integer> orderIndex = loadRuntimeManualOrderIndex();
+		Map<String, Integer> orderIndex = loadRuntimeManualOrderIndex(cachedSettings);
 
 		for (ExtraSettingsRepository.ModEntry entry : enabledMods) {
 			List<ModIssue> issues = new ArrayList<>();
@@ -2962,10 +3009,9 @@ public final class ModsPage {
 		return null;
 	}
 
-	private Map<String, Integer> loadRuntimeManualOrderIndex() {
+	private Map<String, Integer> loadRuntimeManualOrderIndex(JSONObject settings) {
 		Map<String, Integer> orderIndex = new HashMap<>();
 		try {
-			JSONObject settings = cachedSettings != null ? cachedSettings : repository.loadSettingsJson();
 			List<String> order = repository.loadRuntimeModListOrder(settings);
 			for (int i = 0; i < order.size(); i++) {
 				String id = order.get(i);
@@ -3062,6 +3108,7 @@ public final class ModsPage {
 	}
 
 	private void showModIssuesSheet() {
+		if (loadedSnapshot == null) return;
 		if (issuesSheet != null) {
 			try {
 				issuesSheet.dismiss();
@@ -3244,7 +3291,8 @@ public final class ModsPage {
 		if (TextUtils.isEmpty(modId)) {
 			return null;
 		}
-		for (ExtraSettingsRepository.ModEntry entry : currentAllMods) {
+		if (loadedSnapshot == null) return null;
+		for (ExtraSettingsRepository.ModEntry entry : loadedSnapshot.mods) {
 			if (entry != null && modId.equals(entry.modId)) {
 				return entry;
 			}
@@ -3254,57 +3302,36 @@ public final class ModsPage {
 
 
 	private void runIssueAutoFix(BottomSheetDialog dialog, boolean enableDeps, boolean fixOrder) {
-		try {
-			String message;
+		dialog.dismiss();
+		runModMutation(R.string.mod_list_loading, () -> {
+			// A repair rewrites settings: recompute the graph from disk, not the warning sheet.
+			List<ExtraSettingsRepository.ModEntry> mods = repository.listInstalledModManifests();
+			int enabled = enableDeps ? autoEnableDisabledDependencies(mods) : 0;
+			if (fixOrder) autoFixLoadOrder(mods);
 			if (enableDeps && fixOrder) {
-				int enabled = autoEnableDisabledDependencies();
-				autoFixLoadOrder();
-				message = context.getString(R.string.mod_issues_auto_fix_all_done)
+				return context.getString(R.string.mod_issues_auto_fix_all_done)
 					+ (enabled > 0 ? " " + context.getString(R.string.mod_issues_auto_enable_deps_done, enabled) : "");
-			} else if (enableDeps) {
-				int enabled = autoEnableDisabledDependencies();
-				message = context.getString(R.string.mod_issues_auto_enable_deps_done, enabled);
-			} else {
-				autoFixLoadOrder();
-				message = context.getString(R.string.mod_issues_auto_fix_done);
 			}
-			dialog.dismiss();
-			actions.showMessage(message);
-			refreshList();
-		} catch (Exception exception) {
-			actions.showError(exception);
-		}
+			return enableDeps ? context.getString(R.string.mod_issues_auto_enable_deps_done, enabled)
+				: context.getString(R.string.mod_issues_auto_fix_done);
+		});
 	}
 
 	/** Enables installed dependencies that are currently disabled. Returns count enabled. */
-	private int autoEnableDisabledDependencies() throws Exception {
+	private int autoEnableDisabledDependencies(List<ExtraSettingsRepository.ModEntry> allMods) throws Exception {
 		Set<String> toEnable = new LinkedHashSet<>();
-		for (ModIssue issue : currentIssues) {
-			if (ModIssue.TYPE_DEPENDENCY_DISABLED.equals(issue.type) && !TextUtils.isEmpty(issue.relatedModId)) {
-				toEnable.add(issue.relatedModId);
-			}
+		JSONObject settings = repository.loadSettingsJson();
+		Map<String, ExtraSettingsRepository.ModEntry> byId = new HashMap<>();
+		Map<String, ExtraSettingsRepository.ModEntry> byPckName = new HashMap<>();
+		for (ExtraSettingsRepository.ModEntry entry : allMods) {
+			byId.put(entry.modId, entry);
+			if (!TextUtils.isEmpty(entry.pckName)) byPckName.put(entry.pckName, entry);
 		}
-		if (toEnable.isEmpty()) {
-			// Re-scan in case issue list is stale.
-			List<ExtraSettingsRepository.ModEntry> allMods = repository.listInstalledModManifests();
-			Map<String, ExtraSettingsRepository.ModEntry> byId = new HashMap<>();
-			Map<String, ExtraSettingsRepository.ModEntry> byPckName = new HashMap<>();
-			for (ExtraSettingsRepository.ModEntry entry : allMods) {
-				byId.put(entry.modId, entry);
-				if (!TextUtils.isEmpty(entry.pckName)) {
-					byPckName.put(entry.pckName, entry);
-				}
-			}
-			for (ExtraSettingsRepository.ModEntry entry : allMods) {
-				if (isModDisabledSafe(entry)) {
-					continue;
-				}
-				for (ExtraSettingsRepository.ModDependency dependency : entry.dependencies) {
-					ExtraSettingsRepository.ModEntry dep = findInstalledDependency(dependency.id, byId, byPckName);
-					if (dep != null && isModDisabledSafe(dep)) {
-						toEnable.add(dep.modId);
-					}
-				}
+		for (ExtraSettingsRepository.ModEntry entry : allMods) {
+			if (repository.isModDisabled(settings, entry)) continue;
+			for (ExtraSettingsRepository.ModDependency dependency : entry.dependencies) {
+				ExtraSettingsRepository.ModEntry dep = findInstalledDependency(dependency.id, byId, byPckName);
+				if (dep != null && repository.isModDisabled(settings, dep)) toEnable.add(dep.modId);
 			}
 		}
 		if (toEnable.isEmpty()) {
@@ -3315,7 +3342,6 @@ public final class ModsPage {
 				repository.setModDisabled(root, modId, false);
 			}
 		});
-		cachedSettings = repository.loadSettingsJson();
 		return toEnable.size();
 	}
 
@@ -3323,11 +3349,11 @@ public final class ModsPage {
 	 * Rewrites the flat runtime MOD order used by the game's ModSettings.ModList.
 	 * UI groups remain only presentation/file organization and are not part of runtime sorting.
 	 */
-	private void autoFixLoadOrder() throws Exception {
-		List<ExtraSettingsRepository.ModEntry> allMods = repository.listInstalledModManifests();
+	private void autoFixLoadOrder(List<ExtraSettingsRepository.ModEntry> allMods) throws Exception {
 		if (allMods.isEmpty()) {
 			return;
 		}
+		JSONObject settings = repository.loadSettingsJson();
 		List<ExtraSettingsRepository.ModEntry> enabled = new ArrayList<>();
 		List<ExtraSettingsRepository.ModEntry> disabled = new ArrayList<>();
 		Map<String, ExtraSettingsRepository.ModEntry> byId = new HashMap<>();
@@ -3337,7 +3363,7 @@ public final class ModsPage {
 			if (!TextUtils.isEmpty(entry.pckName)) {
 				byPckName.put(entry.pckName, entry);
 			}
-			if (isModDisabledSafe(entry)) {
+			if (repository.isModDisabled(settings, entry)) {
 				disabled.add(entry);
 			} else {
 				enabled.add(entry);
@@ -3347,9 +3373,9 @@ public final class ModsPage {
 			return;
 		}
 
-		Map<String, Integer> manualIndex = loadRuntimeManualOrderIndex();
+		Map<String, Integer> manualIndex = loadRuntimeManualOrderIndex(settings);
 		Map<String, Integer> fallbackIndex = fallbackScanOrderIndex(allMods);
-		List<String> sortedEnabledIds = computeRuntimeTopoSortedIds(enabled, byId, byPckName, manualIndex, fallbackIndex);
+		List<String> sortedEnabledIds = computeRuntimeTopoSortedIds(settings, enabled, byId, byPckName, manualIndex, fallbackIndex);
 		List<ExtraSettingsRepository.ModEntry> orderedEntries = new ArrayList<>();
 		Set<String> added = new LinkedHashSet<>();
 		for (String id : sortedEnabledIds) {
@@ -3371,16 +3397,16 @@ public final class ModsPage {
 			}
 		}
 		repository.saveRuntimeModListOrder(orderedEntries);
-		cachedSettings = repository.loadSettingsJson();
 	}
 
 	private List<String> computeRuntimeTopoSortedIds(
+		JSONObject settings,
 		List<ExtraSettingsRepository.ModEntry> enabled,
 		Map<String, ExtraSettingsRepository.ModEntry> byId,
 		Map<String, ExtraSettingsRepository.ModEntry> byPckName,
 		Map<String, Integer> manualIndex,
 		Map<String, Integer> fallbackIndex
-	) {
+	) throws Exception {
 		Map<String, Integer> indegree = new HashMap<>();
 		Map<String, List<String>> dependents = new HashMap<>();
 		for (ExtraSettingsRepository.ModEntry entry : enabled) {
@@ -3390,7 +3416,7 @@ public final class ModsPage {
 		for (ExtraSettingsRepository.ModEntry entry : enabled) {
 			for (ExtraSettingsRepository.ModDependency dependency : entry.dependencies) {
 				ExtraSettingsRepository.ModEntry depEntry = findInstalledDependency(dependency.id, byId, byPckName);
-				if (depEntry == null || isModDisabledSafe(depEntry) || !indegree.containsKey(depEntry.modId)) {
+				if (depEntry == null || !indegree.containsKey(depEntry.modId) || repository.isModDisabled(settings, depEntry)) {
 					continue;
 				}
 				indegree.put(entry.modId, indegree.get(entry.modId) + 1);
@@ -3469,14 +3495,11 @@ public final class ModsPage {
 			.setTitle(R.string.mod_profile_create_title)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (dialog, which) -> {
-				try {
-					repository.createModProfileFromCurrent(input.getText() == null ? "" : input.getText().toString());
-					selectedModIds.clear();
-					rememberChipScroll();
-					refreshList();
-				} catch (Exception exception) {
-					actions.showError(exception);
-				}
+				String name = input.getText() == null ? "" : input.getText().toString();
+				runModMutation(R.string.mod_list_loading, () -> {
+					repository.createModProfileFromCurrent(name);
+					return context.getString(R.string.status_settings_saved);
+				});
 			})
 			.show();
 	}
@@ -3487,14 +3510,10 @@ public final class ModsPage {
 			.setMessage(context.getString(R.string.mod_profile_delete_message, profile.name))
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(android.R.string.ok, (dialog, which) -> {
-				try {
+				runModMutation(R.string.mod_list_loading, () -> {
 					repository.deleteModProfile(profile.id);
-					selectedModIds.clear();
-					rememberChipScroll();
-					refreshList();
-				} catch (Exception exception) {
-					actions.showError(exception);
-				}
+					return context.getString(R.string.status_settings_saved);
+				});
 			})
 			.show();
 	}
@@ -3511,19 +3530,15 @@ public final class ModsPage {
 	}
 
 	private void batchSetEnabled(boolean enabled) {
-		try {
-			List<ExtraSettingsRepository.ModEntry> selected = selectedEntries();
-			if (selected.isEmpty()) {
-				actions.showMessage(context.getString(R.string.mod_batch_empty));
-				return;
-			}
-			repository.setModsEnabled(selected, enabled);
-			selectedModIds.clear();
-			cachedSettings = repository.loadSettingsJson();
-			refreshList();
-		} catch (Exception exception) {
-			actions.showError(exception);
+		List<ExtraSettingsRepository.ModEntry> selected = selectedEntries();
+		if (selected.isEmpty()) {
+			actions.showMessage(context.getString(R.string.mod_batch_empty));
+			return;
 		}
+		runModMutation(R.string.mod_list_loading, () -> {
+			repository.setModsEnabled(requireCurrentEntries(selected), enabled);
+			return context.getString(R.string.status_settings_saved);
+		});
 	}
 
 	private void confirmBatchDelete() {
@@ -3547,15 +3562,16 @@ public final class ModsPage {
 	}
 
 	private void deleteSelectedMods(List<ExtraSettingsRepository.ModEntry> entries) {
-		if (deletionRunning) return;
-		deletionRunning = true;
-		actions.showMessage(context.getString(R.string.status_busy_delete_mod));
+		if (mutationRunning || loadedSnapshot == null) return;
+		mutationRunning = true;
+		int expectedGeneration = scanGeneration.incrementAndGet();
+		showLoading(R.string.status_busy_delete_mod);
 		MOD_SCAN_EXECUTOR.execute(() -> {
 			try {
-				String notice = entries.size() == 1 ? repository.deleteMod(entries.get(0)) : repository.deleteMods(entries);
+				String notice = repository.deleteMods(requireCurrentEntries(entries));
 				mainHandler.post(() -> {
-					deletionRunning = false;
-					if (isRemovalUiUnavailable()) return;
+					mutationRunning = false;
+					if (isPageGone(expectedGeneration)) return;
 					for (ExtraSettingsRepository.ModEntry entry : entries) {
 						selectedModIds.remove(entry.modId);
 						expandedModIds.remove(entry.modId);
@@ -3569,20 +3585,70 @@ public final class ModsPage {
 				});
 			} catch (Exception exception) {
 				mainHandler.post(() -> {
-					deletionRunning = false;
-					if (!isRemovalUiUnavailable()) actions.showError(exception);
+					mutationRunning = false;
+					if (isPageGone(expectedGeneration)) return;
+					refreshList();
+					actions.showError(exception);
 				});
 			}
 		});
 	}
 
-	private boolean isRemovalUiUnavailable() {
-		return context instanceof Activity && (((Activity) context).isFinishing() || ((Activity) context).isDestroyed());
+	private boolean isPageGone(int generation) {
+		return generation != scanGeneration.get() || (context instanceof Activity
+			&& (((Activity) context).isFinishing() || ((Activity) context).isDestroyed()));
+	}
+
+	private void runModMutation(int status, ExtraSettingsRepository.ThrowingSupplier<String> operation) {
+		if (mutationRunning || loadedSnapshot == null) return;
+		int generation = scanGeneration.get();
+		rememberChipScroll();
+		// The host serializes these operations (including launch-profile changes) and refreshes on completion.
+		actions.runAsyncOperation(context.getString(status), () -> {
+			mainHandler.post(() -> {
+				if (!isPageGone(generation)) {
+					mutationRunning = true;
+					showLoading(status);
+				}
+			});
+			try {
+				return operation.run();
+			} catch (ModInstallStore.BusyException busy) {
+				// The host reports contention without rebuilding the screen. Re-enable this page.
+				mainHandler.post(() -> {
+					if (!isPageGone(generation)) {
+						mutationRunning = false;
+						refreshList();
+					}
+				});
+				throw busy;
+			}
+		});
+	}
+
+	/** Worker only. Never widen a confirmed selection to other installations with the same ID. */
+	private List<ExtraSettingsRepository.ModEntry> requireCurrentEntries(List<ExtraSettingsRepository.ModEntry> confirmed) {
+		Map<File, ExtraSettingsRepository.ModEntry> byManifest = new HashMap<>();
+		for (ExtraSettingsRepository.ModEntry entry : repository.listInstalledModManifests()) {
+			byManifest.put(entry.manifestFile, entry);
+		}
+		List<ExtraSettingsRepository.ModEntry> result = new ArrayList<>(confirmed.size());
+		for (ExtraSettingsRepository.ModEntry entry : confirmed) {
+			ExtraSettingsRepository.ModEntry current = byManifest.get(entry.manifestFile);
+			if (current == null || !entry.modId.equals(current.modId) || !entry.pckName.equals(current.pckName)
+				|| !TextUtils.equals(entry.version, current.version)) {
+				ModManifestCache.invalidatePath(entry.manifestFile);
+				throw new IllegalStateException(context.getString(R.string.mod_selection_changed, entry.relativePath));
+			}
+			result.add(current);
+		}
+		return result;
 	}
 
 	private List<ExtraSettingsRepository.ModEntry> selectedEntries() {
+		if (loadedSnapshot == null) return Collections.emptyList();
 		List<ExtraSettingsRepository.ModEntry> result = new ArrayList<>();
-		for (ExtraSettingsRepository.ModEntry entry : repository.listInstalledModManifests()) {
+		for (ExtraSettingsRepository.ModEntry entry : loadedSnapshot.mods) {
 			if (selectedModIds.contains(entry.modId)) {
 				result.add(entry);
 			}
@@ -3606,7 +3672,7 @@ public final class ModsPage {
 			this.settings = settings;
 			this.notes = notes == null ? Collections.emptyMap() : new HashMap<>(notes);
 			this.gameVersion = gameVersion == null ? "" : gameVersion;
-			this.mods = mods == null ? Collections.emptyList() : new ArrayList<>(mods);
+			this.mods = mods; // Immutable list published by the display cache.
 			for (ExtraSettingsRepository.ModEntry entry : this.mods) {
 				String note = this.notes.getOrDefault(entry.modId, "");
 				searchText.put(entry, (entry.displayName + " " + note + " " + entry.modId + " " + entry.pckName

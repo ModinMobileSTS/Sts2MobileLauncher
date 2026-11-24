@@ -3,6 +3,7 @@ package com.godot.game;
 import android.app.Application;
 import android.app.Dialog;
 import android.content.Context;
+import android.content.Intent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
@@ -21,8 +22,6 @@ import org.robolectric.shadows.ShadowDialog;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import static org.junit.Assert.*;
@@ -103,21 +102,34 @@ public class CompatLaunchReadinessTest {
 		assertNull(shadowOf(activity).getNextStartedActivity());
 	}
 
-	@Test public void preparedIntentCannotBypassAnIncompleteBoundPack() throws Exception {
+	@Test public void finalEngineCheckRejectsIncompleteBoundPack() throws Exception {
 		Files.delete(new File(selectedPack, "port_compat.pck").toPath());
-		GodotApp activity = Robolectric.buildActivity(GodotApp.class).get();
-		InvocationTargetException failure = assertThrows(InvocationTargetException.class,
-			() -> ensurePrepared(activity));
-		assertTrue(failure.getCause() instanceof IllegalStateException);
+		assertThrows(IOException.class, () -> new GameLaunchPreparationManager(context).verifyPreparedFiles());
 		assertEquals("old-compat", text(stagedDll));
 		assertEquals("old-overlay", text(stagedOverlay));
+	}
+
+	@Test public void handoffCannotBeReplayedOrUsedForAnotherProfileSharingTheModRoot() throws Exception {
+		GameLaunchPreparationManager prep = new GameLaunchPreparationManager(context);
+		GameLaunchPreparationManager host = new GameLaunchPreparationManager(context);
+		File root = settings.getModsRootDir();
+		prep.prepareForLaunch();
+		Intent game = prep.preparedIntent(new Intent(context, GodotApp.class));
+		assertNull(host.takePreparedRoot(new Intent().putExtra("launch_prepared", true)));
+		assertEquals(root, host.takePreparedRoot(game));
+		assertNull(host.takePreparedRoot(game));
+
+		prep.prepareForLaunch();
+		Intent previousProfile = prep.preparedIntent(new Intent(context, GodotApp.class));
+		profiles.createProfile("fixture-payload", "Other", "global", "global", "fixture-working", "", LaunchProfileManager.COMPAT_SELECTION_MANUAL, true);
+		assertEquals(root, settings.getModsRootDir());
+		assertNull(host.takePreparedRoot(previousProfile));
 	}
 
 	@Test public void explicitDisabledCompatibilityStillRemovesBothStagedArtifacts() throws Exception {
 		Files.delete(new File(selectedPack, "STS2Mobile.dll").toPath());
 		settings.saveSetting(json -> json.put(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, false));
-		GodotApp activity = Robolectric.buildActivity(GodotApp.class).get();
-		ensurePrepared(activity);
+		new GameLaunchPreparationManager(context).verifyPreparedFiles();
 		assertFalse(stagedDll.exists());
 		assertFalse(stagedOverlay.exists());
 		assertEquals("already-prepared-game", text(new File(stagedDll.getParentFile(), "sts2.dll")));
@@ -163,12 +175,6 @@ public class CompatLaunchReadinessTest {
 		put(new File(directory, "STS2Mobile.dll"), "synthetic-compat");
 		put(new File(directory, "port_compat.pck"), "GDPCsynthetic-overlay");
 		return directory;
-	}
-
-	private static void ensurePrepared(GodotApp activity) throws Exception {
-		Method method = GodotApp.class.getDeclaredMethod("ensureLaunchPreparedBeforeGodot", boolean.class);
-		method.setAccessible(true);
-		method.invoke(activity, true);
 	}
 
 	private static void set(Object owner, String name, Object value) throws Exception {

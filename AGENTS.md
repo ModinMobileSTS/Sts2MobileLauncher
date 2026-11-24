@@ -275,8 +275,8 @@ s2_re/
   2. 如果兼容包开关关闭，启动前弹出风险确认；用户选择继续后，准备流程会删除 staged `STS2Mobile.dll` 与 `<files>/port_compat.pck`，真正按无兼容层路径启动。若用户选择开启，则写回 `android_compat_pack_enabled=true` 后取消本次启动。
   3. 如果兼容包开关启用，只读取当前启动配置的 `compat_pack_id` / `compat_target_id`；未选择、包已删除或 schema 2 target 缺失时先等待 bundled 安装 bootstrap，再弹出推荐 Bottom Sheet。推荐严格按“命中的内置/已安装 full target → 无 full 命中时的可用 offline wildcard”分层；用户点“使用推荐”后才写回当前 profile 并继续启动，也可进入兼容包管理。版本不匹配仍弹窗提示。
   4. 后台执行 `GameLaunchPreparationManager.prepareForLaunch()`。
-  5. 以 `launch_prepared=true` 启动 `GodotApp`；`GodotApp` 仍保留 fallback 准备路径防止直接启动遗漏，但同样尊重兼容包开关，关闭时不会 fallback 复制 `STS2Mobile.dll`。
-  - 只有 `ModInstallStore.BusyException` 触发可取消的后台重试；不要在主线程等待文件锁或跳过恢复。`GodotApp` 在同步创建引擎时持有当前 MOD 目录的锁；直接启动遇忙走私有 `GodotLaunchRetryActivity`。升级 Godot Android 模板后用 `ModInstallReadinessTest` 及设备上的直接启动验证等待页之前未创建引擎。
+  5. 完成后台事务恢复、旧工坊清理、别名及程序集准备后，以绑定配置和实际 MOD 根目录的一次性进程内凭据启动 `GodotApp`。直启、进程重建或凭据失效走私有 `GodotLaunchRetryActivity` 后台准备；不要在 Activity 主线程运行全树维护。
+  - 只有 `ModInstallStore.BusyException` 触发可取消的自动重试；若准备结束后出现未恢复事务，引擎入口返回后台处理，不在主线程回放日志。`GodotApp` 在同步创建引擎时必须持有当前 MOD 根的干净锁。UI 清单快照只作展示；不可代替最终检查、覆盖或卸载前的实际文件核对。
 
 ## 7. Payload / 版本管理
 

@@ -28,6 +28,8 @@
     <string name="status_mod_save_transfer_no_source">在「%1$s」中沒有找到可轉移的存檔。</string>
     <string name="section_mod">MOD</string>
     <string name="mod_list_loading">正在掃描已安裝 MOD…</string>
+    <string name="mod_rescan">重新掃描已安裝的 MOD</string>
+    <string name="mod_selection_changed">%1$s 處安裝的 MOD 已變更。請查看重新整理後的清單並重新選取。</string>
     <string name="mod_install_waiting">正在等待其他 MOD 操作完成，稍後會自動重試檢查。</string>
     <string name="mod_install_busy">其他 MOD 操作正在進行，請在完成後重試。</string>
     <string name="mod_install_retry">重試</string>
@@ -679,6 +681,8 @@
     <string name="welcome_exit_message">目前的預設會保留，你可以直接進入附加設定。</string>
     <string name="game_page_subtitle">啟動遊戲、管理存檔，或查看行動版的狀態。</string>
     <string name="game_home_title">STS2 啟動器</string>
+    <string name="game_hero_checking">正在檢查遊戲本體…</string>
+    <string name="game_dashboard_loading">載入中…</string>
     <string name="game_steam_login">登入 Steam</string>
     <string name="game_steam_logged_in_fallback">Steam</string>
     <string name="game_hero_ready_title_format">%1$s 就緒</string>

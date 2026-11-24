@@ -63,6 +63,7 @@ public class FileBrowserActivity extends AppCompatActivity {
 	private static final int REQUEST_IMPORT_TREE = 3002;
 	private static final int REQUEST_EXPORT_TREE = 3003;
 	private static final String DATE_TIME_PATTERN = "yyyy-MM-dd HH:mm:ss";
+	private static final String STATE_EXTERNAL_EDIT = "pendingExternalEdit";
     private static final int MORE_REFRESH_ITEM_ID = 0x1001;
     private static final int MORE_HIDDEN_ITEM_ID = 0x1002;
     private static final int SELECTION_OPEN_ITEM_ID = 0x1010;
@@ -104,6 +105,7 @@ public class FileBrowserActivity extends AppCompatActivity {
     private File rootDirectory;
     private File currentDirectory;
     private File pendingImportTargetDirectory;
+    private File pendingExternalEdit;
     private List<File> pendingExportEntries = new ArrayList<>();
     private boolean refreshing;
     private boolean busy;
@@ -140,6 +142,10 @@ public class FileBrowserActivity extends AppCompatActivity {
         rootDirectory = getFilesDir();
         currentDirectory = resolveInitialDirectory(getIntent() == null ? null : getIntent().getStringExtra(EXTRA_INITIAL_PATH));
         FileBrowserSupport.ensureDirectory(rootDirectory);
+        if (savedInstanceState != null) {
+            String editedPath = savedInstanceState.getString(STATE_EXTERNAL_EDIT);
+            if (editedPath != null) pendingExternalEdit = new File(editedPath);
+        }
 
         adapter = new FileBrowserAdapter();
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -193,8 +199,18 @@ public class FileBrowserActivity extends AppCompatActivity {
 	}
 
 	@Override
+	protected void onSaveInstanceState(Bundle outState) {
+		super.onSaveInstanceState(outState);
+		if (pendingExternalEdit != null) outState.putString(STATE_EXTERNAL_EDIT, pendingExternalEdit.getAbsolutePath());
+	}
+
+	@Override
 	protected void onResume() {
 		super.onResume();
+		if (pendingExternalEdit != null) {
+			ModManifestCache.invalidatePath(pendingExternalEdit);
+			pendingExternalEdit = null;
+		}
 		if (!busy && !refreshing) {
 			refreshEntries();
 		}
@@ -734,7 +750,9 @@ public class FileBrowserActivity extends AppCompatActivity {
 
 	private void openExternalFile(File file, boolean preferEdit) throws Exception {
 		int chooserTitleRes = preferEdit ? R.string.file_browser_external_edit_chooser : R.string.file_browser_external_open_chooser;
-		FileBrowserSupport.openFileInExternalApp(this, file, preferEdit, getString(chooserTitleRes));
+		if (FileBrowserSupport.openFileInExternalApp(this, file, preferEdit, getString(chooserTitleRes))) {
+			pendingExternalEdit = file;
+		}
 	}
 
     private void startSelection(int position) {
@@ -896,7 +914,7 @@ public class FileBrowserActivity extends AppCompatActivity {
 					throw new IllegalStateException(getString(R.string.file_browser_cannot_paste_into_child));
 				}
 				File destination = FileBrowserSupport.buildUniqueChild(targetDirectory, source.getName());
-				FileBrowserSupport.copyEntryRecursively(source, destination);
+				FileBrowserSupport.pasteEntry(source, destination);
 				pastedCount++;
 			}
 			return getString(R.string.file_browser_paste_done, pastedCount);
@@ -1165,7 +1183,13 @@ public class FileBrowserActivity extends AppCompatActivity {
 	}
 
 	private int importDocuments(List<Uri> uris, File targetDirectory) throws Exception {
-		FileBrowserSupport.ensureDirectory(targetDirectory);
+		if (!targetDirectory.isDirectory()) {
+			try {
+				FileBrowserSupport.ensureDirectory(targetDirectory);
+			} finally {
+				ModManifestCache.invalidatePath(targetDirectory);
+			}
+		}
 		int importedCount = 0;
 		for (Uri uri : uris) {
 			String displayName = queryDisplayName(uri);
@@ -1176,6 +1200,8 @@ public class FileBrowserActivity extends AppCompatActivity {
 			try (InputStream inputStream = requireNonNull(getContentResolver().openInputStream(uri));
 					 OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(destination))) {
 				FileBrowserSupport.copyStream(inputStream, outputStream);
+			} finally {
+				ModManifestCache.invalidatePath(destination);
 			}
 			importedCount++;
 		}
@@ -1192,7 +1218,11 @@ public class FileBrowserActivity extends AppCompatActivity {
 			directoryName = getString(R.string.file_browser_imported_folder_fallback_name);
 		}
 		File destination = FileBrowserSupport.buildUniqueChild(targetDirectory, directoryName);
-		copyDocumentFileToPrivate(sourceDirectory, destination);
+		try {
+			copyDocumentFileToPrivate(sourceDirectory, destination);
+		} finally {
+			ModManifestCache.invalidatePath(destination);
+		}
 		return 1;
 	}
 
@@ -1321,7 +1351,11 @@ public class FileBrowserActivity extends AppCompatActivity {
 					if (newDirectory.exists()) {
 						throw new IllegalStateException(getString(R.string.file_browser_name_exists));
 					}
-					FileBrowserSupport.ensureDirectory(newDirectory);
+					try {
+						FileBrowserSupport.ensureDirectory(newDirectory);
+					} finally {
+						ModManifestCache.invalidatePath(newDirectory);
+					}
 					return getString(R.string.file_browser_created_folder);
 				});
 			})
@@ -1361,7 +1395,7 @@ public class FileBrowserActivity extends AppCompatActivity {
                     if (targetFile.exists()) {
                         throw new IllegalStateException(getString(R.string.file_browser_name_exists));
                     }
-                    boolean renamed = selectedFile.renameTo(targetFile);
+                    boolean renamed = FileBrowserSupport.renameEntry(selectedFile, targetFile);
                     if (!renamed) {
                         throw new IllegalStateException(getString(R.string.file_browser_rename_failed));
                     }
@@ -1387,10 +1421,13 @@ public class FileBrowserActivity extends AppCompatActivity {
             .setPositiveButton(android.R.string.ok, (dialog, which) -> runFileOperation(getString(R.string.file_browser_status_deleting), () -> {
                 int deletedCount = 0;
                 for (File file : filesToDelete) {
-                    if (file == null || !file.exists()) {
+                    if (file == null || ModInstallStore.modeNoFollow(file) == 0) {
                         continue;
                     }
-                    FileBrowserSupport.deleteRecursively(file);
+                    if (!FileBrowserSupport.isSameOrDescendant(file.getParentFile(), rootDirectory)) {
+                        throw new IllegalStateException(getString(R.string.file_browser_invalid_folder));
+                    }
+                    FileBrowserSupport.deleteEntry(file);
                     deletedCount++;
                 }
                 return getString(R.string.file_browser_delete_done, deletedCount);

@@ -1,6 +1,7 @@
 package com.godot.game;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.AssetManager;
 import android.util.Log;
@@ -19,6 +20,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Performs heavyweight launch preparation away from the Activity main thread.
@@ -27,8 +30,8 @@ import java.util.Set;
  * overlay to be ready before {@link GodotApp} starts. Doing those copies inside
  * Activity.onCreate() can block the UI for several seconds when a game payload is
  * installed, so GameSettingsActivity runs this preparer on a worker thread before
- * starting GodotApp. GodotApp still keeps its own fallback setup path for direct
- * launches, but the normal launcher path should already be warm and fast.</p>
+ * starting GodotApp. Direct or restored launches go through the same preparer in
+ * GodotLaunchRetryActivity rather than blocking the native host's onCreate.</p>
  */
 public final class GameLaunchPreparationManager {
 	private static final String TAG = "Sts2LaunchPrep";
@@ -40,10 +43,14 @@ public final class GameLaunchPreparationManager {
 	private static final String KEY_TEXTURE_CACHE_PCK_STAMP = "pck_stamp";
 	private static final int BUFFER_SIZE = 1024 * 1024;
 	private static final int FILE_COMPARE_BUFFER_SIZE = 64 * 1024;
+	private static final String EXTRA_HANDOFF = "com.godot.game.PREPARED_LAUNCH";
+	private static final AtomicReference<PreparedLaunch> PENDING = new AtomicReference<>();
+	private record PreparedLaunch(String id, File modsRoot, String profile) {}
 
 	private final Context context;
 	private final AssetManager assets;
 	private final LaunchProfileManager launchProfiles;
+	private volatile PreparedLaunch prepared;
 
 	public GameLaunchPreparationManager(Context context) {
 		this.context = context.getApplicationContext();
@@ -52,10 +59,11 @@ public final class GameLaunchPreparationManager {
 	}
 
 	public void prepareForLaunch() throws Exception {
+		prepared = null;
 		long startedAt = System.currentTimeMillis();
 		AndroidRuntimeEnvironment.configure(context, TAG);
 		ExtraSettingsRepository repository = new ExtraSettingsRepository(context);
-		new ModInstallStore(context.getFilesDir(), repository.getModsRootDir()).recover();
+		File modsRoot = repository.prepareModsForLaunch();
 		Log.i(TAG, "DIAG prepareForLaunch begin versionCode=" + BuildConfig.VERSION_CODE + " versionName=" + BuildConfig.VERSION_NAME + " flavor=" + BuildConfig.FLAVOR + " filesDir=" + context.getFilesDir().getAbsolutePath() + " thread=" + Thread.currentThread().getName());
 		Sts2LogcatCollector.startNewLaunchForSelectedProfile(context);
 		logLaunchStateSnapshot("after_logcat_start");
@@ -66,6 +74,8 @@ public final class GameLaunchPreparationManager {
 		refreshBundledCompatPacksIfNeeded();
 		logStepEnd("refresh_bundled_compat_packs");
 		logLaunchStateSnapshot("after_bundled_compat_refresh");
+		// Bundled-pack migration may legitimately change the selected target before staging.
+		String profile = profileBinding();
 		logStepBegin("log_selected_compat_pack");
 		logSelectedCompatPackForLaunch();
 		logStepEnd("log_selected_compat_pack");
@@ -79,7 +89,51 @@ public final class GameLaunchPreparationManager {
 		prepareAssembliesAndOverlay();
 		logStepEnd("prepare_assemblies_and_overlay");
 		logLaunchStateSnapshot("after_prepare_assemblies");
+		verifyPreparedFiles();
+		if (!profile.equals(profileBinding()) || !modsRoot.equals(launchProfiles.getSelectedModsRootDir())) {
+			throw new IOException("Launch profile changed during preparation");
+		}
+		prepared = new PreparedLaunch(UUID.randomUUID().toString(), modsRoot, profile);
 		Log.i(TAG, "DIAG prepareForLaunch end elapsed_ms=" + (System.currentTimeMillis() - startedAt));
+	}
+
+	private String profileBinding() {
+		LaunchProfileManager.LaunchProfile p = launchProfiles.getSelectedProfile();
+		return p == null ? "" : p.id + '\0' + p.payloadId + '\0' + p.compatPackId + '\0' + p.compatTargetId + '\0' + p.saveMode + '\0' + p.modsMode;
+	}
+
+	Intent preparedIntent(Intent intent) {
+		PreparedLaunch ticket = prepared;
+		if (ticket == null) throw new IllegalStateException("Launch has not been prepared");
+		prepared = null;
+		PENDING.set(ticket);
+		return intent.putExtra(EXTRA_HANDOFF, ticket.id());
+	}
+
+	// Process death, intent replay and profile changes all require fresh preparation. Even a
+	// valid handoff must acquire the current MOD lease again before starting the native host.
+	File takePreparedRoot(Intent intent) {
+		PreparedLaunch ticket = PENDING.get();
+		if (ticket == null || !ticket.id().equals(intent.getStringExtra(EXTRA_HANDOFF)) || !PENDING.compareAndSet(ticket, null)) return null;
+		return ticket.profile().equals(profileBinding()) && ticket.modsRoot().equals(launchProfiles.getSelectedModsRootDir()) ? ticket.modsRoot() : null;
+	}
+
+	void verifyPreparedFiles() throws IOException {
+		CompatPackManager packs = new CompatPackManager(context);
+		packs.requireSelectedPackReady();
+		if (!BuildConfig.FLAVOR.equals("mono")) return;
+		File publish = new File(context.getFilesDir(), ".godot/mono/publish/arm64");
+		File entry = new File(publish, "STS2Mobile.dll");
+		File overlay = new File(context.getFilesDir(), "port_compat.pck");
+		if (!packs.isCompatPackEnabled()) {
+			deleteFileIfExists(entry);
+			deleteFileIfExists(overlay);
+		} else if (!entry.isFile() || !overlay.isFile()) {
+			throw new IOException("Prepared compatibility DLL or overlay is missing");
+		}
+		if (new File(launchProfiles.getSelectedGameDir(), PayloadManager.PCK_FILE_NAME).isFile() && !new File(publish, "sts2.dll").isFile()) {
+			throw new IOException("Prepared game assembly is missing");
+		}
 	}
 
 	private void normalizeSavedLanguageIfNeeded() {

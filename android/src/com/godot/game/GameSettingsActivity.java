@@ -7,6 +7,8 @@ import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.Gravity;
@@ -67,12 +69,16 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	private GameBodyVersionManager gameBodyVersionManager;
 	private LaunchProfileManager launchProfileManager;
 	private FrameLayout contentFrame;
+	private GamePage homePage;
+	private boolean resumed;
 	private BottomNavigationView bottomNavigationView;
 	private NavigationRailView navigationRailView;
 	private boolean busy;
 	private boolean launchUpdateCheckRequested;
 	private boolean bundledPayloadAutoExtractRequested;
 	private boolean bundledPayloadAutoExtractCheckRunning;
+	private String pendingBundledPayloadProfile;
+	private boolean bundledPayloadImportStarted;
 	private boolean bundledCompatPackBootstrapFinished;
 	private boolean pendingLauncherDirectLaunch;
 	private boolean pendingCompatRecommendationLaunch;
@@ -87,6 +93,8 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	private int pendingPickerRequest;
 	private Intent pendingPickerResult;
 	private Runnable cancelLaunchPreparation;
+	private final Handler startupHandler = new Handler(Looper.getMainLooper());
+	private final Runnable continueStartup = this::continueStartupWhenIdle;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -98,11 +106,11 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		compatPackManager = new CompatPackManager(this);
 		gameBodyVersionManager = new GameBodyVersionManager(this);
 		launchProfileManager = new LaunchProfileManager(this);
-		launchProfileManager.bootstrapIfNeeded();
 		if (savedInstanceState != null) {
 			pendingPickerRequest = savedInstanceState.getInt("pending_picker_request");
 			pendingPickerResult = savedInstanceState.getParcelable("pending_picker_result");
 		}
+		// Resolving the selected roots also bootstraps launch profiles, on the readiness worker.
 		ModInstallReadiness.open(this, repository::ensureAppDirectories, () -> openSettings(savedInstanceState));
 	}
 
@@ -112,14 +120,18 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		installBundledCompatPacksInBackground(false);
 		if (!ExtraSettingsPreferences.isFirstRunSetupCompleted(this)) {
 			showWelcome();
+			deliverPendingPickerResult();
 		} else {
 			showMainShell();
 			maybeLaunchGameFromLauncherIntent(savedInstanceState);
 		}
-		if (pendingPickerResult != null) {
-			handlePickerResult(pendingPickerRequest, pendingPickerResult);
-			pendingPickerResult = null;
-		}
+	}
+
+	private void deliverPendingPickerResult() {
+		if (pendingPickerResult == null) return;
+		Intent data = pendingPickerResult;
+		pendingPickerResult = null;
+		handlePickerResult(pendingPickerRequest, data);
 	}
 
 	@Override
@@ -134,15 +146,31 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	@Override
 	protected void onResume() {
 		super.onResume();
-		if (ExtraSettingsPreferences.isFirstRunSetupCompleted(this) && contentFrame != null) {
-			refreshCurrentScreen();
+		resumed = true;
+		if (directoriesReady && contentFrame != null) {
+			if (currentTabId == R.id.nav_game && homePage != null) {
+				homePage.setPageActive(true);
+			} else {
+				refreshCurrentScreen();
+			}
 			maybeRunCleanExitSteamCloudPush();
 		}
+		scheduleStartupContinuation();
+	}
+
+	@Override
+	protected void onPause() {
+		resumed = false;
+		startupHandler.removeCallbacks(continueStartup);
+		if (homePage != null) homePage.setPageActive(false);
+		super.onPause();
 	}
 
 	@Override
 	protected void onDestroy() {
 		importDestroyed = true;
+		startupHandler.removeCallbacks(continueStartup);
+		if (homePage != null) homePage.setPageActive(false);
 		if (modImportDialog != null) modImportDialog.dismiss();
 		discardModImports(activeModImports);
 		super.onDestroy();
@@ -180,6 +208,10 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	}
 
 	private void showMainShell() {
+		showMainShell(ExtraSettingsPreferences.getLastSelectedMainTab(this, R.id.nav_game));
+	}
+
+	private void showMainShell(int initialTab) {
 		boolean wideLayout = ExtraSettingsUi.isWideLayout(this);
 		LinearLayout shell = new LinearLayout(this);
 		shell.setOrientation(wideLayout ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
@@ -210,12 +242,12 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		}
 
 		setContentView(shell);
-		int savedTab = ExtraSettingsPreferences.getLastSelectedMainTab(this, R.id.nav_game);
-		if (savedTab != R.id.nav_game && savedTab != R.id.nav_mods && savedTab != R.id.nav_versions && savedTab != R.id.nav_settings && savedTab != R.id.nav_about) {
-			savedTab = R.id.nav_game;
+		if (initialTab != R.id.nav_game && initialTab != R.id.nav_mods && initialTab != R.id.nav_versions && initialTab != R.id.nav_settings && initialTab != R.id.nav_about) {
+			initialTab = R.id.nav_game;
 		}
-		selectNavigationItem(savedTab);
-		openTab(savedTab);
+		selectNavigationItem(initialTab);
+		// A returning picker gets the busy slot before automatic startup operations.
+		deliverPendingPickerResult();
 		maybeRunLaunchUpdateCheck();
 		maybeAutoExtractBundledPayload();
 		maybeRunCleanExitSteamCloudPush();
@@ -256,11 +288,13 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	}
 
 	private void selectNavigationItem(int itemId) {
-		if (bottomNavigationView != null) {
-			bottomNavigationView.setSelectedItemId(itemId);
-		}
-		if (navigationRailView != null) {
-			navigationRailView.setSelectedItemId(itemId);
+		NavigationBarView bar = navigationRailView != null ? navigationRailView : bottomNavigationView;
+		if (bar == null) return;
+		if (bar.getSelectedItemId() == itemId) {
+			// Includes the menu's initially checked item, before it has a page.
+			openTab(itemId);
+		} else {
+			bar.setSelectedItemId(itemId); // The selection listener builds the page.
 		}
 	}
 
@@ -273,43 +307,29 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	}
 
 	private void maybeAutoExtractBundledPayload() {
-		if (bundledPayloadAutoExtractRequested || busy || !payloadManager.hasBundledPayload()) {
-			return;
-		}
-		if (!payloadManager.getStatus().ready) {
-			bundledPayloadAutoExtractRequested = true;
-			requestExtractBundledPayload();
+		if (bundledPayloadAutoExtractRequested) {
 			return;
 		}
 		bundledPayloadAutoExtractRequested = true;
 		bundledPayloadAutoExtractCheckRunning = true;
+		String profileId = launchProfileManager.getSelectedProfileId();
 		new Thread(() -> {
 			try {
-				boolean needsImport = !payloadManager.isCurrentBundledPayloadImported();
-				runOnUiThread(() -> {
+				boolean needsImport = payloadManager.hasBundledPayload()
+					&& (!payloadManager.getStatus().ready || !payloadManager.isCurrentBundledPayloadImported());
+				runOnUiThreadIfActive(() -> {
 					bundledPayloadAutoExtractCheckRunning = false;
-					if (needsImport) {
-						requestExtractBundledPayloadWhenIdle();
-					}
+					pendingBundledPayloadProfile = needsImport && !bundledPayloadImportStarted ? profileId : null;
+					scheduleStartupContinuation();
 				});
 			} catch (Exception exception) {
-				runOnUiThread(() -> bundledPayloadAutoExtractCheckRunning = false);
+				runOnUiThreadIfActive(() -> {
+					bundledPayloadAutoExtractCheckRunning = false;
+					scheduleStartupContinuation();
+				});
 				Log.w(TAG, "Unable to check bundled payload import state.", exception);
 			}
 		}, "sts2-bundled-payload-check").start();
-	}
-
-	private void requestExtractBundledPayloadWhenIdle() {
-		if (isFinishing() || isDestroyed()) {
-			return;
-		}
-		if (busy) {
-			if (contentFrame != null) {
-				contentFrame.postDelayed(this::requestExtractBundledPayloadWhenIdle, 500);
-			}
-			return;
-		}
-		requestExtractBundledPayload();
 	}
 
 	private void maybeLaunchGameFromLauncherIntent(Bundle savedInstanceState) {
@@ -324,52 +344,38 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			return;
 		}
 		pendingLauncherDirectLaunch = true;
-		runPendingLauncherDirectLaunch();
+		scheduleStartupContinuation();
 	}
 
-	private void runPendingLauncherDirectLaunch() {
-		if (!pendingLauncherDirectLaunch || !bundledCompatPackBootstrapFinished || contentFrame == null) {
-			return;
+	private void scheduleStartupContinuation() {
+		startupHandler.removeCallbacks(continueStartup);
+		if (resumed && (pendingBundledPayloadProfile != null || pendingLauncherDirectLaunch || pendingCompatRecommendationLaunch)) {
+			startupHandler.post(continueStartup);
 		}
-		contentFrame.post(() -> {
-			if (!pendingLauncherDirectLaunch || isFinishing() || isDestroyed()) {
-				return;
-			}
-			if (busy || bundledPayloadAutoExtractCheckRunning) {
-				contentFrame.postDelayed(this::runPendingLauncherDirectLaunch, 500);
-				return;
-			}
-			pendingLauncherDirectLaunch = false;
-			pendingCompatRecommendationLaunch = false;
-			launchGame();
-		});
 	}
 
-	private void runPendingCompatRecommendationLaunch() {
-		if (!pendingCompatRecommendationLaunch || !bundledCompatPackBootstrapFinished) {
-			return;
+	private void continueStartupWhenIdle() {
+		if (!resumed || isFinishing() || isDestroyed() || bundledPayloadAutoExtractCheckRunning) return;
+		if (pendingBundledPayloadProfile != null && !pendingBundledPayloadProfile.equals(launchProfileManager.getSelectedProfileId())) {
+			pendingBundledPayloadProfile = null;
 		}
-		View anchor = findViewById(android.R.id.content);
-		if (anchor == null) {
-			return;
-		}
-		anchor.post(() -> {
-			if (!pendingCompatRecommendationLaunch || isFinishing() || isDestroyed()) {
-				return;
-			}
-			if (busy || bundledPayloadAutoExtractCheckRunning) {
-				anchor.postDelayed(this::runPendingCompatRecommendationLaunch, 500);
-				return;
-			}
-			pendingCompatRecommendationLaunch = false;
+		boolean launchReady = bundledCompatPackBootstrapFinished && (pendingLauncherDirectLaunch || pendingCompatRecommendationLaunch);
+		if (pendingBundledPayloadProfile == null && !launchReady) return;
+		if (busy) {
+			startupHandler.postDelayed(continueStartup, 500);
+		} else if (pendingBundledPayloadProfile != null) {
+			requestExtractBundledPayload();
+			scheduleStartupContinuation();
+		} else {
 			launchGame();
-		});
+		}
 	}
 
 	private void openTab(int itemId) {
 		if (contentFrame == null) {
 			return;
 		}
+		if (homePage != null && itemId != R.id.nav_game) homePage.setPageActive(false);
 		currentTabId = itemId;
 		ExtraSettingsPreferences.setLastSelectedMainTab(this, itemId);
 		View page;
@@ -382,15 +388,21 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		} else if (itemId == R.id.nav_about) {
 			page = new AboutPage(this, this).build();
 		} else {
-			page = new GamePage(this, repository, this).build();
+			if (homePage == null) homePage = new GamePage(this, repository, this);
+			page = homePage.build();
+			if (page.getParent() == contentFrame) return;
 		}
 		contentFrame.removeAllViews();
 		contentFrame.addView(page, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+		if (itemId == R.id.nav_game) homePage.setPageActive(resumed);
 	}
 
 	@Override
 	public void launchGame() {
 		if (busy) return;
+		// A manual click is also a launch request; do not replay a queued automatic click.
+		pendingLauncherDirectLaunch = false;
+		pendingCompatRecommendationLaunch = false;
 		preLaunchLocalSnapshotCreated = false;
 		try {
 			LaunchProfileManager.LaunchProfile selectedProfile = launchProfileManager.getSelectedProfile();
@@ -476,6 +488,8 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		if (busy) {
 			return;
 		}
+		bundledPayloadImportStarted = true;
+		pendingBundledPayloadProfile = null;
 		runPayloadImportOperation(null, true);
 	}
 
@@ -1571,10 +1585,10 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	private void openCompatPackManagement() {
 		GameVersionManagerPage.selectCompatTab();
 		if (contentFrame == null) {
-			showMainShell();
+			showMainShell(R.id.nav_versions);
+			return;
 		}
 		selectNavigationItem(R.id.nav_versions);
-		openTab(R.id.nav_versions);
 	}
 
 	private void showCompatDisabledLaunchWarning() {
@@ -1882,17 +1896,12 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		if (busy || cleanExitMaintenanceChecked) {
 			return;
 		}
-		boolean shouldPushSteam = SteamSettings.shouldPushAfterCleanExit(this) && SteamAuthStore.readAuthMaterial(this) != null;
-		boolean shouldPushWebDav = WebDavSettings.shouldPushAfterCleanExit(this) && WebDavSettings.isConfigured(this);
-		if (!SteamCleanExitTracker.consumeIfRecent(this)) {
-			cleanExitMaintenanceChecked = true;
-			return;
-		}
+		// Check the small, single-use marker before opening either credential store.
 		cleanExitMaintenanceChecked = true;
-		runCleanExitSaveMaintenance(shouldPushSteam, shouldPushWebDav);
+		if (SteamCleanExitTracker.consumeIfRecent(this)) runCleanExitSaveMaintenance();
 	}
 
-	private void runCleanExitSaveMaintenance(boolean shouldPushSteam, boolean shouldPushWebDav) {
+	private void runCleanExitSaveMaintenance() {
 		if (busy) {
 			return;
 		}
@@ -1903,6 +1912,9 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		new Thread(() -> {
 			List<String> results = new ArrayList<>();
 			try {
+				boolean shouldPushSteam = SteamSettings.shouldPushAfterCleanExit(this) && SteamAuthStore.readAuthMaterial(this) != null;
+				WebDavSettings.Config webDav = WebDavSettings.readConfig(this);
+				boolean shouldPushWebDav = webDav.isConfigured() && WebDavSettings.CLOUD_MODE_FULL_AUTO.equals(webDav.cloudMode);
 				runOnUiThreadIfActive(() -> progressDialog.setProgress(0, getString(R.string.status_busy_create_local_save_snapshot)));
 				new LocalSaveSnapshotManager(this).createAutomaticSnapshot("clean-exit");
 				if (shouldPushSteam) {
@@ -2082,9 +2094,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			}).show(), () -> {
 			cancelLaunchPreparation = null;
 			busy = false;
-			Intent intent = GodotApp.createLaunchIntent(this, true);
-			intent.putExtra("launch_prepared", true);
-			startActivity(intent);
+			startActivity(preparation.preparedIntent(GodotApp.createLaunchIntent(this, true)));
 			finish();
 		}, exception -> {
 			cancelLaunchPreparation = null;
@@ -2104,18 +2114,16 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		new Thread(() -> {
 			try {
 				compatPackManager.installBundledCompatPacks();
-				runOnUiThread(() -> {
+				runOnUiThreadIfActive(() -> {
 					bundledCompatPackBootstrapFinished = true;
-					refreshCurrentScreen();
-					runPendingLauncherDirectLaunch();
-					runPendingCompatRecommendationLaunch();
+					if (resumed) refreshCurrentScreen();
+					scheduleStartupContinuation();
 				});
 			} catch (Exception exception) {
 				Log.w(TAG, "Unable to install bundled compatibility packs.", exception);
-				runOnUiThread(() -> {
+				runOnUiThreadIfActive(() -> {
 					bundledCompatPackBootstrapFinished = true;
-					runPendingLauncherDirectLaunch();
-					runPendingCompatRecommendationLaunch();
+					scheduleStartupContinuation();
 				});
 			}
 		}, "sts2-compat-bootstrap").start();
@@ -2335,7 +2343,10 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 	@Override
 	public void refreshCurrentScreen() {
-		if (contentFrame != null) {
+		if (isFinishing() || isDestroyed()) return;
+		if (currentTabId == R.id.nav_game && homePage != null) {
+			homePage.refresh();
+		} else if (contentFrame != null) {
 			int scrollY = captureScrollY(contentFrame);
 			openTab(currentTabId);
 			restoreScrollY(scrollY);
@@ -2351,11 +2362,9 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		if (scrollY <= 0 || contentFrame == null) {
 			return;
 		}
-		contentFrame.post(() -> {
-			ScrollView scrollView = findScrollView(contentFrame);
-			if (scrollView == null) {
-				return;
-			}
+		ScrollView scrollView = findScrollView(contentFrame);
+		if (scrollView == null) return;
+		scrollView.post(() -> {
 			if (scrollView.getHeight() > 0 && scrollView.getChildCount() > 0 && scrollView.getChildAt(0).getHeight() > 0) {
 				scrollView.post(() -> scrollToRestoredY(scrollView, scrollY));
 				return;

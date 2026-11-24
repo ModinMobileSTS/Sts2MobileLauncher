@@ -27,6 +27,7 @@ public class TextEditorActivity extends AppCompatActivity {
 	public static final String EXTRA_ROOT_PATH = "com.godot.game.extra.ROOT_PATH";
 
 	private static final String DATE_TIME_PATTERN = "yyyy-MM-dd HH:mm:ss";
+	private static final String STATE_EXTERNAL_EDIT = "pendingExternalEdit";
 
 	private TextView titleText;
 	private TextView metaText;
@@ -95,15 +96,23 @@ public class TextEditorActivity extends AppCompatActivity {
 			}
 		});
 
+		pendingReloadAfterExternalEdit = savedInstanceState != null && savedInstanceState.getBoolean(STATE_EXTERNAL_EDIT);
 		loadFile();
+	}
+
+	@Override
+	protected void onSaveInstanceState(Bundle outState) {
+		super.onSaveInstanceState(outState);
+		outState.putBoolean(STATE_EXTERNAL_EDIT, pendingReloadAfterExternalEdit);
 	}
 
 	@Override
 	protected void onResume() {
 		super.onResume();
-		if (pendingReloadAfterExternalEdit && !loading && !working && !dirty) {
+		if (pendingReloadAfterExternalEdit && targetFile != null) {
 			pendingReloadAfterExternalEdit = false;
-			loadFile();
+			ModManifestCache.invalidatePath(targetFile);
+			if (!loading && !working && !dirty) loadFile();
 		}
 	}
 
@@ -202,7 +211,7 @@ public class TextEditorActivity extends AppCompatActivity {
 		updateUiState();
 		new Thread(() -> {
 			try {
-				FileBrowserSupport.writeTextFile(targetFile, content);
+				FileBrowserSupport.saveEditedText(targetFile, content);
 				runOnUiThread(() -> {
 					working = false;
 					originalContent = content;
@@ -230,8 +239,7 @@ public class TextEditorActivity extends AppCompatActivity {
 			return;
 		}
 		try {
-			pendingReloadAfterExternalEdit = true;
-			FileBrowserSupport.openFileInExternalApp(this, targetFile, true, getString(R.string.file_browser_external_edit_chooser));
+			pendingReloadAfterExternalEdit = FileBrowserSupport.openFileInExternalApp(this, targetFile, true, getString(R.string.file_browser_external_edit_chooser));
 		} catch (Exception exception) {
 			pendingReloadAfterExternalEdit = false;
 			showError(exception);

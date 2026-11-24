@@ -22,7 +22,7 @@ import java.util.zip.ZipOutputStream;
 import static org.junit.Assert.*;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(manifest = Config.NONE, sdk = 35)
+@Config(manifest = Config.NONE, sdk = 35, shadows = AndroidLinuxTestShadow.class)
 public class ModInstallReplacementTest {
 	private Context context;
 	private ExtraSettingsRepository repository;
@@ -43,6 +43,7 @@ public class ModInstallReplacementTest {
 	@Test public void freshRepositoryCleansRecordedAuxiliaryAssetsAndPreviousDirectories() throws Exception {
 		install("old/A.json", manifest("A", "1"), "old/A.dll", "main-v1",
 			"old/Dependency.dll", "dependency-v1", "old/assets/icons/icon.bin", "synthetic-icon");
+		assertEquals("1", repository.listInstalledModManifestsForDisplay().get(0).version);
 		repository = new ExtraSettingsRepository(context);
 
 		ExtraSettingsRepository.PreparedModImport update = prepare(
@@ -55,6 +56,7 @@ public class ModInstallReplacementTest {
 		assertFalse(new File(mods, "old").exists());
 		assertEquals("", update.getFileNotice());
 		assertEquals(1, repository.listInstalledModManifests().size());
+		assertEquals("2", repository.listInstalledModManifestsForDisplay().get(0).version);
 	}
 
 	@Test public void generatedRuntimeAliasesAndOriginalPayloadsAreAllTracked() throws Exception {
@@ -132,11 +134,13 @@ public class ModInstallReplacementTest {
 			"A.dll", "main-v2", "Dependency.dll", "vendor-v2");
 		assertTrue(repository.findCurrentImportPathConflicts(update,
 			repository.findCurrentImportConflicts(update)).isEmpty());
+		List<?> beforeFailure = repository.listInstalledModManifestsForDisplay();
 		// A file may change after preparation/review, so commit must review it again.
 		write(new File(mods, "Dependency.dll"), "changed-after-review");
 		assertPathConflict(update, "Dependency.dll");
 		assertThrows(ExtraSettingsRepository.ModImportPathConflictException.class,
 			() -> repository.commitPreparedModImport(update, true, false));
+		assertNotSame(beforeFailure, repository.listInstalledModManifestsForDisplay());
 		assertBytes("A.dll", "main-v1");
 		assertBytes("Dependency.dll", "changed-after-review");
 
@@ -255,23 +259,27 @@ public class ModInstallReplacementTest {
 		install("A.json", manifest("A", "1"), "A.dll", "global", "assets/data.bin", "global-asset");
 		File globalMods = mods;
 		ExtraSettingsRepository.PreparedModImport globalPrepared = prepare("A.json", manifest("A", "2"), "A.dll", "wrong-scope");
+		assertEquals("A", repository.listInstalledModManifestsForDisplay().get(0).modId);
 		LaunchProfileManager profiles = new LaunchProfileManager(context);
 		createPayload(profiles);
 		LaunchProfileManager.LaunchProfile isolated = profiles.createProfile("mod-install-fixture", "Isolated",
 			LaunchProfileManager.SAVE_MODE_ISOLATED, LaunchProfileManager.MODS_MODE_ISOLATED, "", "", LaunchProfileManager.COMPAT_SELECTION_MANUAL, true);
 		mods = repository.getModsRootDir();
 		assertNotEquals(globalMods.getCanonicalPath(), mods.getCanonicalPath());
+		assertTrue(repository.listInstalledModManifestsForDisplay().isEmpty());
 		assertThrows(IOException.class, () -> repository.commitPreparedModImport(globalPrepared, true, true));
 		assertEquals("global", read(new File(globalMods, "A.dll")));
 		assertFalse(new File(mods, "A.dll").exists());
 
 		install("A.json", manifest("A", "1"), "A.dll", "isolated", "assets/data.bin", "isolated-asset");
+		assertEquals(mods, repository.listInstalledModManifestsForDisplay().get(0).directory());
 		repository.deleteMod(entry("A"));
 		assertFalse(new File(mods, "A.dll").exists());
 		assertEquals("global-asset", read(new File(globalMods, "assets/data.bin")));
 		assertEquals("global", read(new File(globalMods, "A.dll")));
 		profiles.selectProfile(isolated.id);
 		assertTrue(repository.listInstalledModManifests().isEmpty());
+		assertTrue(repository.listInstalledModManifestsForDisplay().isEmpty());
 	}
 
 	@Test public void stagedAndDestinationSymlinksFailClosedWithoutOutsideWrites() throws Exception {
@@ -346,10 +354,12 @@ public class ModInstallReplacementTest {
 			assertFalse(new File(mods, "outside/assets/data.bin").exists());
 			assertFalse(new File(first.installRoot, "Old.dll").exists());
 			assertEquals("incoming", read(new File(replacement.installRoot, "A.dll")));
+			assertEquals("2", repository.listInstalledModManifestsForDisplay().get(0).version);
 		} finally {
 			repository.rollbackWorkshopModImport(replacement);
 		}
 		repository.rollbackWorkshopModImport(replacement);
+		assertEquals(2, repository.listInstalledModManifestsForDisplay().size());
 		assertEquals("old-item", read(new File(first.installRoot, "Old.dll")));
 		assertEquals("runtime-before", read(new File(first.installRoot, "runtime.bin")));
 		assertFalse(new File(first.installRoot, "A.dll").exists());
@@ -360,6 +370,24 @@ public class ModInstallReplacementTest {
 		repository.deleteMod(entry("A"));
 		assertFalse(new File(mods, "outside/assets/data.bin").exists());
 		assertEquals("old-item", read(new File(first.installRoot, "Old.dll")));
+	}
+
+	@Test public void staleDisplayCannotHideAnImportConflictOrWriteProfilePreferences() throws Exception {
+		ExtraSettingsRepository.PreparedModImport incoming = prepare("new/A.json", manifest("A", "2"));
+		try {
+			List<ExtraSettingsRepository.ModEntry> empty = repository.listInstalledModManifestsForDisplay();
+			write(new File(mods, "old/A.json"), manifest("A", "1"));
+			assertSame(empty, repository.listInstalledModManifestsForDisplay());
+			assertEquals("old/A.json", repository.findCurrentImportConflicts(incoming).get(0).existingEntries.get(0).relativePath);
+			assertEquals("A", repository.listInstalledModManifestsUnder(new File(mods, "old")).get(0).modId);
+			ExtraSettingsRepository.ModProfile profile = repository.createModProfileFromCurrent("With A");
+			assertTrue(profile.enabledModIds.contains("A"));
+			String stored = context.getSharedPreferences("sts2_mod_profiles", Context.MODE_PRIVATE).getString("profiles", null);
+			repository.loadModProfileStateForDisplay(repository.loadSettingsJson(), empty);
+			assertEquals(stored, context.getSharedPreferences("sts2_mod_profiles", Context.MODE_PRIVATE).getString("profiles", null));
+		} finally {
+			repository.discardPreparedModImport(incoming);
+		}
 	}
 
 	private void install(String... entries) throws Exception {

@@ -19,7 +19,7 @@ import java.util.List;
 import static org.junit.Assert.*;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(manifest = Config.NONE, sdk = 35)
+@Config(manifest = Config.NONE, sdk = 35, shadows = AndroidLinuxTestShadow.class)
 public class ModInstallStoreTest {
 	private File files;
 	private File mods;
@@ -221,6 +221,46 @@ public class ModInstallStoreTest {
 		assertThrows(IOException.class, () -> store.beginInstall(staged, "", List.of(a), Collections.emptyList(), true, true, false));
 		assertFalse(new File(mods, "A.dll").exists());
 		assertEquals("outside", read(new File(external, "private.bin")));
+	}
+
+	@Test public void cleanHandoffNeverOpensAgainstWriterOrReplaysJournalOnCaller() throws Exception {
+		ModInstallStore.Module a = module("A", "A.json");
+		install(stage("A.json", "v1", "A.dll", "old"), List.of(a));
+		File[] registries = new File(files, "launcher/mod-installs").listFiles();
+		assertNotNull(registries);
+		assertEquals(1, registries.length);
+		File saved = new File(stagingParent, "interrupted"), journal = new File(registries[0], "transaction");
+		try (ModInstallStore.Transaction tx = store.beginInstall(stage("A.json", "v2", "A.dll", "new"), "",
+			List.of(a), List.of(a), true, false, false)) {
+			assertThrows(ModInstallStore.BusyException.class, () -> store.withCleanRoot(() -> fail("writer owns root")));
+			// Preserve an actual READY journal and the matching post-publication live files.
+			copyTree(journal, saved);
+			tx.commit();
+		}
+		copyTree(saved, journal);
+		List<?> uncommitted = ModManifestCache.get(mods, List::of);
+		assertFalse(store.withCleanRoot(() -> fail("pending rollback must return to the worker")));
+		assertEquals("READY", read(new File(journal, "phase")));
+		assertEquals("new", read(new File(mods, "A.dll")));
+		store.recover();
+		assertNotSame(uncommitted, ModManifestCache.get(mods, List::of));
+		assertEquals("old", read(new File(mods, "A.dll")));
+		int[] calls = {0};
+		assertTrue(store.withCleanRoot(() -> {
+			assertThrows(ModInstallStore.BusyException.class, store::recover);
+			calls[0]++;
+		}));
+		assertEquals(1, calls[0]);
+		write(new File(registries[0], "index.json"), "broken receipt");
+		assertThrows(IOException.class, () -> store.withCleanRoot(() -> fail("corrupt receipt admitted")));
+	}
+
+	private static void copyTree(File source, File destination) throws IOException {
+		Files.copy(source.toPath(), destination.toPath());
+		if (!source.isDirectory()) return;
+		File[] children = source.listFiles();
+		assertNotNull(children);
+		for (File child : children) copyTree(child, new File(destination, child.getName()));
 	}
 
 	private void install(File staging, List<ModInstallStore.Module> modules) throws Exception {

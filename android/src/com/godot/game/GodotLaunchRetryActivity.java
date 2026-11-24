@@ -5,14 +5,15 @@ import android.os.Bundle;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-/** Waits outside the native host so a busy MOD installation need not block Activity creation. */
+/** Prepares direct, restored and contended launches outside the native host. */
 public final class GodotLaunchRetryActivity extends AppCompatActivity {
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		ModInstallReadiness.open(this, new GameLaunchPreparationManager(this)::prepareForLaunch, () -> {
+		GameLaunchPreparationManager preparation = new GameLaunchPreparationManager(this);
+		ModInstallReadiness.open(this, preparation::prepareForLaunch, () -> {
 			Intent game = GodotApp.copyRetryArguments(getIntent(), GodotApp.createLaunchIntent(this, false));
-			startActivity(game.putExtra("launch_prepared", true));
+			startActivity(preparation.preparedIntent(game));
 			finish();
 		});
 	}
