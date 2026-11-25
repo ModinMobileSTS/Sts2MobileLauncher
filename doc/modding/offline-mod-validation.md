@@ -43,13 +43,14 @@ sts2_load_dotenv
 
 | 游戏引用 | `ReferenceFlavor` | `.env` reference 变量 | compile constant |
 | --- | --- | --- | --- |
+| v0.114.0 public-beta，独立原版引用 | `original-v0.114.0` | `STS2_ORIGINAL_V1140_REFERENCE_DIR` | `STS2_TARGET_1130` |
 | v0.113.x，共享 target 使用最新 v0.113.1 引用 | `original-v0.113.0` | `STS2_ORIGINAL_V1130_REFERENCE_DIR` | `STS2_TARGET_1130` |
 | v0.111.1 stable/public，独立 metadata target，构建复用现有 v0.111.0 引用 | `original-v0.111.0` | `STS2_ORIGINAL_V1110_REFERENCE_DIR` | `STS2_TARGET_1110` |
 | v0.111.0 beta/public-beta，原有 target 保留 | `original-v0.111.0` | `STS2_ORIGINAL_V1110_REFERENCE_DIR` | `STS2_TARGET_1110` |
 | v0.110.x，共享 target 使用 v0.110.1 引用 | `original-v0.110.0` | `STS2_ORIGINAL_V1100_REFERENCE_DIR` | `STS2_TARGET_1100` |
 | v0.109.x，共享 target 使用 v0.109.1 引用 | `original-v0.109.0` | `STS2_ORIGINAL_V1090_REFERENCE_DIR` | `STS2_TARGET_1090` |
 
-full family `compat_version=0.7.2-dev` 中，v0.111.1 与 v0.111.0 仅共享实现和 compile gate，不合并 target：.1 按原版 DLL SHA `3fb1fa1bf0249087b706a5d0f062a60579e2f5b08df4ee477ddd6f2607f654d5` 选择 stable/public `v0.111.1`，.0 保留 beta/public-beta `v0.111.0`。归档导入缺少 Steam 来源分支时，Workshop `auto` 需按各自 target 回落到 `public` / `public-beta`，不能因 API/运行时 IL 等价而合并分支元数据。不新增 flavor 或 V1111 环境变量，也不把共享实现视为 .0/.1 跨版本 LAN 保证。
+v0.111.1 与 v0.111.0 仅共享实现和 compile gate，不合并 target：.1 按原版 DLL SHA `3fb1fa1bf0249087b706a5d0f062a60579e2f5b08df4ee477ddd6f2607f654d5` 选择 stable/public `v0.111.1`，.0 保留 beta/public-beta `v0.111.0`。归档导入缺少 Steam 来源分支时，Workshop `auto` 需按各自 target 回落到 `public` / `public-beta`，不能因 API/运行时 IL 等价而合并分支元数据。不新增 flavor 或 V1111 环境变量，也不把共享实现视为 .0/.1 跨版本 LAN 保证。
 
 下文 BaseLib/Loadout 的已验证输入与结果仍是原记录中的 v0.111.0，不能重标为 v0.111.1 成功。验证 .1 的实际运行时行为时，应在 probe 中显式使用匹配的 .1 原版程序集目录，并继续指定 `original-v0.111.0` 和 `STS2_TARGET_1110`；这不要求修改现有 V1110 构建引用配置。桌面审计或原版 ModelDb native/headless 初始化不证明 Android UI/玩法、普通 MOD 或同版本 LAN 已通过。
 

@@ -29,10 +29,9 @@ runtime.mono_memory_stats_fix=0
 # Defaults to arm64/ beside STS2_FMOD_PLUGIN_AAR; env override: STS2_FMOD_ANDROID_LIBS_DIR.
 # runtime.fmod_android_libs_dir=/path/to/fmod/android/arm64
 
-# Compatibility build defaults. Shared v0.113.x uses the v0.113.1 compile gate;
-# Older flavors, including v0.111.0 and shared v0.110.x / v0.109.x,
-# remain available for explicit older-target builds.
-compat.default_reference_flavor=original-v0.113.0
+# Default fallback uses the current v0.114.0 public-beta reference. Older flavors
+# remain selectable, including original-v0.113.0 with the v0.113.1 reference.
+compat.default_reference_flavor=original-v0.114.0
 # Use "matrix" for one schema-2 family pack. Set "legacy" only when you need
 # per-version branch packs for back-compat diagnostics.
 compat.pack_build_mode=matrix

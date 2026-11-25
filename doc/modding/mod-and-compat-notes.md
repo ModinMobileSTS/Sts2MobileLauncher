@@ -200,9 +200,10 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 | `v0.110.0` / `v0.110.1` public beta（旧测试） | `v0.110.0`（显示 v0.110.x） | `.env`: `STS2_ORIGINAL_V1100_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1100_ROOT`（指向 v0.110.1） | `original-v0.110.0` |
 | `v0.111.0` public beta（旧测试） | `v0.111.0` | `.env`: `STS2_ORIGINAL_V1110_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1110_ROOT` | `original-v0.111.0` |
 | `v0.111.1` stable / `public`（当前） | `v0.111.1` | `.env`: `STS2_ORIGINAL_V1110_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1110_ROOT`（复用现有 v0.111.0 引用） | `original-v0.111.0` |
-| `v0.113.0` / `v0.113.1` public beta（当前） | `v0.113.0`（稳定 id，显示 v0.113.x） | `.env`: `STS2_ORIGINAL_V1130_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1130_ROOT`（历史名，指向最新 v0.113.1） | `original-v0.113.0` |
+| `v0.113.0` / `v0.113.1` public beta（保留） | `v0.113.0`（稳定 id，显示 v0.113.x） | `.env`: `STS2_ORIGINAL_V1130_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1130_ROOT`（历史名，指向 v0.113.1） | `original-v0.113.0` |
+| `v0.114.0` public beta（当前） | `v0.114.0` | `.env`: `STS2_ORIGINAL_V1140_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1140_ROOT` | `original-v0.114.0` |
 
-当前 full family `compat_version=0.7.2-dev` 包含 10 个 active metadata target。新 `v0.111.1` 记录的 `versions=["v0.111.1"]`、`channel=stable`、`steam_branch=public`、`source=original_pc_reference_v0.111.1`，原版 DLL SHA-256 为 `3fb1fa1bf0249087b706a5d0f062a60579e2f5b08df4ee477ddd6f2607f654d5`。它复用现有 V1110 引用、`original-v0.111.0` 与 `STS2_TARGET_1110`，不新增 flavor 或 V1111 环境变量；v0.111.0 beta / `public-beta` 记录保持不变。Workshop `auto` 优先使用 payload 的 Steam 来源分支，归档导入没有该字段时才回落到兼容 target 的 `steam_branch`；因此必须分开 .1/public 与 .0/public-beta 元数据，不能只给旧 beta variant 追加版本/SHA。
+当前 full family `compat_version=0.7.3-dev` 包含 11 个 active target。v0.111.1 stable / `public` 与 v0.111.0 beta / `public-beta` 仍分开记录，复用 `original-v0.111.0`、现有 V1110 引用及 `STS2_TARGET_1110`，不新增 flavor 或 V1111 变量。Workshop `auto` 优先使用 payload 的 Steam 来源分支，归档没有该字段时才回落到 target 的 `steam_branch`；不能只给旧 beta variant 追加 .1 的版本/SHA。
 
 开发步骤建议：
 
@@ -214,7 +215,7 @@ git -C port-mod status --short --branch
 (cd port-mod && ./tools/build-compat-matrix.sh)
 
 # 3. 可选：构建当前 fallback 或 legacy schema 1 诊断包
-REFERENCE_FLAVOR=original-v0.113.0 tools/android/build-port-mod.sh
+REFERENCE_FLAVOR=original-v0.114.0 tools/android/build-port-mod.sh
 # 或
 tools/android/build-port-mod.sh
 # 或
@@ -225,7 +226,7 @@ tools/android/stage-bundled-compat-packs.sh
 tools/package/build_importer_apk.sh
 ```
 
-只调试当前 target 时可运行 `(cd port-mod && ./tools/build-compat-matrix.sh --target v0.113.0)`；单独构建当前 stable/public v0.111.1 时使用 `--target v0.111.1`，compile gate 仍为 `original-v0.111.0` / V1110 / `STS2_TARGET_1110`，并保留独立的旧 beta `--target v0.111.0`。共享 v0.109.x 的稳定 target id `v0.109.0` 仍同时覆盖 v0.109.0/v0.109.1，历史 `original-v0.109.0` flavor 应指向最新 v0.109.1 引用；稳定 target id `v0.110.0` 同时覆盖 v0.110.0/v0.110.1，历史 `original-v0.110.0` flavor 应指向 v0.110.1 引用。legacy schema 1 诊断包仍用 `REFERENCE_FLAVOR=original` / `original-v0.106.1` / `original-v0.107.0` 指定对应原版 gate，单独调试 `v0.107.1` / `v0.108.0` / `v0.109.x` / `v0.110.x` / `v0.111.0` / `v0.113.0` 可分别使用对应 `original-v*` flavor。
+只调试当前 beta target 时可运行 `(cd port-mod && ./tools/build-compat-matrix.sh --target v0.114.0)`；保留的 v0.113.x 使用 `--target v0.113.0`。单独构建当前 stable/public v0.111.1 用 `--target v0.111.1`，compile gate 仍为 `original-v0.111.0` / V1110 / `STS2_TARGET_1110`，并保留旧 beta `--target v0.111.0`。共享 v0.109.x / v0.110.x 仍用各自的历史 target id 和 flavor，引用用 v0.109.1 / v0.110.1。legacy schema 1 诊断包用 `REFERENCE_FLAVOR=original` / `original-v0.106.1` / `original-v0.107.0` 指定原版 gate。
 
 v0.110.0 是游戏 MOD API 更新，不只是 Android target 更新；v0.110.1 仅包含不触达 Android compat 的 AutoSlay/lobby 实现修复，继续共用 v0.110.x target。该 API 线移除了 `Scare`、`OutbreakPower`、旧 `LobbyPlayer`、`JoinFlow.MockInfo`、`MegaInput.accept/releaseCard` 与旧 controller/keyboard mapping API。v0.111.0 再次使用独立 target：原版新增 transport-level `HandshakeManager`，`NetClientGameService` / `NetHostGameService` 构造时必须传入 `PeerVersionInfo`，版本、ModelDb hash 与 MOD 校验在消息总线启用前完成；Android LAN 只传入 `PeerVersionInfo.LocalDefault()` 并继续使用原版握手与 wire protocol。`AnimState` 同时把 trigger branch 字段改名并增加条件 next-state graph，compat 动画预热会读取两种字段形状。直接静态引用这些变化成员的普通 MOD 必须发布匹配 v0.111.0 的版本；full compat 不会向 `sts2.dll` 伪造已删除成员。
 
@@ -234,6 +235,8 @@ v0.111.1 与 v0.111.0 的托管 API、运行时 IL 和依赖等价，差异为�
 v0.113.0 是独立 target，使用 `STS2_TARGET_1130`，不与 v0.111.0 共用 variant。LAN 加入直接走原版 `NJoinFriendScreen.JoinGameAsync`，让 payload 管理 `JoinFlow.Begin(SceneTree)`、取消、错误和模式路由；host 保留 `isCustom` 与 Standard/Daily/Blitz/Dread 的原版入口，读档使用 `IsCustomGame`。商店确认在一次性 allowance 内重放原版 `OnSelected()` 并等待实际任务，不再反射调用已删除的 `OnTryPurchase`；旧 target 也回到各自原版购买流程。新版宝箱保留预置 1–6 个遗物布局及 Large icon reveal，仅为更大容量补充布局。atlas-aware blur 的 `uv_region/radius_scale` 实例参数与旧 shader 不兼容，因此只在 v113 保留原版卡面 blur，不再安装已删除的 `NEpochSlot._blurShader` 修复；其他已审计 shader variants 不变。普通 MOD 仍须自行匹配该版本 API，compat 不补造已删除成员；桌面回归不等于 Android GPU/触控/跨设备认证。
 
 v0.113.1 与 v0.113.0 共用上述 variant，保留 target id `v0.113.0`、flavor `original-v0.113.0` 与 `STS2_TARGET_1130`，显示为 v0.113.x，并声明两版完整 DLL SHA。V1130 引用应指向最新 v0.113.1。两版并非所有 API/IL 相同：v0.113.1 删除 `HoverTipAlignment.Center`、新增 `NHoverTipSet.SetAlignmentBelow` 并调整药水、玩法和存档逻辑；compat 没有调用删除项，所用初始化、LAN、商店、宝箱、输入和显示合约不变，scene/material/shader 条目也不变，因此无需新增运行时分支。普通 MOD 仍须匹配实际 payload，不能因共享 Android target 就推断两版 MOD API 或跨版本 LAN 兼容。
+
+v0.114.0 的托管 API 和方法 IL、宝箱投票消息及 PCK 均有变化，因此分开记录 target/版本/DLL SHA，并用实际 v0.114.0 原版引用编译。热键和宝箱轮次由原版负责；沿用 v0.113 的 Android 补丁与 atlas-aware blur，不新增运行时分支或 legacy 包。普通 MOD 必须匹配这一版本的游戏 API。
 
 ## 8. 新增游戏版本 checklist
 
@@ -308,14 +311,14 @@ schema 1 legacy 单目标 manifest：
 }
 ```
 
-schema 2 family manifest（节选；完整包包含上表 10 个 target）：
+schema 2 family manifest（节选；完整包包含上表 11 个 target）：
 
 ```json
 {
   "schema": 2,
   "pack_id": "sts2-android-compat",
   "display_name": "STS2 Android Compatibility",
-  "compat_version": "0.7.2-dev",
+  "compat_version": "0.7.3-dev",
   "channel": "mixed",
   "targets": [
     {
@@ -342,6 +345,18 @@ schema 2 family manifest（节选；完整包包含上表 10 个 target）：
       "artifacts": {
         "dll": "variants/v0.113.0/STS2Mobile.dll",
         "overlay_pck": "variants/v0.113.0/port_compat.pck"
+      }
+    },
+    {
+      "target_id": "v0.114.0",
+      "versions": ["v0.114.0"],
+      "channel": "beta",
+      "source": "original_pc_reference_v0.114.0",
+      "steam_branch": "public-beta",
+      "sts2_dll_sha256": "ddceb87905b6096deb7be975922e24a53992453675df26df545b1c46b1826c5d",
+      "artifacts": {
+        "dll": "variants/v0.114.0/STS2Mobile.dll",
+        "overlay_pck": "variants/v0.114.0/port_compat.pck"
       }
     }
   ]
