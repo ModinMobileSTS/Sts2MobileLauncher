@@ -37,6 +37,7 @@ cp local.properties.example local.properties
 | `STS2_ORIGINAL_V1130_ROOT` 或 `STS2_ORIGINAL_V1130_REFERENCE_DIR` | 共享 v0.113.x public-beta target 的 original compile gate；历史 V1130 名称保留，应指向最新 v0.113.1 引用。 |
 | `STS2_ORIGINAL_V1140_ROOT` 或 `STS2_ORIGINAL_V1140_REFERENCE_DIR` | 当前 v0.114.0 public-beta target 的独立 original compile gate；复用 `STS2_TARGET_1130` 的 Android 补丁路径。 |
 | `RELEASE_KEYSTORE_FILE` / `RELEASE_KEYSTORE_PASSWORD` / `RELEASE_KEYSTORE_ALIAS` | APK 签名参数；首次本地测试可用 Android debug keystore。已发布版本的更新必须沿用原私钥与证书，不可直接换 key 或重新生成同名 keystore。签名方案与覆盖安装校验见[构建文档 §3.1](building-and-packaging.md#31-apk-签名方案与更新身份)。 |
+| `COMPAT_RELEASE_SIGNING_KEY_FILE` / `COMPAT_RELEASE_SIGNING_KEY_ID` | 官方兼容包索引 Ed25519 私钥 PEM 的仓库外路径及 key id（默认 `sts2-compat-release-v1`）；与 APK 签名无关。只将 raw public key Base64 写入启动器。见[首次签名配置](building-and-packaging.md#61-本地签名与发布官方兼容包)。 |
 
 可选快捷项：
 
@@ -64,6 +65,7 @@ cp local.properties.example local.properties
 | `compat.asset_dir` | `android/assets/compat_packs` | 内置兼容包输出到 APK assets 的目录；生成 zip 已 gitignore，不提交。 |
 | `compat.worktree_root` | `.agent/worktrees/compat-packs` | 多分支兼容包临时 worktree 根目录；位于 ignored `.agent/`。 |
 | `compat.pack_remote` | `origin` | stage 脚本解析远端分支时使用的 remote。 |
+| `compat.release_signing_key_file` / `compat.release_signing_key_id` | 空 / `sts2-compat-release-v1` | 可存仓库外 PEM 的路径及 key id，不能存私钥内容。对应 `COMPAT_RELEASE_SIGNING_KEY_*` 环境变量优先。 |
 | `deps.external_projects_config` | `tools/deps/external-github-projects.json` | GitHub 外部参考项目清单。 |
 | `deps.external_projects_root` | `.agent/reference-repos` | 自动 clone 外部参考项目的本地根目录；位于 ignored `.agent/`。 |
 

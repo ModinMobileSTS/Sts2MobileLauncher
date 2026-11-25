@@ -18,7 +18,7 @@ STS2_LOCAL_CONFIG_FILE="${STS2_LOCAL_CONFIG_FILE:-$STS2_RE_ROOT/local.properties
 _sts2_path_abs() {
   local input="$1"
   [[ -n "$input" ]] || return 0
-  python3 - "$STS2_RE_ROOT" "$input" <<'PY'
+  python3 - "$STS2_RE_ROOT" "$input" "${2:-}" <<'PY'
 from pathlib import Path
 import os
 import sys
@@ -27,7 +27,8 @@ value = os.path.expandvars(os.path.expanduser(sys.argv[2]))
 path = Path(value)
 if not path.is_absolute():
     path = root / path
-print(path.resolve(strict=False))
+# Signing policy must see the original paths, including symlinks out of the repo.
+print(path if sys.argv[3] == "preserve-symlinks" else path.resolve(strict=False))
 PY
 }
 
@@ -235,6 +236,16 @@ sts2_config_path() {
   value="$(sts2_config_value "$env_name" "$property_name" "$default")"
   [[ -n "$value" ]] || return 0
   _sts2_path_abs "$value"
+}
+
+sts2_compat_release_signing_key_file() {
+  local value
+  value="$(sts2_config_value COMPAT_RELEASE_SIGNING_KEY_FILE compat.release_signing_key_file)" || return 1
+  _sts2_path_abs "$value" preserve-symlinks
+}
+
+sts2_compat_release_signing_key_id() {
+  sts2_config_value COMPAT_RELEASE_SIGNING_KEY_ID compat.release_signing_key_id sts2-compat-release-v1
 }
 
 sts2_require_file() {

@@ -592,7 +592,7 @@ public final class GameLaunchPreparationManager {
 		File overlay = manager.getSelectedCompatOverlayPck();
 		Log.i(TAG, "DIAG stageSelectedCompatOverlay selected_overlay=" + describeFile(overlay));
 		if (overlay != null && overlay.isFile()) {
-			copyFile(overlay, dest);
+			copyFileIfContentDifferent(overlay, dest);
 			logPreparedFile("compat overlay", "selected_pack", overlay, dest);
 			return;
 		}

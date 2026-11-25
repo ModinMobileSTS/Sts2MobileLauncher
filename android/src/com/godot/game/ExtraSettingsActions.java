@@ -9,6 +9,8 @@ public interface ExtraSettingsActions {
 	void requestClearGamePayload();
 	void requestImportCompatPack();
 	void requestInstallBundledCompatPacks();
+	void requestOnlineCompatPacks();
+	void requestOnlineCompatInstall(CompatPackRelease release);
 	void requestDeleteCompatPack(String packId);
 	void requestClearTextureCache();
 	void requestArchiveActiveGameVersion();

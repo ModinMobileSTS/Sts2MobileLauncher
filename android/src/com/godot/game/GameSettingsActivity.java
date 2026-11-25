@@ -1,15 +1,21 @@
 package com.godot.game;
 
 import android.animation.ObjectAnimator;
+import android.app.Dialog;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.CancellationSignal;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.OperationCanceledException;
+import android.os.SystemClock;
 import android.text.TextUtils;
+import android.text.format.Formatter;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
@@ -47,7 +53,10 @@ import com.godot.game.webdav.WebDavSettings;
 import com.godot.game.webdav.WebDavSyncManager;
 
 import java.util.ArrayList;
+import java.util.Date;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -61,11 +70,29 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	private static final int REQUEST_IMPORT_MOD = 1003;
 	private static final int REQUEST_EXPORT_FULL_DATA_BACKUP = 1004;
 	private static final int REQUEST_IMPORT_FULL_DATA_BACKUP = 1005;
+	private static final int REQUEST_STEAM_PAYLOAD_RESULT = 1008;
+	private static final long COMPAT_LAUNCH_DIALOG_CHECK_DEBOUNCE_MS = 45_000L;
 	private static final ExecutorService MOD_IMPORT_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> new Thread(runnable, "sts2-mod-import"));
 
 	private ExtraSettingsRepository repository;
 	private PayloadManager payloadManager;
 	private CompatPackManager compatPackManager;
+	private CompatPackReleaseRepository compatReleaseRepository;
+	private CompatPackReleaseIndex compatReleaseIndex;
+	private long compatReleaseLastChecked;
+	private long lastCompatLaunchDialogCheckElapsedMs = -1L;
+	private int compatReleaseCheckMessage;
+	private boolean startupCompatCheckRequested;
+	private boolean compatImportCheckPending;
+	private boolean compatReleaseChecking;
+	private boolean compatReleaseForceInFlight;
+	private boolean compatReleaseForceQueued;
+	private Dialog compatReleaseDialog;
+	private Runnable renderCompatReleaseDialog;
+	private AlertDialog compatDownloadDialog;
+	private CancellationSignal compatDownloadCancellation;
+	private long compatNavigationGeneration;
+	private long compatForegroundGeneration;
 	private GameBodyVersionManager gameBodyVersionManager;
 	private LaunchProfileManager launchProfileManager;
 	private FrameLayout contentFrame;
@@ -104,6 +131,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		repository = new ExtraSettingsRepository(this);
 		payloadManager = new PayloadManager(this);
 		compatPackManager = new CompatPackManager(this);
+		compatReleaseRepository = new CompatPackReleaseRepository(getApplicationContext());
 		gameBodyVersionManager = new GameBodyVersionManager(this);
 		launchProfileManager = new LaunchProfileManager(this);
 		if (savedInstanceState != null) {
@@ -155,12 +183,14 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			}
 			maybeRunCleanExitSteamCloudPush();
 		}
+		updateCompatReleaseDialog();
 		scheduleStartupContinuation();
 	}
 
 	@Override
 	protected void onPause() {
 		resumed = false;
+		compatForegroundGeneration++;
 		startupHandler.removeCallbacks(continueStartup);
 		if (homePage != null) homePage.setPageActive(false);
 		super.onPause();
@@ -170,6 +200,9 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	protected void onDestroy() {
 		importDestroyed = true;
 		startupHandler.removeCallbacks(continueStartup);
+		if (compatDownloadCancellation != null) compatDownloadCancellation.cancel();
+		if (compatDownloadDialog != null) compatDownloadDialog.dismiss();
+		if (compatReleaseDialog != null) compatReleaseDialog.dismiss();
 		if (homePage != null) homePage.setPageActive(false);
 		if (modImportDialog != null) modImportDialog.dismiss();
 		discardModImports(activeModImports);
@@ -198,6 +231,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 	private void showWelcome() {
 		WelcomeSetupPage page = new WelcomeSetupPage(this, repository, this, launchGame -> {
+			maybeCheckCompatOnStartup();
 			if (launchGame) {
 				launchGame();
 			} else {
@@ -376,13 +410,14 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			return;
 		}
 		if (homePage != null && itemId != R.id.nav_game) homePage.setPageActive(false);
+		if (currentTabId != itemId) compatNavigationGeneration++;
 		currentTabId = itemId;
 		ExtraSettingsPreferences.setLastSelectedMainTab(this, itemId);
 		View page;
 		if (itemId == R.id.nav_mods) {
 			page = new ModsPage(this, repository, this).build();
 		} else if (itemId == R.id.nav_versions) {
-			page = new GameVersionManagerPage(this, this).build();
+			page = new GameVersionManagerPage(this, this, compatReleaseRepository, () -> compatReleaseIndex).build();
 		} else if (itemId == R.id.nav_settings) {
 			page = new SettingsPage(this, repository, this).build();
 		} else if (itemId == R.id.nav_about) {
@@ -431,7 +466,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 					showMessage(getString(R.string.status_checking_compat_recommendation));
 					return;
 				}
-				showMissingCompatPackSheet(payloadStatus);
+				showMissingCompatPackSheet(payloadStatus, selectedProfile);
 				return;
 			}
 			if (!compatPackManager.isPackCompatibleWithPayload(selectedCompatPack, payloadStatus.manifest)) {
@@ -439,7 +474,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				return;
 			}
 			if (compatPackManager.requiresOfflineBootstrapApproval(selectedCompatPack, payloadStatus.manifest)) {
-				showOfflineBootstrapLaunchWarning(payloadStatus, selectedCompatPack);
+				showOfflineBootstrapLaunchWarning(payloadStatus, selectedCompatPack, selectedProfile);
 				return;
 			}
 			prepareAndStartGameAfterOptionalSteamCloudPull();
@@ -986,7 +1021,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	@Override
 	public void openSteamAccount() {
 		try {
-			startActivity(new Intent(this, SteamAccountActivity.class));
+			startActivityForResult(new Intent(this, SteamAccountActivity.class), REQUEST_STEAM_PAYLOAD_RESULT);
 		} catch (Exception exception) {
 			showError(exception);
 		}
@@ -1017,7 +1052,10 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	}
 
 	private void handlePickerResult(int requestCode, Intent data) {
-		if (requestCode == REQUEST_EXPORT_SAVE && data.getData() != null) {
+		if (requestCode == REQUEST_STEAM_PAYLOAD_RESULT) {
+			refreshCurrentScreen();
+			maybeCheckCompatAfterPayloadImport();
+		} else if (requestCode == REQUEST_EXPORT_SAVE && data.getData() != null) {
 			Uri uri = data.getData();
 			runAsyncOperation(getString(R.string.status_busy_export_save), () -> {
 				repository.exportSaveZip(uri);
@@ -1306,6 +1344,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 					busy = false;
 					progressDialog.dismiss();
 					refreshCurrentScreen();
+					if (!bundled) maybeCheckCompatAfterPayloadImport();
 					showMessage(getString(R.string.status_import_game_payload_done, status.shortVersionLabel()));
 				});
 			} catch (Exception exception) {
@@ -1338,8 +1377,10 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			.show();
 	}
 
-	private void showMissingCompatPackSheet(PayloadManager.Status payloadStatus) {
-		CompatRecommendation recommendation = findCompatRecommendation(payloadStatus);
+	private void showMissingCompatPackSheet(PayloadManager.Status payloadStatus, LaunchProfileManager.LaunchProfile profile) {
+		List<CompatPackManager.CompatPack> installedPacks = compatPackManager.listInstalledPacks();
+		CompatRecommendation recommendation = findCompatRecommendation(payloadStatus, installedPacks);
+		CompatLaunchSelection selection = new CompatLaunchSelection(profile, payloadStatus);
 		BottomSheetDialog dialog = new BottomSheetDialog(this);
 		dialog.setOnShowListener(unused -> {
 			if (dialog.getWindow() != null) {
@@ -1360,6 +1401,10 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		LinearLayout.LayoutParams gameIdentityParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
 		gameIdentityParams.topMargin = ExtraSettingsUi.dp(this, 10);
 		content.addView(gameIdentity, gameIdentityParams);
+		LinearLayout online = ExtraSettingsUi.vertical(this);
+		if (recommendation == null || recommendation.kind == CompatRecommendationKind.OFFLINE) {
+			ExtraSettingsUi.addSmallSpacing(content, online);
+		}
 
 		View recommendationCard = recommendation == null
 			? buildNoCompatRecommendationCard()
@@ -1382,7 +1427,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			useRecommendation.setSingleLine(false);
 			useRecommendation.setEllipsize(null);
 			useRecommendation.setMinHeight(ExtraSettingsUi.dp(this, 48));
-			useRecommendation.setOnClickListener(v -> applyCompatRecommendationAndContinue(dialog, recommendation));
+			useRecommendation.setOnClickListener(v -> applyCompatRecommendationAndContinue(dialog, recommendation, selection));
 			actions.addView(useRecommendation, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 		}
 
@@ -1401,13 +1446,13 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 
 		ScrollableBottomSheet.setContent(dialog, content);
 		dialog.show();
+		observeCompatLaunchDialog(dialog, online, selection, payloadStatus, installedPacks, false);
 	}
 
-	private CompatRecommendation findCompatRecommendation(PayloadManager.Status payloadStatus) {
+	private CompatRecommendation findCompatRecommendation(PayloadManager.Status payloadStatus, List<CompatPackManager.CompatPack> installedPacks) {
 		if (payloadStatus == null || payloadStatus.manifest == null) {
 			return null;
 		}
-		List<CompatPackManager.CompatPack> installedPacks = compatPackManager.listInstalledPacks();
 		List<CompatPackManager.CompatPack> fullPacks = new ArrayList<>();
 		List<CompatPackManager.CompatPack> offlinePacks = new ArrayList<>();
 		for (CompatPackManager.CompatPack pack : installedPacks) {
@@ -1558,28 +1603,87 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		return getString(R.string.unknown);
 	}
 
-	private void applyCompatRecommendationAndContinue(DialogInterface dialog, CompatRecommendation recommendation) {
-		if (busy || recommendation == null || recommendation.pack == null) {
-			return;
-		}
-		busy = true;
-		dialog.dismiss();
-		showMessage(getString(R.string.status_applying_compat_recommendation));
-		new Thread(() -> {
-			try {
-				compatPackManager.selectPack(recommendation.pack.packId, recommendation.pack.targetId, LaunchProfileManager.COMPAT_SELECTION_AUTO);
-				runOnUiThread(() -> {
-					busy = false;
-					refreshCurrentScreen();
-					launchGame();
-				});
-			} catch (Exception exception) {
-				runOnUiThread(() -> {
-					busy = false;
-					showError(exception);
-				});
+	private void applyCompatRecommendationAndContinue(Dialog dialog, CompatRecommendation recommendation, CompatLaunchSelection selection) {
+		if (busy || !dialog.isShowing()) return;
+		LaunchProfileManager.LaunchProfile current = selection.current(null, null);
+		if (current == null) return;
+		try {
+			CompatPackManager.CompatPack pack = recommendation.pack;
+			boolean ready = compatPackManager.listInstalledPacks().stream().anyMatch(installed -> installed.ready
+				&& installed.packId.equals(pack.packId) && installed.targetId.equals(pack.targetId)
+				&& compatPackManager.isPackCompatibleWithPayload(installed, current.payload.manifest));
+			if (!ready) {
+				dialog.dismiss();
+				if (selection.current(null, null) != null) launchGame();
+				return;
 			}
-		}, "sts2-apply-compat-recommendation").start();
+			bindCompatAndLaunch(dialog, selection, pack, null, null);
+		} catch (Exception exception) {
+			showError(exception);
+		}
+	}
+
+	private boolean bindCompatAndLaunch(Dialog dialog, CompatLaunchSelection selection, CompatPackManager.CompatPack pack,
+			CompatPackRelease release, CompatPackReleaseTarget target) throws Exception {
+		if (!selection.isCurrentScreen()) return false;
+		boolean bound = launchProfileManager.updateSelectedProfileCompatIf(selection.profile.id,
+			current -> selection.matches(current, release, target), pack.packId, pack.targetId, LaunchProfileManager.COMPAT_SELECTION_AUTO);
+		if (!bound) return false;
+		dialog.dismiss();
+		refreshCurrentScreen();
+		if (selection.isCurrentScreen()) {
+			LaunchProfileManager.LaunchProfile current = launchProfileManager.getSelectedProfile();
+			if (selection.sameProfileAndPayload(current) && pack.packId.equals(current.compatPackId)
+				&& pack.targetId.equals(current.compatTargetId)
+				&& LaunchProfileManager.COMPAT_SELECTION_AUTO.equals(current.compatSelectionSource)) launchGame();
+		}
+		return true;
+	}
+
+	private final class CompatLaunchSelection {
+		private final LaunchProfileManager.LaunchProfile profile;
+		private final int tab = currentTabId;
+		private final long navigation = compatNavigationGeneration;
+		private final long versionTab = GameVersionManagerPage.tabGeneration();
+
+		CompatLaunchSelection(LaunchProfileManager.LaunchProfile profile, PayloadManager.Status payload) {
+			this.profile = profile != null && profile.payload != null && profile.payload.gameDir.equals(payload.gameDir) ? profile : null;
+		}
+
+		boolean isCurrentScreen() {
+			return !isFinishing() && !isDestroyed() && tab == currentTabId && navigation == compatNavigationGeneration
+				&& (tab != R.id.nav_versions || versionTab == GameVersionManagerPage.tabGeneration())
+				&& profile != null && profile.id.equals(launchProfileManager.getSelectedProfileId());
+		}
+
+		LaunchProfileManager.LaunchProfile current(CompatPackRelease release, CompatPackReleaseTarget target) {
+			if (!isCurrentScreen()) return null;
+			LaunchProfileManager.LaunchProfile current = launchProfileManager.getSelectedProfile();
+			return matches(current, release, target) ? current : null;
+		}
+
+		boolean sameProfileAndPayload(LaunchProfileManager.LaunchProfile current) {
+			return current != null && current.ready && current.payload != null && profile.id.equals(current.id)
+				&& profile.createdAtUnix == current.createdAtUnix && profile.displayName.equals(current.displayName)
+				&& profile.saveMode.equals(current.saveMode) && profile.modsMode.equals(current.modsMode)
+				&& profile.payloadId.equals(current.payloadId)
+				&& profile.payload.installedAtUnix == current.payload.installedAtUnix
+				&& profile.payload.version.equals(current.payload.version) && profile.payload.commit.equals(current.payload.commit)
+				&& profile.payload.sts2DllSha256.equals(current.payload.sts2DllSha256)
+				&& profile.payload.pckSha256.equals(current.payload.pckSha256);
+		}
+
+		boolean matches(LaunchProfileManager.LaunchProfile current, CompatPackRelease release, CompatPackReleaseTarget target) {
+			if (!sameProfileAndPayload(current) || !compatPackManager.isCompatPackEnabled()) return false;
+			boolean sameBinding = profile.compatSelectionSource.equals(current.compatSelectionSource)
+				&& profile.compatPackId.equals(current.compatPackId) && profile.compatTargetId.equals(current.compatTargetId);
+			// A verified install may itself resolve the exact AUTO binding this action requested.
+			boolean upgradedByInstall = release != null && target != null
+				&& LaunchProfileManager.COMPAT_SELECTION_AUTO.equals(profile.compatSelectionSource)
+				&& LaunchProfileManager.COMPAT_SELECTION_AUTO.equals(current.compatSelectionSource)
+				&& release.packId.equals(current.compatPackId) && target.targetId.equals(current.compatTargetId);
+			return sameBinding || upgradedByInstall;
+		}
 	}
 
 	private void openCompatPackManagement() {
@@ -1624,7 +1728,8 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			.show();
 	}
 
-	private void showOfflineBootstrapLaunchWarning(PayloadManager.Status payloadStatus, CompatPackManager.CompatPack selectedCompatPack) {
+	private void showOfflineBootstrapLaunchWarning(PayloadManager.Status payloadStatus, CompatPackManager.CompatPack selectedCompatPack,
+			LaunchProfileManager.LaunchProfile profile) {
 		String payloadVersion = compatPackManager.getPayloadVersion(payloadStatus.manifest);
 		if (TextUtils.isEmpty(payloadVersion)) {
 			payloadVersion = payloadStatus.shortVersionLabel();
@@ -1660,27 +1765,30 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		LinearLayout content = ExtraSettingsUi.vertical(this);
 		content.setPadding(ExtraSettingsUi.dp(this, 24), 0, ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 8));
 		content.addView(ExtraSettingsUi.body(this, message));
-		ScrollView scrollView = new ScrollView(this);
-		scrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-		AlertDialog warningDialog = new MaterialAlertDialogBuilder(this)
+		AlertDialog warningDialog = ExtraSettingsUi.scrollableDialog(this, content)
 			.setTitle(title)
-			.setView(scrollView)
 			.setNegativeButton(android.R.string.cancel, null)
 			.create();
-		CompatRecommendation recommendation = findCompatRecommendation(payloadStatus);
+		List<CompatPackManager.CompatPack> installedPacks = compatPackManager.listInstalledPacks();
+		CompatRecommendation recommendation = findCompatRecommendation(payloadStatus, installedPacks);
+		CompatLaunchSelection selection = new CompatLaunchSelection(profile, payloadStatus);
+		LinearLayout online = ExtraSettingsUi.vertical(this);
 		if (recommendation != null && recommendation.kind != CompatRecommendationKind.OFFLINE) {
 			MaterialButton switchPack = ExtraSettingsUi.filledButton(this, R.string.launch_offline_bootstrap_switch_matching, R.drawable.ic_check_circle_24);
 			switchPack.setText(getString(R.string.launch_offline_bootstrap_switch_matching, compatRecommendationVersions(recommendation.pack)));
 			switchPack.setAllCaps(false);
 			switchPack.setSingleLine(false);
 			switchPack.setMinHeight(ExtraSettingsUi.dp(this, 48));
-			switchPack.setOnClickListener(view -> applyCompatRecommendationAndContinue(warningDialog, recommendation));
+			switchPack.setOnClickListener(view -> applyCompatRecommendationAndContinue(warningDialog, recommendation, selection));
 			ExtraSettingsUi.addSmallSpacing(content, switchPack);
+		} else {
+			ExtraSettingsUi.addSmallSpacing(content, online);
 		}
 		MaterialButton useOffline = ExtraSettingsUi.outlineButton(this, positiveLabel, 0);
 		useOffline.setAllCaps(false);
 		useOffline.setSingleLine(false);
 		useOffline.setOnClickListener(view -> {
+			if (busy || selection.current(null, null) == null || !warningDialog.isShowing()) return;
 			warningDialog.dismiss();
 			compatPackManager.approveOfflineBootstrap(selectedCompatPack, payloadStatus.manifest);
 			prepareAndStartGameAfterOptionalSteamCloudPull();
@@ -1696,6 +1804,457 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 		});
 		ExtraSettingsUi.addSmallSpacing(content, editProfile);
 		warningDialog.show();
+		observeCompatLaunchDialog(warningDialog, online, selection, payloadStatus, installedPacks, true);
+	}
+
+	private void finishCompatBootstrap(boolean installed) {
+		bundledCompatPackBootstrapFinished = true;
+		if (installed && resumed) refreshCurrentScreen();
+		maybeCheckCompatOnStartup();
+		scheduleStartupContinuation();
+	}
+
+	private void maybeCheckCompatOnStartup() {
+		if (compatImportCheckPending) maybeCheckCompatAfterPayloadImport();
+		if (startupCompatCheckRequested || !bundledCompatPackBootstrapFinished || !canCheckCompatInBackground()) return;
+		startupCompatCheckRequested = true;
+		checkCompatPackUpdatesInBackground(false);
+	}
+
+	private boolean canCheckCompatInBackground() {
+		return compatReleaseRepository != null && !isFinishing() && !isDestroyed()
+			&& ExtraSettingsPreferences.isFirstRunSetupCompleted(this) && compatPackManager.isCompatPackEnabled();
+	}
+
+	private void maybeCheckCompatAfterPayloadImport() {
+		if (!bundledCompatPackBootstrapFinished || !canCheckCompatInBackground()) {
+			compatImportCheckPending = true;
+			return;
+		}
+		compatImportCheckPending = false;
+		new Thread(() -> {
+			LaunchProfileManager.LaunchProfile profile = launchProfileManager.getSelectedProfile();
+			if (profile == null || !profile.ready || profile.payload == null) return;
+			CompatPackManager.CompatPack local = compatPackManager.findBestMatch(profile.payload.manifest);
+			if (local != null && !compatPackManager.isOfflineBootstrapPack(local)) return;
+			runOnUiThreadIfActive(() -> {
+				if (canCheckCompatInBackground() && profile.id.equals(launchProfileManager.getSelectedProfileId())) {
+					checkCompatPackUpdatesInBackground(true);
+				}
+			});
+		}, "sts2-compat-import-check").start();
+	}
+
+	private void checkCompatPackUpdatesInBackground(boolean forceNetwork) {
+		if (compatReleaseRepository == null || isFinishing() || isDestroyed()) return;
+		if (compatReleaseChecking) {
+			if (forceNetwork && !compatReleaseForceInFlight) compatReleaseForceQueued = true;
+			return;
+		}
+		compatReleaseChecking = true;
+		compatReleaseForceInFlight = forceNetwork;
+		updateCompatReleaseDialog();
+		new Thread(() -> {
+			CompatPackReleaseIndex checked = null;
+			int message = 0;
+			try {
+				CompatPackReleaseRepository.CachedIndex cached = compatReleaseRepository.getCachedState();
+				runOnUiThreadIfActive(() -> publishCompatCache(cached.index, cached.lastCheckedUnix));
+				checked = compatReleaseRepository.fetchIndexIfNeeded(forceNetwork);
+			} catch (Exception exception) {
+				Log.w(TAG, "Official compatibility pack check failed.", exception);
+				message = exception instanceof CompatPackReleaseVerifier.TrustUnconfiguredException
+					? R.string.compat_online_trust_unconfigured : R.string.compat_online_check_failed;
+			}
+			CompatPackReleaseIndex result = checked;
+			int status = message;
+			long checkedAt = status == 0 ? compatReleaseRepository.getLastCheckedUnix() : 0L;
+			runOnUiThreadIfActive(() -> {
+				compatReleaseChecking = false;
+				compatReleaseCheckMessage = status;
+				boolean queued = compatReleaseForceQueued;
+				compatReleaseForceQueued = false;
+				if (status == 0) publishCompatCache(result, checkedAt);
+				else updateCompatReleaseDialog();
+				if (queued && (canCheckCompatInBackground() || compatReleaseDialog != null)) {
+					checkCompatPackUpdatesInBackground(true);
+				}
+			});
+		}, "sts2-compat-release-check").start();
+	}
+
+	private void publishCompatCache(CompatPackReleaseIndex index, long checkedAt) {
+		boolean changed = compatReleaseIndex != index;
+		compatReleaseIndex = index;
+		compatReleaseLastChecked = checkedAt;
+		updateCompatReleaseDialog();
+		if (changed && resumed && currentTabId == R.id.nav_versions && GameVersionManagerPage.isCompatTabSelected()) refreshCurrentScreen();
+	}
+
+	private void observeCompatReleaseDialog(Dialog dialog, Runnable render) {
+		if (compatReleaseDialog != null && compatReleaseDialog != dialog) compatReleaseDialog.dismiss();
+		compatReleaseDialog = dialog;
+		renderCompatReleaseDialog = render;
+		dialog.setOnDismissListener(unused -> {
+			if (compatReleaseDialog == dialog) {
+				compatReleaseDialog = null;
+				renderCompatReleaseDialog = null;
+			}
+		});
+		updateCompatReleaseDialog();
+	}
+
+	private void updateCompatReleaseDialog() {
+		if (resumed && compatReleaseDialog != null && compatReleaseDialog.isShowing() && !isFinishing() && !isDestroyed()) {
+			renderCompatReleaseDialog.run();
+		}
+	}
+
+	private void observeCompatLaunchDialog(Dialog dialog, LinearLayout online, CompatLaunchSelection selection, PayloadManager.Status payloadStatus,
+			List<CompatPackManager.CompatPack> installedPacks, boolean offlineWarning) {
+		class OnlineSection implements Runnable {
+			private CompatPackReleaseIndex matchedIndex;
+			private CompatPackReleaseRepository.PayloadRecommendation recommendation;
+
+			CompatPackReleaseRepository.PayloadRecommendation currentRecommendation() {
+				if (matchedIndex != compatReleaseIndex) {
+					matchedIndex = compatReleaseIndex;
+					recommendation = matchedIndex == null ? null : compatReleaseRepository.findBestRemoteReleaseForPayload(
+						matchedIndex, payloadStatus.manifest, BuildConfig.VERSION_CODE, installedPacks);
+				}
+				return recommendation;
+			}
+
+			@Override public void run() {
+				online.removeAllViews();
+				online.setVisibility(View.GONE);
+				if (online.getParent() == null || compatReleaseRepository == null || !selection.isCurrentScreen()) return;
+				GameSettingsActivity owner = GameSettingsActivity.this;
+				CompatPackReleaseRepository.PayloadRecommendation remote = currentRecommendation();
+				if (remote != null && remote.installable != null) {
+					CompatPackRelease release = remote.installable.release;
+					CompatPackReleaseTarget target = remote.installable.target;
+					String label = offlineWarning
+						? getString(R.string.compat_online_switch_launch, release.compatVersion, targetVersions(target))
+						: getString(R.string.compat_online_download_launch, release.compatVersion, Formatter.formatFileSize(owner, release.zipSizeBytes));
+					MaterialButton download = compatOnlineButton(R.string.compat_online_download, true);
+					download.setText(label);
+					download.setOnClickListener(v -> installCompatRelease(release, dialog, selection, target));
+					online.addView(download);
+				}
+				if (remote != null && remote.requiresLauncherUpdate != null) {
+					CompatPackRelease release = remote.requiresLauncherUpdate.release;
+					String message = release.minLauncherVersionCode > BuildConfig.VERSION_CODE
+						? getString(R.string.compat_online_launcher_required, release.compatVersion,
+							launcherVersionLabel(release.minLauncherVersionCode, release.minLauncherVersionName))
+						: getString(R.string.compat_launcher_required_schema);
+					MaterialCardView card = ExtraSettingsUi.card(owner);
+					LinearLayout body = ExtraSettingsUi.cardContent(owner, card);
+					body.addView(ExtraSettingsUi.body(owner, message));
+					body.addView(openOfficialLauncherButton());
+					ExtraSettingsUi.addSmallSpacing(online, card);
+				}
+				if (compatReleaseChecking && online.getChildCount() == 0) {
+					online.addView(ExtraSettingsUi.caption(owner, getString(R.string.compat_online_checking)));
+				}
+				if (online.getChildCount() > 0) online.setVisibility(View.VISIBLE);
+			}
+		}
+		OnlineSection section = new OnlineSection();
+		observeCompatReleaseDialog(dialog, section);
+		if (online.getParent() == null || compatReleaseRepository == null || compatReleaseChecking
+				|| compatReleaseCheckMessage == R.string.compat_online_trust_unconfigured || !selection.isCurrentScreen()) return;
+		long now = SystemClock.elapsedRealtime();
+		if (lastCompatLaunchDialogCheckElapsedMs >= 0L
+				&& now - lastCompatLaunchDialogCheckElapsedMs < COMPAT_LAUNCH_DIALOG_CHECK_DEBOUNCE_MS) return;
+		CompatPackReleaseRepository.PayloadRecommendation cached = section.currentRecommendation();
+		if (cached != null && cached.installable != null) return;
+		lastCompatLaunchDialogCheckElapsedMs = now;
+		checkCompatPackUpdatesInBackground(true);
+	}
+
+	@Override
+	public void requestOnlineCompatPacks() {
+		if (compatReleaseRepository == null || isFinishing() || isDestroyed() || busy) return;
+		BottomSheetDialog dialog = new BottomSheetDialog(this);
+		LinearLayout content = ExtraSettingsUi.vertical(this);
+		content.setPadding(ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 12), ExtraSettingsUi.dp(this, 24), ExtraSettingsUi.dp(this, 32));
+		content.addView(ExtraSettingsUi.text(this, R.string.compat_online_title, 22, ExtraSettingsUi.COLOR_ON_SURFACE, android.graphics.Typeface.BOLD));
+		MaterialButton refresh = compatOnlineButton(R.string.compat_online_refresh, false);
+		refresh.setOnClickListener(v -> checkCompatPackUpdatesInBackground(true));
+		ExtraSettingsUi.addSmallSpacing(content, refresh);
+		TextView lastChecked = ExtraSettingsUi.caption(this, "");
+		ExtraSettingsUi.addSmallSpacing(content, lastChecked);
+		TextView status = ExtraSettingsUi.body(this, "");
+		ExtraSettingsUi.addSmallSpacing(content, status);
+		LinearLayout releases = ExtraSettingsUi.vertical(this);
+		ExtraSettingsUi.addSmallSpacing(content, releases);
+		ScrollableBottomSheet.setContent(dialog, content);
+		dialog.show();
+		observeCompatReleaseDialog(dialog, () -> {
+			refresh.setEnabled(!compatReleaseChecking);
+			lastChecked.setText(compatReleaseLastChecked <= 0L ? getString(R.string.compat_online_never_checked)
+				: getString(R.string.compat_online_last_checked, java.text.DateFormat.getDateTimeInstance().format(new Date(compatReleaseLastChecked * 1000L))));
+			int notice = compatReleaseChecking ? R.string.compat_online_checking : compatReleaseCheckMessage;
+			boolean empty = compatReleaseIndex == null || compatReleaseIndex.releases.isEmpty();
+			if (notice == 0 && empty && compatReleaseLastChecked > 0) notice = R.string.compat_online_empty;
+			status.setVisibility(notice == 0 ? View.GONE : View.VISIBLE);
+			if (notice != 0) status.setText(notice);
+			releases.removeAllViews();
+			if (empty) return;
+			List<CompatPackManager.CompatPack> packs = compatPackManager.listInstalledPacks();
+			PayloadManager.Status payload = payloadManager.getStatus();
+			for (CompatPackRelease release : compatReleaseIndex.releases) {
+				ExtraSettingsUi.addSmallSpacing(releases, buildCompatReleaseCard(release, packs, payload));
+			}
+		});
+		if (!compatReleaseChecking) checkCompatPackUpdatesInBackground(true);
+	}
+
+	private View buildCompatReleaseCard(CompatPackRelease release, List<CompatPackManager.CompatPack> packs, PayloadManager.Status payload) {
+		MaterialCardView card = ExtraSettingsUi.card(this);
+		LinearLayout content = ExtraSettingsUi.cardContent(this, card);
+		content.addView(ExtraSettingsUi.text(this, getString(R.string.compat_online_release, release.compatVersion, release.tagName), 16,
+			ExtraSettingsUi.COLOR_ON_SURFACE, android.graphics.Typeface.BOLD));
+		content.addView(ExtraSettingsUi.caption(this, getString(R.string.compat_online_published,
+			TextUtils.isEmpty(release.publishedUtc) ? getString(R.string.unknown) : release.publishedUtc)));
+		Set<String> versions = new LinkedHashSet<>();
+		for (CompatPackReleaseTarget target : release.targets) {
+			if (target.versions.isEmpty()) versions.add(target.version);
+			else versions.addAll(target.versions);
+		}
+		content.addView(ExtraSettingsUi.body(this, getString(R.string.compat_online_supported, TextUtils.join(" / ", versions))));
+		boolean installed = isExactReleaseInstalled(release, packs);
+		if (installed) addCompatReleaseBadge(content, getString(R.string.compat_online_installed), ExtraSettingsUi.COLOR_PRIMARY);
+		if (payload.ready && compatReleaseRepository.findBestTargetForPayload(release, payload.manifest) != null) {
+			addCompatReleaseBadge(content, getString(R.string.compat_online_matches), ExtraSettingsUi.COLOR_PRIMARY);
+		}
+		if (!TextUtils.isEmpty(release.changelog)) ExtraSettingsUi.addSmallSpacing(content, ExtraSettingsUi.body(this, release.changelog));
+		if (!release.isInstallable(BuildConfig.VERSION_CODE)) {
+			addCompatReleaseBadge(content, launcherRequirement(release.minLauncherVersionCode, release.minLauncherVersionName), ExtraSettingsUi.COLOR_WARNING);
+			ExtraSettingsUi.addSmallSpacing(content, openOfficialLauncherButton());
+		} else if (!installed) {
+			MaterialButton install = compatOnlineButton(R.string.compat_online_download, false);
+			install.setOnClickListener(v -> requestOnlineCompatInstall(release));
+			ExtraSettingsUi.addSmallSpacing(content, install);
+		}
+		return card;
+	}
+
+	private void addCompatReleaseBadge(LinearLayout content, String text, int color) {
+		TextView badge = ExtraSettingsUi.text(this, text, 13, color, android.graphics.Typeface.BOLD);
+		int padding = ExtraSettingsUi.dp(this, 8);
+		badge.setPadding(padding, padding / 2, padding, padding / 2);
+		GradientDrawable background = new GradientDrawable();
+		background.setColor(ExtraSettingsUi.COLOR_SURFACE_VARIANT);
+		background.setCornerRadius(padding);
+		badge.setBackground(background);
+		LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		params.topMargin = padding;
+		content.addView(badge, params);
+	}
+
+	private boolean isExactReleaseInstalled(CompatPackRelease release, List<CompatPackManager.CompatPack> packs) {
+		for (CompatPackReleaseTarget target : release.targets) {
+			boolean found = false;
+			for (CompatPackManager.CompatPack pack : packs) {
+				if (pack.targetId.equals(target.targetId) && isVerifiedInstalledTarget(release, pack)) {
+					found = true;
+					break;
+				}
+			}
+			if (!found) return false;
+		}
+		return !release.targets.isEmpty();
+	}
+
+	private boolean isVerifiedInstalledTarget(CompatPackRelease release, CompatPackManager.CompatPack pack) {
+		org.json.JSONObject source = pack.manifest.optJSONObject("installed_source");
+		return pack.ready && release.packId.equals(pack.packId) && source != null
+			&& release.zipSha256.equalsIgnoreCase(source.optString("zip_sha256"));
+	}
+
+	@Override
+	public void requestOnlineCompatInstall(CompatPackRelease release) {
+		if (busy || isDestroyed() || isFinishing() || compatReleaseIndex == null || compatReleaseIndex.releases.isEmpty()) return;
+		if (!release.isInstallable(BuildConfig.VERSION_CODE)) {
+			showCompatLauncherUpdate(launcherRequirement(release.minLauncherVersionCode, release.minLauncherVersionName));
+			return;
+		}
+		boolean historical = !compatReleaseIndex.releases.get(0).tagName.equals(release.tagName);
+		for (CompatPackManager.CompatPack pack : compatPackManager.listInstalledPacks()) {
+			if (!pack.ready || !release.packId.equals(pack.packId)) continue;
+			Integer order = CompatPackVersionComparator.compare(release.compatRevision, release.compatVersion,
+				pack.manifest.optInt("compat_revision"), pack.compatVersion);
+			if (order == null || order < 0) historical = true;
+			break;
+		}
+		if (historical) {
+			new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.compat_online_rollback_title)
+				.setMessage(getString(R.string.compat_online_rollback_message, release.compatVersion))
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(R.string.compat_online_download, (dialog, which) -> installCompatRelease(release, null, null, null))
+				.show();
+		} else {
+			installCompatRelease(release, null, null, null);
+		}
+	}
+
+	private void installCompatRelease(CompatPackRelease release, Dialog launchDialog, CompatLaunchSelection selection, CompatPackReleaseTarget target) {
+		if (busy || !resumed || isFinishing() || isDestroyed()) return;
+		if (selection != null && !isCurrentCompatLaunchDownload(release, target, launchDialog, selection)) return;
+		busy = true;
+		long foreground = compatForegroundGeneration;
+		CancellationSignal cancellation = new CancellationSignal();
+		compatDownloadCancellation = cancellation;
+		LinearLayout content = ExtraSettingsUi.vertical(this);
+		TextView label = ExtraSettingsUi.body(this, "");
+		ProgressBar progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+		progress.setMax(100);
+		progress.setIndeterminate(true);
+		content.addView(progress, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		ExtraSettingsUi.addSmallSpacing(content, label);
+		label.setText(getString(R.string.compat_online_download_progress, Formatter.formatFileSize(this, 0), Formatter.formatFileSize(this, release.zipSizeBytes)));
+		AlertDialog dialog = ExtraSettingsUi.scrollableDialog(this, content)
+			.setTitle(getString(R.string.compat_online_download_title, release.compatVersion))
+			.setCancelable(false)
+			.setNegativeButton(android.R.string.cancel, null)
+			.create();
+		compatDownloadDialog = dialog;
+		dialog.show();
+		dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> {
+			label.setText(R.string.compat_online_cancelling);
+			v.setEnabled(false);
+			cancellation.cancel();
+		});
+		new Thread(() -> {
+			try {
+				int[] lastPercent = {-1};
+				compatReleaseRepository.downloadAndInstallRelease(release, (downloaded, total) -> {
+					if (total <= 0) return;
+					int percent = (int) Math.min(100, downloaded * 100L / total);
+					if (percent == lastPercent[0]) return;
+					lastPercent[0] = percent;
+					runOnUiThreadIfActive(() -> {
+						if (compatDownloadDialog != dialog || cancellation.isCanceled()) return;
+						progress.setIndeterminate(percent == 100);
+						progress.setProgress(percent);
+						label.setText(percent == 100 ? getString(R.string.compat_online_installing)
+							: getString(R.string.compat_online_download_progress, Formatter.formatFileSize(this, downloaded), Formatter.formatFileSize(this, total)));
+					});
+				}, cancellation);
+				runOnUiThreadIfActive(() -> finishCompatDownload(dialog, release, launchDialog, selection, target, foreground, cancellation.isCanceled(), null));
+			} catch (Exception exception) {
+				boolean cancelled = cancellation.isCanceled() || exception instanceof OperationCanceledException;
+				if (!cancelled) Log.w(TAG, "Official compatibility pack installation failed.", exception);
+				runOnUiThreadIfActive(() -> finishCompatDownload(dialog, release, launchDialog, selection, target, foreground, cancelled || cancellation.isCanceled(), exception));
+			}
+		}, "sts2-compat-release-install").start();
+	}
+
+	private void finishCompatDownload(AlertDialog progress, CompatPackRelease release, Dialog launchDialog, CompatLaunchSelection selection,
+			CompatPackReleaseTarget target, long foreground, boolean cancelled, Exception failure) {
+		if (compatDownloadDialog != progress) return;
+		compatDownloadCancellation = null;
+		compatDownloadDialog = null;
+		busy = false;
+		progress.dismiss();
+		if (!resumed || foreground != compatForegroundGeneration) {
+			if (failure == null && launchDialog != null) launchDialog.dismiss();
+			return;
+		}
+		if (failure != null) {
+			if (cancelled) showMessage(getString(R.string.compat_online_install_cancelled));
+			else if (failure instanceof CompatPackManager.LauncherUpdateRequiredException) showError(failure);
+			else new MaterialAlertDialogBuilder(this)
+				.setMessage(R.string.compat_online_install_failed)
+				.setPositiveButton(android.R.string.ok, null)
+				.show();
+			return;
+		}
+		if (selection != null && !cancelled) {
+			LaunchProfileManager.LaunchProfile current = foreground == compatForegroundGeneration && launchDialog.isShowing()
+				? selection.current(release, target) : null;
+			CompatPackManager.CompatPack installed = current == null ? null : findVerifiedLaunchTarget(release, target, current);
+			if (installed != null) {
+				try {
+					if (bindCompatAndLaunch(launchDialog, selection, installed, release, target)) return;
+				} catch (Exception exception) {
+					showError(exception);
+					return;
+				}
+			}
+			launchDialog.dismiss();
+			showMessage(getString(R.string.compat_online_selection_changed));
+		} else {
+			if (launchDialog != null) launchDialog.dismiss();
+			showMessage(getString(R.string.compat_online_installed_done, release.compatVersion));
+		}
+		refreshCurrentScreen();
+		updateCompatReleaseDialog();
+	}
+
+	private boolean isCurrentCompatLaunchDownload(CompatPackRelease release, CompatPackReleaseTarget target,
+			Dialog launchDialog, CompatLaunchSelection selection) {
+		LaunchProfileManager.LaunchProfile current = selection.current(null, null);
+		if (current == null || !launchDialog.isShowing()) return false;
+		List<CompatPackManager.CompatPack> packs = compatPackManager.listInstalledPacks();
+		CompatPackManager.CompatPack local = compatPackManager.findBestMatch(current.payload.manifest, packs);
+		CompatPackReleaseRepository.RemoteMatch match = compatReleaseRepository.findBestRemoteReleaseForPayload(
+			compatReleaseIndex, current.payload.manifest, BuildConfig.VERSION_CODE, packs).installable;
+		if ((local == null || compatPackManager.isOfflineBootstrapPack(local)) && match != null
+			&& release.tagName.equals(match.release.tagName) && release.zipSha256.equals(match.release.zipSha256)
+			&& target.targetId.equals(match.target.targetId)) return true;
+		launchDialog.dismiss();
+		if (selection.current(null, null) != null) launchGame();
+		return false;
+	}
+
+	private CompatPackManager.CompatPack findVerifiedLaunchTarget(CompatPackRelease release, CompatPackReleaseTarget target, LaunchProfileManager.LaunchProfile profile) {
+		for (CompatPackManager.CompatPack pack : compatPackManager.listInstalledPacks()) {
+			if (pack.targetId.equals(target.targetId) && isVerifiedInstalledTarget(release, pack)
+				&& compatPackManager.isPackCompatibleWithPayload(pack, profile.payload.manifest)) return pack;
+		}
+		return null;
+	}
+
+	private String targetVersions(CompatPackReleaseTarget target) {
+		if (!target.versions.isEmpty()) return TextUtils.join(" / ", target.versions);
+		return TextUtils.isEmpty(target.version) ? target.displayName : target.version;
+	}
+
+	private String launcherRequirement(int minLauncherCode, String minLauncherName) {
+		if (minLauncherCode <= BuildConfig.VERSION_CODE) return getString(R.string.compat_launcher_required_schema);
+		return getString(R.string.compat_launcher_required_version, launcherVersionLabel(minLauncherCode, minLauncherName));
+	}
+
+	private String launcherVersionLabel(int minLauncherCode, String minLauncherName) {
+		return TextUtils.isEmpty(minLauncherName) ? getString(R.string.compat_online_launcher_code, minLauncherCode) : minLauncherName;
+	}
+
+	private MaterialButton compatOnlineButton(int label, boolean filled) {
+		MaterialButton button = filled ? ExtraSettingsUi.filledButton(this, label, R.drawable.ic_download_24) : ExtraSettingsUi.outlineButton(this, label, 0);
+		button.setSingleLine(false);
+		button.setEllipsize(null);
+		button.setAllCaps(false);
+		button.setMinHeight(ExtraSettingsUi.dp(this, 48));
+		return button;
+	}
+
+	private MaterialButton openOfficialLauncherButton() {
+		MaterialButton button = compatOnlineButton(R.string.compat_online_open_launcher, false);
+		button.setOnClickListener(v -> openUrl(ExtraSettingsUpdateChecker.RELEASES_URL));
+		return button;
+	}
+
+	private void showCompatLauncherUpdate(String requirement) {
+		if (isFinishing() || isDestroyed()) return;
+		new MaterialAlertDialogBuilder(this)
+			.setMessage(requirement)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.compat_online_open_launcher, (dialog, which) -> openUrl(ExtraSettingsUpdateChecker.RELEASES_URL))
+			.show();
 	}
 
 	private void prepareAndStartGameAfterOptionalSteamCloudPull() {
@@ -2106,25 +2665,21 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 	private void installBundledCompatPacksInBackground(boolean showResult) {
 		if (showResult) {
 			runAsyncOperation(getString(R.string.status_busy_install_bundled_compat), () -> {
-				int count = compatPackManager.installBundledCompatPacks();
-				return getString(R.string.status_install_bundled_compat_done, count);
+				CompatPackManager.BundledInstallResult result = compatPackManager.installBundledCompatPacksWithResult();
+				String installed = getString(R.string.status_install_bundled_compat_done, result.changedCount);
+				if (!result.preservedNewerOrExternal) return installed;
+				String preserved = getString(R.string.compat_bundled_preserved);
+				return result.changedCount == 0 ? preserved : installed + "\n" + preserved;
 			});
 			return;
 		}
 		new Thread(() -> {
 			try {
 				compatPackManager.installBundledCompatPacks();
-				runOnUiThreadIfActive(() -> {
-					bundledCompatPackBootstrapFinished = true;
-					if (resumed) refreshCurrentScreen();
-					scheduleStartupContinuation();
-				});
+				runOnUiThreadIfActive(() -> finishCompatBootstrap(true));
 			} catch (Exception exception) {
 				Log.w(TAG, "Unable to install bundled compatibility packs.", exception);
-				runOnUiThreadIfActive(() -> {
-					bundledCompatPackBootstrapFinished = true;
-					scheduleStartupContinuation();
-				});
+				runOnUiThreadIfActive(() -> finishCompatBootstrap(false));
 			}
 		}, "sts2-compat-bootstrap").start();
 	}
@@ -2421,6 +2976,10 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 			showMessage(getString(R.string.mod_install_busy));
 			return;
 		}
+		if (exception instanceof CompatPackManager.LauncherUpdateRequiredException required) {
+			showCompatLauncherUpdate(launcherRequirement(required.minLauncherVersionCode, required.minLauncherVersionName));
+			return;
+		}
 		String message = getString(R.string.error_operation_failed) + ": " + (exception.getMessage() == null ? exception.toString() : exception.getMessage());
 		showSnackbar(message, Snackbar.LENGTH_LONG);
 		refreshCurrentScreen();
@@ -2509,6 +3068,7 @@ public class GameSettingsActivity extends AppCompatActivity implements ExtraSett
 				.setNegativeButton(android.R.string.cancel, null)
 				.setPositiveButton(R.string.welcome_enter_settings, (dialog, which) -> {
 					ExtraSettingsPreferences.setFirstRunSetupCompleted(this, true);
+					maybeCheckCompatOnStartup();
 					showMainShell();
 				})
 				.show();

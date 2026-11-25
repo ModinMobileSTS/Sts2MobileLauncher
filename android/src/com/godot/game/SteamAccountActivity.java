@@ -121,6 +121,7 @@ public class SteamAccountActivity extends AppCompatActivity {
     private Thread manifestListThread;
     private String manifestAccountKey = "";
     private Sts2SteamPayloadDownloader.ManifestOption selectedManifest;
+	private boolean payloadImported;
 	private TextView payloadConcurrentChunksValueView;
 	private MaterialButton downloadButton;
 	private MaterialButton loginButton;
@@ -185,6 +186,7 @@ public class SteamAccountActivity extends AppCompatActivity {
             selectedBranch = savedInstanceState.getInt("download_branch", BRANCH_PUBLIC);
             customManifestMode = savedInstanceState.getBoolean("custom_manifest");
             manualManifestMode = savedInstanceState.getBoolean("manual_manifest");
+            if (savedInstanceState.getBoolean("payload_imported")) recordPayloadImportResult();
         }
 		buildUi();
         if (savedInstanceState != null) {
@@ -202,6 +204,7 @@ public class SteamAccountActivity extends AppCompatActivity {
         state.putInt("download_branch", selectedBranch);
         state.putBoolean("custom_manifest", customManifestMode);
         state.putBoolean("manual_manifest", manualManifestMode);
+        state.putBoolean("payload_imported", payloadImported);
         state.putString("custom_branch_text", inputText(customBranchInput));
         state.putString("manifest_id_text", inputText(manifestIdInput));
         state.putString("manifest_request_branch", inputText(manifestRequestBranchInput));
@@ -1622,6 +1625,11 @@ public class SteamAccountActivity extends AppCompatActivity {
 		}
 	}
 
+	private void recordPayloadImportResult() {
+		payloadImported = true;
+		setResult(RESULT_OK, new Intent());
+	}
+
 	private void startPayloadDownload() {
         Sts2SteamPayloadDownloader.Selection selection = resolvePayloadSelection();
         if (selection == null) return;
@@ -1665,6 +1673,7 @@ public class SteamAccountActivity extends AppCompatActivity {
 				}, control);
 				String result = getString(R.string.status_import_game_payload_done, status.shortVersionLabel());
 				runOnUiThread(() -> {
+					if (status.ready && !isDestroyed()) recordPayloadImportResult();
 					busy = false;
 					downloadingPayload = false;
 					activeDownloadControl = null;

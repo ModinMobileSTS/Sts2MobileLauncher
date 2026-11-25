@@ -326,7 +326,7 @@ offline-bootstrap/tools/test-offline-contract.sh
 tools/android/stage-bundled-compat-packs.sh
 ```
 
-当前 10 个 active metadata target：
+当前 11 个 active metadata target：
 
 - `v0.103.x`（支持 `v0.103.2` / `v0.103.3`，`ReferenceFlavor=original`）
 - `v0.106.1-beta`（旧 beta，`ReferenceFlavor=original-v0.106.1`）
@@ -380,6 +380,52 @@ cd port-mod
 port-mod/tools/test-extended-multiplayer-rooms.sh
 port-mod/tools/build-compat-matrix.sh
 ```
+
+### 6.1 本地签名与发布官方兼容包
+
+只发布 schema 2 完整 family 包到 [ModinMobileSTS/sts2-android-compat](https://github.com/ModinMobileSTS/sts2-android-compat/releases)。在维护者本机用已配置的原版引用构建；不要把 `sts2.dll`、游戏 PCK / 资源或 Ed25519 私钥提交到父仓库、子模块或公开 CI。该密钥与 APK keystore 无关。需要 Python 3（含 `cryptography`）、原有 .NET/原版引用，以及正式发布时有该仓库发布权限的 `gh auth login`。
+
+已发布的 [v0.8.0](https://github.com/ModinMobileSTS/sts2-android-compat/releases/tag/v0.8.0) 是首次 OTA 联调的兼容包 Release（Latest，revision 800），不含 launcher APK。测试需要从当前带 `sts2-compat-release-v1` 公钥的源码执行 `tools/package/build_importer_apk.sh`，安装后在“版本 → 兼容包 → 在线更新”刷新并安装。仅满足 versionCode 115 不代表旧 APK 已包含该公钥。后续签同一索引历史时应继续使用已配置的外部 PEM，不要再次执行 `keygen` 生成同 ID 的另一把密钥。
+
+**首次发版前，生成密钥并将公钥编入启动器：**
+
+```bash
+port-mod/tools/compat-release-signing.py keygen \
+  --out-private "$HOME/.config/sts2-re/compat-release-ed25519.pem" \
+  --key-id sts2-compat-release-v1
+```
+
+1. PEM 保存在仓库外，`keygen` 写入 `0600` 且默认拒绝覆盖。仅在本机 `.env` 设置 `COMPAT_RELEASE_SIGNING_KEY_FILE="$HOME/.config/sts2-re/compat-release-ed25519.pem"`、`COMPAT_RELEASE_SIGNING_KEY_ID=sts2-compat-release-v1`；也可用 `local.properties` 的 `compat.release_signing_key_file` / `compat.release_signing_key_id` 配置外部路径。
+2. 将输出的 **32 字节 raw public key 的 Base64** 与对应 `key_id` 加入 [`CompatPackReleaseTrust.java`](../../android/src/com/godot/game/CompatPackReleaseTrust.java) 的受信任公钥表，只提交公钥。空表、未知 key id 或签名错误均拒绝在线索引。重新构建并分发带公钥的 importer APK；不带该公钥的旧 APK 不能信任这批 Release。
+3. 正式上传前，可在未提交的 checkout 用独立测试密钥验证。不要把临时公钥编入发行 APK，也不要发布用它签名的资产：
+
+```bash
+python3 port-mod/tools/test-compat-release-signing.py
+(
+  set -e
+  tmp="$(mktemp -d)"
+  trap 'rm -rf -- "$tmp"' EXIT
+  port-mod/tools/compat-release-signing.py keygen --out-private "$tmp/test.pem"
+  port-mod/tools/publish-compat-release.sh \
+    --tag v0.8.1-dry-run --revision 801 --prerelease \
+    --min-launcher-version-code 115 --min-launcher-version-name v0.1.13 \
+    --signing-key-file "$tmp/test.pem" --signing-key-id sts2-compat-release-v1 \
+    --dry-run --allow-dirty
+)
+```
+
+**正式发布（以下命令会上传）：**父仓库与 `port-mod` 均需干净；确保 submodule HEAD 已存在于目标 GitHub 仓库。`--revision` 必须高于历史发布，`--min-launcher-version-code` 按实际可安装的最低启动器设定。直接构建 matrix 可用 `COMPAT_MATRIX_REVISION` / `COMPAT_MIN_LAUNCHER_VERSION_CODE` / `COMPAT_MIN_LAUNCHER_VERSION_NAME` 或对应 CLI flags；当前内置开发版默认 revision 703、最低 code 115。
+
+```bash
+port-mod/tools/publish-compat-release.sh \
+  --tag v0.8.1 --version 0.8.1 --revision 801 \
+  --min-launcher-version-code 115 --min-launcher-version-name v0.1.13 \
+  --notes-file /path/to/release-notes.md
+```
+
+脚本默认运行五项 `port-mod` 回归（仅显式 `--skip-tests` 跳过）、构建所有 active target、合并最近最多 15 条已验签记录、签名并自验 ZIP 和包内文件。历史默认由 `gh` 获取；离线可传 `--previous-index PATH`，其签名默认 `PATH.sig`（可用 `--previous-index-sig PATH` 指定）。发布脚本用当前签名公钥验证历史；密钥轮换前需先部署新公钥并用旧公钥认证历史，不能把来源不明的索引重新签名。GitHub 上尚无 Release 才自动从空历史开始；已有 Release 缺签名、网络或验证出错均中止。`--prerelease` 不会移动 GitHub 的稳定 `/latest`，因此启动器从下一次正式稳定 Release 的已签名索引才可看到其保留记录。
+
+产物归档到 ignored 的 `port-mod/dist/compat-release/<tag>/`：ZIP、`compat-index.json`、`compat-index.json.sig`、独立 `compat_manifest.json` 和独立 `SHA256SUMS`。ZIP 内的 `SHA256SUMS` 覆盖 manifest 与全部 variant 文件；独立清单额外附 ZIP 哈希。用 `compat-release-signing.py verify --index ... --sig ... --public-key-base64 ... --expected-key-id ... --zip ... --manifest ...` 可离线完整复核。干跑不调用 `gh`，不会创建 tag 或 Release。
 
 ## 7. 游戏版本更新后的 port-mod 语法树审计
 
@@ -539,6 +585,15 @@ tools/android/gradle-with-s2-env.sh testMonoReleaseUnitTest \
   --tests com.godot.game.CloudSyncSafetyTest \
   --tests com.godot.game.LocalSaveSnapshotSafetyTest \
   --tests com.godot.game.ModImportSafetyTest
+
+# GitHub Release 在线兼容包：回退保护、签名/完整性、匹配与 UI 回归
+tools/android/gradle-with-s2-env.sh testMonoReleaseUnitTest \
+  --tests com.godot.game.CompatPackBundledDowngradeProtectionTest \
+  --tests com.godot.game.CompatPackReleaseSecurityTest \
+  --tests com.godot.game.CompatPackRemoteUpdateFlowTest \
+  --tests com.godot.game.AutomaticOfflineCompatSelectionTest \
+  --tests com.godot.game.CompatLaunchReadinessTest \
+  --tests com.godot.game.ModalScrollingTest
 
 # full compat manifest 别名越界/符号链接回归（合成 API shape）
 dotnet run --project port-mod/tests/ModManifestAlias.Tests/ModManifestAlias.Tests.csproj

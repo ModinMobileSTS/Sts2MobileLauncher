@@ -80,11 +80,25 @@ offline bootstrap:
    - 复制到私有临时目录。
    - 安全解压、寻找 `compat_manifest.json`。
    - schema 1 校验根目录 `STS2Mobile.dll` 与 `port_compat.pck` 存在；schema 2 校验 `targets[]` 中每个 artifact 指向的 variant dll/pck 存在。
+   - 超过当前启动器支持的 manifest schema，或 `min_launcher_version_code` 高于 APK `versionCode`，拒绝安装并提示更新启动器。存在 `SHA256SUMS` 时核对每条路径与 SHA-256；schema 2 必须覆盖 manifest 和全部必需 variant 工件。旧 schema 1 的历史校验文件可仅覆盖根目录 DLL / overlay。
    - 普通 full compat 包不允许在版本或 `sts2_dll_sha256` 中使用 `*`。`sts2_dll_sha256` 可为 legacy 单字符串，也可为同一 API-compatible variant 的 SHA 数组；精确匹配会遍历全部元素。只有 schema 2 且 `pack_kind=offline-bootstrap`、`match_mode=offline-wildcard` 的 target 可以声明完整版本字符串 `*`；`target_id` 和每个 `sts2_dll_sha256` 仍不允许通配符。
    - 安装到 `<files>/compat-packs/<pack_id>/`。
+   - 自动安装与管理页“安装内置”使用同一防降级策略：完整已装包的 ZIP SHA 相同则跳过；两包有正 `compat_revision` 时先比 revision，否则用 SemVer（含预发行）。对在线 `github_release` / SAF `saf_zip` / 未知来源，只有内置严格更新才能替换，版本不可比较时保留。对已有内置包拒绝更旧版本，允许同版不同 ZIP 的开发重建。损坏包可修复；`installBundledCompatPacks(true)` 是显式恢复入口，不是启动默认值。
    - 不会把新安装的包设为全局选中包；仅当前 profile 明确记录为自动选择的 offline 绑定可在安装完成后升级到匹配的 full target，详见下节。
    - 从旧 schema 1 bundled 包升级到 flat matrix 包时，会把启动配置中旧 `sts2-android-compat-v0.*` bundled pack id 自动迁移到 `sts2-android-compat` family 包和对应 `compat_target_id`。例如 `sts2-android-compat-v0.107.0-beta` 会迁移为 `compat_pack_id=sts2-android-compat`、`compat_target_id=v0.107.0-beta`；用户手动导入/选择的非 bundled 包不会被覆盖。
+   - 即便已有更新包而跳过安装，仍执行旧 ID 迁移与当前自动 offline 绑定重查。
 3. 用户也可在“版本”页通过 SAF 导入外部 compat pack zip；导入后进入已安装包列表，并按下节规则重查当前自动 offline 绑定，不替换手动选择。
+
+### 3.1 官方兼容包在线检测与安装
+
+- 启动器只访问 `ModinMobileSTS/sts2-android-compat` 的 `/releases/latest/download/compat-index.json` 与 `.sig`，不调用 GitHub REST。所有请求和最多 5 次重定向都强制 HTTPS，仅允许 `github.com`、`objects.githubusercontent.com`、`release-assets.githubusercontent.com`；ZIP 初始链接必须指向该仓库对应 tag 的固定资产。不添加第三方镜像或改写 URL，访问官方 HTTPS 时遵循 Android 系统网络设置；如已配置 HTTP 代理，使用标准 HTTPS `CONNECT` 隧道。
+- `CompatPackReleaseVerifier` 用内置 Bouncy Castle（Android 24 起可用）对原始索引字节验证带域分离的 Ed25519 签名和 `payload_sha256`。`CompatPackReleaseTrust` 未配置生产公钥、未知 `key_id`、验证失败时拒绝该索引；不展示或安装未通过校验的 ZIP。验签缓存放在 `<files>/launcher/compat-release-cache/`，每次从磁盘读取都重验；启动静默检查冷却 6 小时，ETag `304` 只能复用已验证索引，`404` 表示暂无发布。
+- 向导完成、兼容包开启且内置包安装完毕后异步静默检查；导入或 Steam 下载完成且没有匹配 full target 时重新检查。不自动下载。管理页“版本 → 兼容包 → 在线更新”可强制刷新、查看上次检查时间、匹配/已安装/所需启动器状态与签名历史，并显式选择安装或回退。索引仅发布 full family，离线兜底仍随 APK 提供。
+- 缺包 Bottom Sheet 和离线兜底弹窗打开时，如果没有本地 full 命中，也没有可安装的缓存推荐，就强制重查索引，即使启动检查刚因断网失败或静默检查仍在冷却期。已有检查在进行、已知未配置公钥或有可安装缓存推荐时不重查。同一 Activity 的弹窗强查用单调时钟限制为每 45 秒最多一次，不影响管理页手动刷新。
+- 安装要求签名索引中的大小与整包 SHA-256、ZIP 内 `SHA256SUMS`、manifest 家族/版本/revision/schema/最低启动器版本和 target 匹配字段一致。下载写入私有 `.part`，校验通过后用 staging 目录替换正式目录；取消或检验失败不破坏已装包。`installed_source.kind=github_release` 同时记录 tag、revision、URL、签名 key id 与 ZIP SHA。安装后保留旧迁移与 `auto` offline 重查，并同步 `selected_instance.json`、`selected_compat_pack.json`。
+- 首发 [兼容包 v0.8.0](https://github.com/ModinMobileSTS/sts2-android-compat/releases/tag/v0.8.0)（revision 800）供 OTA 联调；要求启动器 versionCode ≥ 115 **且**内置 `sts2-compat-release-v1` 公钥。首发不包含启动器 APK；使用带公钥的本地 importer 构建验证，原有无公钥 APK 仍拒绝在线安装。
+
+发布和首次信任配置见[本地签名与发布官方兼容包](../build/building-and-packaging.md#61-本地签名与发布官方兼容包)。
 
 ## 4. Payload 导入与版本匹配
 
@@ -118,11 +132,12 @@ offline bootstrap:
 2. 如果 Android 兼容包开关启用：
    - 先按上一节规则重查当前自动 offline 绑定，再读取当前 launch profile 的 `compat_pack_id` / `compat_target_id` 并解析已安装包；schema 2 family 必须有真实存在的 target，target id 为空或已移除时不得静默回落到 family 第一个 variant。
    - 若配置未选择兼容包、引用的包已删除或 target 缺失，启动请求会先等待本次 APK 内置兼容包安装 bootstrap 完成，再弹出 MD3 Bottom Sheet。推荐分两层计算：先仅在内置/已安装 full 包中沿用 DLL SHA、主版本、显式支持版本与 schema/priority 评分选最佳 target；只有没有任何 full 命中时，才从未记录当前 tuple 终态失败的 offline wildcard 中选择通用离线包。
-   - Bottom Sheet 展示当前 payload 版本/短 DLL SHA、推荐来源（内置、已安装或通用离线兜底）与具体 target。用户点“使用推荐并继续”后才把 `compat_pack_id + compat_target_id` 写回当前 profile，同时记录 `compat_selection_source=auto`，再重新进入完整启动校验；点“打开兼容包管理”会直接进入“版本 → 兼容包”。没有可安全自动推荐项时只提供管理入口，不静默替用户补选缺失绑定。
+   - Bottom Sheet 保留 payload 版本/短 DLL SHA、本地推荐来源、target 和管理入口。有本地 full 命中时不以网络推荐取代它；没有 full 命中时在原面板内检查官方已签名索引，并可直接“下载并继续启动”。远端按精确 SHA（400）、主版本（300）、显式支持版本（200）排序，同分选更新的版本；更新的匹配包要求更高启动器版本时给出提示及官方启动器 Releases 入口。只有用户明确选用推荐，才写入 pack/target、`compat_selection_source=auto`，随后重新执行完整启动校验。
    - manifest/target 仍存在但 `STS2Mobile.dll` 或 `port_compat.pck` 缺失，同样属于缺失依赖，走上述推荐入口，不提供“版本不匹配仍继续”绕过。
    - 若选中包 manifest 支持版本列表与 payload version 不一致，弹出风险对话框，用户可取消、去启动配置页或强制启动。
    - 若选中包是 offline bootstrap wildcard，首次启动当前 `pack_id + target_id + compat_version + source zip SHA + payload version + sts2.dll SHA` 组合时弹出风险确认；确认后只记住该组合。offline bootstrap 运行时原子写 `<files>/launcher/offline-bootstrap-probe.json`：`starting -> patches_installed -> modeldb_initializing -> ready` 表示完整成功；`unsupported_api`、`apply_failed`、`runtime_failed` 是终态失败。版本页选择器会区分“未验证 / 已验证 / 探测失败”；相同 tuple 曾失败时每次启动都显示失败详情并只允许显式重试，不把旧确认当成成功认证。ADB 自动化 `status` 也会把原始 JSON 放入 `offline_bootstrap_probe`。
    - 离线风险确认和失败详情对话框只说明当前配置仍绑定离线兜底，不再声称当前一定没有匹配的完整包。若按上述 SHA/version 评分找到 DLL 与 overlay 均完整的 full target，正文下方显示“发现匹配兼容包：<支持版本> / 切换并继续启动”按钮；无 full 匹配时不显示。点击后复用“使用推荐并继续”流程，写回当前 profile 的 `compat_pack_id` / `compat_target_id` 与 `compat_selection_source=auto`，同步启动上下文并重新执行完整启动校验，不为离线包写入确认。旧配置来源为 `unknown` 或用户手选为 `manual` 时，也可通过此显式操作切换；不点击则不改写绑定，原有取消、启动配置和继续离线/诊断重试入口保持可用，既有离线确认频率与 probe 规则不变。
+   - 无本地 full 命中时，离线确认或失败详情也可给出“下载并切换启动”或最低启动器要求。本地推荐及原有离线试运行/重试不依赖联网，下载切换路径不会批准旧离线 tuple。
 3. 启动前 launcher 会为当前 launch profile account root 创建一份本地 `before-launch` 存档快照（默认只保留最近 5 个）。若 Steam Cloud 模式配置为“启动前拉取”或“完整自动”，且已保存 Steam refresh token，则随后拉取当前 account root 的 Steam Cloud 文件；若 WebDAV 模式配置为“启动前拉取”或“完整自动”，且已配置 WebDAV URL，则继续拉取同一 account root 的 WebDAV 文件。任一同步失败时会弹窗允许取消、打开对应云存档中心或跳过同步继续启动。
 4. 启动后台线程执行 `GameLaunchPreparationManager.prepareForLaunch()`。
 5. 准备完成后，启动器向 `GodotApp` 交付一次性的进程内准备凭据，绑定本次配置及实际 MOD 根目录。
@@ -151,6 +166,7 @@ Steam Cloud 与 WebDAV 的非强制同步使用逐文件的共同基线：仅本
 7. Stage overlay：
    - 兼容包开关关闭：删除 `<files>/port_compat.pck`；启动前会先弹风险确认，用户选择继续才进入无兼容层准备流程。
    - 有 selected pack：schema 1 复制 `<files>/compat-packs/<pack_id>/port_compat.pck`；schema 2 复制 `<files>/compat-packs/<pack_id>/variants/<target_id>/port_compat.pck` 到 `<files>/port_compat.pck`。
+   - 复用已有 overlay 前逐字节比较，内容变化则重新 staging 并校验，不依赖尺寸或时间戳。
    - 无 selected pack：仅在兼容包开关开启但没有 profile 级兼容包选择的 fallback 准备路径中使用 APK assets `port_compat.pck` fallback；如果 profile 明确选择的 pack/target 缺失，会删除 staged overlay 并拒绝 asset fallback。
 8. 准备 Mono publish 目录 `<files>/.godot/mono/publish/arm64/`：
    - 复制 APK assets `dotnet_bcl/*`，但 `STS2Mobile.dll` 由 selected pack 决定。

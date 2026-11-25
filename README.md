@@ -38,6 +38,10 @@ This project is an experimental, unofficial Android port and launcher framework 
 
 The launcher follows Android’s language setting. Traditional Chinese is shared across Taiwan, Hong Kong and Macao; this does not change the language of the imported game.
 
+**Versions → Compatibility Packs → Online Updates** checks the project's [official compatibility releases](https://github.com/ModinMobileSTS/sts2-android-compat/releases) and lists signed versions you can install without updating the APK. When no installed full pack matches your game, the launch prompt can offer to download a verified official pack and continue. Checks never install updates on their own, and an older copy bundled with the APK cannot silently replace a newer installed pack. Online updates require a trusted release key in the APK and a signed release; local packs, ZIP import and the offline fallback still work without them.
+
+The first signed pack, [v0.8.0](https://github.com/ModinMobileSTS/sts2-android-compat/releases/tag/v0.8.0), is available for OTA testing. It requires a launcher build that trusts `sts2-compat-release-v1`; the pack release does not include a launcher APK.
+
 **The core architecture consists of three layers:**
 1. **Android Launcher Shell (`android/`):** Handles game data importing, Steam login and game downloading, Steam Workshop public browsing, direct ID/URL opening, and download tracking with default compatible-access routing for networks where Steam Community/API or SteamPipe CDN direct connections time out, local save snapshots, Steam Cloud/WebDAV save syncing, and local file/MOD management. Once everything is ready, it boots up the Godot game process.
 The launcher utility pages use a compact dark Material 3 shell, including toolbars, dialogs, and bottom sheets. File Browser provides clickable breadcrumbs, a clipboard banner, name/time/size sorting, add/import actions, and readable contextual multi-select controls. Logs provides source/date filtering and a **Package latest** action that shares the newest live `godot.log` and `sts2.log`, excluding archives. File multi-selection offers share/export; the line-numbered viewer switches between whole-file actions and copy/share/expand-range actions, with working wrap/horizontal-scroll modes, in-file search, and smooth pinch-to-resize text. The Workshop page is unchanged by this UI update.
@@ -163,6 +167,8 @@ Compile and stage all bundled compatibility artifacts into APK assets:
 tools/android/stage-bundled-compat-artifacts.sh
 ```
 This stages the flattened schema-2 full compatibility family pack from `port-mod/` (`compat_version=0.7.3-dev`, 11 targets) and the generic `offline-bootstrap/` fallback pack.
+
+Maintainers can [build, sign, and dry-run an official compatibility release locally](doc/build/building-and-packaging.md#61-本地签名与发布官方兼容包). This uses your local game references but does not publish the base game.
 
 The current **v0.114.0 public-beta** payload (Steam build `26909018`) gets its own target and original DLL reference in the existing family pack. It reuses the v0.113 patch implementation; the old v0.113.x target and stable v0.111.1 support are retained. The payload identifies this build as v0.114.0, not v0.113.2.
 

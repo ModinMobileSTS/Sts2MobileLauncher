@@ -41,6 +41,12 @@ compat.worktree_root=.agent/worktrees/compat-packs
 compat.pack_remote=origin
 compat.apply_build_info_patches=1
 
+# Optional path (not PEM contents) for compatibility GitHub Releases.
+# Keep the private key outside both Git checkouts.
+# Overrides: COMPAT_RELEASE_SIGNING_KEY_FILE / COMPAT_RELEASE_SIGNING_KEY_ID.
+# compat.release_signing_key_file=${HOME}/.config/sts2-re/compat-release-ed25519.pem
+# compat.release_signing_key_id=sts2-compat-release-v1
+
 # External GitHub reference project preparation.
 deps.external_projects_config=tools/deps/external-github-projects.json
 deps.external_projects_root=.agent/reference-repos

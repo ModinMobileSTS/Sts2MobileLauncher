@@ -1,17 +1,24 @@
 package com.godot.game;
 
 import android.app.Application;
+import android.app.Dialog;
 import android.content.Context;
 import android.net.Uri;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
+import org.robolectric.shadows.ShadowDialog;
 import java.io.File;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.zip.ZipEntry;
@@ -92,6 +99,90 @@ public class AutomaticOfflineCompatSelectionTest {
 		assertEquals("Renamed", retained.displayName);
 		assertEquals("isolated", retained.saveMode);
 		assertEquals("isolated", retained.modsMode);
+	}
+
+	@Test public void manualOfflineWarningCanExplicitlySwitchAndRelaunchWithoutApproval() throws Exception {
+		defaultProfile();
+		packs.selectPack(OFFLINE, "offline-any", LaunchProfileManager.COMPAT_SELECTION_MANUAL);
+		importFull();
+		CompatPackManager.CompatPack offline = packs.getSelectedPackIgnoringEnabled();
+		SwitchTestActivity activity = openManualOfflineLaunchWarning();
+		Dialog dialog = ShadowDialog.getLatestDialog();
+		try {
+			assertEquals(OFFLINE, profiles.getSelectedCompatPackId());
+			assertTrue(switchButton(activity, dialog).performClick());
+			LaunchProfileManager.LaunchProfile switched = profiles.getSelectedProfile();
+			assertEquals(FULL, switched.compatPackId);
+			assertEquals("exact", switched.compatTargetId);
+			assertEquals(LaunchProfileManager.COMPAT_SELECTION_AUTO, switched.compatSelectionSource);
+			assertEquals(2, activity.launchAttempts);
+			assertFalse(packs.hasApprovedOfflineBootstrap(offline, switched.payload.manifest));
+		} finally {
+			dialog.dismiss();
+		}
+	}
+
+	@Test public void staleOfflineWarningCannotRebindOrRelaunchAfterProfileChange() throws Exception {
+		LaunchProfileManager.LaunchProfile original = defaultProfile();
+		packs.selectPack(OFFLINE, "offline-any", LaunchProfileManager.COMPAT_SELECTION_MANUAL);
+		importFull();
+		SwitchTestActivity activity = openManualOfflineLaunchWarning();
+		Dialog dialog = ShadowDialog.getLatestDialog();
+		try {
+			profiles.createProfile(PAYLOAD, "Other", "global", "global", OFFLINE, "offline-any", LaunchProfileManager.COMPAT_SELECTION_MANUAL, true);
+			assertTrue(switchButton(activity, dialog).performClick());
+			assertEquals(1, activity.launchAttempts);
+			assertEquals(OFFLINE, profiles.getSelectedCompatPackId());
+			assertEquals(OFFLINE, profiles.readProfile(original.id).compatPackId);
+		} finally {
+			dialog.dismiss();
+		}
+	}
+
+	private SwitchTestActivity openManualOfflineLaunchWarning() throws Exception {
+		ExtraSettingsRepository settings = new ExtraSettingsRepository(context);
+		settings.saveSetting(json -> json.put(ExtraSettingsRepository.KEY_ANDROID_COMPAT_PACK_ENABLED, true));
+		SwitchTestActivity activity = Robolectric.buildActivity(SwitchTestActivity.class).get();
+		activity.setTheme(R.style.Theme_Sts2ExtraSettings);
+		setActivityField(activity, "payloadManager", new PayloadManager(context));
+		setActivityField(activity, "compatPackManager", packs);
+		setActivityField(activity, "launchProfileManager", profiles);
+		activity.launchGame();
+		return activity;
+	}
+
+	private static Button switchButton(SwitchTestActivity activity, Dialog dialog) {
+		assertNotNull(dialog);
+		String label = activity.getString(R.string.launch_offline_bootstrap_switch_matching, VERSION);
+		Button button = findButton(dialog.getWindow().getDecorView(), label);
+		assertNotNull("No explicit switch option for a manually selected offline pack", button);
+		return button;
+	}
+
+	private static Button findButton(View view, String label) {
+		if (view instanceof Button && label.contentEquals(((Button) view).getText())) return (Button) view;
+		if (view instanceof ViewGroup) {
+			ViewGroup group = (ViewGroup) view;
+			for (int index = 0; index < group.getChildCount(); index++) {
+				Button candidate = findButton(group.getChildAt(index), label);
+				if (candidate != null) return candidate;
+			}
+		}
+		return null;
+	}
+
+	private static void setActivityField(GameSettingsActivity activity, String name, Object value) throws Exception {
+		Field field = GameSettingsActivity.class.getDeclaredField(name);
+		field.setAccessible(true);
+		field.set(activity, value);
+	}
+
+	public static class SwitchTestActivity extends GameSettingsActivity {
+		private int launchAttempts;
+
+		@Override public void launchGame() {
+			if (++launchAttempts == 1) super.launchGame();
+		}
 	}
 
 	@Test public void legacyOrUnrecognizedSelectionSourceNeverAssumesAutomatic() throws Exception {

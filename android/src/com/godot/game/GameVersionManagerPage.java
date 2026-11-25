@@ -34,19 +34,36 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 public final class GameVersionManagerPage {
 	private static final int TAB_PROFILES = 1;
 	private static final int TAB_PAYLOADS = 2;
 	private static final int TAB_COMPAT = 3;
 	private static int lastSelectedTab = TAB_PROFILES;
+	private static long tabGeneration;
 
 	public static void selectProfilesTab() {
-		lastSelectedTab = TAB_PROFILES;
+		selectTab(TAB_PROFILES);
 	}
 
 	public static void selectCompatTab() {
-		lastSelectedTab = TAB_COMPAT;
+		selectTab(TAB_COMPAT);
+	}
+
+	static boolean isCompatTabSelected() {
+		return lastSelectedTab == TAB_COMPAT;
+	}
+
+	static long tabGeneration() {
+		return tabGeneration;
+	}
+
+	private static void selectTab(int tab) {
+		if (lastSelectedTab != tab) {
+			lastSelectedTab = tab;
+			tabGeneration++;
+		}
 	}
 
 	private final Context context;
@@ -54,14 +71,22 @@ public final class GameVersionManagerPage {
 	private final CompatPackManager compatPackManager;
 	private final LaunchProfileManager launchProfileManager;
 	private final ExtraSettingsActions actions;
+	private final CompatPackReleaseRepository releaseRepository;
+	private final Supplier<CompatPackReleaseIndex> releaseIndex;
 	private final Set<String> collapsedCompatPackIds = new HashSet<>();
 
 	public GameVersionManagerPage(Context context, ExtraSettingsActions actions) {
+		this(context, actions, null, null);
+	}
+
+	GameVersionManagerPage(Context context, ExtraSettingsActions actions, CompatPackReleaseRepository releaseRepository, Supplier<CompatPackReleaseIndex> releaseIndex) {
 		this.context = context;
 		this.payloadManager = new PayloadManager(context);
 		this.compatPackManager = new CompatPackManager(context);
 		this.launchProfileManager = new LaunchProfileManager(context);
 		this.actions = actions;
+		this.releaseRepository = releaseRepository;
+		this.releaseIndex = releaseIndex;
 	}
 
 	public View build() {
@@ -116,11 +141,11 @@ public final class GameVersionManagerPage {
 				return;
 			}
 			if (checkedId1 == payloadsButton.getId()) {
-				lastSelectedTab = TAB_PAYLOADS;
+				selectTab(TAB_PAYLOADS);
 			} else if (checkedId1 == compatButton.getId()) {
-				lastSelectedTab = TAB_COMPAT;
+				selectTab(TAB_COMPAT);
 			} else {
-				lastSelectedTab = TAB_PROFILES;
+				selectTab(TAB_PROFILES);
 			}
 			populateTabContent(tabContent, payloadStatus, payloads, profiles, packs, selectedProfile);
 		});
@@ -248,9 +273,17 @@ public final class GameVersionManagerPage {
 		importPack.setOnClickListener(v -> actions.requestImportCompatPack());
 		MaterialButton installBundled = neutralButton(context.getString(R.string.version_manager_install_bundled_short), R.drawable.ic_download_24);
 		installBundled.setOnClickListener(v -> actions.requestInstallBundledCompatPacks());
+		importPack.setSingleLine(false);
+		installBundled.setSingleLine(false);
 		actionsRow.addView(importPack, weightedButtonParams(0));
 		actionsRow.addView(installBundled, weightedButtonParams(8));
 		ExtraSettingsUi.addSmallSpacing(content, actionsRow);
+		addSheetAction(content, outlineButton(context.getString(R.string.compat_online_open), R.drawable.ic_download_24, v -> actions.requestOnlineCompatPacks()));
+		CompatPackReleaseIndex index = releaseIndex == null ? null : releaseIndex.get();
+		if (index != null && releaseRepository != null) {
+			CompatPackRelease update = releaseRepository.findUpgradeForInstalledFullPack(index, BuildConfig.VERSION_CODE, packs);
+			if (update != null) ExtraSettingsUi.addSmallSpacing(content, buildOnlineUpdateCard(update));
+		}
 
 		if (packs.isEmpty()) {
 			ExtraSettingsUi.addSmallSpacing(content, emptyState(R.drawable.ic_extension_24, context.getString(R.string.version_manager_no_compat_packs)));
@@ -260,6 +293,21 @@ public final class GameVersionManagerPage {
 		for (CompatPackGroup group : groupCompatPacks(packs)) {
 			ExtraSettingsUi.addSmallSpacing(content, buildCompatPackGroup(group, selectedProfile));
 		}
+	}
+
+	private View buildOnlineUpdateCard(CompatPackRelease release) {
+		MaterialCardView card = ExtraSettingsUi.card(context);
+		card.setStrokeColor(ExtraSettingsUi.COLOR_PRIMARY);
+		LinearLayout content = ExtraSettingsUi.cardContent(context, card);
+		content.addView(ExtraSettingsUi.text(context, context.getString(R.string.compat_online_update_available, release.compatVersion), 16, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD));
+		if (!TextUtils.isEmpty(release.changelog)) {
+			TextView summary = ExtraSettingsUi.body(context, release.changelog);
+			summary.setMaxLines(3);
+			summary.setEllipsize(TextUtils.TruncateAt.END);
+			ExtraSettingsUi.addSmallSpacing(content, summary);
+		}
+		addSheetAction(content, primaryButton(context.getString(R.string.compat_online_update_now), R.drawable.ic_download_24, v -> actions.requestOnlineCompatInstall(release)));
+		return card;
 	}
 
 	private List<CompatPackGroup> groupCompatPacks(List<CompatPackManager.CompatPack> packs) {

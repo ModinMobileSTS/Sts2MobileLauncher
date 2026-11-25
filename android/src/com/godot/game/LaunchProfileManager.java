@@ -15,6 +15,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 /**
  * Owns the final multi-version launch model.
@@ -286,6 +287,29 @@ public final class LaunchProfileManager {
 		updateProfile(profile.id, profile.payloadId, profile.displayName, profile.saveMode, profile.modsMode, compatPackId, compatTargetId, compatSelectionSource);
 	}
 
+	/** Recheck the original selection before applying a result from an asynchronous download. */
+	boolean updateSelectedProfileCompatIf(String profileId, Predicate<LaunchProfile> stillCurrent,
+			String packId, String targetId, String selectionSource) throws Exception {
+		synchronized (PROFILE_LOCK) {
+			if (!profileId.equals(getSelectedProfileId())) {
+				return false;
+			}
+			LaunchProfile current = readProfileWithoutBootstrap(profileId);
+			if (current == null || !stillCurrent.test(current)) {
+				return false;
+			}
+			String normalizedPack = sanitizeOptionalId(packId);
+			String normalizedTarget = sanitizeOptionalId(targetId);
+			if (!normalizedPack.equals(current.compatPackId) || !normalizedTarget.equals(current.compatTargetId)
+					|| !selectionSource.equals(current.compatSelectionSource)) {
+				LaunchProfile updated = writeProfile(current.id, current.displayName, current.payloadId,
+					normalizedPack, normalizedTarget, selectionSource, current.saveMode, current.modsMode, current.createdAtUnix);
+				writeSelectedLaunchContextJson(updated);
+			}
+			return true;
+		}
+	}
+
 	public void selectProfile(String profileId) throws Exception {
 		synchronized (PROFILE_LOCK) {
 			LaunchProfile profile = refreshAutomaticOfflineCompatSelection(profileId);
@@ -364,7 +388,19 @@ public final class LaunchProfileManager {
 		writeSelectedLaunchContextJson(getSelectedProfile());
 	}
 
-	public synchronized int migrateLegacyBundledCompatSelectionsToFlatPack() throws Exception {
+	void refreshSelectedLaunchContext() throws Exception {
+		synchronized (PROFILE_LOCK) {
+			writeSelectedLaunchContextJson(getSelectedProfile());
+		}
+	}
+
+	public int migrateLegacyBundledCompatSelectionsToFlatPack() throws Exception {
+		synchronized (PROFILE_LOCK) {
+			return migrateLegacyBundledCompatSelectionsLocked();
+		}
+	}
+
+	private int migrateLegacyBundledCompatSelectionsLocked() throws Exception {
 		FileBrowserSupport.ensureDirectory(getProfilesRootDir());
 		CompatPackManager compatManager = new CompatPackManager(context);
 		List<CompatPackManager.CompatPack> installedPacks = compatManager.listInstalledPacks();

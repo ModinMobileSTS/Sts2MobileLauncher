@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
+import android.os.CancellationSignal;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -12,6 +13,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
+import java.io.BufferedReader;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -19,15 +21,20 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -41,30 +48,44 @@ public final class CompatPackManager {
 	public static final String ARTIFACTS_DIR_NAME = "variants";
 	public static final String PACK_KIND_OFFLINE_BOOTSTRAP = "offline-bootstrap";
 	public static final String MATCH_MODE_OFFLINE_WILDCARD = "offline-wildcard";
+	static final int MAX_MANIFEST_SCHEMA = 2;
 
 	private static final String PREFS_NAME = "sts2_version_manager";
 	private static final String KEY_SELECTED_COMPAT_PACK_ID = "selected_compat_pack_id";
 	private static final String KEY_OFFLINE_BOOTSTRAP_APPROVED_PREFIX = "offline_bootstrap_approved_";
 	private static final String OFFLINE_BOOTSTRAP_PROBE_FILE_NAME = "offline-bootstrap-probe.json";
 	private static final int BUFFER_SIZE = 1024 * 1024;
+	private static final Object PACK_STORAGE_LOCK = new Object();
+	private static final String CHECKSUM_FILE_NAME = "SHA256SUMS";
+	private static final Pattern CHECKSUM_LINE = Pattern.compile("([0-9a-fA-F]{64})  (.+)");
+	private static final long MAX_REMOTE_UNZIPPED_BYTES = 256L * 1024 * 1024;
+	private static final int MAX_REMOTE_ZIP_ENTRIES = 4096;
+	private static final int MAX_REMOTE_METADATA_BYTES = 1024 * 1024;
 
 	private final Context context;
+	private final BundledAssets bundledAssets;
 
 	public CompatPackManager(Context context) {
+		this(context, null);
+	}
+
+	CompatPackManager(Context context, BundledAssets bundledAssets) {
 		this.context = context.getApplicationContext();
+		this.bundledAssets = bundledAssets;
 	}
 
 	public List<CompatPack> listInstalledPacks() {
 		List<CompatPack> packs = new ArrayList<>();
-		File root = getCompatPacksRootDir();
-		File[] children = root.listFiles(File::isDirectory);
-		if (children == null) {
-			return packs;
-		}
-		for (File child : children) {
-			try {
-				packs.addAll(readPacks(child));
-			} catch (Exception ignored) {
+		synchronized (PACK_STORAGE_LOCK) {
+			File[] children = getCompatPacksRootDir().listFiles(File::isDirectory);
+			if (children == null) {
+				return packs;
+			}
+			for (File child : children) {
+				try {
+					packs.addAll(readPacks(child));
+				} catch (Exception ignored) {
+				}
 			}
 		}
 		packs.sort(Comparator
@@ -229,17 +250,31 @@ public final class CompatPackManager {
 		if (pack == null || !pack.ready || identity == null || TextUtils.isEmpty(identity.version)) {
 			return 0;
 		}
-		if (pack.supportsSts2DllSha256(identity.sts2DllSha256)) {
-			return 400;
+		boolean offlineWildcard = pack.isOfflineWildcard();
+		int score = scoreExplicitMatch(identity.version, identity.sts2DllSha256,
+			offlineWildcard ? "" : pack.targetVersion, pack.targetVersions, pack.targetSts2DllSha256s);
+		return score != 0 ? score : offlineWildcard ? 10 : 0;
+	}
+
+	static int scoreExplicitMatch(String payloadVersion, String payloadSha, String targetVersion,
+			List<String> targetVersions, List<String> targetShas) {
+		if (TextUtils.isEmpty(payloadVersion)) {
+			return 0;
 		}
-		if (!pack.isOfflineWildcard() && identity.version.equalsIgnoreCase(pack.targetVersion)) {
+		if (!TextUtils.isEmpty(payloadSha)) {
+			for (String hash : targetShas) {
+				if (payloadSha.equalsIgnoreCase(hash)) {
+					return 400;
+				}
+			}
+		}
+		if (!"*".equals(targetVersion) && payloadVersion.equalsIgnoreCase(targetVersion)) {
 			return 300;
 		}
-		if (packSupportsExplicitVersion(pack, identity.version)) {
-			return 200;
-		}
-		if (pack.isOfflineWildcard()) {
-			return 10;
+		for (String version : targetVersions) {
+			if (!"*".equals(version) && payloadVersion.equalsIgnoreCase(version)) {
+				return 200;
+			}
 		}
 		return 0;
 	}
@@ -414,43 +449,77 @@ public final class CompatPackManager {
 	}
 
 	public int installBundledCompatPacks() throws Exception {
-		String[] names;
-		try {
-			names = context.getAssets().list(COMPAT_ASSET_DIR);
-		} catch (IOException exception) {
-			return 0;
-		}
-		if (names == null || names.length == 0) {
-			return 0;
-		}
-		File importRoot = getImportRootDir();
-		FileBrowserSupport.ensureDirectory(importRoot);
+		return installBundledCompatPacks(false);
+	}
+
+	public int installBundledCompatPacks(boolean forceOverwrite) throws Exception {
+		return installBundledCompatPacksWithResult(forceOverwrite).changedCount;
+	}
+
+	public BundledInstallResult installBundledCompatPacksWithResult() throws Exception {
+		return installBundledCompatPacksWithResult(false);
+	}
+
+	private BundledInstallResult installBundledCompatPacksWithResult(boolean forceOverwrite) throws Exception {
 		int installed = 0;
-		for (String name : names) {
-			if (name == null || !name.toLowerCase(Locale.ROOT).endsWith(".zip")) {
-				continue;
-			}
-			File tempZip = new File(importRoot, "bundled-compat-" + UUID.randomUUID() + ".zip");
-			try (InputStream inputStream = context.getAssets().open(COMPAT_ASSET_DIR + "/" + name)) {
-				copyStreamToFile(inputStream, tempZip);
-			}
-			try {
-				installFromZipFile(tempZip, "bundled_asset", name);
-				installed++;
-			} finally {
-				FileBrowserSupport.deleteRecursively(tempZip);
-			}
-		}
+		boolean preserved = false;
 		try {
-			int migrated = new LaunchProfileManager(context).migrateLegacyBundledCompatSelectionsToFlatPack();
+			String[] names;
+			try {
+				names = bundledAssets == null ? context.getAssets().list(COMPAT_ASSET_DIR) : bundledAssets.list();
+			} catch (IOException exception) {
+				Log.w(TAG, "Unable to list bundled compatibility packs.", exception);
+				return new BundledInstallResult(0, false);
+			}
+			if (names == null || names.length == 0) {
+				return new BundledInstallResult(0, false);
+			}
+			File importRoot = getImportRootDir();
+			FileBrowserSupport.ensureDirectory(importRoot);
+			InstallPolicy policy = forceOverwrite ? InstallPolicy.FORCE_BUNDLED : InstallPolicy.DEFAULT;
+			for (String name : names) {
+				if (name == null || !name.toLowerCase(Locale.ROOT).endsWith(".zip")) {
+					continue;
+				}
+				File tempZip = new File(importRoot, "bundled-compat-" + UUID.randomUUID() + ".zip");
+				try {
+					try (InputStream input = bundledAssets == null ? context.getAssets().open(COMPAT_ASSET_DIR + "/" + name) : bundledAssets.open(name)) {
+						copyStreamToFile(input, tempZip);
+					}
+					InstallResult result = installFromZipFile(tempZip, "bundled_asset", name, policy);
+					if (result.changed) {
+						installed++;
+					}
+					preserved |= result.preserved;
+				} finally {
+					FileBrowserSupport.deleteRecursively(tempZip);
+				}
+			}
+			return new BundledInstallResult(installed, preserved);
+		} finally {
+			refreshCompatSelections(false);
+		}
+	}
+
+	private void refreshCompatSelections(boolean syncLaunchContext) {
+		LaunchProfileManager profiles = new LaunchProfileManager(context);
+		try {
+			int migrated = profiles.migrateLegacyBundledCompatSelectionsToFlatPack();
 			if (migrated > 0) {
-				Log.i(TAG, "Migrated launch profiles to bundled flat compatibility pack: " + migrated);
+				Log.i(TAG, "Migrated launch profiles to flat compatibility pack: " + migrated);
 			}
 		} catch (Exception exception) {
 			Log.w(TAG, "Unable to migrate legacy bundled compatibility pack selections.", exception);
 		}
-		new LaunchProfileManager(context).refreshAutomaticOfflineCompatSelection();
-		return installed;
+		try {
+			profiles.refreshAutomaticOfflineCompatSelection();
+			if (syncLaunchContext) {
+				profiles.refreshSelectedLaunchContext();
+			}
+		} catch (Exception exception) {
+			// The installed pack remains valid; the next launch revalidates the selected context.
+			Log.w(TAG, "Unable to refresh compatibility pack selections.", exception);
+		}
 	}
 
 	public CompatPack importCompatPack(Uri uri) throws Exception {
@@ -461,14 +530,14 @@ public final class CompatPackManager {
 		File importRoot = getImportRootDir();
 		FileBrowserSupport.ensureDirectory(importRoot);
 		File tempZip = new File(importRoot, "compat-" + UUID.randomUUID() + ".zip");
-		try (InputStream inputStream = context.getContentResolver().openInputStream(uri)) {
-			if (inputStream == null) {
-				throw new IOException("Unable to open selected compatibility pack.");
-			}
-			copyStreamToFile(inputStream, tempZip);
-		}
 		try {
-			CompatPack installed = installFromZipFile(tempZip, "saf_zip", displayName);
+			try (InputStream inputStream = context.getContentResolver().openInputStream(uri)) {
+				if (inputStream == null) {
+					throw new IOException("Unable to open selected compatibility pack.");
+				}
+				copyStreamToFile(inputStream, tempZip);
+			}
+			CompatPack installed = installFromZipFile(tempZip, "saf_zip", displayName, InstallPolicy.DEFAULT).pack;
 			new LaunchProfileManager(context).refreshAutomaticOfflineCompatSelection();
 			return installed;
 		} finally {
@@ -481,34 +550,14 @@ public final class CompatPackManager {
 			return;
 		}
 		File dir = new File(getCompatPacksRootDir(), packId);
-		if (dir.isDirectory()) {
-			FileBrowserSupport.deleteRecursively(dir);
+		synchronized (PACK_STORAGE_LOCK) {
+			if (dir.isDirectory()) {
+				FileBrowserSupport.deleteRecursively(dir);
+			}
 		}
 		if (packId.equals(getSelectedPackId())) {
 			writeSelectedCompatJson(packId, null);
 		}
-	}
-
-	private boolean packSupportsVersion(CompatPack pack, String version) {
-		if (pack == null || TextUtils.isEmpty(version)) {
-			return false;
-		}
-		return pack.isOfflineWildcard() || packSupportsExplicitVersion(pack, version);
-	}
-
-	private boolean packSupportsExplicitVersion(CompatPack pack, String version) {
-		if (pack == null || TextUtils.isEmpty(version)) {
-			return false;
-		}
-		for (String supportedVersion : pack.targetVersions) {
-			if ("*".equals(supportedVersion)) {
-				continue;
-			}
-			if (version.equalsIgnoreCase(supportedVersion)) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	private PayloadIdentity readPayloadIdentity(JSONObject payloadManifest) {
@@ -532,66 +581,152 @@ public final class CompatPackManager {
 		return new PayloadIdentity(version, dllSha);
 	}
 
-	private CompatPack installFromZipFile(File zipFile, String sourceKind, String sourceName) throws Exception {
+	public CompatPack installFromVerifiedDownload(File zipFile, String displayName, CompatPackRelease releaseMetadata) throws Exception {
+		return installFromVerifiedDownload(zipFile, displayName, releaseMetadata, null);
+	}
+
+	CompatPack installFromVerifiedDownload(File zipFile, String displayName, CompatPackRelease releaseMetadata,
+			CancellationSignal cancellation) throws Exception {
+		if (releaseMetadata == null) {
+			throw new IOException("Verified compatibility release metadata is required.");
+		}
+		if (!releaseMetadata.isInstallable(BuildConfig.VERSION_CODE)) {
+			throw new LauncherUpdateRequiredException(releaseMetadata.minLauncherVersionCode,
+				releaseMetadata.minLauncherVersionName, releaseMetadata.manifestSchema);
+		}
+		CompatPack installed = installFromZipFile(zipFile, "github_release", displayName,
+			new InstallPolicy(false, releaseMetadata, cancellation)).pack;
+		refreshCompatSelections(true);
+		return installed;
+	}
+
+	private InstallResult installFromZipFile(File zipFile, String sourceKind, String sourceName, InstallPolicy policy) throws Exception {
+		CompatPackRelease release = policy.release;
+		CancellationSignal cancellation = policy.cancellation;
+		throwIfCancelled(cancellation);
+		if (release != null && zipFile.length() != release.zipSizeBytes) {
+			throw new IOException("Compatibility pack ZIP does not match the signed size.");
+		}
+		String zipSha256 = sha256(zipFile, cancellation);
+		if (release != null && !zipSha256.equalsIgnoreCase(release.zipSha256)) {
+			throw new IOException("Compatibility pack ZIP does not match the signed SHA-256.");
+		}
 		File importRoot = getImportRootDir();
 		File stagingRoot = new File(importRoot, "compat-staging-" + UUID.randomUUID());
 		FileBrowserSupport.ensureDirectory(stagingRoot);
 		try {
-			extractZipSafely(zipFile, stagingRoot);
-			File packRoot = locatePackRoot(stagingRoot);
+			extractZipSafely(zipFile, stagingRoot, policy);
+			File packRoot = release == null ? locatePackRoot(stagingRoot) : locateReleasePackRoot(stagingRoot, release.packId);
 			JSONObject manifest = new JSONObject(readTextFile(new File(packRoot, MANIFEST_FILE_NAME)));
-			String packId = manifest.optString("pack_id", packRoot.getName());
-			packId = sanitizeId(packId);
+			String packId = sanitizeId(manifest.optString("pack_id", packRoot.getName()));
 			if (TextUtils.isEmpty(packId)) {
 				throw new IOException("Compatibility pack manifest has no pack_id.");
 			}
-			validatePackArtifacts(packRoot, manifest);
-			String zipSha256 = sha256(zipFile);
-			File targetDir = new File(getCompatPacksRootDir(), packId);
-			CompatPack existing = readPack(targetDir);
-			JSONObject existingSource = existing == null ? null : existing.manifest.optJSONObject("installed_source");
-			if (existing != null && existing.ready && existingSource != null && zipSha256.equalsIgnoreCase(existingSource.optString("zip_sha256", ""))) {
-				return existing;
+			validatePackHeader(manifest);
+			if (release != null) {
+				validateReleaseManifest(manifest, release);
 			}
+			validatePackArtifacts(packRoot, manifest, release != null, cancellation);
 			manifest.put("installed_at_unix", System.currentTimeMillis() / 1000L);
 			JSONObject source = new JSONObject();
 			source.put("kind", sourceKind);
 			source.put("display_name", sourceName == null ? "" : sourceName);
 			source.put("zip_sha256", zipSha256);
+			if (release != null) {
+				source.put("release_tag", release.tagName);
+				source.put("compat_revision", release.compatRevision);
+				source.put("release_url", release.releaseUrl);
+				source.put("key_id", release.keyId);
+			}
 			manifest.put("installed_source", source);
-			File backup = new File(importRoot, "compat-backup-" + UUID.randomUUID());
-			boolean moved = false;
-			try {
-				FileBrowserSupport.ensureDirectory(getCompatPacksRootDir());
-				if (targetDir.exists()) {
-					if (!targetDir.renameTo(backup)) {
-						throw new IOException("Unable to replace existing compatibility pack: " + targetDir.getAbsolutePath());
+			writeTextFile(new File(packRoot, MANIFEST_FILE_NAME), manifest.toString(2));
+			synchronized (PACK_STORAGE_LOCK) {
+				throwIfCancelled(cancellation); // From here, the commit runs to completion.
+				boolean bundled = "bundled_asset".equals(sourceKind);
+				File targetDir = new File(getCompatPacksRootDir(), packId);
+				CompatPack existing = readReadyFamilyForInstall(targetDir);
+				if (existing != null) {
+					JSONObject previous = existing.manifest.optJSONObject("installed_source");
+					String previousKind = previous == null ? "" : previous.optString("kind", "");
+					boolean sameZip = previous != null && zipSha256.equalsIgnoreCase(previous.optString("zip_sha256", ""));
+					boolean sameProvenance = release == null || (sourceKind.equals(previousKind)
+						&& release.tagName.equals(previous.optString("release_tag")) && release.keyId.equals(previous.optString("key_id")));
+					if (sameZip && sameProvenance && (!policy.forceOverwrite || sourceKind.equals(previousKind))) {
+						return new InstallResult(existing, false, bundled && !sourceKind.equals(previousKind));
 					}
-					moved = true;
+					if (bundled && !policy.forceOverwrite) {
+						Integer order = CompatPackVersionComparator.compare(manifest.optInt("compat_revision", 0),
+							manifest.optString("compat_version", ""), existing.manifest.optInt("compat_revision", 0), existing.compatVersion);
+						boolean existingBundled = sourceKind.equals(previousKind);
+						if (existingBundled ? order != null && order < 0 : order == null || order <= 0) {
+							Log.i(TAG, "Preserving installed " + packId + " " + existing.compatVersion + " (" + previousKind
+								+ "); bundled version " + manifest.optString("compat_version", "") + " does not qualify to replace it.");
+							return new InstallResult(existing, false, true);
+						}
+					}
 				}
-				FileBrowserSupport.copyEntryRecursively(packRoot, targetDir);
-				writeTextFile(new File(targetDir, MANIFEST_FILE_NAME), manifest.toString(2));
-				FileBrowserSupport.deleteRecursively(backup);
-				CompatPack installed = readPack(targetDir, "");
-				if (installed == null || !installed.ready) {
-					throw new IOException("Installed compatibility pack is incomplete: " + targetDir.getAbsolutePath());
-				}
-				return installed;
-			} catch (Exception exception) {
-				FileBrowserSupport.deleteRecursively(targetDir);
-				if (moved && backup.exists()) {
-					backup.renameTo(targetDir);
-				}
-				throw exception;
+				return new InstallResult(replaceInstalledPack(packRoot, targetDir, importRoot), true, false);
 			}
 		} finally {
 			FileBrowserSupport.deleteRecursively(stagingRoot);
 		}
 	}
 
-	private CompatPack readPack(File dir) throws Exception {
-		return readPack(dir, "");
+	private CompatPack readReadyFamilyForInstall(File targetDir) {
+		try {
+			List<CompatPack> packs = readPacks(targetDir);
+			return allTargetsReady(packs) ? packs.get(0) : null;
+		} catch (Exception exception) {
+			Log.w(TAG, "Unreadable installed pack; allowing repair of " + targetDir.getName(), exception);
+			return null;
+		}
 	}
+
+	private static boolean allTargetsReady(List<CompatPack> packs) {
+		if (packs.isEmpty()) {
+			return false;
+		}
+		for (CompatPack pack : packs) {
+			if (!pack.ready) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private CompatPack replaceInstalledPack(File packRoot, File targetDir, File importRoot) throws Exception {
+		FileBrowserSupport.ensureDirectory(getCompatPacksRootDir());
+		File backup = null;
+		if (targetDir.exists()) {
+			backup = new File(importRoot, "compat-backup-" + UUID.randomUUID());
+			if (!targetDir.renameTo(backup)) {
+				throw new IOException("Unable to back up existing compatibility pack: " + targetDir.getName());
+			}
+		}
+		boolean published = false;
+		try {
+			// Both directories are on the same private filesystem. Never expose a partial copy.
+			if (!packRoot.renameTo(targetDir)) {
+				throw new IOException("Unable to publish compatibility pack: " + targetDir.getName());
+			}
+			published = true;
+			List<CompatPack> installed = readPacks(targetDir);
+			if (!allTargetsReady(installed)) {
+				throw new IOException("Installed compatibility pack is incomplete: " + targetDir.getName());
+			}
+			FileBrowserSupport.deleteRecursively(backup);
+			return installed.get(0);
+		} catch (Exception exception) {
+			if (published) {
+				FileBrowserSupport.deleteRecursively(targetDir);
+			}
+			if (backup != null && !backup.renameTo(targetDir)) {
+				exception.addSuppressed(new IOException("Could not restore previous pack; it remains at " + backup));
+			}
+			throw exception;
+		}
+	}
+
 
 	private CompatPack readSelectionPack(File dir, String requestedTargetId) throws Exception {
 		CompatPack pack = readPack(dir, requestedTargetId);
@@ -602,7 +737,10 @@ public final class CompatPackManager {
 	}
 
 	private CompatPack readPack(File dir, String requestedTargetId) throws Exception {
-		List<CompatPack> packs = readPacks(dir);
+		List<CompatPack> packs;
+		synchronized (PACK_STORAGE_LOCK) {
+			packs = readPacks(dir);
+		}
 		if (packs.isEmpty()) {
 			return null;
 		}
@@ -646,8 +784,8 @@ public final class CompatPackManager {
 				if (TextUtils.isEmpty(targetVersion) && !targetVersions.isEmpty()) {
 					targetVersion = targetVersions.get(0);
 				}
-				File dll = new File(dir, readArtifactPath(target, "dll", ARTIFACTS_DIR_NAME + "/" + targetId + "/" + ENTRY_DLL));
-				File overlay = new File(dir, readArtifactPath(target, "overlay_pck", ARTIFACTS_DIR_NAME + "/" + targetId + "/" + ENTRY_OVERLAY_PCK));
+				File dll = resolvePackPath(dir, readArtifactPath(target, "dll", ARTIFACTS_DIR_NAME + "/" + targetId + "/" + ENTRY_DLL));
+				File overlay = resolvePackPath(dir, readArtifactPath(target, "overlay_pck", ARTIFACTS_DIR_NAME + "/" + targetId + "/" + ENTRY_OVERLAY_PCK));
 				packs.add(new CompatPack(
 					packId,
 					targetId,
@@ -668,7 +806,7 @@ public final class CompatPackManager {
 					dll,
 					overlay,
 					manifest,
-					dll.isFile() && overlay.isFile()
+					isCompleteFile(dll) && isCompleteFile(overlay)
 				));
 			}
 			return packs;
@@ -701,7 +839,7 @@ public final class CompatPackManager {
 			dll,
 			overlay,
 			manifest,
-			dll.isFile() && overlay.isFile()
+			isCompleteFile(dll) && isCompleteFile(overlay)
 		));
 		return packs;
 	}
@@ -762,36 +900,144 @@ public final class CompatPackManager {
 		return TextUtils.isEmpty(value) ? fallback : value;
 	}
 
-	private void validatePackArtifacts(File packRoot, JSONObject manifest) throws IOException {
+	private void validatePackHeader(JSONObject manifest) throws IOException {
+		int schema = positiveManifestInt(manifest, "schema", 1);
+		int minCode = positiveManifestInt(manifest, "min_launcher_version_code", 0);
+		positiveManifestInt(manifest, "compat_revision", 0);
+		if (schema > MAX_MANIFEST_SCHEMA || minCode > BuildConfig.VERSION_CODE) {
+			throw new LauncherUpdateRequiredException(minCode, manifest.optString("min_launcher_version_name", ""), schema);
+		}
+	}
+
+	private int positiveManifestInt(JSONObject manifest, String key, int fallback) throws IOException {
+		if (!manifest.has(key)) {
+			return fallback;
+		}
+		Object value = manifest.opt(key);
+		if (value instanceof Integer || value instanceof Long) {
+			long number = ((Number) value).longValue();
+			if (number > 0 && number <= Integer.MAX_VALUE) {
+				return (int) number;
+			}
+		}
+		throw new IOException("Invalid compatibility manifest field: " + key);
+	}
+
+	private void validateReleaseManifest(JSONObject manifest, CompatPackRelease release) throws IOException {
+		if (!release.packId.equals(manifest.opt("pack_id"))
+				|| !release.compatVersion.equals(manifest.opt("compat_version"))
+				|| manifest.optInt("schema", 0) != MAX_MANIFEST_SCHEMA || release.manifestSchema != MAX_MANIFEST_SCHEMA
+				|| manifest.optInt("compat_revision", 0) != release.compatRevision
+				|| manifest.optInt("min_launcher_version_code", 0) != release.minLauncherVersionCode
+				|| PACK_KIND_OFFLINE_BOOTSTRAP.equals(manifest.optString("pack_kind"))) {
+			throw new IOException("Compatibility pack manifest does not match the signed release.");
+		}
+		JSONArray targets = manifest.optJSONArray("targets");
+		if (targets == null || targets.length() != release.targets.size()) {
+			throw new IOException("Compatibility pack targets do not match the signed release.");
+		}
+		Set<String> seen = new HashSet<>();
+		for (int i = 0; i < targets.length(); i++) {
+			JSONObject target = targets.optJSONObject(i);
+			String id = target == null ? "" : target.optString("target_id", "");
+			CompatPackReleaseTarget signed = null;
+			for (CompatPackReleaseTarget candidate : release.targets) {
+				if (candidate.targetId.equals(id)) {
+					signed = candidate;
+					break;
+				}
+			}
+			if (signed == null || !seen.add(id) || !id.equals(sanitizeId(id))) {
+				throw new IOException("Unexpected compatibility target in the downloaded pack: " + id);
+			}
+			List<String> versions = readTargetVersions(target);
+			String version = target.optString("version", "");
+			if (version.isEmpty() && !versions.isEmpty()) {
+				version = versions.get(0);
+			}
+			Set<String> signedVersions = caseInsensitiveSet(signed.versions);
+			if (!signed.version.isEmpty()) {
+				signedVersions.add(signed.version.toLowerCase(Locale.ROOT));
+			}
+			if (!version.equalsIgnoreCase(signed.version) || !caseInsensitiveSet(versions).equals(signedVersions)
+					|| !caseInsensitiveSet(readTargetDllShas(target)).equals(caseInsensitiveSet(signed.sts2DllSha256s))) {
+				throw new IOException("Compatibility target match data differs from the signed release: " + id);
+			}
+		}
+	}
+
+	private static Set<String> caseInsensitiveSet(List<String> values) {
+		Set<String> result = new HashSet<>();
+		for (String value : values) {
+			result.add(value.toLowerCase(Locale.ROOT));
+		}
+		return result;
+	}
+
+	private void validatePackArtifacts(File packRoot, JSONObject manifest, boolean requireSha256Sums,
+			CancellationSignal cancellation) throws Exception {
 		validatePackManifestMatchRules(manifest);
-		if (manifest.optInt("schema", 1) >= 2 && manifest.optJSONArray("targets") != null) {
+		Set<String> requiredPaths = new HashSet<>();
+		if (manifest.optInt("schema", 1) == 2) {
 			JSONArray targets = manifest.optJSONArray("targets");
-			if (targets.length() <= 0) {
+			if (targets == null || targets.length() == 0) {
 				throw new IOException("Compatibility pack manifest has no targets.");
 			}
-			int readyTargets = 0;
+			Set<String> targetIds = new HashSet<>();
 			for (int i = 0; i < targets.length(); i++) {
 				JSONObject target = targets.optJSONObject(i);
 				if (target == null) {
-					continue;
+					throw new IOException("Invalid compatibility pack target.");
 				}
 				String targetId = sanitizeId(target.optString("target_id", target.optString("id", "")));
 				if (TextUtils.isEmpty(targetId)) {
 					targetId = "target-" + (i + 1);
 				}
-				File dll = new File(packRoot, readArtifactPath(target, "dll", ARTIFACTS_DIR_NAME + "/" + targetId + "/" + ENTRY_DLL));
-				File overlay = new File(packRoot, readArtifactPath(target, "overlay_pck", ARTIFACTS_DIR_NAME + "/" + targetId + "/" + ENTRY_OVERLAY_PCK));
-				requireFile(dll, "Missing target " + targetId + " " + ENTRY_DLL);
-				requireFile(overlay, "Missing target " + targetId + " " + ENTRY_OVERLAY_PCK);
-				readyTargets++;
+				if (!targetIds.add(targetId)) {
+					throw new IOException("Duplicate compatibility target: " + targetId);
+				}
+				String prefix = ARTIFACTS_DIR_NAME + "/" + targetId + "/";
+				requiredPaths.add(readArtifactPath(target, "dll", prefix + ENTRY_DLL));
+				requiredPaths.add(readArtifactPath(target, "overlay_pck", prefix + ENTRY_OVERLAY_PCK));
 			}
-			if (readyTargets <= 0) {
-				throw new IOException("Compatibility pack manifest has no readable targets.");
-			}
-			return;
+			requiredPaths.add(MANIFEST_FILE_NAME);
+		} else {
+			// Historical schema 1 releases listed only these two files in SHA256SUMS.
+			requiredPaths.add(ENTRY_DLL);
+			requiredPaths.add(ENTRY_OVERLAY_PCK);
 		}
-		requireFile(new File(packRoot, ENTRY_DLL), "Missing " + ENTRY_DLL);
-		requireFile(new File(packRoot, ENTRY_OVERLAY_PCK), "Missing " + ENTRY_OVERLAY_PCK);
+		for (String path : requiredPaths) {
+			requireFile(resolvePackPath(packRoot, path), "Missing compatibility pack file: " + path);
+		}
+		File sums = new File(packRoot, CHECKSUM_FILE_NAME);
+		if (requireSha256Sums || sums.exists()) {
+			verifyPackChecksums(packRoot, sums, requiredPaths, cancellation);
+		}
+	}
+
+	private void verifyPackChecksums(File packRoot, File sums, Set<String> requiredPaths,
+			CancellationSignal cancellation) throws Exception {
+		requireFile(sums, "Missing compatibility pack SHA256SUMS.");
+		Set<String> seen = new HashSet<>();
+		try (BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(sums), StandardCharsets.UTF_8))) {
+			String line;
+			while ((line = reader.readLine()) != null) {
+				throwIfCancelled(cancellation);
+				Matcher match = CHECKSUM_LINE.matcher(line);
+				if (!match.matches()) {
+					throw new IOException("Invalid compatibility pack SHA256SUMS line.");
+				}
+				String path = match.group(2);
+				File file = resolvePackPath(packRoot, path);
+				if (!seen.add(path) || CHECKSUM_FILE_NAME.equals(path) || !file.isFile()
+						|| !sha256(file, cancellation).equalsIgnoreCase(match.group(1))) {
+					throw new IOException("Compatibility pack SHA-256 verification failed: " + path);
+				}
+			}
+		}
+		if (!seen.containsAll(requiredPaths)) {
+			throw new IOException("Compatibility pack SHA256SUMS does not cover its manifest and required artifacts.");
+		}
 	}
 
 	private void validatePackManifestMatchRules(JSONObject manifest) throws IOException {
@@ -898,36 +1144,84 @@ public final class CompatPackManager {
 		throw new IOException("Compatibility pack manifest is missing: " + MANIFEST_FILE_NAME);
 	}
 
-	private void extractZipSafely(File zipFile, File targetRoot) throws Exception {
-		String rootPath = targetRoot.getCanonicalPath();
+	private File locateReleasePackRoot(File stagingRoot, String packId) throws IOException {
+		File nested = new File(stagingRoot, packId);
+		File root = new File(stagingRoot, MANIFEST_FILE_NAME).isFile() ? stagingRoot : nested;
+		requireFile(new File(root, MANIFEST_FILE_NAME), "Compatibility release manifest is missing.");
+		return root;
+	}
+
+	private void extractZipSafely(File zipFile, File targetRoot, InstallPolicy policy) throws IOException {
+		boolean remote = policy.release != null;
+		Set<String> seen = new HashSet<>();
+		long total = 0;
+		byte[] buffer = new byte[64 * 1024];
 		try (ZipFile archive = new ZipFile(zipFile)) {
+			if (remote && archive.size() > MAX_REMOTE_ZIP_ENTRIES) {
+				throw new IOException("Too many files in the compatibility release ZIP.");
+			}
 			Enumeration<? extends ZipEntry> entries = archive.entries();
 			while (entries.hasMoreElements()) {
+				throwIfCancelled(policy.cancellation);
 				ZipEntry entry = entries.nextElement();
-				String name = normalizeEntryName(entry.getName());
-				if (name.isEmpty() || name.startsWith("__MACOSX/") || name.contains(":")) {
+				String name = remote ? entry.getName() : normalizeEntryName(entry.getName());
+				if (!remote && (name.isEmpty() || name.startsWith("__MACOSX/") || name.contains(":"))) {
 					continue;
 				}
-				if (name.equals("..") || name.startsWith("../") || name.contains("/../") || name.endsWith("/..")) {
-					throw new IOException("Blocked invalid zip entry: " + entry.getName());
+				if (entry.isDirectory() && name.endsWith("/")) {
+					name = name.substring(0, name.length() - 1);
 				}
-				File out = new File(targetRoot, name);
-				String outPath = out.getCanonicalPath();
-				if (!outPath.equals(rootPath) && !outPath.startsWith(rootPath + File.separator)) {
-					throw new IOException("Blocked invalid zip entry: " + entry.getName());
+				File out = resolvePackPath(targetRoot, name);
+				if (!seen.add(name)) {
+					throw new IOException("Duplicate compatibility pack archive entry: " + name);
 				}
 				if (entry.isDirectory()) {
 					FileBrowserSupport.ensureDirectory(out);
 					continue;
 				}
-				File parent = out.getParentFile();
-				if (parent != null) {
-					FileBrowserSupport.ensureDirectory(parent);
-				}
-				try (InputStream inputStream = archive.getInputStream(entry); OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(out))) {
-					copy(inputStream, outputStream);
+				FileBrowserSupport.ensureDirectory(out.getParentFile());
+				boolean metadata = MANIFEST_FILE_NAME.equals(out.getName()) || CHECKSUM_FILE_NAME.equals(out.getName());
+				try (InputStream input = archive.getInputStream(entry); OutputStream output = new BufferedOutputStream(new FileOutputStream(out))) {
+					long entrySize = 0;
+					int read;
+					while ((read = input.read(buffer)) != -1) {
+						throwIfCancelled(policy.cancellation);
+						total += read;
+						entrySize += read;
+						if (remote && (total > MAX_REMOTE_UNZIPPED_BYTES || (metadata && entrySize > MAX_REMOTE_METADATA_BYTES))) {
+							throw new IOException("Compatibility release exceeds its unpacked size limit.");
+						}
+						output.write(buffer, 0, read);
+					}
 				}
 			}
+		}
+	}
+
+	private static File resolvePackPath(File root, String name) throws IOException {
+		if (name.isEmpty() || name.indexOf('\\') >= 0 || name.indexOf(':') >= 0) {
+			throw new IOException("Invalid compatibility pack path: " + name);
+		}
+		for (int i = 0; i < name.length(); i++) {
+			if (Character.isISOControl(name.charAt(i))) {
+				throw new IOException("Invalid compatibility pack path.");
+			}
+		}
+		for (String component : name.split("/", -1)) {
+			if (component.isEmpty() || component.equals(".") || component.equals("..")) {
+				throw new IOException("Invalid compatibility pack path: " + name);
+			}
+		}
+		File file = new File(root, name);
+		if (!file.getCanonicalPath().startsWith(root.getCanonicalPath() + File.separator)) {
+			throw new IOException("Compatibility pack path escapes its directory: " + name);
+		}
+		return file;
+	}
+
+	private static void throwIfCancelled(CancellationSignal cancellation) {
+		if (cancellation != null) {
+			cancellation.throwIfCanceled();
 		}
 	}
 
@@ -940,9 +1234,13 @@ public final class CompatPackManager {
 	}
 
 	private void requireFile(File file, String message) throws IOException {
-		if (!file.isFile() || file.length() <= 0) {
+		if (!isCompleteFile(file)) {
 			throw new IOException(message);
 		}
+	}
+
+	private static boolean isCompleteFile(File file) {
+		return file.isFile() && file.length() > 0;
 	}
 
 	private void copyStreamToFile(InputStream inputStream, File destination) throws IOException {
@@ -981,12 +1279,13 @@ public final class CompatPackManager {
 		}
 	}
 
-	private String sha256(File file) throws Exception {
+	private String sha256(File file, CancellationSignal cancellation) throws Exception {
 		MessageDigest digest = MessageDigest.getInstance("SHA-256");
 		try (InputStream inputStream = new BufferedInputStream(new FileInputStream(file))) {
 			byte[] buffer = new byte[8192];
 			int read;
 			while ((read = inputStream.read(buffer)) != -1) {
+				throwIfCancelled(cancellation);
 				digest.update(buffer, 0, read);
 			}
 		}
@@ -1004,11 +1303,12 @@ public final class CompatPackManager {
 	}
 
 	private String hexDigest(byte[] digest) {
-		StringBuilder builder = new StringBuilder();
-		for (byte value : digest) {
-			builder.append(String.format(Locale.US, "%02x", value & 0xff));
+		char[] hex = new char[digest.length * 2];
+		for (int i = 0; i < digest.length; i++) {
+			hex[2 * i] = Character.forDigit((digest[i] & 0xff) >>> 4, 16);
+			hex[2 * i + 1] = Character.forDigit(digest[i] & 0xf, 16);
 		}
-		return builder.toString();
+		return new String(hex);
 	}
 
 	private String queryDisplayName(Uri uri) {
@@ -1100,6 +1400,62 @@ public final class CompatPackManager {
 
 	private SharedPreferences prefs() {
 		return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+	}
+
+	interface BundledAssets {
+		String[] list() throws IOException;
+		InputStream open(String name) throws IOException;
+	}
+
+	public static final class BundledInstallResult {
+		public final int changedCount;
+		public final boolean preservedNewerOrExternal;
+
+		private BundledInstallResult(int changedCount, boolean preservedNewerOrExternal) {
+			this.changedCount = changedCount;
+			this.preservedNewerOrExternal = preservedNewerOrExternal;
+		}
+	}
+
+	public static final class LauncherUpdateRequiredException extends IOException {
+		public final int minLauncherVersionCode;
+		public final String minLauncherVersionName;
+		public final int manifestSchema;
+
+		LauncherUpdateRequiredException(int minLauncherVersionCode, String minLauncherVersionName, int manifestSchema) {
+			super("Compatibility pack requires a newer launcher (manifest schema " + manifestSchema
+				+ ", minimum launcher version code " + minLauncherVersionCode + ").");
+			this.minLauncherVersionCode = minLauncherVersionCode;
+			this.minLauncherVersionName = minLauncherVersionName;
+			this.manifestSchema = manifestSchema;
+		}
+	}
+
+	private static final class InstallPolicy {
+		static final InstallPolicy DEFAULT = new InstallPolicy(false, null, null);
+		static final InstallPolicy FORCE_BUNDLED = new InstallPolicy(true, null, null);
+
+		final boolean forceOverwrite;
+		final CompatPackRelease release;
+		final CancellationSignal cancellation;
+
+		InstallPolicy(boolean forceOverwrite, CompatPackRelease release, CancellationSignal cancellation) {
+			this.forceOverwrite = forceOverwrite;
+			this.release = release;
+			this.cancellation = cancellation;
+		}
+	}
+
+	private static final class InstallResult {
+		final CompatPack pack;
+		final boolean changed;
+		final boolean preserved;
+
+		InstallResult(CompatPack pack, boolean changed, boolean preserved) {
+			this.pack = pack;
+			this.changed = changed;
+			this.preserved = preserved;
+		}
 	}
 
 	private static final class PayloadIdentity {
