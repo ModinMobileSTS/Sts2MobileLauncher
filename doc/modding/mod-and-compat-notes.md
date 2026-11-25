@@ -203,7 +203,7 @@ Java 附加设置页通过 `ExtraSettingsRepository` 写入当前 launch profile
 | `v0.113.0` / `v0.113.1` public beta（保留） | `v0.113.0`（稳定 id，显示 v0.113.x） | `.env`: `STS2_ORIGINAL_V1130_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1130_ROOT`（历史名，指向 v0.113.1） | `original-v0.113.0` |
 | `v0.114.0` public beta（当前） | `v0.114.0` | `.env`: `STS2_ORIGINAL_V1140_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1140_ROOT` | `original-v0.114.0` |
 
-当前 full family `compat_version=0.7.3-dev` 包含 11 个 active target。v0.111.1 stable / `public` 与 v0.111.0 beta / `public-beta` 仍分开记录，复用 `original-v0.111.0`、现有 V1110 引用及 `STS2_TARGET_1110`，不新增 flavor 或 V1111 变量。Workshop `auto` 优先使用 payload 的 Steam 来源分支，归档没有该字段时才回落到 target 的 `steam_branch`；不能只给旧 beta variant 追加 .1 的版本/SHA。
+当前本地 matrix 有 11 个 active target，默认发行 APK 内置官方签名包而非本地源码产物。v0.111.1 stable / `public` 与 v0.111.0 beta / `public-beta` 仍分开记录，复用 `original-v0.111.0`、现有 V1110 引用及 `STS2_TARGET_1110`，不新增 flavor 或 V1111 变量。Workshop `auto` 优先使用 payload 的 Steam 来源分支，归档没有该字段时才回落到 target 的 `steam_branch`；不能只给旧 beta variant 追加 .1 的版本/SHA。
 
 开发步骤建议：
 
@@ -221,9 +221,9 @@ tools/android/build-port-mod.sh
 # 或
 (cd port-mod && ./tools/build-compat-pack.sh)
 
-# 4. 构建内置包/导入版 APK
-tools/android/stage-bundled-compat-packs.sh
-tools/package/build_importer_apk.sh
+# 4. 验证未发布的本地改动：stage 内置包 / 构建导入版 APK
+COMPAT_PACK_BUILD_MODE=matrix tools/android/stage-bundled-compat-packs.sh
+COMPAT_PACK_BUILD_MODE=matrix tools/package/build_importer_apk.sh
 ```
 
 只调试当前 beta target 时可运行 `(cd port-mod && ./tools/build-compat-matrix.sh --target v0.114.0)`；保留的 v0.113.x 使用 `--target v0.113.0`。单独构建当前 stable/public v0.111.1 用 `--target v0.111.1`，compile gate 仍为 `original-v0.111.0` / V1110 / `STS2_TARGET_1110`，并保留旧 beta `--target v0.111.0`。共享 v0.109.x / v0.110.x 仍用各自的历史 target id 和 flavor，引用用 v0.109.1 / v0.110.1。legacy schema 1 诊断包用 `REFERENCE_FLAVOR=original` / `original-v0.106.1` / `original-v0.107.0` 指定原版 gate。
@@ -247,9 +247,9 @@ v0.114.0 的托管 API 和方法 IL、宝箱投票消息及 PCK 均有变化，�
 3. 在 `port-mod/targets/active/<target_id>/target.json` 新增 target 描述，包含 `target_id`、`versions`、`channel`、`steam_branch`、`reference_flavor`、`source`、可选 `sts2_dll_sha256` 与 compile constants；同一 API-compatible variant 且分支等元数据相同的多个原版 DLL 可使用去重 SHA 字符串数组。若 Steam 分支不同，即使共享实现也应保留独立 metadata target。
 4. 若源码需要版本差异，优先新增 target adapter/capability；只有无法避免时才使用少量条件编译。
 5. 用对应 `ReferenceFlavor` 做 compile gate，并运行 `port-mod/tools/build-compat-matrix.sh` 覆盖所有 active target。
-6. 运行 `tools/android/stage-bundled-compat-packs.sh`。
+6. 运行 `COMPAT_PACK_BUILD_MODE=matrix tools/android/stage-bundled-compat-packs.sh`，确保新 target 被 stage；默认 release 模式不包含未发布的新 target。
 7. 更新 `AGENTS.md`、`doc/architecture/project-structure.md`、本文件及相关构建/加载文档。
-8. 构建 `tools/package/build_importer_apk.sh` 并做导入/启动 smoke test；完成后据实在 `.agent/agent-docs/changelog/` 记录实际证据与未验证项，不提前宣称通过。
+8. 用 `COMPAT_PACK_BUILD_MODE=matrix tools/package/build_importer_apk.sh` 构建并做导入/启动 smoke test；完成后据实在 `.agent/agent-docs/changelog/` 记录实际证据与未验证项。正式发布按 [构建文档 §6](../build/building-and-packaging.md#6-构建内置兼容包) 签名、发布及验签内置。
 9. 只有需要 legacy schema 1 对照包时，才额外新建 `compat/vX.Y.Z` 分支、新增/更新 `compat_manifest.*.json`，并更新 `tools/android/bundled-compat-packs.json`。
 
 ## 9. patch 开发注意事项

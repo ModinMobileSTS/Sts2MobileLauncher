@@ -27,7 +27,7 @@ tools/deps/prepare-external-projects.sh
 常用依赖：
 
 - Bash
-- Python 3
+- Python 3；默认内置官方兼容包和本地签名发布都需要 `cryptography`（可安装在本机构建 venv 中）
 - rsync
 - JDK（必须有 `javac`，Java 17+；本地常用 JDK 21）
 - Android SDK / NDK / CMake
@@ -87,7 +87,7 @@ v0.111.1 与 v0.111.0 复用现有 V1110 引用、`ReferenceFlavor=original-v0.1
 - 默认 build type：`release`，脚本执行 `assembleMonoRelease`
 - ABI：`arm64-v8a`
 - applicationId：`com.megacrit.sts2re`
-- versionName/versionCode：`v0.1.13` / `115`
+- versionName/versionCode：`v0.1.14` / `116`
 
 `release` build type 当前保留 `debuggable true`，便于本地 sideload 和 `run-as` 验证。package 脚本使用 `RELEASE_KEYSTORE_*` 或 `local.properties` 中的签名配置；本地测试默认可使用 Android debug keystore。**已发布过 APK 后，更新必须保留原 keystore 中的同一私钥和证书**；即使原来使用 debug 证书，也不能直接换成新 release key 或重新生成同名 debug keystore，否则旧用户不能正常覆盖安装。正式发布的安全策略需单独规划，不能把更换签名 key 当作补齐签名方案。
 
@@ -287,6 +287,14 @@ REFERENCE_FLAVOR=original tools/android/build-port-mod.sh
 
 ## 6. 构建内置兼容包
 
+先按目的选流程：
+
+| 目的 | 怎么做 |
+| --- | --- |
+| **A. 只更新兼容包，已安装的玩家走 OTA** | [发布签名兼容包 Release](#61-本地签名与发布官方兼容包)，不构建或发布新 APK。 |
+| **B. 发新 APK，让新装和离线玩家开箱使用官方包** | [固定已发布的 Release tag 后打包](#62-构建带官方兼容包的-apk)。 |
+| **C. 测试尚未发布的本地兼容补丁** | [显式选择 `matrix` 构建](#63-本地开发与测试)，不上传 Release。 |
+
 完整 APK 打包使用统一 staging 入口：
 
 ```bash
@@ -300,7 +308,7 @@ android/assets/compat_packs/sts2-android-compat.zip
 android/assets/compat_packs/sts2-android-offline-bootstrap.zip
 ```
 
-`sts2-android-compat.zip` 是 full compatibility family 包，当前 `compat_version=0.7.3-dev`。它默认使用 flat matrix 模式：脚本读取 `port-mod/targets/active/*/target.json`，从当前 checkout 依次用各目标的 `ReferenceFlavor` 编译，输出一个 schema 2 family 兼容包：
+默认 `COMPAT_PACK_BUILD_MODE=release`。`sts2-android-compat.zip` 是从 [官方 Release](https://github.com/ModinMobileSTS/sts2-android-compat/releases) 验签后原样内置的 schema 2 full family，当前固定 `v0.8.0`（revision 800，11 个 target）。`matrix` 本地模式生成相同结构的开发包：
 
 ```text
 android/assets/compat_packs/sts2-android-compat.zip
@@ -312,7 +320,7 @@ android/assets/compat_packs/sts2-android-compat.zip
 
 `sts2-android-offline-bootstrap.zip` 由 `offline-bootstrap/tools/build-offline-pack.sh` 构建。它不静态引用 `sts2.dll`，manifest 使用 `pack_kind=offline-bootstrap`、`match_mode=offline-wildcard` 与 `versions=["*"]`，启动器只会在没有任何已安装 full compat 包按 SHA/version 匹配当前 payload 时自动推荐它。构建脚本会先运行 `offline-bootstrap/tools/test-offline-contract.sh`：合成测试覆盖可接受与必须拒绝的 `ModelDb.Init` API 形状，并对本机已配置的所有 original reference 做反射契约检查。当前离线包使用 `compat_version=0.2.0-dev`、`probe_contract=offline-bootstrap-v2`；首次用它启动某个 pack/version/SHA 组合时弹风险确认，真实 ModelDb two-phase 成功后才标记 `ready`，已知终态失败的同一组合不再自动匹配。
 
-compat 与 offline bootstrap 构建脚本会把 Git branch / commit / commit subject 写入构建元数据和 manifest；传给 MSBuild 的 branch/subject 会先转义逗号、分号和百分号，避免提交标题中的标点被 MSBuild 当成多个 `-p:` 属性解析。
+本地 matrix 与 offline bootstrap 构建脚本会把 Git branch / commit / commit subject 写入构建元数据和 manifest；传给 MSBuild 的 branch/subject 会先转义逗号、分号和百分号，避免提交标题中的标点被 MSBuild 当成多个 `-p:` 属性解析。`release` 模式不修改已签名 ZIP 的 metadata 或任何字节。
 
 可单独运行离线契约验证：
 
@@ -320,7 +328,7 @@ compat 与 offline bootstrap 构建脚本会把 Git branch / commit / commit sub
 offline-bootstrap/tools/test-offline-contract.sh
 ```
 
-如果只需要构建 full compatibility family 包，可直接运行：
+如果只需要 stage full family 包（不构建 offline bootstrap），可直接运行：
 
 ```bash
 tools/android/stage-bundled-compat-packs.sh
@@ -352,7 +360,7 @@ android/assets/compat_packs/*.zip
 
 该目录下的 zip 是构建产物，已 gitignore，不再由 git 跟踪；提交前不要 `git add -f` 这些 zip。
 
-新版 APK 安装内置 matrix 包后，启动器会把旧 bundled schema 1 包选择迁移到 `sts2-android-compat` family 包的对应 target。新建启动配置的自动匹配也会在同等版本/SHA 命中时优先使用 schema 2 family 包，避免继续绑定旧单目标包。
+新版 APK 安装内置 schema 2 family 包后，启动器会把旧 bundled schema 1 包选择迁移到 `sts2-android-compat` family 包的对应 target。新建启动配置的自动匹配也会在同等版本/SHA 命中时优先使用 schema 2 family 包。内置包不会降级完好的已安装包，也不会用同 revision 的内置 ZIP 覆盖完好的在线或手动导入包；自动离线切换逻辑不受 staging 模式影响。
 
 legacy 分支构建模式仍可显式启用，用于回退诊断或对照旧发布包：
 
@@ -372,7 +380,7 @@ cd port-mod
 ./tools/build-compat-matrix.sh
 ```
 
-`--target` 只构建单个 target；不带参数会构建 `targets/active/` 下所有目标。未来停止维护旧版本时，将对应目录移到 `targets/archived/`，默认 matrix 构建就不会再内置它；需要临时导出 legacy 目标时可用 `BUILD_ARCHIVED_TARGETS=1`。
+`--target` 只构建单个 target；不带参数会构建 `targets/active/` 下所有目标。未来停止维护旧版本时，将对应目录移到 `targets/archived/`，后续 matrix 不再构建它；发行 APK 需更新已发布的 tag 才会改变内置目标。需要临时导出 legacy 目标时可用 `BUILD_ARCHIVED_TARGETS=1`。
 
 修改超过四人的房间 UI 适配后，先运行不含商业代码的合成回归，再跑完整 matrix：
 
@@ -385,7 +393,9 @@ port-mod/tools/build-compat-matrix.sh
 
 只发布 schema 2 完整 family 包到 [ModinMobileSTS/sts2-android-compat](https://github.com/ModinMobileSTS/sts2-android-compat/releases)。在维护者本机用已配置的原版引用构建；不要把 `sts2.dll`、游戏 PCK / 资源或 Ed25519 私钥提交到父仓库、子模块或公开 CI。该密钥与 APK keystore 无关。需要 Python 3（含 `cryptography`）、原有 .NET/原版引用，以及正式发布时有该仓库发布权限的 `gh auth login`。
 
-已发布的 [v0.8.0](https://github.com/ModinMobileSTS/sts2-android-compat/releases/tag/v0.8.0) 是首次 OTA 联调的兼容包 Release（Latest，revision 800），不含 launcher APK。测试需要从当前带 `sts2-compat-release-v1` 公钥的源码执行 `tools/package/build_importer_apk.sh`，安装后在“版本 → 兼容包 → 在线更新”刷新并安装。仅满足 versionCode 115 不代表旧 APK 已包含该公钥。后续签同一索引历史时应继续使用已配置的外部 PEM，不要再次执行 `keygen` 生成同 ID 的另一把密钥。
+此流程只更新兼容包：在 `port-mod/main` 修改并用全部 active target 验证，通过后先在 `port-mod` 提交并推送，父仓库同步其指针；再从本机运行下方的发布命令。已有受信任公钥且满足最低 versionCode 的启动器可检查并提示更新，玩家在“版本 → 兼容包 → 在线更新”也能主动刷新并安装，不需要新 APK。
+
+已发布的 [v0.8.0](https://github.com/ModinMobileSTS/sts2-android-compat/releases/tag/v0.8.0) 是首次 OTA 联调的兼容包 Release（revision 800），不含 launcher APK。仅满足 versionCode 115 不代表旧 APK 已包含 `sts2-compat-release-v1` 公钥。后续签同一索引历史时继续使用已配置的外部 PEM，不要再次执行 `keygen` 生成同 ID 的另一把密钥。
 
 **首次发版前，生成密钥并将公钥编入启动器：**
 
@@ -396,7 +406,7 @@ port-mod/tools/compat-release-signing.py keygen \
 ```
 
 1. PEM 保存在仓库外，`keygen` 写入 `0600` 且默认拒绝覆盖。仅在本机 `.env` 设置 `COMPAT_RELEASE_SIGNING_KEY_FILE="$HOME/.config/sts2-re/compat-release-ed25519.pem"`、`COMPAT_RELEASE_SIGNING_KEY_ID=sts2-compat-release-v1`；也可用 `local.properties` 的 `compat.release_signing_key_file` / `compat.release_signing_key_id` 配置外部路径。
-2. 将输出的 **32 字节 raw public key 的 Base64** 与对应 `key_id` 加入 [`CompatPackReleaseTrust.java`](../../android/src/com/godot/game/CompatPackReleaseTrust.java) 的受信任公钥表，只提交公钥。空表、未知 key id 或签名错误均拒绝在线索引。重新构建并分发带公钥的 importer APK；不带该公钥的旧 APK 不能信任这批 Release。
+2. 将输出的 **32 字节 raw public key 的 Base64** 与对应 `key_id` 加入 [`CompatPackReleaseTrust.java`](../../android/src/com/godot/game/CompatPackReleaseTrust.java) 的 `trustedPublicKeys()`，只提交公钥。APK 内置 Release 也只读这份公钥表，不另配信任根；当前工具识别 `Collections.singletonMap` 字面量，公钥表格式改变时须同步更新解析与测试。空表、未知 key id 或签名错误均拒绝。用 [§6.2](#62-构建带官方兼容包的-apk) 构建带这份公钥的 importer APK；首次尚无已签名 Release 时可用 [§6.3](#63-本地开发与测试) 的 `matrix` 模式验收启动器。
 3. 正式上传前，可在未提交的 checkout 用独立测试密钥验证。不要把临时公钥编入发行 APK，也不要发布用它签名的资产：
 
 ```bash
@@ -414,7 +424,7 @@ python3 port-mod/tools/test-compat-release-signing.py
 )
 ```
 
-**正式发布（以下命令会上传）：**父仓库与 `port-mod` 均需干净；确保 submodule HEAD 已存在于目标 GitHub 仓库。`--revision` 必须高于历史发布，`--min-launcher-version-code` 按实际可安装的最低启动器设定。直接构建 matrix 可用 `COMPAT_MATRIX_REVISION` / `COMPAT_MIN_LAUNCHER_VERSION_CODE` / `COMPAT_MIN_LAUNCHER_VERSION_NAME` 或对应 CLI flags；当前内置开发版默认 revision 703、最低 code 115。
+**正式发布（以下命令会上传）：**父仓库与 `port-mod` 均需干净；确保 submodule HEAD 已存在于目标 GitHub 仓库。`--revision` 必须高于历史发布，`--min-launcher-version-code` 按实际可安装的最低启动器设定。直接构建 matrix 可用 `COMPAT_MATRIX_REVISION` / `COMPAT_MIN_LAUNCHER_VERSION_CODE` / `COMPAT_MIN_LAUNCHER_VERSION_NAME` 或对应 CLI flags；本地开发默认 `0.7.3-dev`、revision 703、最低 code 115，不继承官方发布号。
 
 ```bash
 port-mod/tools/publish-compat-release.sh \
@@ -426,6 +436,39 @@ port-mod/tools/publish-compat-release.sh \
 脚本默认运行五项 `port-mod` 回归（仅显式 `--skip-tests` 跳过）、构建所有 active target、合并最近最多 15 条已验签记录、签名并自验 ZIP 和包内文件。历史默认由 `gh` 获取；离线可传 `--previous-index PATH`，其签名默认 `PATH.sig`（可用 `--previous-index-sig PATH` 指定）。发布脚本用当前签名公钥验证历史；密钥轮换前需先部署新公钥并用旧公钥认证历史，不能把来源不明的索引重新签名。GitHub 上尚无 Release 才自动从空历史开始；已有 Release 缺签名、网络或验证出错均中止。`--prerelease` 不会移动 GitHub 的稳定 `/latest`，因此启动器从下一次正式稳定 Release 的已签名索引才可看到其保留记录。
 
 产物归档到 ignored 的 `port-mod/dist/compat-release/<tag>/`：ZIP、`compat-index.json`、`compat-index.json.sig`、独立 `compat_manifest.json` 和独立 `SHA256SUMS`。ZIP 内的 `SHA256SUMS` 覆盖 manifest 与全部 variant 文件；独立清单额外附 ZIP 哈希。用 `compat-release-signing.py verify --index ... --sig ... --public-key-base64 ... --expected-key-id ... --zip ... --manifest ...` 可离线完整复核。干跑不调用 `gh`，不会创建 tag 或 Release。
+
+### 6.2 构建带官方兼容包的 APK
+
+1. 确认目标 tag 已按 [§6.1](#61-本地签名与发布官方兼容包) 发布 ZIP、`compat-index.json` 和 `compat-index.json.sig`，且签名 key id 受当前启动器信任。发布新版 APK 时把 [`tools/android/bundled-compat-release.json`](../../tools/android/bundled-compat-release.json) 中的 tag 更新到这次要随包交付的 Release（如发布后从 `v0.8.0` 改为 `v0.8.1`）；固定 tag 比依赖 `latest` 更可复现。
+2. 用默认模式打包。单次构建也可以覆盖 tag，不必改仓库：
+
+   ```bash
+   tools/package/build_importer_apk.sh
+   # 单次测试已发布的 tag；不改仓库 pin
+   COMPAT_BUNDLED_RELEASE_TAG=v0.8.0 tools/package/build_importer_apk.sh
+   ```
+
+   显式设置 `COMPAT_BUNDLED_RELEASE_TAG=latest` 时，在线从官方 `releases/latest/download/` 获取索引和签名，从已签名索引解析最新正式 tag，再取该 tag 的 ZIP。只接受官方 GitHub HTTPS 和三个允许的重定向域名（`github.com`、`objects.githubusercontent.com`、`release-assets.githubusercontent.com`，最多五跳），沿用系统代理，不支持镜像或 URL 前缀。
+3. 构建会用 APK 同一份 Ed25519 公钥验签，检查 tag、schema 2、`min_launcher_version_code <= android/gradle.properties` 的 `export_version_code`、ZIP 字节长度和 SHA-256，以及 ZIP 内 `compat_manifest.json` 和 `SHA256SUMS`；任一错误停止打包，不回退本地编译。通过后直接复制源 ZIP，不解包重打。按下面命令验收并与签名索引的 `zip_sha256` 对比：
+
+   ```bash
+   unzip -p dist/sts2-re-importer.apk assets/compat_packs/sts2-android-compat.zip | sha256sum
+   ```
+
+   APK 内还保留单独构建的 `sts2-android-offline-bootstrap.zip`。新装用户离线就有完整官方包，联网刷新时同 ZIP 的条目按 SHA-256 显示为“已安装”；覆盖安装不降级现有更高版本的包。
+
+固定 tag 首次从 GitHub 下载后缓存到 gitignored 的 `.agent/cache/compat-releases/<tag>/`。每次用缓存仍走相同完整校验；缓存损坏时先移走该 tag 的缓存再重试。断网构建可通过 `COMPAT_BUNDLED_RELEASE_DIR=/path/to/release-assets`（或 `compat.bundled_release_dir`）明确指定带三件套的本地目录；指定后只验证该目录，失败不回退缓存或联网。不会自动读取 `port-mod/dist/compat-release/` 或其他干跑输出，用测试密钥签名的三件套不能内置到发行 APK。
+
+### 6.3 本地开发与测试
+
+测试未发布的 `port-mod` 更改时，不要用默认 Release 模式（它不会编译这些更改进 full family）。本地配置好对应 original 引用后，单次显式使用：
+
+```bash
+COMPAT_PACK_BUILD_MODE=matrix tools/android/stage-bundled-compat-packs.sh
+COMPAT_PACK_BUILD_MODE=matrix tools/package/build_importer_apk.sh
+```
+
+第一条只编译并 stage 当前 checkout 的 active targets；第二条走完整 APK 构建并另带离线兜底。常用本地偏好可设为 `local.properties` 的 `compat.pack_build_mode=matrix`；发布 APK 时移除该覆盖或显式用 `COMPAT_PACK_BUILD_MODE=release`。`legacy` 只用于 schema 1 回退诊断。
 
 ## 7. 游戏版本更新后的 port-mod 语法树审计
 
@@ -482,7 +525,7 @@ tools/package/build_importer_apk.sh
 
 1. 同步 runtime。
 2. 构建当前 compat fallback。
-3. 构建/刷新全部内置 compat pack zip 到 gitignored 的 `android/assets/compat_packs/`。
+3. 按 [§6.2](#62-构建带官方兼容包的-apk) 验签并原样内置固定 tag 的 full family，另构建并 stage offline bootstrap；输出到 gitignored 的 `android/assets/compat_packs/`。测试本地补丁时改用 [§6.3](#63-本地开发与测试)。
 4. 执行 `local.properties` 中的 `android.gradle.task`（默认 `assembleMonoRelease`）。
 5. 验证 APK 的 v1/v2/v3 签名；稳定输出位置已有旧 APK 时比较证书，成功后复制到 `android.importer.dist`（默认 `dist/sts2-re-importer.apk`），移除输出位置残留的 `.idsig` 并输出 APK SHA-256。
 
@@ -509,7 +552,7 @@ tools/package/build_direct_apk.sh
 1. `validate_payload_zip.py` 校验 zip。
 2. 同步 runtime。
 3. 构建当前 compat fallback。
-4. 构建/刷新全部内置 compat pack zip 到 gitignored 的 `android/assets/compat_packs/`。
+4. 用与导入版相同的[兼容包 staging](#6-构建内置兼容包)：默认验签并内置固定 tag 的 full family，另构建 offline bootstrap。
 5. 临时复制 zip 到 `android/assets/payload/SlayTheSpire2.zip`。
 6. 执行 Gradle task。
 7. 按 §3.1 验证 v1/v2/v3 签名和已有稳定 APK 的证书连续性，复制 APK 到 `android.direct.dist`（默认 `dist/sts2-re-direct.apk`），移除输出位置残留的 `.idsig` 并输出 APK SHA-256；脚本退出时删除临时游戏 zip。

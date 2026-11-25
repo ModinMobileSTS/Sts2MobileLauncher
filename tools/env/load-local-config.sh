@@ -51,10 +51,21 @@ sts2_load_dotenv() {
     return 0
   fi
   if [[ -f "$STS2_ENV_FILE" ]]; then
+    # A one-off invocation must win over saved bundling preferences in .env.
+    local name override
+    local -a bundled_release_overrides=()
+    for name in COMPAT_PACK_BUILD_MODE COMPAT_BUNDLED_RELEASE_TAG COMPAT_BUNDLED_RELEASE_DIR; do
+      if [[ -n "${!name:-}" ]]; then
+        bundled_release_overrides+=("$name=${!name}")
+      fi
+    done
     set -a
     # shellcheck disable=SC1090
     source "$STS2_ENV_FILE"
     set +a
+    for override in "${bundled_release_overrides[@]}"; do
+      export "$override"
+    done
   elif [[ "${STS2_REQUIRE_DOTENV:-0}" == "1" ]]; then
     echo "Missing $STS2_ENV_FILE. Copy .env.example to .env and edit local paths." >&2
     return 1

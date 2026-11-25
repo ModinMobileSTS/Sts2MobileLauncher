@@ -32,9 +32,13 @@ runtime.mono_memory_stats_fix=0
 # Default fallback uses the current v0.114.0 public-beta reference. Older flavors
 # remain selectable, including original-v0.113.0 with the v0.113.1 reference.
 compat.default_reference_flavor=original-v0.114.0
-# Use "matrix" for one schema-2 family pack. Set "legacy" only when you need
-# per-version branch packs for back-compat diagnostics.
-compat.pack_build_mode=matrix
+# "release" verifies and embeds the pinned official ZIP. Use "matrix" to test
+# local port-mod changes, or "legacy" for schema-1 branch diagnostics.
+compat.pack_build_mode=release
+# Optional tag override; leave unset to use tools/android/bundled-compat-release.json.
+# compat.bundled_release_tag=v0.8.0
+# Optional offline directory with the signed index, signature, and original ZIP.
+# compat.bundled_release_dir=/path/to/release-assets
 compat.bundled_packs_config=tools/android/bundled-compat-packs.json
 compat.asset_dir=android/assets/compat_packs
 compat.worktree_root=.agent/worktrees/compat-packs

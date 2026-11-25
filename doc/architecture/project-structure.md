@@ -98,13 +98,15 @@ s2_re/
 
 v0.109.1 与 v0.109.0 的托管 API/方法 IL 相同，资源变化仅为繁体中文本地化，因此共用同一个 variant；保留 target id 与 ReferenceFlavor 历史名称可避免已有 launch profile 失效。v0.110.0 修改了输入、联机版本信息、存档与部分玩法 API，因此使用独立 target；v0.110.1 的 compat 源码 IL 与 v0.110.0 等价，因此复用 `v0.110.0` target id 并显示为 v0.110.x。v0.111.0 再次使用独立 target：它把版本、ModelDb hash 与 MOD 校验移到 transport-level handshake，并要求构造 host/client service 时提供 `PeerVersionInfo`；其原版 DLL SHA-256 为 `0861bfa1df347538d932f22d580e75420f08082792eb914e53b4882764acdbe9`。
 
-full family `compat_version=0.7.3-dev` 有 11 个 active target。v0.111.1 stable / `public` 和 v0.111.0 beta / `public-beta` 仍是独立记录，共用 `original-v0.111.0`、现有 V1110 引用、`STS2_TARGET_1110`，无 V1111 变量。两版 API、运行时 IL 与依赖等价，但各有原版 DLL SHA、release 身份及 PCK；归档导入未记录 Steam 分支时，Workshop `auto` 仍分别回落到 `public` / `public-beta`。共享实现不保证 MOD 或跨版本 LAN 兼容。
+官方内置 full family `v0.8.0` 与当前本地 matrix 都有 11 个 target。v0.111.1 stable / `public` 和 v0.111.0 beta / `public-beta` 仍是独立记录，共用 `original-v0.111.0`、现有 V1110 引用、`STS2_TARGET_1110`，无 V1111 变量。两版 API、运行时 IL 与依赖等价，但各有原版 DLL SHA、release 身份及 PCK；归档导入未记录 Steam 分支时，Workshop `auto` 仍分别回落到 `public` / `public-beta`。共享实现不保证 MOD 或跨版本 LAN 兼容。
 
 v0.113.x 使用独立于 v0.111.0 的共享 target（稳定 id `v0.113.0`、`STS2_TARGET_1130`）：v0.113.0 新增 Blitz/Dread 模式与独立自定义标记，改变商店购买入口、宝箱 holder 布局与 atlas-aware blur；v0.113.1 虽修改玩法、存档及 tooltip 对齐 API，但兼容层使用的合约与所有 scene/material/shader 条目不变，因此两版共用 variant，不改运行时补丁。两版 DLL SHA-256 分别为 `a6cc282c52b96ad2e01d5692b1144b33aa8e3ba4e969582f648ecb13b2f751d7` / `62ecbe91093e1fa862de4329aac865209dcb297804caf0f0520d92d8c0b4a9c3`。编译引用使用 v0.113.1，保留历史 V1130 变量/flavor 和既有 profile；LAN 始终使用各自 payload 的原版握手与消息表，共享 target 不代表两版可互联或普通 MOD API 完全相同。
 
 v0.114.0 使用同一 family 包中的独立 target、DLL SHA 与 `original-v0.114.0` 原版引用。它复用 `STS2_TARGET_1130` 的 Android patch 路径，但不合并到 `v0.113.x`：原版热键 API、宝箱投票消息及 PCK 均有变化，继续由实际 payload 实现。
 
-`port-mod` 默认跟踪 `main`。内置 full 兼容包默认使用 flat matrix 模式：`stage-bundled-compat-packs.sh` 读取 `port-mod/targets/active/*/target.json`，从同一 checkout 构建并复制一个 `sts2-android-compat.zip` schema 2 family 包到 `android/assets/compat_packs/`。APK 打包默认调用 `stage-bundled-compat-artifacts.sh`，会同时 stage `offline-bootstrap/` 生成的 `sts2-android-offline-bootstrap.zip`。legacy 内置兼容包列表仍由 `tools/android/bundled-compat-packs.json` 控制，仅在 `COMPAT_PACK_BUILD_MODE=legacy` 时为每个分支构建 schema 1 zip。升级到 flat matrix APK 后，启动器会将旧 bundled schema 1 pack id（如 `sts2-android-compat-v0.103.x`、`sts2-android-compat-v0.106.1-beta`、`sts2-android-compat-v0.107.0-beta`）迁移为 `sts2-android-compat` + 对应 target id。所有 zip 都是构建产物，随本地 APK 打包但不再由 git 跟踪。compile gate 引用目录由 `.env` 解析后通过 `CompatReferenceDir` 传给 MSBuild，不依赖提交到仓库的个人 symlink。
+`port-mod` 默认跟踪 `main`。APK 打包统一调用 `stage-bundled-compat-artifacts.sh`，默认验签并原样内置 [`bundled-compat-release.json`](../../tools/android/bundled-compat-release.json) 固定的官方 schema 2 ZIP，另 stage `offline-bootstrap/` 生成的 `sts2-android-offline-bootstrap.zip`。本地调试用 `COMPAT_PACK_BUILD_MODE=matrix`，从当前 checkout 的 `port-mod/targets/active/*/target.json` 编译 full family；compile gate 引用目录由 `.env` 解析后以 `CompatReferenceDir` 传给 MSBuild，不需要提交个人 symlink。legacy 内置兼容包列表仍由 `tools/android/bundled-compat-packs.json` 控制，仅在 `COMPAT_PACK_BUILD_MODE=legacy` 时为各分支构建 schema 1 zip。
+
+升级到有 schema 2 family 的 APK 后，启动器会将旧 bundled schema 1 pack id（如 `sts2-android-compat-v0.103.x`、`sts2-android-compat-v0.106.1-beta`、`sts2-android-compat-v0.107.0-beta`）迁移为 `sts2-android-compat` + 对应 target id。所有 ZIP 都是 gitignored 的本地产物。打包与发布详见[构建文档 §6](../build/building-and-packaging.md#6-构建内置兼容包)。
 
 ## 5. APK assets 与私有运行时目录
 

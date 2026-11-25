@@ -161,14 +161,14 @@ tools/android/sync-runtime-from-references.sh
 ```
 The pinned Android FMOD 2.03.06 libraries and `fmod-release.aar` come from Utopia-rise's [prebuilt 6.1.0-4.5.0 addon](https://github.com/utopia-rise/fmod-gdextension/releases/download/6.1.0-4.5.0/addons.zip). See [FMOD Android build inputs](doc/build/building-and-packaging.md#44-fmod-android-构建输入) for the debug/release layout, checksums, and why the APK cannot be used as the reference input.
 
-### 5. Compile Compatibility Packs (Compat Packs)
-Compile and stage all bundled compatibility artifacts into APK assets:
+### 5. Stage Compatibility Packs (Compat Packs)
+Stage both bundled compatibility artifacts into APK assets:
 ```bash
 tools/android/stage-bundled-compat-artifacts.sh
 ```
-This stages the flattened schema-2 full compatibility family pack from `port-mod/` (`compat_version=0.7.3-dev`, 11 targets) and the generic `offline-bootstrap/` fallback pack.
+By default, the build verifies and embeds the original schema-2 ZIP from the [official v0.8.0 Release](https://github.com/ModinMobileSTS/sts2-android-compat/releases/tag/v0.8.0) (revision 800, 11 targets), plus the separately built `offline-bootstrap/` fallback pack. The official pack is available offline on first install. Its exact ZIP hash is recognized as installed in the online list.
 
-Maintainers can [build, sign, and dry-run an official compatibility release locally](doc/build/building-and-packaging.md#61-本地签名与发布官方兼容包). This uses your local game references but does not publish the base game.
+See the [release SOP](doc/build/building-and-packaging.md#6-构建内置兼容包) for choosing between an OTA-only compatibility release, a new APK with a pinned official release, and a local development build. Signing and build-time verification use [Python `cryptography`](https://github.com/pyca/cryptography); only publishing requires the Ed25519 private key. The APK bundler trusts the same public key as the launcher.
 
 The current **v0.114.0 public-beta** payload (Steam build `26909018`) gets its own target and original DLL reference in the existing family pack. It reuses the v0.113 patch implementation; the old v0.113.x target and stable v0.111.1 support are retained. The payload identifies this build as v0.114.0, not v0.113.2.
 
@@ -180,9 +180,9 @@ The offline bootstrap is only auto-matched when no installed full pack matches t
 
 If the current launch profile has no usable compatibility pack, launching now opens a recommendation bottom sheet instead of only showing an error. It first recommends the best matching bundled or installed full target; only when no full target matches does it offer the generic offline fallback. The profile is changed only after the user chooses **Use recommendation and continue**, and the sheet can instead open compatibility pack management directly.
 
-If you only need to rebuild the full `port-mod` family pack, use:
+To rebuild the full family from unpublished changes in your local `port-mod` checkout, explicitly select `matrix`:
 ```bash
-tools/android/stage-bundled-compat-packs.sh
+COMPAT_PACK_BUILD_MODE=matrix tools/android/stage-bundled-compat-packs.sh
 ```
 Legacy per-version branch packs remain available for diagnostics:
 ```bash
@@ -204,6 +204,7 @@ Run the build script. This will output an "Importer APK" that **DOES NOT** conta
 ```bash
 tools/package/build_importer_apk.sh
 ```
+The importer uses the signed, pinned official compatibility ZIP unless you opt into `COMPAT_PACK_BUILD_MODE=matrix` to test local compatibility changes.
 Upon successful build, the APK is output to `dist/sts2-re-importer.apk`. Release
 builds explicitly enable **v1/v2/v3** and disable v4; no `.idsig` is produced or
 required. Packaging verifies all three and, if a previous stable APK exists,

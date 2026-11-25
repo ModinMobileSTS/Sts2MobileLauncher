@@ -2,7 +2,7 @@
 
 本文记录 Android 兼容包、`STS2Mobile.dll`、`port_compat.pck`、原版 payload 和普通用户 MOD 的加载顺序。各正式版和 beta target 见[版本矩阵](../architecture/project-structure.md#4-版本矩阵)；当前 stable 为 `v0.111.1`，当前 public-beta 为 `v0.114.0`，保留共享的 `v0.113.x`（`v0.113.0` / `v0.113.1`，稳定 id `v0.113.0`）。
 
-当前 full family `compat_version=0.7.3-dev` 包含 11 个 target。v0.114.0 单独使用自己的 DLL SHA、版本及 `original-v0.114.0` compile gate，复用 `STS2_TARGET_1130` 的运行时路径。v0.111.1 stable / `public` 与 v0.111.0 beta / `public-beta` 保留独立记录，仍共享 `original-v0.111.0`、V1110 引用与 `STS2_TARGET_1110`，不额外引入 V1111 变量或运行时分支。共享实现不是跨版本联机保证。
+默认内置官方 full family `v0.8.0`（revision 800），包含 11 个 target。v0.114.0 单独使用自己的 DLL SHA、版本及 `original-v0.114.0` compile gate，复用 `STS2_TARGET_1130` 的运行时路径。v0.111.1 stable / `public` 与 v0.111.0 beta / `public-beta` 保留独立记录，仍共享 `original-v0.111.0`、V1110 引用与 `STS2_TARGET_1110`，不额外引入 V1111 变量或运行时分支。共享实现不是跨版本联机保证。
 
 ## 1. 术语
 
@@ -20,6 +20,11 @@ Compat pack 不是普通用户 MOD。它必须早于原版 `ModManager.Initializ
 ## 2. 构建期流程
 
 ```text
+release mode（默认）:
+  固定官方 GitHub Release tag（或显式 latest）
+    -> 同 APK 公钥验签 + 检查 launcher code/schema、完整 ZIP SHA-256 和包内校验
+    -> ZIP 原样内置: sts2-android-compat.zip
+
 legacy mode:
   port-mod branch
     -> dotnet build STS2Mobile.csproj
@@ -55,7 +60,8 @@ offline bootstrap:
   - 构建当前 checkout 的 schema 1 独立 zip，主要用于 legacy 包对照或诊断。
   - 写入 build metadata：branch、commit、dirty、timestamp。
 - `tools/android/stage-bundled-compat-packs.sh`
-  - 默认 matrix mode：调用 `port-mod/tools/build-compat-matrix.sh`，从同一 checkout 的 `targets/active/*/target.json` 生成 schema 2 family zip。
+  - 默认 `release`：读取 `tools/android/bundled-compat-release.json` 的 tag，验证并原样复制官方 ZIP。固定 tag 缓存或显式本地三件套同样完整重验，失败不回退到 matrix。
+  - `COMPAT_PACK_BUILD_MODE=matrix`：调用 `port-mod/tools/build-compat-matrix.sh`，从同一 checkout 的 `targets/active/*/target.json` 生成 schema 2 family ZIP。
   - `COMPAT_PACK_BUILD_MODE=legacy`：按 `tools/android/bundled-compat-packs.json` 构建多个 schema 1 分支包，非当前分支使用临时 git worktree；仅用于回退诊断。
   - 输出到 gitignored 的 `android/assets/compat_packs/*.zip`，随本地 APK 打包但不由 git 跟踪。
 - `offline-bootstrap/tools/test-offline-contract.sh`
@@ -65,6 +71,8 @@ offline bootstrap:
   - 输出 `sts2-android-offline-bootstrap.zip`，当前 `compat_version=0.2.0-dev`、`probe_contract=offline-bootstrap-v2`。
 - `tools/android/stage-bundled-compat-artifacts.sh`
   - APK 打包使用的统一 staging 入口：一次清理 assets 后依次 stage full compat family 包和 offline bootstrap 包。
+
+正式发布步骤、tag 覆盖及离线输入见[发布与打包 SOP](../build/building-and-packaging.md#6-构建内置兼容包)。APK 安装内置 full family 后保存原 ZIP SHA-256，因此“在线更新”会把签名索引中同一 ZIP 识别为已安装，不用再下载一次。
 
 ## 3. 安装 / 首次进入设置页
 

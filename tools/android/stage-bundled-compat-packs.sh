@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Build/install bundled mobile compatibility pack zips into Android assets.
-# Each compatibility pack is built from its own port-mod branch using a temporary
-# git worktree, so version-specific patch logic does not leak across branches.
+# Stage the signed official release by default. Matrix and legacy modes build
+# local source; legacy uses temporary worktrees for version-specific branches.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 # shellcheck disable=SC1091
@@ -9,16 +8,36 @@ source "$ROOT/tools/env/load-local-config.sh"
 sts2_init_env
 
 COMPAT_ROOT="$ROOT/port-mod"
-CONFIG="$(sts2_config_path BUNDLED_COMPAT_PACKS_CONFIG compat.bundled_packs_config "$ROOT/tools/android/bundled-compat-packs.json")"
+COMPAT_PACK_BUILD_MODE="$(sts2_config_value COMPAT_PACK_BUILD_MODE compat.pack_build_mode release)"
+export COMPAT_PACK_BUILD_MODE
 ASSET_DIR="$(sts2_config_path COMPAT_PACK_ASSET_DIR compat.asset_dir "$ROOT/android/assets/compat_packs")"
+
+if [[ "$COMPAT_PACK_BUILD_MODE" == "release" ]]; then
+  release_tag="$(sts2_config_value COMPAT_BUNDLED_RELEASE_TAG compat.bundled_release_tag)"
+  release_dir="$(sts2_config_path COMPAT_BUNDLED_RELEASE_DIR compat.bundled_release_dir)"
+  release_args=(--asset-dir "$ASSET_DIR")
+  if [[ -n "$release_tag" ]]; then
+    release_args+=(--tag "$release_tag")
+  fi
+  if [[ -n "$release_dir" ]]; then
+    release_args+=(--release-dir "$release_dir")
+  fi
+  python3 "$ROOT/tools/android/stage-signed-compat-release.py" "${release_args[@]}"
+  if [[ "${COMPAT_PACK_SKIP_ASSET_CLEAN:-0}" != "1" ]]; then
+    for asset in "$ASSET_DIR"/*.zip; do
+      [[ "${asset##*/}" == "sts2-android-compat.zip" ]] || rm -f -- "$asset"
+    done
+  fi
+  exit 0
+fi
+
+CONFIG="$(sts2_config_path BUNDLED_COMPAT_PACKS_CONFIG compat.bundled_packs_config "$ROOT/tools/android/bundled-compat-packs.json")"
 WORKTREE_ROOT="$(sts2_config_path COMPAT_PACK_WORKTREE_ROOT compat.worktree_root "$ROOT/.agent/worktrees/compat-packs")"
 DOTNET_BIN="$(sts2_config_path DOTNET_BIN build.dotnet "${DOTNET_BIN:-}")"
 COMPAT_PACK_REMOTE="$(sts2_config_value COMPAT_PACK_REMOTE compat.pack_remote origin)"
 export COMPAT_PACK_REMOTE
 COMPAT_PACK_APPLY_BUILD_INFO_PATCHES="$(sts2_config_value COMPAT_PACK_APPLY_BUILD_INFO_PATCHES compat.apply_build_info_patches 1)"
 export COMPAT_PACK_APPLY_BUILD_INFO_PATCHES
-COMPAT_PACK_BUILD_MODE="$(sts2_config_value COMPAT_PACK_BUILD_MODE compat.pack_build_mode matrix)"
-export COMPAT_PACK_BUILD_MODE
 
 if [[ ! -d "$COMPAT_ROOT/.git" && ! -f "$COMPAT_ROOT/.git" ]]; then
   echo "Missing compat submodule checkout: $COMPAT_ROOT" >&2
@@ -48,7 +67,7 @@ if [[ "$COMPAT_PACK_BUILD_MODE" == "matrix" ]]; then
   exit 0
 fi
 if [[ "$COMPAT_PACK_BUILD_MODE" != "legacy" ]]; then
-  echo "Unknown COMPAT_PACK_BUILD_MODE='$COMPAT_PACK_BUILD_MODE' (expected matrix or legacy)" >&2
+  echo "Unknown COMPAT_PACK_BUILD_MODE='$COMPAT_PACK_BUILD_MODE' (expected release, matrix or legacy)" >&2
   exit 1
 fi
 

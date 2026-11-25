@@ -54,12 +54,16 @@
 | Robolectric (`org.robolectric:robolectric:4.15.1`) | 启动器云同步决策、本地快照和 MOD 导入文件安全回归；仅测试使用，不打入 APK。 | MIT；<https://github.com/robolectric/robolectric> |
 | Android desugar_jdk_libs | 为 Android 7.x 等旧系统补齐 `java.time` 等 Java 8+ library API；随 APK 构建。 | GPL-2.0 with Classpath Exception |
 | JavaSteam (`in.dragonbra:javasteam`) | Steam 账号、CM、RemoteStorage 等协议支持。 | MIT |
-| Bouncy Castle (`bcprov-jdk18on`) | JavaSteam 加密支持。 | Bouncy Castle License / MIT-style |
+| Bouncy Castle (`bcprov-jdk18on`) | JavaSteam 加密及启动器官方兼容包 Ed25519 验签。 | Bouncy Castle License / MIT-style |
 | SLF4J NOP | 日志 facade no-op backend。 | MIT |
 | XZ for Java | Steam VZip/LZMA chunk 解压。 | Public Domain / 0BSD-style upstream notice |
 | zstd Android Prefab (`com.fpliu.ndk.pkg.prefab.android.21:zstd`) | Steam VZstd depot chunk JNI/native 解压。 | zstd upstream BSD-3-Clause / package metadata |
 | MTDataFilesProvider (`com.github.L-JINBIN:MTDataFilesProvider`) | debug/dev/release 文件访问 provider 依赖。 | 上游未检测到标准 license；发布前应单独确认。 |
 | libarchive-android `1.1.6` / libarchive | `ArchiveExtractor` 的非 ZIP 本体/MOD 归档读取；ZIP 仍走 Java 标准库路径。 | Android wrapper 以 Apache-2.0 发布；AAR 内置 libarchive 及其压缩组件，分别受 libarchive BSD-2-Clause/组件自带许可与 notices 约束（含 zlib、bzip2、XZ/liblzma、LZ4、zstd、Mbed TLS）；发布前审计实际 AAR 的完整 notices。 |
+
+## 兼容包构建工具依赖
+
+- [Python `cryptography`](https://github.com/pyca/cryptography)：本机发布脚本签名及 APK 内置官方 Release 的 Ed25519 验签，不打入 APK；[上游提供 Apache-2.0 或 BSD-3-Clause 双许可](https://github.com/pyca/cryptography/blob/main/LICENSE)。
 
 ## 可选参考 MOD / 排查仓库
 
@@ -74,7 +78,7 @@
 ## 发布前合规检查
 
 1. 确认 APK 不包含用户游戏 zip、解包后的商业 payload、original/reference DLL、keystore 或账号/token。
-2. 重新生成并审计 `android/assets/compat_packs/*.zip`，不要把 zip 产物加入 git。
+2. 验证 `android/assets/compat_packs/*.zip`；发行 APK 应原样内置验签通过的官方 full family，不重打已发布 ZIP。不要把 ZIP 产物加入 git。
 3. 对实际打入 APK 的 Godot/.NET/FMOD/native runtime 与 Gradle 依赖导出完整 license/notice 清单。
 4. 对 `SlayTheAmethystModded`、`WorkshopAndroidDownloader` 改编代码和无标准 license 的依赖保留授权依据或替换为自研/明确许可实现。
 5. README、`doc/` 与本文件需同步记录新增第三方来源。
