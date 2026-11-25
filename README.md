@@ -151,11 +151,11 @@ cp local.properties.example local.properties
 > **Note:** The `.env` file must configure `JAVA_HOME`, `ANDROID_HOME`, `DOTNET_BIN`, and the original PC DLL reference paths used for compiling the compatibility pack (`STS2_ORIGINAL_*_REFERENCE_DIR`).
 
 ### 4. Sync Runtimes and Dependencies
-Run the following script to extract large runtime artifacts (Godot templates, FMOD, etc.) to their designated locations (these files are git-ignored and must be generated locally):
+After preparing the local reference inputs, run the following script to stage the runtime artifacts into git-ignored directories:
 ```bash
 tools/android/sync-runtime-from-references.sh
 ```
-The Android FMOD engine and Godot bridge must match the PC game's 2.03.06 release. Place the matched arm64 native libraries beside the AAR in `arm64/`, or set `STS2_FMOD_ANDROID_LIBS_DIR` in `.env`. Sync rejects older or mixed binaries instead of repackaging the old reference runtime. See [`doc/build/building-and-packaging.md`](doc/build/building-and-packaging.md).
+The pinned Android FMOD 2.03.06 libraries and `fmod-release.aar` come from Utopia-rise's [prebuilt 6.1.0-4.5.0 addon](https://github.com/utopia-rise/fmod-gdextension/releases/download/6.1.0-4.5.0/addons.zip). See [FMOD Android build inputs](doc/build/building-and-packaging.md#44-fmod-android-构建输入) for the debug/release layout, checksums, and why the APK cannot be used as the reference input.
 
 ### 5. Compile Compatibility Packs (Compat Packs)
 Compile and stage all bundled compatibility artifacts into APK assets:

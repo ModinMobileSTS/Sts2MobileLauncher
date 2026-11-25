@@ -122,11 +122,11 @@ cp local.properties.example local.properties
 > **注意：** `.env` 文件中必须配置好 `JAVA_HOME`、`ANDROID_HOME`、`DOTNET_BIN`，以及用于编译兼容包的原版 PC DLL 引用路径 (`STS2_ORIGINAL_*_REFERENCE_DIR`)。
 
 ### 4. 同步运行时与依赖
-运行以下脚本，将大型的运行时产物（Godot模板、FMOD等）提取到指定位置（这些文件被 git ignore，需本地生成）：
+准备好本地参考输入后，运行以下脚本，将运行时产物同步到 Git 忽略的目录：
 ```bash
 tools/android/sync-runtime-from-references.sh
 ```
-Android FMOD 引擎与 Godot 原生桥需与 PC 本体的 2.03.06 配套：AAR 同级的 `arm64/` 应包含对应库；若路径不同，可在 `.env` 指定 `STS2_FMOD_ANDROID_LIBS_DIR`。脚本会拒绝旧版或混搭库，不会再次把旧参考库打进 APK。详见 [`doc/build/building-and-packaging.md`](doc/build/building-and-packaging.md)。
+脚本锁定的 FMOD 2.03.06 Android 原生库及 `fmod-release.aar` 来自 Utopia-rise 的 [6.1.0-4.5.0 预编译插件包](https://github.com/utopia-rise/fmod-gdextension/releases/download/6.1.0-4.5.0/addons.zip)。debug/release 输入路径、SHA-256 和 APK 不能替代参考输入的原因见 [FMOD Android 构建输入](doc/build/building-and-packaging.md#44-fmod-android-构建输入)。
 
 ### 5. 编译兼容包 (Compat Packs)
 将 full compatibility family 包和通用 offline bootstrap 一并构建并放入 Assets：

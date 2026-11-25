@@ -133,6 +133,8 @@ tools/android/sync-runtime-from-references.sh
 
 这些产物位于 `android/assets/dotnet_bcl/`、`android/libs/` 等 gitignored 路径，不手工维护。长期源码化状态和剩余阻塞见 [`source-dependencies.md`](source-dependencies.md)。
 
+FMOD 下载地址、参考目录布局和 SHA-256 见 [§4.4 FMOD Android 构建输入](#44-fmod-android-构建输入)。
+
 ### 4.1 实验性 Mono 内存总量修复（默认关闭）
 
 部分 MOD（例如 Combat Solver）使用 `GC.GetGCMemoryInfo()` 计算内存条。当前 Ekyso 定制 Mono 9.0.7.0 的 `mono_determine_physical_ram_size()` 最终以空闲页计算总量，可能把启动时空闲内存误报为 GC 可用总量。匹配该定制运行库的完整源码/构建配置尚未获得，因此这里不是源码重建，而是经明确授权的最小二进制实验修复。
@@ -224,6 +226,22 @@ tools/android/gradle-with-s2-env.sh testMonoReleaseUnitTest \
 ```
 
 `test-godot-input-pool.sh` 使用 debug/release 两套原始 AAR 的实际 runnable 与池检查消费者可见来源顺序、缓冲事件边界、重复使用后的池容量、生命周期隔离、同步 rebind、幂等和未知形状拒绝；`GodotInputSourceHostTest` 进一步走原 handler，覆盖实体键鼠/touchpad、虚拟键、浮动右键及 plugin 暂停/焦点恢复。它们不能替代蓝牙/USB 键鼠真机测试；真机仍应检查输入法组合输入、触屏与键鼠交替、跨设备竞争手势和持续点击超过 600 次后所有输入仍可用，且 logcat 不再刷 `Input event pool is at capacity`。
+
+### 4.4 FMOD Android 构建输入
+
+Android ARM64 的 FMOD 2.03.06 三件套和原始插件 AAR 来自 Utopia-rise `fmod-gdextension` [6.1.0-4.5.0](https://github.com/utopia-rise/fmod-gdextension/releases/tag/6.1.0-4.5.0) 的预编译发布资产 [`addons.zip`](https://github.com/utopia-rise/fmod-gdextension/releases/download/6.1.0-4.5.0/addons.zip)，不是源码快照。该 tag 对应提交 [`fda1f89`](https://github.com/utopia-rise/fmod-gdextension/commit/fda1f89a08c0048ed313b333f90b7a7258ce2e61)。本地构建输入所用的 ZIP 与 [GitHub 发布资产](https://api.github.com/repos/utopia-rise/fmod-gdextension/releases/assets/295443658) 的 SHA-256 一致：`8796f6cd1cb38bf7ff4da2648f8af2695244ffdb80a7ac4ab8a171ca44895713`。
+
+1. 解压 `addons.zip`，将 `.env` 中的 `STS2_FMOD_PLUGIN_AAR` 指向解压后的 `fmod/libs/android/fmod-release.aar`。该 AAR 内含 `libs/fmod.jar`。同目录下 `arm64/` 已包含脚本要求的 `libfmod.so`、`libfmodstudio.so` 和 `libGodotFmod.android.template_release.arm64.so`，三者均通过 [同步脚本的 SHA-256 校验](../../tools/android/sync-runtime-from-references.sh#L45-L58)。保留此目录结构即可使用默认路径；如果配置了 `STS2_FMOD_ANDROID_LIBS_DIR` 或 `runtime.fmod_android_libs_dir`，应指向这份 `arm64/`。
+2. 将同一份原始 `fmod-release.aar` 放入 `$STS2_ANDROID_RUNTIME_REFERENCE_ROOT/libs/release/fmod-release.aar`。当前脚本只用 `STS2_FMOD_PLUGIN_AAR` 覆盖 debug 的 AAR，release 的 AAR 随参考 `libs/` 同步；两份 staged AAR 都会应用 Java shim，不修改参考输入。
+
+同步时校验的是**打包前**的桥。Gradle 的 `stripMonoReleaseDebugSymbols` 会处理 ELF；对上游桥执行 `llvm-strip --strip-unneeded` 的结果，与 v0.1.13 importer APK 中的桥逐字节一致。
+
+| `libGodotFmod.android.template_release.arm64.so` | SHA-256 |
+| --- | --- |
+| `addons.zip` 内的构建输入 | `4e5c2529134ed8424a2958e2ed3825a0383ec9b33ffb853778eddd0174ea68fc` |
+| v0.1.13 importer APK 内的打包产物 | `63c1455ca51f25b342bf808e41450e92091038d72560829b57f99a217b6013e9` |
+
+不要用 APK 中已 strip 的桥作为输入，也不需要重编 FMOD 插件。此 ZIP 只提供 FMOD 部分；构建仍需配套 Godot/Mono 参考运行时（含未打补丁的 `MonoMod.Utils.dll`）、crypto native JAR 和 Gradle wrapper JAR。发布 APK 不能直接代替参考目录；第三方二进制的再分发遵循[各自许可](../../THIRD_PARTY_LICENSES.md)。
 
 ## 5. 构建当前 compat fallback
 
